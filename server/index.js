@@ -23,7 +23,7 @@ import {
   getIndex,
   getRebuildProgress,
 } from "./search-index.js";
-// import { discoverPlugins } from "./plugin-loader.js";
+import { discoverModules } from "./plugin-loader.js";
 
 const { version } = JSON.parse(readFileSync("./package.json", "utf-8"));
 
@@ -34,9 +34,43 @@ let client = new ProPresenterClient(config.propresenter);
 app.use(express.static("public"));
 app.use(express.json());
 
-// TODO: mount module routes discovered via plugin-loader.js, per
-// docs/refrain-architecture.md Section 17.11 (auto-discovery, no
-// central registry file to edit).
+// TODO: mount module *routes* discovered via plugin-loader.js, per
+// docs/refrain-architecture.md Section 17.11, once a module has real
+// server-side endpoints of its own (arrangement, lyrics-assist).
+
+// --- Nav (Section 13) — driven by registered modules, not hardcoded ---
+
+app.get("/api/modules", async (_req, res) => {
+  const modules = await discoverModules();
+  res.json({
+    modules: modules.map((m) => ({
+      id: m.id,
+      navLabel: m.navLabel,
+      icon: m.icon,
+      route: m.route,
+      enabled: m.id === "arrangement" ? getArrangementModuleStatus(config) !== "off" : m.enabledByDefault,
+    })),
+  });
+});
+
+app.get("/api/preferences", (_req, res) => {
+  res.json({ theme: config.theme ?? "system", navPinned: Boolean(config.navPinned) });
+});
+
+app.post("/api/preferences", async (req, res) => {
+  const { theme, navPinned } = req.body ?? {};
+  const newConfig = { ...config };
+  if (theme !== undefined) newConfig.theme = theme;
+  if (navPinned !== undefined) newConfig.navPinned = Boolean(navPinned);
+
+  try {
+    await saveConfig(newConfig);
+  } catch (err) {
+    return res.status(500).json({ error: `Failed to save config.json: ${err.message}` });
+  }
+  config = newConfig;
+  res.json({ ok: true });
+});
 
 function indexStatusPayload() {
   const index = getIndex();

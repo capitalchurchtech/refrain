@@ -33,7 +33,18 @@ export async function discoverSlideSplitters() {
 }
 
 export async function discoverModules() {
-  // modules/ is one level deeper (modules/<name>/module.js) —
-  // TODO: adjust traversal accordingly once modules/ has real content.
-  return [];
+  const dirs = await readdir("./modules", { withFileTypes: true }).catch(() => []);
+  const modules = [];
+  for (const dir of dirs) {
+    if (!dir.isDirectory()) continue;
+    const modPath = path.resolve("./modules", dir.name, "module.js");
+    try {
+      const mod = await import(modPath);
+      modules.push(mod.default ?? mod);
+    } catch {
+      // A module folder without a valid module.js shouldn't take down
+      // the rest of discovery.
+    }
+  }
+  return modules;
 }

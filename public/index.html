@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="system">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -64,53 +64,65 @@
     </div>
   </div>
 
-  <!-- Main app shell — search + health, once setup is complete -->
-  <div id="view-app" class="max-w-3xl mx-auto p-6 hidden">
-    <header class="flex items-center justify-between mb-4">
-      <h1 class="text-2xl font-bold flex items-center gap-2">
-        <i data-lucide="search"></i> Refrain
-      </h1>
-      <div role="tablist" class="tabs tabs-boxed">
-        <a role="tab" id="tab-search" class="tab tab-active">Search</a>
-        <a role="tab" id="tab-health" class="tab">Health</a>
-      </div>
-    </header>
-
-    <section id="view-search">
-      <div class="flex items-center justify-between mb-4">
-        <div id="index-status" class="text-sm opacity-70"></div>
+  <!-- Main app shell — nav rail + content, once setup is complete (Section 13) -->
+  <div id="view-app" class="hidden flex min-h-screen">
+    <aside id="nav-rail" class="shrink-0 bg-base-200 flex flex-col items-stretch py-3 transition-all duration-150 w-16">
+      <div class="flex items-center gap-2 px-3 mb-4 overflow-hidden">
+        <i data-lucide="search" class="shrink-0"></i>
+        <span class="nav-label font-bold whitespace-nowrap hidden">Refrain</span>
       </div>
 
-      <div id="connection-banner" class="alert alert-warning mb-4 hidden"></div>
+      <nav id="nav-items" class="flex flex-col gap-1 flex-1"></nav>
 
-      <div class="flex gap-2 mb-3">
-        <input id="query" type="text" placeholder="Search any slide..." class="input input-bordered w-full" autofocus />
-        <button id="rebuild-btn" class="btn btn-ghost" title="Rebuild index">
-          <i data-lucide="refresh-cw"></i>
+      <div class="flex flex-col gap-1 px-2">
+        <button id="theme-toggle" class="btn btn-ghost btn-sm justify-start gap-3 px-2" title="Toggle theme">
+          <span id="theme-icon" class="shrink-0"></span>
+          <span class="nav-label whitespace-nowrap hidden" id="theme-label">Theme: System</span>
+        </button>
+        <button id="nav-pin-toggle" class="btn btn-ghost btn-sm justify-start gap-3 px-2" title="Expand sidebar">
+          <span id="nav-pin-icon" class="shrink-0"></span>
+          <span class="nav-label whitespace-nowrap hidden">Collapse</span>
         </button>
       </div>
+    </aside>
 
-      <div class="flex flex-wrap items-center gap-2 mb-6">
-        <button id="date-filter-toggle" class="btn btn-ghost btn-xs">
-          <i data-lucide="calendar"></i> Date filter
-        </button>
-        <div id="date-filter-panel" class="hidden flex flex-wrap items-center gap-2">
-          <select id="date-field" class="select select-bordered select-xs">
-            <option value="modified">Last modified</option>
-            <option value="created">Created</option>
-          </select>
-          <span class="text-xs opacity-60">from</span>
-          <input id="date-from" type="date" class="input input-bordered input-xs" />
-          <span class="text-xs opacity-60">to</span>
-          <input id="date-to" type="date" class="input input-bordered input-xs" />
-          <button id="date-filter-clear" class="btn btn-ghost btn-xs">Clear</button>
+    <main class="flex-1 p-6 max-w-3xl">
+      <section id="view-search">
+        <div class="flex items-center justify-between mb-4">
+          <div id="index-status" class="text-sm opacity-70"></div>
         </div>
-      </div>
 
-      <div id="results" class="flex flex-col gap-3"></div>
-    </section>
+        <div class="alert alert-warning mb-4 hidden" id="connection-banner"></div>
 
-    <section id="view-health" class="hidden flex flex-col gap-4"></section>
+        <div class="flex gap-2 mb-3">
+          <input id="query" type="text" placeholder="Search any slide..." class="input input-bordered w-full" autofocus />
+          <button id="rebuild-btn" class="btn btn-ghost" title="Rebuild index">
+            <i data-lucide="refresh-cw"></i>
+          </button>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2 mb-6">
+          <button id="date-filter-toggle" class="btn btn-ghost btn-xs">
+            <i data-lucide="calendar"></i> Date filter
+          </button>
+          <div id="date-filter-panel" class="hidden flex flex-wrap items-center gap-2">
+            <select id="date-field" class="select select-bordered select-xs">
+              <option value="modified">Last modified</option>
+              <option value="created">Created</option>
+            </select>
+            <span class="text-xs opacity-60">from</span>
+            <input id="date-from" type="date" class="input input-bordered input-xs" />
+            <span class="text-xs opacity-60">to</span>
+            <input id="date-to" type="date" class="input input-bordered input-xs" />
+            <button id="date-filter-clear" class="btn btn-ghost btn-xs">Clear</button>
+          </div>
+        </div>
+
+        <div id="results" class="flex flex-col gap-3"></div>
+      </section>
+
+      <section id="view-health" class="hidden flex flex-col gap-4"></section>
+    </main>
   </div>
 
   <script type="module" src="main.js"></script>
