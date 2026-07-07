@@ -1,0 +1,38 @@
+# Secrets & environment
+.env
+.env.local
+
+# User config (real values, per-machine)
+config.json
+
+# Dependencies
+node_modules/
+
+# Local caches & data
+cache/
+staging/
+data/
+
+# Keys & credentials
+keys/
+*.pem
+*.key
+firestore-service-account*.json
+
+# Claude Code local session state
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+
+# OS/editor cruft
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Build output (if a bundler is added later)
+dist/
+build/

@@ -1,0 +1,20 @@
+{
+  "propresenter": {
+    "host": "localhost",
+    "port": 1025
+  },
+  "role": "reader",
+  "theme": "system",
+  "navPinned": false,
+  "lyricsSites": ["genius.com", "azlyrics.com"],
+  "slideSplitter": "blank-line-delimited",
+  "librarySync": {
+    "folders": null,
+    "crawlPlaylists": false
+  },
+  "arrangementModule": {
+    "enabled": false,
+    "provider": "manual",
+    "storageBackend": "firestore"
+  }
+}

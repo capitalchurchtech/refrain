@@ -1,0 +1,21 @@
+{
+  "name": "refrain",
+  "version": "0.1.0",
+  "description": "Full-text slide search for ProPresenter, with optional lyrics-assist and arrangement drift tracking.",
+  "license": "MIT",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "lint": "eslint ."
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {}
+}
