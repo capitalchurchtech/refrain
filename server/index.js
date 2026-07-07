@@ -80,8 +80,8 @@ app.post("/api/index/rebuild", async (_req, res) => {
 });
 
 app.get("/api/search", (req, res) => {
-  const { q, playlistId } = req.query;
-  res.json({ results: search({ query: q ?? "", playlistId }) });
+  const { q, playlistId, dateField, dateFrom, dateTo } = req.query;
+  res.json({ results: search({ query: q ?? "", playlistId, dateField, dateFrom, dateTo }) });
 });
 
 app.post("/api/trigger", async (req, res) => {

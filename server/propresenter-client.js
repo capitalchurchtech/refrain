@@ -16,7 +16,17 @@
  *   where flatSlideIndex is 0-based across all groups in document order.
  * If you're on a different ProPresenter version, re-verify against your
  * own instance before trusting this.
+ *
+ * Date filter (Section 5.1) — resolved: the API exposes no created or
+ * modified timestamp anywhere (checked every endpoint), but each
+ * presentation includes a real filesystem path (`presentation_path`).
+ * When Refrain runs on the same machine as ProPresenter, we stat that
+ * file directly for genuine created/modified dates — reliable since
+ * ProPresenter only runs on macOS, which has real birthtime support.
+ * On a remote reader machine the path isn't reachable, so dates are
+ * just left null rather than guessed.
  */
+import { stat } from "node:fs/promises";
 
 function normalizeText(text) {
   return String(text ?? "")
@@ -25,9 +35,12 @@ function normalizeText(text) {
     .trim();
 }
 
+const LOCAL_HOSTNAMES = ["localhost", "127.0.0.1", "::1"];
+
 export class ProPresenterClient {
   constructor({ host, port }) {
     this.baseUrl = `http://${host}:${port}`;
+    this.isLocalHost = LOCAL_HOSTNAMES.includes(host);
   }
 
   async #get(path) {
@@ -94,6 +107,24 @@ export class ProPresenterClient {
   /** Full presentation document, including slide text, for a given id. */
   async getPresentation(presentationId) {
     return this.#get(`/v1/presentation/${presentationId}`);
+  }
+
+  /**
+   * Real created/modified dates for a presentation, read from its .pro
+   * file on disk — only possible when Refrain and ProPresenter are on
+   * the same machine. Returns nulls (never throws) otherwise or on any
+   * fs error (e.g. the file moved since the API listed it).
+   */
+  async getFileDates(presentationPath) {
+    if (!this.isLocalHost || !presentationPath) {
+      return { createdDate: null, modifiedDate: null };
+    }
+    try {
+      const stats = await stat(presentationPath);
+      return { createdDate: stats.birthtime.toISOString(), modifiedDate: stats.mtime.toISOString() };
+    } catch {
+      return { createdDate: null, modifiedDate: null };
+    }
   }
 
   /** Triggers a slide live by presentation id + 0-based flat slide index. */

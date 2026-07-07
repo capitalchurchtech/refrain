@@ -4,6 +4,12 @@ export function initSearch() {
   const statusEl = document.getElementById("index-status");
   const rebuildBtn = document.getElementById("rebuild-btn");
   const connectionBanner = document.getElementById("connection-banner");
+  const dateFilterToggle = document.getElementById("date-filter-toggle");
+  const dateFilterPanel = document.getElementById("date-filter-panel");
+  const dateFieldSelect = document.getElementById("date-field");
+  const dateFromInput = document.getElementById("date-from");
+  const dateToInput = document.getElementById("date-to");
+  const dateFilterClear = document.getElementById("date-filter-clear");
 
   let debounceTimer = null;
 
@@ -30,7 +36,13 @@ export function initSearch() {
       resultsEl.innerHTML = "";
       return;
     }
-    const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+    const params = new URLSearchParams({ q: query });
+    if (dateFromInput.value || dateToInput.value) {
+      params.set("dateField", dateFieldSelect.value);
+      if (dateFromInput.value) params.set("dateFrom", dateFromInput.value);
+      if (dateToInput.value) params.set("dateTo", dateToInput.value);
+    }
+    const res = await fetch(`/api/search?${params}`);
     const { results } = await res.json();
     renderResults(results);
   }
@@ -49,7 +61,9 @@ export function initSearch() {
           <div class="flex items-start justify-between gap-4">
             <div>
               <div class="font-semibold">${escapeHtml(r.presentationName)}</div>
-              <div class="text-sm opacity-70">Slide ${r.slideIndex + 1}${r.appearsIn.length ? ` &middot; in ${r.appearsIn.length} playlist(s)` : ""}</div>
+              <div class="text-sm opacity-70">
+                Slide ${r.slideIndex + 1}${r.appearsIn.length ? ` &middot; in ${r.appearsIn.length} playlist(s)` : ""}${r.modifiedDate ? ` &middot; modified ${new Date(r.modifiedDate).toLocaleDateString()}` : ""}
+              </div>
               <div class="mt-1 text-sm">${escapeHtml(r.snippet)}</div>
             </div>
             <button class="btn btn-primary btn-sm shrink-0 go-live-btn" data-presentation-id="${r.presentationId}" data-slide-index="${r.slideIndex}">
@@ -94,6 +108,20 @@ export function initSearch() {
   queryInput.addEventListener("input", () => {
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => runSearch(queryInput.value), 200);
+  });
+
+  dateFilterToggle.addEventListener("click", () => {
+    dateFilterPanel.classList.toggle("hidden");
+  });
+
+  [dateFieldSelect, dateFromInput, dateToInput].forEach((el) => {
+    el.addEventListener("change", () => runSearch(queryInput.value));
+  });
+
+  dateFilterClear.addEventListener("click", () => {
+    dateFromInput.value = "";
+    dateToInput.value = "";
+    runSearch(queryInput.value);
   });
 
   rebuildBtn.addEventListener("click", async () => {

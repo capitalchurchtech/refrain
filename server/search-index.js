@@ -129,6 +129,9 @@ export async function rebuildIndex(client, syncOptions = {}) {
       try {
         const doc = await client.getPresentation(id);
         presentations[id].slides = extractSlides(doc);
+        const { createdDate, modifiedDate } = await client.getFileDates(doc?.presentation?.presentation_path);
+        presentations[id].createdDate = createdDate;
+        presentations[id].modifiedDate = modifiedDate;
       } catch {
         // Presentation may have been deleted since the library listing
         // was fetched, or the API call failed transiently — skip it
@@ -229,16 +232,35 @@ export function shouldAutoRebuild(index) {
 }
 
 /**
- * Case-insensitive substring search across all slide text.
- * @param {{ query: string, playlistId?: string }} opts
+ * Case-insensitive substring search across all slide text, optionally
+ * narrowed by a created/modified date range (Section 5.1). `dateField`
+ * picks which timestamp to filter on — both are real filesystem dates
+ * (see propresenter-client.js's getFileDates), so unlike the doc's
+ * original "unverified" concern, this isn't a fallback/proxy: a
+ * presentation with no resolvable date (e.g. crawled from a remote
+ * reader machine) is excluded whenever a date filter is active, since
+ * there's nothing to honestly compare against.
+ * @param {{ query: string, playlistId?: string, dateField?: "created"|"modified", dateFrom?: string, dateTo?: string }} opts
  */
-export function search({ query, playlistId }) {
+export function search({ query, playlistId, dateField, dateFrom, dateTo }) {
   const q = normalizeText(query).toLowerCase();
   if (!q) return [];
+
+  const fromTime = dateFrom ? new Date(dateFrom).getTime() : null;
+  const toTime = dateTo ? new Date(`${dateTo}T23:59:59.999`).getTime() : null;
+  const dateKey = dateField === "created" ? "createdDate" : "modifiedDate";
 
   const results = [];
   for (const [presentationId, entry] of Object.entries(currentIndex.presentations)) {
     if (playlistId && !entry.appearsIn.includes(playlistId)) continue;
+
+    if (fromTime || toTime) {
+      const entryTime = entry[dateKey] ? new Date(entry[dateKey]).getTime() : null;
+      if (entryTime === null) continue;
+      if (fromTime && entryTime < fromTime) continue;
+      if (toTime && entryTime > toTime) continue;
+    }
+
     for (const slide of entry.slides) {
       if (slide.text.toLowerCase().includes(q)) {
         results.push({
@@ -247,6 +269,8 @@ export function search({ query, playlistId }) {
           slideIndex: slide.index,
           snippet: slide.text,
           appearsIn: entry.appearsIn,
+          createdDate: entry.createdDate,
+          modifiedDate: entry.modifiedDate,
         });
       }
     }
