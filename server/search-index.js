@@ -14,9 +14,14 @@ const PRESENTATION_FETCH_CONCURRENCY = 1;
 
 let currentIndex = { builtAt: null, presentations: {} };
 let rebuildInFlight = null;
+let rebuildProgress = { inProgress: false, stage: null, current: 0, total: 0 };
 
 export function getIndex() {
   return currentIndex;
+}
+
+export function getRebuildProgress() {
+  return rebuildProgress;
 }
 
 export async function loadIndexFromDisk() {
@@ -54,6 +59,8 @@ export async function rebuildIndex(client, syncOptions = {}) {
   if (rebuildInFlight) return rebuildInFlight;
   const { folders = null, crawlPlaylists = false } = syncOptions;
 
+  rebuildProgress = { inProgress: true, stage: "library", current: 0, total: 0 };
+
   rebuildInFlight = (async () => {
     const presentations = {};
 
@@ -79,6 +86,7 @@ export async function rebuildIndex(client, syncOptions = {}) {
       console.log(`Playlist tree: ${playlistIds.length} playlists found. Crawling items...`);
       let playlistsFetched = 0;
       let playlistFailures = 0;
+      rebuildProgress = { inProgress: true, stage: "playlists", current: 0, total: playlistIds.length };
       await runWithConcurrency(playlistIds, PRESENTATION_FETCH_CONCURRENCY, async (pid) => {
         const { items } = await client.getPlaylistItems(pid).catch((err) => {
           playlistFailures += 1;
@@ -102,6 +110,7 @@ export async function rebuildIndex(client, syncOptions = {}) {
           }
         }
         playlistsFetched += 1;
+        rebuildProgress.current = playlistsFetched;
         if (playlistsFetched % 100 === 0 || playlistsFetched === playlistIds.length) {
           console.log(`Crawling playlists... ${playlistsFetched}/${playlistIds.length}`);
         }
@@ -115,6 +124,7 @@ export async function rebuildIndex(client, syncOptions = {}) {
       (id) => presentations[id].slides.length === 0
     );
     let fetched = 0;
+    rebuildProgress = { inProgress: true, stage: "presentations", current: 0, total: idsNeedingSlides.length };
     await runWithConcurrency(idsNeedingSlides, PRESENTATION_FETCH_CONCURRENCY, async (id) => {
       try {
         const doc = await client.getPresentation(id);
@@ -125,6 +135,7 @@ export async function rebuildIndex(client, syncOptions = {}) {
         // rather than aborting the whole rebuild.
       }
       fetched += 1;
+      rebuildProgress.current = fetched;
       if (fetched % 50 === 0 || fetched === idsNeedingSlides.length) {
         console.log(`Indexing... ${fetched}/${idsNeedingSlides.length} presentations`);
       }
@@ -140,6 +151,7 @@ export async function rebuildIndex(client, syncOptions = {}) {
     return await rebuildInFlight;
   } finally {
     rebuildInFlight = null;
+    rebuildProgress = { inProgress: false, stage: null, current: 0, total: 0 };
   }
 }
 

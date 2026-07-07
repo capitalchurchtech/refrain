@@ -9,6 +9,7 @@
  * display, while the rest of the app keeps working.
  */
 import { readFileSync, existsSync } from "node:fs";
+import { writeFile, rename } from "node:fs/promises";
 import "dotenv/config"; // TODO: add `dotenv` as a real dependency
 
 const CONFIG_PATH = "./config.json";
@@ -18,6 +19,31 @@ export function loadConfig() {
   const path = existsSync(CONFIG_PATH) ? CONFIG_PATH : CONFIG_EXAMPLE_PATH;
   const config = JSON.parse(readFileSync(path, "utf-8"));
   return config;
+}
+
+/** Whether a real (non-example) config.json exists on disk yet. */
+export function configFileExists() {
+  return existsSync(CONFIG_PATH);
+}
+
+/**
+ * Whether config.json exists and has the fields the app actually needs
+ * to run (Section 6) — used to decide whether to show first-run setup.
+ */
+export function isConfigComplete(config) {
+  return Boolean(
+    configFileExists() &&
+      config?.propresenter?.host &&
+      config?.propresenter?.port &&
+      (config?.role === "reader" || config?.role === "logger")
+  );
+}
+
+/** Atomically writes config.json (Section 5.2's write-safety pattern). */
+export async function saveConfig(config) {
+  const tmpPath = `${CONFIG_PATH}.tmp`;
+  await writeFile(tmpPath, JSON.stringify(config, null, 2));
+  await rename(tmpPath, CONFIG_PATH);
 }
 
 /**

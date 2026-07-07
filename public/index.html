@@ -9,26 +9,93 @@
   <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body class="min-h-screen bg-base-100">
-  <div class="max-w-3xl mx-auto p-6">
-    <header class="flex items-center justify-between mb-6">
+
+  <!-- First-run setup (Section 6) — shown instead of everything else until config.json is complete -->
+  <div id="view-setup" class="max-w-lg mx-auto p-6 hidden">
+    <h1 class="text-2xl font-bold flex items-center gap-2 mb-6">
+      <i data-lucide="search"></i> Welcome to Refrain
+    </h1>
+
+    <div class="card bg-base-200">
+      <div class="card-body gap-4">
+        <div>
+          <label class="label"><span class="label-text">ProPresenter host</span></label>
+          <input id="setup-host" type="text" value="localhost" class="input input-bordered w-full" />
+        </div>
+        <div>
+          <label class="label"><span class="label-text">ProPresenter port</span></label>
+          <input id="setup-port" type="number" placeholder="e.g. 1025" class="input input-bordered w-full" />
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button id="setup-test-btn" class="btn btn-outline btn-sm">Test Connection</button>
+          <span id="setup-test-result" class="text-sm"></span>
+        </div>
+
+        <div class="divider my-0"></div>
+
+        <div>
+          <label class="label"><span class="label-text">Is this the machine that runs ProPresenter live during service?</span></label>
+          <div class="flex gap-4">
+            <label class="label cursor-pointer gap-2">
+              <input type="radio" name="setup-role" value="logger" class="radio" />
+              <span class="label-text">Yes — this machine (logger)</span>
+            </label>
+            <label class="label cursor-pointer gap-2">
+              <input type="radio" name="setup-role" value="reader" class="radio" checked />
+              <span class="label-text">No — just searching (reader)</span>
+            </label>
+          </div>
+        </div>
+
+        <p class="text-xs opacity-60">
+          Planning Center / shared-storage credentials for the optional arrangement-comparison
+          module aren't collected here yet — that module isn't built. When it lands, drop
+          credentials into <code>.env</code> directly; see <code>.env.example</code>.
+        </p>
+
+        <button id="setup-save-btn" class="btn btn-primary" disabled>Save &amp; Continue</button>
+
+        <div id="setup-progress" class="hidden">
+          <progress id="setup-progress-bar" class="progress progress-primary w-full"></progress>
+          <div id="setup-progress-text" class="text-sm opacity-70 mt-1"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main app shell — search + health, once setup is complete -->
+  <div id="view-app" class="max-w-3xl mx-auto p-6 hidden">
+    <header class="flex items-center justify-between mb-4">
       <h1 class="text-2xl font-bold flex items-center gap-2">
         <i data-lucide="search"></i> Refrain
       </h1>
-      <div id="index-status" class="text-sm opacity-70"></div>
+      <div role="tablist" class="tabs tabs-boxed">
+        <a role="tab" id="tab-search" class="tab tab-active">Search</a>
+        <a role="tab" id="tab-health" class="tab">Health</a>
+      </div>
     </header>
 
-    <div id="connection-banner" class="alert alert-warning mb-4 hidden"></div>
+    <section id="view-search">
+      <div class="flex items-center justify-between mb-4">
+        <div id="index-status" class="text-sm opacity-70"></div>
+      </div>
 
-    <div class="flex gap-2 mb-6">
-      <input id="query" type="text" placeholder="Search any slide..." class="input input-bordered w-full" autofocus />
-      <button id="rebuild-btn" class="btn btn-ghost" title="Rebuild index">
-        <i data-lucide="refresh-cw"></i>
-      </button>
-    </div>
+      <div id="connection-banner" class="alert alert-warning mb-4 hidden"></div>
 
-    <div id="results" class="flex flex-col gap-3"></div>
+      <div class="flex gap-2 mb-6">
+        <input id="query" type="text" placeholder="Search any slide..." class="input input-bordered w-full" autofocus />
+        <button id="rebuild-btn" class="btn btn-ghost" title="Rebuild index">
+          <i data-lucide="refresh-cw"></i>
+        </button>
+      </div>
+
+      <div id="results" class="flex flex-col gap-3"></div>
+    </section>
+
+    <section id="view-health" class="hidden flex flex-col gap-4"></section>
   </div>
 
-  <script src="app.js"></script>
+  <script type="module" src="main.js"></script>
 </body>
 </html>
