@@ -100,6 +100,16 @@ export class ProPresenterClient {
   async triggerSlide(presentationId, slideIndex) {
     await this.#get(`/v1/presentation/${presentationId}/${slideIndex}/trigger`);
   }
+
+  /**
+   * Switches the ProPresenter editor's own UI to show this presentation —
+   * separate from triggerSlide, which only changes live output. Without
+   * this, "Go Live" changes the screens but leaves the operator's editor
+   * window sitting on whatever playlist item they had open.
+   */
+  async focusPresentation(presentationId) {
+    await this.#get(`/v1/presentation/${presentationId}/focus`);
+  }
 }
 
 export { normalizeText };

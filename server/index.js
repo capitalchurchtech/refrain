@@ -66,6 +66,11 @@ app.post("/api/trigger", async (req, res) => {
   }
   try {
     await client.triggerSlide(presentationId, slideIndex);
+    await client.focusPresentation(presentationId).catch(() => {
+      // Focusing the editor is a nice-to-have; the trigger already
+      // succeeded and put the right thing live, so don't fail the
+      // request over this.
+    });
     res.json({ ok: true });
   } catch (err) {
     res.status(502).json({ error: err.message });

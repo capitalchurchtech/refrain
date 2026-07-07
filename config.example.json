@@ -6,7 +6,13 @@
   "role": "reader",
   "theme": "system",
   "navPinned": false,
-  "lyricsSites": ["genius.com", "azlyrics.com"],
+  "lyricsSites": [
+    "genius.com",
+    "azlyrics.com",
+    "lyrics.com",
+    "musixmatch.com",
+    "youtube.com"
+  ],
   "slideSplitter": "blank-line-delimited",
   "librarySync": {
     "folders": null,
