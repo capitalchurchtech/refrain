@@ -108,6 +108,42 @@ app.get("/api/index/status", (_req, res) => {
   res.json(indexStatusPayload());
 });
 
+app.get("/api/library-folders", async (_req, res) => {
+  try {
+    const folders = await client.getLibraryFolders();
+    res.json({
+      folders: (folders ?? []).map((f) => f.name),
+      selected: config.librarySync?.folders ?? null, // null = every folder synced
+    });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+app.post("/api/library-folders", async (req, res) => {
+  const { folders } = req.body ?? {};
+  if (folders !== null && !Array.isArray(folders)) {
+    return res.status(400).json({ error: "folders must be an array of names, or null for all" });
+  }
+
+  const newConfig = { ...config, librarySync: { ...config.librarySync, folders } };
+  try {
+    await saveConfig(newConfig);
+  } catch (err) {
+    return res.status(500).json({ error: `Failed to save config.json: ${err.message}` });
+  }
+  config = newConfig;
+  res.json({ ok: true });
+
+  // The sync scope changed — reindex to match, same as a first-run
+  // build (Section 5.3). The caller polls /api/index/status for
+  // progress rather than this request staying open for what could be
+  // a slow full-library crawl.
+  rebuildIndex(client, config.librarySync).catch((err) => {
+    console.error("Library-scope rebuild failed:", err.message);
+  });
+});
+
 app.post("/api/index/rebuild", async (_req, res) => {
   try {
     const index = await rebuildIndex(client, config.librarySync);

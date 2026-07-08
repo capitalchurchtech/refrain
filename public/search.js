@@ -13,6 +13,12 @@ export function initSearch() {
 
   let debounceTimer = null;
 
+  // Slide "modified"/"created" dates can never be in the future — avoid
+  // a confusing "0 results" from a mis-picked date.
+  const today = new Date().toISOString().slice(0, 10);
+  dateFromInput.max = today;
+  dateToInput.max = today;
+
   async function refreshStatus() {
     const [indexRes, connRes] = await Promise.all([
       fetch("/api/index/status").then((r) => r.json()),
@@ -32,12 +38,16 @@ export function initSearch() {
   }
 
   async function runSearch(query) {
-    if (!query) {
+    const hasDateFilter = Boolean(dateFromInput.value || dateToInput.value);
+    // A date range with no text is a valid "what did we use in this
+    // timeframe" browse mode — only bail out when there's truly nothing
+    // to search on.
+    if (!query && !hasDateFilter) {
       resultsEl.innerHTML = "";
       return;
     }
     const params = new URLSearchParams({ q: query });
-    if (dateFromInput.value || dateToInput.value) {
+    if (hasDateFilter) {
       params.set("dateField", dateFieldSelect.value);
       if (dateFromInput.value) params.set("dateFrom", dateFromInput.value);
       if (dateToInput.value) params.set("dateTo", dateToInput.value);

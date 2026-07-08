@@ -266,14 +266,17 @@ export function shouldAutoRebuild(index) {
  * presentation with no resolvable date (e.g. crawled from a remote
  * reader machine) is excluded whenever a date filter is active, since
  * there's nothing to honestly compare against.
+ * An empty query with a date range set is a valid "what did we use in
+ * this timeframe" browse mode — every slide in range matches, since an
+ * empty string is a substring of anything.
  * @param {{ query: string, playlistId?: string, dateField?: "created"|"modified", dateFrom?: string, dateTo?: string }} opts
  */
 export function search({ query, playlistId, dateField, dateFrom, dateTo }) {
   const q = normalizeText(query).toLowerCase();
-  if (!q) return [];
-
   const fromTime = dateFrom ? new Date(dateFrom).getTime() : null;
   const toTime = dateTo ? new Date(`${dateTo}T23:59:59.999`).getTime() : null;
+  if (!q && !fromTime && !toTime) return [];
+
   const dateKey = dateField === "created" ? "createdDate" : "modifiedDate";
 
   const results = [];

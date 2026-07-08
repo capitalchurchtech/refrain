@@ -8,8 +8,11 @@ export function initHealth() {
   const container = document.getElementById("view-health");
 
   async function render() {
-    const health = await fetch("/api/health").then((r) => r.json());
-    container.innerHTML = renderHealth(health);
+    const [health, libraryFolders] = await Promise.all([
+      fetch("/api/health").then((r) => r.json()),
+      fetch("/api/library-folders").then((r) => (r.ok ? r.json() : { folders: [], selected: null, error: true })),
+    ]);
+    container.innerHTML = renderHealth(health) + renderLibraryCard(libraryFolders);
 
     const btn = document.getElementById("health-rebuild-btn");
     if (btn) {
@@ -27,9 +30,89 @@ export function initHealth() {
         }
       });
     }
+
+    const saveFoldersBtn = document.getElementById("save-library-folders-btn");
+    if (saveFoldersBtn) {
+      saveFoldersBtn.addEventListener("click", async () => {
+        const allChecked = document.getElementById("library-folder-all").checked;
+        const folders = allChecked
+          ? null
+          : Array.from(document.querySelectorAll(".library-folder-checkbox:checked")).map((el) => el.value);
+
+        saveFoldersBtn.disabled = true;
+        saveFoldersBtn.textContent = "Saving...";
+        try {
+          await fetch("/api/library-folders", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ folders }),
+          });
+          await render();
+        } finally {
+          if (saveFoldersBtn.isConnected) {
+            saveFoldersBtn.disabled = false;
+            saveFoldersBtn.textContent = "Save & Rebuild";
+          }
+        }
+      });
+
+      const allCheckbox = document.getElementById("library-folder-all");
+      const folderCheckboxes = document.querySelectorAll(".library-folder-checkbox");
+      allCheckbox.addEventListener("change", () => {
+        folderCheckboxes.forEach((cb) => (cb.disabled = allCheckbox.checked));
+      });
+    }
   }
 
   return { render };
+}
+
+function renderLibraryCard({ folders, selected, error }) {
+  if (error) {
+    return `
+      <div class="card bg-base-200">
+        <div class="card-body">
+          <h2 class="card-title text-base">Library Sync</h2>
+          <div class="text-sm opacity-70">Can't reach ProPresenter to list Library folders right now.</div>
+        </div>
+      </div>
+    `;
+  }
+
+  const allSelected = selected === null;
+  return `
+    <div class="card bg-base-200">
+      <div class="card-body">
+        <h2 class="card-title text-base">Library Sync</h2>
+        <div class="text-sm opacity-70 mb-1">Which Library folders to index and search — a smaller scope indexes much faster.</div>
+        <label class="label cursor-pointer justify-start gap-2 w-fit">
+          <input type="checkbox" id="library-folder-all" class="checkbox checkbox-sm" ${allSelected ? "checked" : ""} />
+          <span class="label-text">All folders</span>
+        </label>
+        <div class="flex flex-col gap-1 ml-1">
+          ${folders
+            .map(
+              (name) => `
+            <label class="label cursor-pointer justify-start gap-2 w-fit">
+              <input type="checkbox" class="checkbox checkbox-sm library-folder-checkbox" value="${escapeHtml(name)}"
+                ${allSelected || selected.includes(name) ? "checked" : ""}
+                ${allSelected ? "disabled" : ""} />
+              <span class="label-text">${escapeHtml(name)}</span>
+            </label>
+          `
+            )
+            .join("")}
+        </div>
+        <button id="save-library-folders-btn" class="btn btn-sm btn-outline mt-2 w-fit">Save &amp; Rebuild</button>
+      </div>
+    </div>
+  `;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
 }
 
 function renderHealth(health) {

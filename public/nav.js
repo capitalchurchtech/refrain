@@ -11,6 +11,12 @@
 const THEME_CYCLE = ["system", "light", "dark"];
 const THEME_LABEL = { system: "System", light: "Light", dark: "Dark" };
 
+// Explicit ordering, most-used first — module-discovery order (readdir,
+// effectively alphabetical) isn't a usage-frequency order, and it isn't
+// stable to rely on for "which tab a first-time user sees first."
+const NAV_PRIORITY = { search: 0, "lyrics-assist": 1, arrangement: 2 };
+const DEFAULT_PRIORITY = 99;
+
 export function applyTheme(theme) {
   const resolved =
     theme === "system"
@@ -40,7 +46,9 @@ export async function initNav({ onNavigate, viewIds }) {
   // A module can be "enabled" per its own metadata/config while still
   // having no real screen built yet (e.g. lyrics-assist's component is
   // still null) — only show nav entries the frontend can actually render.
-  const moduleItems = modules.filter((m) => m.enabled && viewIds.has(m.id));
+  const moduleItems = modules
+    .filter((m) => m.enabled && viewIds.has(m.id))
+    .sort((a, b) => (NAV_PRIORITY[a.id] ?? DEFAULT_PRIORITY) - (NAV_PRIORITY[b.id] ?? DEFAULT_PRIORITY));
   const items = [...moduleItems, ...coreItems];
 
   let activeId = items[0]?.id ?? "search";
