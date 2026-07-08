@@ -80,6 +80,20 @@ export function getArrangementModuleStatus(config) {
 }
 
 /**
+ * @returns {"off" | "misconfigured" | "active"}
+ * No .env credentials needed at all (no external service involved) —
+ * "misconfigured" only happens if the folders/presets are missing,
+ * which shouldn't occur once the module's own setup screen provides
+ * defaults on first enable.
+ */
+export function getImageCropModuleStatus(config) {
+  const mod = config.imageCropModule;
+  if (!mod?.enabled) return "off";
+  if (!mod.inputFolder || !mod.outputFolder || !mod.presets?.length) return "misconfigured";
+  return "active";
+}
+
+/**
  * Which .env values matter for the *current* config, and whether each
  * is actually set — drives the Health screen's "Environment Variables"
  * card so editing .env is only ever presented when it would do

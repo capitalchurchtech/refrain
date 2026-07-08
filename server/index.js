@@ -6,8 +6,8 @@
  * actual installed version before relying on anything below.
  */
 import { readFileSync, existsSync } from "node:fs";
-import { copyFile, readdir } from "node:fs/promises";
-import { exec } from "node:child_process";
+import { copyFile, readdir, mkdir } from "node:fs/promises";
+import { exec, execFile } from "node:child_process";
 import { platform, homedir } from "node:os";
 import path from "node:path";
 import express from "express";
@@ -17,6 +17,7 @@ import {
   configFileExists,
   isConfigComplete,
   getArrangementModuleStatus,
+  getImageCropModuleStatus,
   getEnvRequirements,
   ensureMachineId,
 } from "./config.js";
@@ -34,6 +35,7 @@ import {
 } from "./search-index.js";
 import { discoverModules, discoverSlideSplitters, discoverProviders, discoverStorageBackends } from "./plugin-loader.js";
 import { runComparison, suggestMapping, getPendingUploadCount, retryPendingUploads } from "./arrangement-diff.js";
+import { startWatcher as startImageCropWatcher, getImageCropStatus } from "./image-crop.js";
 import { normalizeSongTitle } from "../providers/planning-center.js";
 
 const { version } = JSON.parse(readFileSync("./package.json", "utf-8"));
@@ -109,7 +111,12 @@ app.get("/api/modules", async (_req, res) => {
       navLabel: m.navLabel,
       icon: m.icon,
       route: m.route,
-      enabled: m.id === "arrangement" ? getArrangementModuleStatus(config) !== "off" : m.enabledByDefault,
+      enabled:
+        m.id === "arrangement"
+          ? getArrangementModuleStatus(config) !== "off"
+          : m.id === "image-crop"
+            ? getImageCropModuleStatus(config) !== "off"
+            : m.enabledByDefault,
     })),
   });
 });
@@ -1092,6 +1099,84 @@ app.post("/api/arrangement/compare", async (req, res) => {
   }
 });
 
+// --- Image Crop module (watched-folder smart cropping) ---
+
+const DEFAULT_IMAGE_CROP_PRESETS = [
+  { name: "16:9 1080p", width: 1920, height: 1080 },
+  { name: "1:1 900x900", width: 900, height: 900 },
+];
+
+app.get("/api/image-crop/status", (_req, res) => {
+  res.json({
+    status: getImageCropModuleStatus(config),
+    config: config.imageCropModule ?? null,
+    ...getImageCropStatus(),
+  });
+});
+
+app.post("/api/image-crop/config", async (req, res) => {
+  const { enabled, inputFolder, outputFolder, presets } = req.body ?? {};
+  const newConfig = { ...config, imageCropModule: { ...config.imageCropModule } };
+
+  if (enabled !== undefined) newConfig.imageCropModule.enabled = Boolean(enabled);
+  if (inputFolder !== undefined) {
+    if (typeof inputFolder !== "string") return res.status(400).json({ error: "inputFolder must be a string" });
+    newConfig.imageCropModule.inputFolder = inputFolder.trim() || null;
+  }
+  if (outputFolder !== undefined) {
+    if (typeof outputFolder !== "string") return res.status(400).json({ error: "outputFolder must be a string" });
+    newConfig.imageCropModule.outputFolder = outputFolder.trim() || null;
+  }
+  if (presets !== undefined) {
+    if (
+      !Array.isArray(presets) ||
+      !presets.every((p) => p && typeof p.name === "string" && p.name.trim() && Number.isInteger(p.width) && Number.isInteger(p.height) && p.width > 0 && p.height > 0)
+    ) {
+      return res.status(400).json({ error: "presets must be a non-empty array of { name, width, height } with positive integer dimensions" });
+    }
+    newConfig.imageCropModule.presets = presets;
+  }
+
+  // First time this module is turned on with no folders configured yet,
+  // default to a zero-setup location inside the app's own data folder —
+  // "drop a file in, it works" shouldn't require picking a path first.
+  if (newConfig.imageCropModule.enabled) {
+    newConfig.imageCropModule.inputFolder ??= "./data/image-crop/input";
+    newConfig.imageCropModule.outputFolder ??= "./data/image-crop/output";
+    if (!newConfig.imageCropModule.presets?.length) {
+      newConfig.imageCropModule.presets = DEFAULT_IMAGE_CROP_PRESETS;
+    }
+  }
+
+  config = newConfig;
+  await saveConfig(config);
+  await startImageCropWatcher(getImageCropModuleStatus(config) === "active" ? config.imageCropModule : null);
+  res.json({ ok: true, config: config.imageCropModule });
+});
+
+app.post("/api/image-crop/open-folder", async (req, res) => {
+  const { which } = req.body ?? {};
+  if (which !== "input" && which !== "output") {
+    return res.status(400).json({ error: 'which must be "input" or "output"' });
+  }
+  const folder = which === "input" ? config.imageCropModule?.inputFolder : config.imageCropModule?.outputFolder;
+  if (!folder) return res.status(409).json({ error: "That folder isn't configured yet — save a config first." });
+
+  try {
+    await mkdir(folder, { recursive: true });
+  } catch (err) {
+    return res.status(500).json({ error: `Failed to create folder: ${err.message}` });
+  }
+
+  if (platform() !== "darwin") {
+    return res.status(501).json({ error: "Opening a folder automatically is only supported on macOS right now — open it manually." });
+  }
+  execFile("open", [folder], (err) => {
+    if (err) return res.status(500).json({ error: `Failed to open folder: ${err.message}` });
+    res.json({ ok: true });
+  });
+});
+
 // --- First-run setup (Section 6) ---
 
 app.get("/api/setup/status", (_req, res) => {
@@ -1227,6 +1312,15 @@ app.listen(port, "127.0.0.1", async () => {
       }
     } catch (err) {
       console.error("Pending-upload retry failed:", err.message);
+    }
+  }
+
+  if (getImageCropModuleStatus(config) === "active") {
+    try {
+      await startImageCropWatcher(config.imageCropModule);
+      console.log(`Watching ${config.imageCropModule.inputFolder} for images to crop.`);
+    } catch (err) {
+      console.error("Failed to start image-crop watcher:", err.message);
     }
   }
 });

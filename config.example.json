@@ -24,5 +24,14 @@
     "storageBackend": "local-folder",
     "folders": null,
     "planningCenterServiceTypeId": null
+  },
+  "imageCropModule": {
+    "enabled": false,
+    "inputFolder": null,
+    "outputFolder": null,
+    "presets": [
+      { "name": "16:9 1080p", "width": 1920, "height": 1080 },
+      { "name": "1:1 900x900", "width": 900, "height": 900 }
+    ]
   }
 }

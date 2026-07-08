@@ -1276,3 +1276,20 @@ SFTP_KNOWN_HOST_FINGERPRINT=
   per-church choices.
 - `slideSplitter` is similarly a swappable string resolved against
   `slide-splitters/` (Section 17.11).
+
+---
+
+## 19. Image Crop Module (added post-launch, as a real instance of Section 17.11's "whole new feature module" pattern)
+
+A separate, unrelated pain point from search/arrangement: source images (photos, graphics) come in whatever size they were shot or designed at, and every destination — a 1080p slide background, a square social post, a banner — wants a different aspect ratio. Doing this by hand in an image editor, repeatedly, for every graphic, is the exact kind of repetitive manual work this project exists to eliminate.
+
+**Design decisions:**
+
+- **Watched folder, not a manual upload flow.** Drop a file in, walk away, come back to finished output — matching how this actually gets used (a volunteer batch-preparing graphics, not a one-at-a-time interactive tool).
+- **Smart crop via saliency/entropy (`smartcrop.js`/`smartcrop-sharp`), not face detection, as the first version.** Face detection sounds like the obvious answer but is actually the *narrower* one — it only helps on photos with people in them, needs a model to bundle/download (real weight for a "two minutes to live" install), and does nothing for worship graphics, quote cards, or text-heavy slides, which are a real chunk of what a church actually crops. Saliency-based cropping has no model dependency and generalizes across all of that. Explicitly deferred, not rejected: `smartcrop-sharp`'s own docs point at `smartcrop-cli`'s OpenCV integration as the reference path if/when face-detection is worth the added weight — a natural opt-in layer on top of the existing crop, not a rewrite.
+- **Non-destructive.** Originals move to a `processed/` subfolder after a successful run; nothing is ever deleted. Mirrors the arrangement module's "stage before write, never silently lose data" philosophy (Section 8.4), applied to a completely different feature.
+- **Presets are user-defined, not hardcoded to two sizes.** The two starting presets (16:9 1080p, 1:1 900×900) are just sensible seed values applied the first time the module is enabled — add, remove, rename, or resize freely from the module's own screen. Consistent with the broader "don't lock the UI to one hardcoded shape" principle applied elsewhere in this project (Section 17.2/17.3's provider/storage genericization).
+- **Zero external credentials, zero shared config with the arrangement module.** Unlike Planning Center or Firestore, there's no account to connect and no cross-machine sharing concern — so unlike the arrangement module, this screen owns its entire enable/configure flow itself rather than routing the admin through Health. Enabling it for the first time auto-creates its own input/output folders inside `data/` and seeds default presets — no path has to be typed before it does something useful.
+- **Built as a real `modules/` entry, not a special case.** `modules/image-crop/module.js` + `server/image-crop.js` + `public/image-crop.js` is the same three-piece shape any future contributor would follow for a genuinely new feature (Section 17.11) — nothing about how it's wired into nav/`/api/modules` is unique to this one module.
+
+**Dependencies added:** `sharp` (image decode/encode/resize — ships prebuilt binaries for common platforms, no native toolchain needed to install), `smartcrop-sharp` (the saliency-crop algorithm), `chokidar` (folder watching). All three are widely-used, actively maintained, and add no telemetry/network calls of their own — consistent with Section 17.7's privacy principle.

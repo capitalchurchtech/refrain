@@ -14,8 +14,11 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
+    "chokidar": "^5.0.0",
     "dotenv": "^16.4.7",
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "sharp": "^0.32.6",
+    "smartcrop-sharp": "^2.0.8"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

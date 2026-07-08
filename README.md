@@ -1,20 +1,26 @@
 # Refrain
 
-Find any slide, in any presentation, in your entire ProPresenter library — not just playlist names — and jump straight to it live. Built for the moment someone starts a song mid-service and nobody's sure which one it is.
+[![CI](https://github.com/capitalchurchtech/refrain/actions/workflows/ci.yml/badge.svg)](https://github.com/capitalchurchtech/refrain/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+**The ProPresenter sidecar for the moment someone starts a song mid-service and nobody's sure which one it is.** Find any slide, in any presentation, across your entire library — not just playlist names — and jump straight to it live, in seconds, without ever leaving your seat at the booth.
+
+Refrain runs alongside ProPresenter on your own machine — nothing to host, nothing to subscribe to, no data leaving your network unless you explicitly wire it to something.
 
 ![Refrain search screenshot](docs/screenshot.png)
 
 ## What it does
 
-- **Full-text slide search** across your whole ProPresenter library and every playlist, with one-click "Go Live" on any result.
-- **Lyrics search-assist** for songs your CCLI library doesn't have — searches lyrics sites via a scoped web search, then helps you paste and auto-format lyrics into slides.
-- **Optional: arrangement drift tracking** — compares what your church-management system planned for a song against what actually got run, so you can stop making the same manual edit every week. Fully optional, fully skippable, needs no setup if you don't want it.
+- 🔎 **Full-text slide search** across your whole ProPresenter library and every playlist, with one-click "Go Live" on any result — the core feature, and it works standalone with zero setup beyond ProPresenter itself.
+- 📝 **Lyrics search-assist** for songs your CCLI library doesn't have — searches lyrics sites via a scoped web search, then helps you paste and auto-format lyrics into slides in seconds instead of hand-splitting them line by line.
+- 🔁 **Optional: arrangement drift tracking** — compares what your church-management system planned for a song against what actually got run, and can push the correction straight back. Stop making the same manual edit every week. Fully optional, fully skippable, needs no setup if you don't want it.
+- ✂️ **Optional: watched-folder image cropping** — drop a photo in a folder and get it back auto-cropped to every size you need (a 1080p slide background, a square social post, whatever you define) with smart-cropping that keeps the important part of the image in frame. Also fully optional.
 
 ## What you need
 
 Just ProPresenter, with its local network API enabled (Preferences → Network). That's the whole requirement for the core search feature.
 
-Everything else — a church-management integration, shared arrangement storage — is optional and configured separately. See [docs/refrain-architecture.md](docs/refrain-architecture.md) for the full picture.
+Everything else — a church-management integration, shared arrangement storage, image cropping — is optional and configured separately, and none of it requires ProPresenter changes or restarts. See [docs/refrain-architecture.md](docs/refrain-architecture.md) for the full picture.
 
 ## Large libraries
 
@@ -34,6 +40,12 @@ Scope the initial sync down in `config.json`:
 crawls every playlist for "which playlist is this in" metadata — the
 slowest part of a rebuild, so it's off by default; search still covers
 every presentation in the synced folders either way.
+
+## Image Crop
+
+Turn it on from the **Image Crop** screen (off by default) — no config file editing needed. The first time you enable it, Refrain creates an input and output folder for you and seeds two starting presets: 16:9 at 1080p and a 1:1 square at 900×900. Drop an image into the input folder and, within a couple seconds, you'll have one correctly-cropped file per preset waiting in the output folder — the original moves to a `processed/` subfolder rather than being deleted, so nothing is destructive.
+
+Cropping uses [smartcrop.js](https://github.com/jwagner/smartcrop.js)'s saliency/entropy heuristic — no ML model to download, no GPU, and it holds up well across the mix of images a church actually deals with (portraits, worship graphics, text-heavy slides), not just headshots. Presets are fully your own — add, rename, or resize as many as you want, they aren't limited to the two defaults. Face-detection is on the list as a future opt-in boost for photo-heavy use cases, not a requirement to get value today.
 
 ## Installation
 
@@ -61,7 +73,7 @@ Either way, a restart is required — the running server doesn't hot-reload its 
 
 ## Privacy
 
-Refrain only talks to services you explicitly configure — your own ProPresenter install, and optionally your chosen church-management API or shared storage backend. There's no telemetry, analytics, or phone-home to any project-controlled server.
+Refrain only talks to services you explicitly configure — your own ProPresenter install, and optionally your chosen church-management API or shared storage backend. Image cropping never leaves your machine at all — no cloud API, no upload, just local processing. There's no telemetry, analytics, or phone-home to any project-controlled server.
 
 ## Compatibility
 
@@ -71,7 +83,7 @@ Refrain only talks to services you explicitly configure — your own ProPresente
 
 ## For developers
 
-Refrain is built to be extended. Church-management integrations, storage backends, lyrics-to-slide splitting logic, and whole new feature modules are all pluggable — see [CONTRIBUTING.md](CONTRIBUTING.md) for worked examples of adding each kind, and [docs/refrain-architecture.md](docs/refrain-architecture.md) for the full architecture.
+Refrain is built to be extended. Church-management integrations, storage backends, lyrics-to-slide splitting logic, and whole new feature modules are all pluggable — Image Crop is itself an example of the "whole new feature module" pattern, not a special case baked into core. See [CONTRIBUTING.md](CONTRIBUTING.md) for worked examples of adding each kind, and [docs/refrain-architecture.md](docs/refrain-architecture.md) for the full architecture.
 
 Stack: Node.js + Express, Tailwind + DaisyUI, Lucide icons. No database anywhere in the stack — plain JSON, in-memory, or on whatever storage backend you configure (local folder by default; Firestore and SFTP backends are stubbed out and open for a contributor to finish — see [CONTRIBUTING.md](CONTRIBUTING.md)).
 

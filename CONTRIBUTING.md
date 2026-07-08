@@ -92,7 +92,9 @@ export default {
 };
 ```
 
-This is the right shape for something genuinely new — not a provider, not a storage backend, not a splitter, but a whole new thing Refrain doesn't do yet (a media/background organizer, a slide-transition checker, whatever else another church finds useful). Self-contained folder, no core files touched.
+This is the right shape for something genuinely new — not a provider, not a storage backend, not a splitter, but a whole new thing Refrain doesn't do yet (a slide-transition checker, whatever else another church finds useful). Self-contained folder, no core files touched.
+
+`modules/image-crop/` (paired with `server/image-crop.js` and `public/image-crop.js`) is a real, shipped example of this pattern — a watched-folder smart-image-cropper, unrelated to anything else in the app, added the same way a community contribution would be. Worth reading as a template: it owns its own config, its own screen, and its own `/api/image-crop/*` routes, and nothing in core had to change to add it.
 
 ## What we won't add as a plugin, and why
 
