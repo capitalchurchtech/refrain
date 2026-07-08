@@ -25,6 +25,7 @@ import {
   getRebuildProgress,
   getGroupSequence,
   getPresentationName,
+  getIndexedFolders,
 } from "./search-index.js";
 import { discoverModules, discoverSlideSplitters, discoverProviders, discoverStorageBackends } from "./plugin-loader.js";
 import { runComparison, suggestMapping, getPendingUploadCount } from "./arrangement-diff.js";
@@ -154,8 +155,13 @@ app.post("/api/index/rebuild", async (_req, res) => {
 });
 
 app.get("/api/search", (req, res) => {
-  const { q, playlistId, dateField, dateFrom, dateTo } = req.query;
-  res.json({ results: search({ query: q ?? "", playlistId, dateField, dateFrom, dateTo }) });
+  const { q, playlistId, dateField, dateFrom, dateTo, folders } = req.query;
+  const folderList = Array.isArray(folders) ? folders : folders ? String(folders).split(",") : undefined;
+  res.json({ results: search({ query: q ?? "", playlistId, dateField, dateFrom, dateTo, folders: folderList }) });
+});
+
+app.get("/api/search/folders", (_req, res) => {
+  res.json({ folders: getIndexedFolders() });
 });
 
 app.post("/api/trigger", async (req, res) => {

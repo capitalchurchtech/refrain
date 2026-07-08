@@ -77,7 +77,7 @@ export class ProPresenterClient {
       try {
         const folderContents = await this.#get(`/v1/library/${folder.uuid}`);
         for (const item of folderContents?.items ?? []) {
-          items.push({ id: item.uuid, name: item.name });
+          items.push({ id: item.uuid, name: item.name, folder: folder.name });
         }
       } catch (err) {
         console.log(`  library folder "${folder.name}" failed: ${err.message}`);

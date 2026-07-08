@@ -10,14 +10,50 @@ export function initSearch() {
   const dateFromInput = document.getElementById("date-from");
   const dateToInput = document.getElementById("date-to");
   const dateFilterClear = document.getElementById("date-filter-clear");
+  const libraryFilterWrap = document.getElementById("library-filter-wrap");
+  const libraryFilterToggle = document.getElementById("library-filter-toggle");
+  const libraryFilterPanel = document.getElementById("library-filter-panel");
 
   let debounceTimer = null;
+  let allLibraryFolders = [];
 
   // Slide "modified"/"created" dates can never be in the future — avoid
   // a confusing "0 results" from a mis-picked date.
   const today = new Date().toISOString().slice(0, 10);
   dateFromInput.max = today;
   dateToInput.max = today;
+
+  async function initLibraryFilter() {
+    const { folders } = await fetch("/api/search/folders").then((r) => r.json());
+    allLibraryFolders = folders;
+    // Only worth showing once there's an actual choice to make — a
+    // single synced folder has nothing to narrow.
+    if (folders.length <= 1) return;
+
+    libraryFilterWrap.classList.remove("hidden");
+    libraryFilterPanel.innerHTML = folders
+      .map(
+        (name) => `
+      <label class="label cursor-pointer gap-1 py-0">
+        <input type="checkbox" class="checkbox checkbox-xs library-filter-checkbox" value="${escapeHtml(name)}" checked />
+        <span class="label-text text-xs">${escapeHtml(name)}</span>
+      </label>
+    `
+      )
+      .join("");
+
+    libraryFilterPanel.querySelectorAll(".library-filter-checkbox").forEach((cb) => {
+      cb.addEventListener("change", () => runSearch(queryInput.value));
+    });
+  }
+
+  function selectedFolders() {
+    if (allLibraryFolders.length <= 1) return null;
+    const checked = Array.from(libraryFilterPanel.querySelectorAll(".library-filter-checkbox:checked")).map((cb) => cb.value);
+    // All checked (the default) means "no filter" — only send a subset
+    // when the user has actually narrowed it down.
+    return checked.length < allLibraryFolders.length ? checked : null;
+  }
 
   async function refreshStatus() {
     const [indexRes, connRes] = await Promise.all([
@@ -52,6 +88,8 @@ export function initSearch() {
       if (dateFromInput.value) params.set("dateFrom", dateFromInput.value);
       if (dateToInput.value) params.set("dateTo", dateToInput.value);
     }
+    const folders = selectedFolders();
+    if (folders) params.set("folders", folders.join(","));
     const res = await fetch(`/api/search?${params}`);
     const { results } = await res.json();
     renderResults(results);
@@ -124,6 +162,10 @@ export function initSearch() {
     dateFilterPanel.classList.toggle("hidden");
   });
 
+  libraryFilterToggle.addEventListener("click", () => {
+    libraryFilterPanel.classList.toggle("hidden");
+  });
+
   [dateFieldSelect, dateFromInput, dateToInput].forEach((el) => {
     el.addEventListener("change", () => runSearch(queryInput.value));
   });
@@ -146,4 +188,5 @@ export function initSearch() {
   });
 
   refreshStatus();
+  initLibraryFilter();
 }

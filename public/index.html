@@ -9,13 +9,38 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://cdn.jsdelivr.net/npm/daisyui@4/dist/full.min.css" rel="stylesheet" type="text/css" />
   <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    /* Collapsed nav rail (Section 13): icon-only buttons default to
+       px-2's 8px left padding, which visually left-aligns a 24px icon
+       in the 64px-wide rail rather than centering it. Extra left
+       padding compensates so the icon lands centered. */
+    #nav-rail.collapsed .nav-item,
+    #nav-rail.collapsed #theme-toggle,
+    #nav-rail.collapsed #nav-pin-toggle,
+    #nav-rail.collapsed #brand-row {
+      padding-left: 1.25rem;
+    }
+
+    /* Go Live — the right-column action button on every search result —
+       uses this brand green instead of DaisyUI's default purple/indigo
+       primary color. */
+    .go-live-btn {
+      background-color: #00aa6e;
+      border-color: #00aa6e;
+      color: #fff;
+    }
+    .go-live-btn:hover {
+      background-color: #00925f;
+      border-color: #00925f;
+    }
+  </style>
 </head>
 <body class="min-h-screen bg-base-100">
 
   <!-- First-run setup (Section 6) — shown instead of everything else until config.json is complete -->
   <div id="view-setup" class="max-w-lg mx-auto p-6 hidden">
-    <h1 class="text-2xl font-bold flex items-center gap-2 mb-6">
-      <span id="setup-brand-mark" class="shrink-0 w-6 h-6 inline-block"></span> Welcome to Refrain
+    <h1 class="mb-6">
+      <span id="setup-brand-logo" class="inline-block"></span>
     </h1>
 
     <div class="card bg-base-200">
@@ -69,7 +94,7 @@
   <!-- Main app shell — nav rail + content, once setup is complete (Section 13) -->
   <div id="view-app" class="hidden flex min-h-screen">
     <aside id="nav-rail" class="shrink-0 self-start sticky top-0 h-screen overflow-y-auto bg-base-200 flex flex-col items-stretch py-3 transition-all duration-150 w-16">
-      <div class="flex items-center px-3 mb-4 overflow-hidden h-7">
+      <div id="brand-row" class="flex items-center px-2 mb-4 overflow-hidden h-9">
         <span id="brand-mark" class="shrink-0"></span>
         <span id="brand-logo" class="shrink-0 hidden"></span>
       </div>
@@ -118,6 +143,13 @@
             <input id="date-to" type="date" class="input input-bordered input-xs" />
             <button id="date-filter-clear" class="btn btn-ghost btn-xs">Clear</button>
           </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2 mb-6 hidden" id="library-filter-wrap">
+          <button id="library-filter-toggle" class="btn btn-ghost btn-xs">
+            <i data-lucide="library"></i> Libraries
+          </button>
+          <div id="library-filter-panel" class="hidden flex flex-wrap items-center gap-2"></div>
         </div>
 
         <div id="results" class="flex flex-col gap-3"></div>

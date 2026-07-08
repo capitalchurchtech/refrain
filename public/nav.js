@@ -57,8 +57,8 @@ export async function initNav({ onNavigate, viewIds }) {
   const brandLogo = document.getElementById("brand-logo");
 
   await Promise.all([
-    injectSvg(brandMark, "img/icon.svg", ["h-7", "w-auto"]),
-    injectSvg(brandLogo, "img/logo.svg", ["h-7", "w-auto"]),
+    injectSvg(brandMark, "img/icon.svg", ["h-5", "w-auto"]),
+    injectSvg(brandLogo, "img/logo.svg", ["h-9", "w-auto"]),
   ]);
 
   const [{ modules }, prefs] = await Promise.all([
@@ -121,6 +121,7 @@ export async function initNav({ onNavigate, viewIds }) {
   function applyPinnedState() {
     rail.classList.toggle("w-16", !pinned);
     rail.classList.toggle("w-56", pinned);
+    rail.classList.toggle("collapsed", !pinned);
     document.querySelectorAll(".nav-label").forEach((el) => el.classList.toggle("hidden", !pinned));
     // Collapsed: just the mark. Expanded: swap in the full wordmark
     // logo, same as expanding replaces every other icon-only nav item

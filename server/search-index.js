@@ -82,6 +82,7 @@ export async function rebuildIndex(client, syncOptions = {}) {
       if (!id) continue;
       presentations[id] = {
         name: item.name ?? "Untitled",
+        folder: item.folder ?? null,
         slides: [],
         appearsIn: [],
         createdDate: null,
@@ -251,6 +252,15 @@ function extractGroupSequence(presentationDoc) {
   return resolveOrderedGroups(presentationDoc).map((g) => g.name ?? "Untitled");
 }
 
+/** Distinct Library folder names actually present in the built index — always matches what's really searchable, even if config.json's sync scope changed since the last rebuild. */
+export function getIndexedFolders() {
+  const folders = new Set();
+  for (const entry of Object.values(currentIndex.presentations)) {
+    if (entry.folder) folders.add(entry.folder);
+  }
+  return [...folders].sort();
+}
+
 export function shouldAutoRebuild(index) {
   if (!index?.builtAt) return true;
   const age = Date.now() - new Date(index.builtAt).getTime();
@@ -269,19 +279,24 @@ export function shouldAutoRebuild(index) {
  * An empty query with a date range set is a valid "what did we use in
  * this timeframe" browse mode — every slide in range matches, since an
  * empty string is a substring of anything.
- * @param {{ query: string, playlistId?: string, dateField?: "created"|"modified", dateFrom?: string, dateTo?: string }} opts
+ * `folders`, when given, narrows results to presentations synced from
+ * one of those Library folders — only useful once a church has more
+ * than one folder in its sync scope (config.json's librarySync.folders).
+ * @param {{ query: string, playlistId?: string, dateField?: "created"|"modified", dateFrom?: string, dateTo?: string, folders?: string[] }} opts
  */
-export function search({ query, playlistId, dateField, dateFrom, dateTo }) {
+export function search({ query, playlistId, dateField, dateFrom, dateTo, folders }) {
   const q = normalizeText(query).toLowerCase();
   const fromTime = dateFrom ? new Date(dateFrom).getTime() : null;
   const toTime = dateTo ? new Date(`${dateTo}T23:59:59.999`).getTime() : null;
   if (!q && !fromTime && !toTime) return [];
 
   const dateKey = dateField === "created" ? "createdDate" : "modifiedDate";
+  const folderSet = folders && folders.length > 0 ? new Set(folders) : null;
 
   const results = [];
   for (const [presentationId, entry] of Object.entries(currentIndex.presentations)) {
     if (playlistId && !entry.appearsIn.includes(playlistId)) continue;
+    if (folderSet && !folderSet.has(entry.folder)) continue;
 
     if (fromTime || toTime) {
       const entryTime = entry[dateKey] ? new Date(entry[dateKey]).getTime() : null;
