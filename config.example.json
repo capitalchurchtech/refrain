@@ -21,6 +21,6 @@
   "arrangementModule": {
     "enabled": false,
     "provider": "manual",
-    "storageBackend": "firestore"
+    "storageBackend": "local-folder"
   }
 }

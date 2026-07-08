@@ -5,15 +5,23 @@ import { ArrangementProvider } from "./base.js";
  * arrangement by hand instead of pulling it from a church-management
  * system. This is what makes the arrangement module usable by a church
  * with no ChMS at all.
+ *
+ * The planned arrangement lives inside the same per-song storage file
+ * as everything else (Section 8.5's schema, under
+ * `manualPlannedArrangement`) rather than a separate data source — so
+ * it needs the storage backend, not a network client.
  */
 export class ManualProvider extends ArrangementProvider {
   static providerId = "manual";
 
-  async getPlannedArrangement(songId, serviceDate) {
-    // TODO: read from wherever the user's manually-entered arrangement
-    // is stored (likely the same per-song storage file, under a
-    // user-editable field, rather than a separate data source).
-    return { sectionSequence: [] };
+  constructor({ storage } = {}) {
+    super();
+    this.storage = storage;
+  }
+
+  async getPlannedArrangement(songId, _serviceDate) {
+    const record = await this.storage.readSongFile(songId);
+    return { sectionSequence: record?.manualPlannedArrangement ?? [] };
   }
 
   async testConnection() {

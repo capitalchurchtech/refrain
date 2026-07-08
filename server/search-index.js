@@ -24,6 +24,16 @@ export function getRebuildProgress() {
   return rebuildProgress;
 }
 
+/** The ordered group-name sequence for a presentation — see extractGroupSequence. */
+export function getGroupSequence(presentationId) {
+  return currentIndex.presentations[presentationId]?.groupSequence ?? null;
+}
+
+/** Presentation name lookup, for screens that only have a presentationId. */
+export function getPresentationName(presentationId) {
+  return currentIndex.presentations[presentationId]?.name ?? null;
+}
+
 export async function loadIndexFromDisk() {
   try {
     const raw = await readFile(CACHE_PATH, "utf-8");
@@ -129,6 +139,7 @@ export async function rebuildIndex(client, syncOptions = {}) {
       try {
         const doc = await client.getPresentation(id);
         presentations[id].slides = extractSlides(doc);
+        presentations[id].groupSequence = extractGroupSequence(doc);
         const { createdDate, modifiedDate } = await client.getFileDates(doc?.presentation?.presentation_path);
         presentations[id].createdDate = createdDate;
         presentations[id].modifiedDate = modifiedDate;
@@ -202,7 +213,7 @@ function collectPlaylistIds(node, ids = []) {
  * a real presentation on 2026-07-07 — a naive raw-document-order index
  * was off for any presentation with an arrangement selected.
  */
-function extractSlides(presentationDoc) {
+function resolveOrderedGroups(presentationDoc) {
   const presentation = presentationDoc?.presentation ?? {};
   const rawGroups = presentation.groups ?? [];
   const groupsByUuid = new Map(rawGroups.map((g) => [g.uuid, g]));
@@ -210,10 +221,13 @@ function extractSlides(presentationDoc) {
   const activeArrangement = (presentation.arrangements ?? []).find(
     (a) => a.id?.uuid === presentation.current_arrangement
   );
-  const orderedGroups = activeArrangement
+  return activeArrangement
     ? activeArrangement.groups.map((uuid) => groupsByUuid.get(uuid)).filter(Boolean)
     : rawGroups;
+}
 
+function extractSlides(presentationDoc) {
+  const orderedGroups = resolveOrderedGroups(presentationDoc);
   const slides = [];
   let index = 0;
   for (const group of orderedGroups) {
@@ -223,6 +237,18 @@ function extractSlides(presentationDoc) {
     }
   }
   return slides;
+}
+
+/**
+ * The "actual" arrangement for the arrangement-drift module (Section
+ * 8.2): the ordered sequence of group *names* (e.g. "Verse 1", "Chorus")
+ * ProPresenter would actually play through, per the active arrangement.
+ * Same resolution as extractSlides, just at group granularity instead
+ * of individual slides — a repeated group contributes its name again
+ * each time it recurs.
+ */
+function extractGroupSequence(presentationDoc) {
+  return resolveOrderedGroups(presentationDoc).map((g) => g.name ?? "Untitled");
 }
 
 export function shouldAutoRebuild(index) {

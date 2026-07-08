@@ -1,5 +1,5 @@
 import { StorageBackend } from "./base.js";
-import { readFile, writeFile, readdir, mkdir } from "node:fs/promises";
+import { readFile, writeFile, readdir, mkdir, rename } from "node:fs/promises";
 import path from "node:path";
 
 /**
@@ -38,10 +38,13 @@ export class LocalFolderStorage extends StorageBackend {
 
   async writeSongFile(songId, data) {
     await this.#ensureDir();
-    // TODO: write to a temp file + rename for atomicity, per
-    // docs/refrain-architecture.md Section 5.2's write-safety note
-    // (same principle applies here, not just the search cache).
-    await writeFile(this.#filePath(songId), JSON.stringify(data, null, 2));
+    // Write-safety pattern from Section 5.2, applied here too — never
+    // leave a corrupted half-written song file if the process dies
+    // mid-write.
+    const finalPath = this.#filePath(songId);
+    const tmpPath = `${finalPath}.tmp`;
+    await writeFile(tmpPath, JSON.stringify(data, null, 2));
+    await rename(tmpPath, finalPath);
   }
 
   async listSongFiles() {

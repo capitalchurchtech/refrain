@@ -13,6 +13,7 @@ import {
   configFileExists,
   isConfigComplete,
   getArrangementModuleStatus,
+  ensureMachineId,
 } from "./config.js";
 import { ProPresenterClient } from "./propresenter-client.js";
 import {
@@ -22,8 +23,11 @@ import {
   search,
   getIndex,
   getRebuildProgress,
+  getGroupSequence,
+  getPresentationName,
 } from "./search-index.js";
-import { discoverModules, discoverSlideSplitters } from "./plugin-loader.js";
+import { discoverModules, discoverSlideSplitters, discoverProviders, discoverStorageBackends } from "./plugin-loader.js";
+import { runComparison, suggestMapping, getPendingUploadCount } from "./arrangement-diff.js";
 
 const { version } = JSON.parse(readFileSync("./package.json", "utf-8"));
 
@@ -167,6 +171,198 @@ app.post("/api/lyrics-assist/split", async (req, res) => {
   res.json({ slides, splitterId: Splitter.splitterId });
 });
 
+// --- Arrangement drift-tracking module (Section 8) ---
+//
+// Only wired up for the manual provider + local-folder storage pairing
+// so far (Build Order Step 7's first half) — planning-center.js and
+// sftp.js remain the documented "Not Implemented" stubs until their own
+// pass. Instances are built fresh per request via the same
+// auto-discovery plugin-loader.js already uses for slide-splitters, so
+// a community-contributed provider/backend just needs providerId /
+// backendId to match config.json, per CONTRIBUTING.md.
+
+async function getStorageBackend() {
+  const backends = await discoverStorageBackends();
+  const backendId = config.arrangementModule?.storageBackend ?? "local-folder";
+  const Backend = backends.find((B) => B.backendId === backendId);
+  if (!Backend) throw new Error(`Unknown storage backend "${backendId}"`);
+
+  if (backendId === "local-folder" || backendId === "synced-folder") {
+    return new Backend({ dirPath: config.arrangementModule?.localFolderPath ?? "./data/arrangements" });
+  }
+  if (backendId === "firestore") {
+    return new Backend({
+      projectId: process.env.FIRESTORE_PROJECT_ID,
+      serviceAccountKeyPath: process.env.FIRESTORE_SERVICE_ACCOUNT_KEY_PATH,
+      role: config.role,
+    });
+  }
+  if (backendId === "sftp") {
+    return new Backend({
+      host: process.env.SFTP_HOST,
+      username: process.env.SFTP_USERNAME,
+      privateKeyPath: process.env.SFTP_PRIVATE_KEY_PATH,
+      knownHostFingerprint: process.env.SFTP_KNOWN_HOST_FINGERPRINT,
+    });
+  }
+  return new Backend();
+}
+
+async function getArrangementProvider(storage) {
+  const providers = await discoverProviders();
+  const providerId = config.arrangementModule?.provider ?? "manual";
+  const Provider = providers.find((P) => P.providerId === providerId);
+  if (!Provider) throw new Error(`Unknown arrangement provider "${providerId}"`);
+
+  if (providerId === "planning-center") {
+    return new Provider({ appId: process.env.PLANNING_CENTER_APP_ID, secret: process.env.PLANNING_CENTER_SECRET });
+  }
+  return new Provider({ storage });
+}
+
+function requireArrangementActive(res) {
+  const status = getArrangementModuleStatus(config);
+  if (status !== "active") {
+    res.status(409).json({ error: `Arrangement module is ${status}, not active` });
+    return false;
+  }
+  return true;
+}
+
+app.get("/api/arrangement/status", async (_req, res) => {
+  res.json({
+    status: getArrangementModuleStatus(config),
+    role: config.role ?? null,
+    provider: config.arrangementModule?.provider ?? null,
+    storageBackend: config.arrangementModule?.storageBackend ?? null,
+    pendingUploads: await getPendingUploadCount(),
+  });
+});
+
+/** Every presentation currently in the search index is treated as a "song" — librarySync.folders already scopes this to whatever folder(s) the church calls songs. */
+app.get("/api/arrangement/songs", async (_req, res) => {
+  if (!requireArrangementActive(res)) return;
+  const storage = await getStorageBackend();
+  const index = getIndex();
+
+  const songs = await Promise.all(
+    Object.entries(index.presentations).map(async ([presentationId, entry]) => {
+      const record = await storage.readSongFile(presentationId).catch(() => null);
+      return {
+        presentationId,
+        name: entry.name,
+        hasPlannedArrangement: Boolean(record?.manualPlannedArrangement?.length),
+        historyCount: record?.history?.length ?? 0,
+        lastServiceDate: record?.history?.at(-1)?.serviceDate ?? null,
+      };
+    })
+  );
+  res.json({ songs });
+});
+
+app.get("/api/arrangement/song/:presentationId", async (req, res) => {
+  if (!requireArrangementActive(res)) return;
+  const { presentationId } = req.params;
+  const groupSequence = getGroupSequence(presentationId);
+  if (!groupSequence) return res.status(404).json({ error: "Presentation not found in search index" });
+
+  const storage = await getStorageBackend();
+  const record = (await storage.readSongFile(presentationId)) ?? {
+    songId: presentationId,
+    songName: getPresentationName(presentationId),
+    propresenterPresentationId: presentationId,
+    sectionMapping: suggestMapping(groupSequence),
+    manualPlannedArrangement: [],
+    history: [],
+  };
+  res.json({ ...record, groupSequence });
+});
+
+app.post("/api/arrangement/song/:presentationId/mapping", async (req, res) => {
+  if (!requireArrangementActive(res)) return;
+  const { presentationId } = req.params;
+  const { sectionMapping } = req.body ?? {};
+  if (!sectionMapping) return res.status(400).json({ error: "sectionMapping is required" });
+
+  const storage = await getStorageBackend();
+  const groupSequence = getGroupSequence(presentationId) ?? [];
+  const existing = (await storage.readSongFile(presentationId)) ?? {
+    songId: presentationId,
+    songName: getPresentationName(presentationId),
+    propresenterPresentationId: presentationId,
+    sectionMapping: suggestMapping(groupSequence),
+    manualPlannedArrangement: [],
+    history: [],
+  };
+  const updated = { ...existing, sectionMapping };
+  await storage.writeSongFile(presentationId, updated);
+  res.json({ ok: true });
+});
+
+app.post("/api/arrangement/song/:presentationId/planned", async (req, res) => {
+  if (!requireArrangementActive(res)) return;
+  const { presentationId } = req.params;
+  const { manualPlannedArrangement } = req.body ?? {};
+  if (!Array.isArray(manualPlannedArrangement)) {
+    return res.status(400).json({ error: "manualPlannedArrangement must be an array" });
+  }
+
+  const storage = await getStorageBackend();
+  const groupSequence = getGroupSequence(presentationId) ?? [];
+  const existing = (await storage.readSongFile(presentationId)) ?? {
+    songId: presentationId,
+    songName: getPresentationName(presentationId),
+    propresenterPresentationId: presentationId,
+    sectionMapping: suggestMapping(groupSequence),
+    manualPlannedArrangement: [],
+    history: [],
+  };
+  const updated = { ...existing, manualPlannedArrangement };
+  await storage.writeSongFile(presentationId, updated);
+  res.json({ ok: true });
+});
+
+app.post("/api/arrangement/compare", async (req, res) => {
+  if (!requireArrangementActive(res)) return;
+  if (config.role !== "logger") {
+    return res.status(403).json({ error: "Only the logger machine can run comparisons — see Health for role." });
+  }
+  const { presentationId, serviceDate, force } = req.body ?? {};
+  if (!presentationId || !serviceDate) {
+    return res.status(400).json({ error: "presentationId and serviceDate are required" });
+  }
+
+  const actualGroupSequence = getGroupSequence(presentationId);
+  if (!actualGroupSequence) return res.status(404).json({ error: "Presentation not found in search index" });
+
+  config = await ensureMachineId(config);
+  const storage = await getStorageBackend();
+  const provider = await getArrangementProvider(storage);
+
+  try {
+    const result = await runComparison({
+      songId: presentationId,
+      songName: getPresentationName(presentationId),
+      presentationId,
+      serviceDate,
+      actualGroupSequence,
+      provider,
+      storage,
+      machineId: config.machineId,
+      force: Boolean(force),
+    });
+    if (!result.ok) {
+      return res.status(409).json({
+        conflict: true,
+        error: `Machine "${result.existingMachineId}" already logged ${serviceDate} — resubmit with force to overwrite.`,
+      });
+    }
+    res.json({ ok: true, record: result.record });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
 // --- First-run setup (Section 6) ---
 
 app.get("/api/setup/status", (_req, res) => {
@@ -244,6 +440,7 @@ app.get("/api/health", async (_req, res) => {
       status: getArrangementModuleStatus(config),
       storageBackend: config.arrangementModule?.storageBackend ?? null,
       provider: config.arrangementModule?.provider ?? null,
+      pendingUploads: await getPendingUploadCount(),
     },
   });
 });

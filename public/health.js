@@ -89,6 +89,11 @@ function renderHealth(health) {
             ? `<div class="text-sm mt-1">Enabled in config.json, but required credentials are missing from .env for the selected storage backend/provider. See .env.example.</div>`
             : ""
         }
+        ${
+          arrangementModule.pendingUploads > 0
+            ? `<div class="alert alert-warning mt-2 py-2 text-sm">${arrangementModule.pendingUploads} pending upload(s) — the storage backend was unreachable on last write. Will retry automatically.</div>`
+            : ""
+        }
       </div>
     </div>
   `;

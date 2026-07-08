@@ -10,6 +10,7 @@
  */
 import { readFileSync, existsSync } from "node:fs";
 import { writeFile, rename } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import "dotenv/config"; // TODO: add `dotenv` as a real dependency
 
 const CONFIG_PATH = "./config.json";
@@ -65,10 +66,28 @@ export function getArrangementModuleStatus(config) {
     }
   }
 
-  // TODO: also validate provider credentials (e.g. Planning Center)
-  // when role === "logger" and provider !== "manual" — a missing
-  // provider credential can fall back to "manual" rather than taking
-  // down the whole module, per Section 4.1.
+  // A missing provider credential falls back to "manual" rather than
+  // taking down the whole module (Section 4.1) — only actually block
+  // activation if the config explicitly asks for planning-center
+  // without the credentials it needs, on the machine that would use them.
+  if (config.arrangementModule.provider === "planning-center" && config.role === "logger") {
+    if (!process.env.PLANNING_CENTER_APP_ID || !process.env.PLANNING_CENTER_SECRET) {
+      return "misconfigured";
+    }
+  }
 
   return "active";
+}
+
+/**
+ * Each logger instance gets its own persistent machine ID (Section 8.5)
+ * — used only for multi-logger collision detection, never shown to the
+ * user. Generated once, on first use in logger role, and persisted to
+ * config.json. Reader machines don't need one.
+ */
+export async function ensureMachineId(config) {
+  if (config.role !== "logger" || config.machineId) return config;
+  const updated = { ...config, machineId: randomUUID() };
+  await saveConfig(updated);
+  return updated;
 }

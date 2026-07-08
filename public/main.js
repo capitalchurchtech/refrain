@@ -2,6 +2,7 @@ import { initSetup } from "./setup.js";
 import { initSearch } from "./search.js";
 import { initHealth } from "./health.js";
 import { initLyricsAssist } from "./lyrics-assist.js";
+import { initArrangement } from "./arrangement.js";
 import { initNav, applyTheme } from "./nav.js";
 
 const viewSetup = document.getElementById("view-setup");
@@ -11,6 +12,7 @@ const views = {
   search: document.getElementById("view-search"),
   health: document.getElementById("view-health"),
   "lyrics-assist": document.getElementById("view-lyrics-assist"),
+  arrangement: document.getElementById("view-arrangement"),
 };
 
 async function boot() {
@@ -41,11 +43,16 @@ function startApp() {
   initSearch();
   const health = initHealth();
   const lyricsAssist = initLyricsAssist();
+  const arrangement = initArrangement();
 
-  const renderers = { health: health.render, "lyrics-assist": lyricsAssist.render };
+  const renderers = {
+    health: health.render,
+    "lyrics-assist": lyricsAssist.render,
+    arrangement: arrangement.render,
+  };
 
   initNav({
-    viewIds: new Set(["search", "lyrics-assist"]),
+    viewIds: new Set(["search", "lyrics-assist", "arrangement"]),
     onNavigate: (id) => {
       for (const [viewId, el] of Object.entries(views)) {
         el.classList.toggle("hidden", viewId !== id);
