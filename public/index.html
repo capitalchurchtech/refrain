@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Refrain</title>
+  <link rel="icon" type="image/svg+xml" href="img/favicon.svg" />
+  <link rel="alternate icon" type="image/png" href="img/favicon.png" />
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://cdn.jsdelivr.net/npm/daisyui@4/dist/full.min.css" rel="stylesheet" type="text/css" />
   <script src="https://unpkg.com/lucide@latest"></script>
@@ -13,7 +15,7 @@
   <!-- First-run setup (Section 6) — shown instead of everything else until config.json is complete -->
   <div id="view-setup" class="max-w-lg mx-auto p-6 hidden">
     <h1 class="text-2xl font-bold flex items-center gap-2 mb-6">
-      <i data-lucide="repeat"></i> Welcome to Refrain
+      <span id="setup-brand-mark" class="shrink-0 w-6 h-6 inline-block"></span> Welcome to Refrain
     </h1>
 
     <div class="card bg-base-200">
@@ -67,9 +69,9 @@
   <!-- Main app shell — nav rail + content, once setup is complete (Section 13) -->
   <div id="view-app" class="hidden flex min-h-screen">
     <aside id="nav-rail" class="shrink-0 self-start sticky top-0 h-screen overflow-y-auto bg-base-200 flex flex-col items-stretch py-3 transition-all duration-150 w-16">
-      <div class="flex items-center gap-2 px-3 mb-4 overflow-hidden">
-        <i data-lucide="repeat" class="shrink-0"></i>
-        <span class="nav-label font-bold whitespace-nowrap hidden">Refrain</span>
+      <div class="flex items-center px-3 mb-4 overflow-hidden h-7">
+        <span id="brand-mark" class="shrink-0"></span>
+        <span id="brand-logo" class="shrink-0 hidden"></span>
       </div>
 
       <nav id="nav-items" class="flex flex-col gap-1 flex-1"></nav>

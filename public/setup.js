@@ -1,3 +1,5 @@
+import { injectSvg } from "./nav.js";
+
 /**
  * First-run setup screen (Section 6). Shown instead of the rest of the
  * app until config.json exists with a host/port/role. On save, writes
@@ -5,6 +7,8 @@
  * progress inline until it completes, then hands off to the caller.
  */
 export function initSetup({ onComplete }) {
+  injectSvg(document.getElementById("setup-brand-mark"), "img/icon.svg", ["h-6", "w-auto"]);
+
   const hostInput = document.getElementById("setup-host");
   const portInput = document.getElementById("setup-port");
   const testBtn = document.getElementById("setup-test-btn");

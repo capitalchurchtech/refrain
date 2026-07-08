@@ -17,6 +17,24 @@ const THEME_LABEL = { system: "System", light: "Light", dark: "Dark" };
 const NAV_PRIORITY = { search: 0, "lyrics-assist": 1, arrangement: 2 };
 const DEFAULT_PRIORITY = 99;
 
+const svgCache = new Map();
+
+/**
+ * Fetches an SVG file and inlines its markup into `el`, so its paths'
+ * `fill="currentColor"` (see public/img/*.svg) picks up the ambient
+ * text color and stays in sync with the light/dark toggle — a plain
+ * <img> can't do that, since an external image's internal styling is
+ * opaque to the page's CSS.
+ */
+export async function injectSvg(el, path, sizeClasses = []) {
+  if (!svgCache.has(path)) {
+    svgCache.set(path, fetch(path).then((r) => r.text()));
+  }
+  el.innerHTML = await svgCache.get(path);
+  const svg = el.querySelector("svg");
+  if (svg) svg.classList.add(...sizeClasses);
+}
+
 export function applyTheme(theme) {
   const resolved =
     theme === "system"
@@ -35,6 +53,13 @@ export async function initNav({ onNavigate, viewIds }) {
   const themeToggle = document.getElementById("theme-toggle");
   const themeIcon = document.getElementById("theme-icon");
   const themeLabel = document.getElementById("theme-label");
+  const brandMark = document.getElementById("brand-mark");
+  const brandLogo = document.getElementById("brand-logo");
+
+  await Promise.all([
+    injectSvg(brandMark, "img/icon.svg", ["h-7", "w-auto"]),
+    injectSvg(brandLogo, "img/logo.svg", ["h-7", "w-auto"]),
+  ]);
 
   const [{ modules }, prefs] = await Promise.all([
     fetch("/api/modules").then((r) => r.json()),
@@ -97,6 +122,11 @@ export async function initNav({ onNavigate, viewIds }) {
     rail.classList.toggle("w-16", !pinned);
     rail.classList.toggle("w-56", pinned);
     document.querySelectorAll(".nav-label").forEach((el) => el.classList.toggle("hidden", !pinned));
+    // Collapsed: just the mark. Expanded: swap in the full wordmark
+    // logo, same as expanding replaces every other icon-only nav item
+    // with an icon+label.
+    brandMark.classList.toggle("hidden", pinned);
+    brandLogo.classList.toggle("hidden", !pinned);
     setIcon(pinIcon, pinned ? "chevrons-left" : "chevrons-right");
   }
 
