@@ -1,12 +1,17 @@
 import { initSetup } from "./setup.js";
 import { initSearch } from "./search.js";
 import { initHealth } from "./health.js";
+import { initLyricsAssist } from "./lyrics-assist.js";
 import { initNav, applyTheme } from "./nav.js";
 
 const viewSetup = document.getElementById("view-setup");
 const viewApp = document.getElementById("view-app");
-const viewSearch = document.getElementById("view-search");
-const viewHealth = document.getElementById("view-health");
+
+const views = {
+  search: document.getElementById("view-search"),
+  health: document.getElementById("view-health"),
+  "lyrics-assist": document.getElementById("view-lyrics-assist"),
+};
 
 async function boot() {
   // Apply theme before anything renders, on setup or main app screens
@@ -35,14 +40,17 @@ function startApp() {
   viewApp.classList.remove("hidden");
   initSearch();
   const health = initHealth();
+  const lyricsAssist = initLyricsAssist();
+
+  const renderers = { health: health.render, "lyrics-assist": lyricsAssist.render };
 
   initNav({
-    viewIds: new Set(["search"]),
+    viewIds: new Set(["search", "lyrics-assist"]),
     onNavigate: (id) => {
-      const isSearch = id === "search";
-      viewSearch.classList.toggle("hidden", !isSearch);
-      viewHealth.classList.toggle("hidden", isSearch);
-      if (id === "health") health.render();
+      for (const [viewId, el] of Object.entries(views)) {
+        el.classList.toggle("hidden", viewId !== id);
+      }
+      renderers[id]?.();
     },
   });
 }

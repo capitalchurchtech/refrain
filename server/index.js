@@ -23,7 +23,7 @@ import {
   getIndex,
   getRebuildProgress,
 } from "./search-index.js";
-import { discoverModules } from "./plugin-loader.js";
+import { discoverModules, discoverSlideSplitters } from "./plugin-loader.js";
 
 const { version } = JSON.parse(readFileSync("./package.json", "utf-8"));
 
@@ -134,6 +134,37 @@ app.post("/api/trigger", async (req, res) => {
   } catch (err) {
     res.status(502).json({ error: err.message });
   }
+});
+
+// --- Lyrics search-assist (Section 14) ---
+//
+// The app never fetches or parses lyrics sites or search results itself
+// — that's a permanent boundary (ToS), not a placeholder for a future
+// scraper. This only ever hands back a search URL for the browser to
+// open, and splits text the user pastes in themselves.
+
+app.get("/api/lyrics-assist/config", (_req, res) => {
+  res.json({
+    lyricsSites: config.lyricsSites ?? [],
+    defaultSplitterId: config.slideSplitter ?? "blank-line-delimited",
+  });
+});
+
+app.get("/api/slide-splitters", async (_req, res) => {
+  const splitters = await discoverSlideSplitters();
+  res.json({ splitters: splitters.map((S) => ({ id: S.splitterId })) });
+});
+
+app.post("/api/lyrics-assist/split", async (req, res) => {
+  const { text, splitterId } = req.body ?? {};
+  if (!text) return res.status(400).json({ error: "text is required" });
+
+  const splitters = await discoverSlideSplitters();
+  const Splitter = splitters.find((S) => S.splitterId === splitterId) ?? splitters[0];
+  if (!Splitter) return res.status(500).json({ error: "No slide splitters available" });
+
+  const slides = new Splitter().split(text);
+  res.json({ slides, splitterId: Splitter.splitterId });
 });
 
 // --- First-run setup (Section 6) ---
