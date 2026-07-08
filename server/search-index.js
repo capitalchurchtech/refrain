@@ -68,6 +68,7 @@ async function persistIndex(index) {
 export async function rebuildIndex(client, syncOptions = {}) {
   if (rebuildInFlight) return rebuildInFlight;
   const { folders = null, crawlPlaylists = false } = syncOptions;
+  const startedAt = Date.now();
 
   rebuildProgress = { inProgress: true, stage: "library", current: 0, total: 0 };
 
@@ -156,7 +157,12 @@ export async function rebuildIndex(client, syncOptions = {}) {
       }
     });
 
-    const newIndex = { builtAt: new Date().toISOString(), presentations };
+    const newIndex = {
+      builtAt: new Date().toISOString(),
+      buildDurationMs: Date.now() - startedAt,
+      crawledPlaylists: crawlPlaylists,
+      presentations,
+    };
     currentIndex = newIndex;
     await persistIndex(newIndex);
     return newIndex;

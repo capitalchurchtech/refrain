@@ -35,13 +35,29 @@ crawls every playlist for "which playlist is this in" metadata — the
 slowest part of a rebuild, so it's off by default; search still covers
 every presentation in the synced folders either way.
 
-## Quickstart
+## Installation
 
-1. Clone this repo.
+**Requirements:** [Node.js](https://nodejs.org) (the LTS version) and ProPresenter with its Network API enabled (Preferences → Network).
+
+1. Get the code — either:
+   - **Git** (recommended — makes updating a one-line command later): `git clone https://github.com/capitalchurchtech/refrain.git`
+   - **ZIP**: on the [GitHub page](https://github.com/capitalchurchtech/refrain), click **Code → Download ZIP**, then unzip it.
 2. Double-click `scripts/start.command` (Mac) or `scripts/start.bat` (Windows) — or, from a terminal: `npm install && npm start`.
 3. A setup screen opens in your browser. Point it at ProPresenter's host/port, hit Test Connection, and you're in.
 
-No terminal knowledge required for step 2 if you use the launcher script.
+No terminal knowledge required for step 2 if you use the launcher script — it installs dependencies on first run automatically and doesn't require Node to already be on your PATH beyond the initial check.
+
+## Updating
+
+Your real settings (`config.json`) and secrets (`.env`) are never part of what git tracks or a ZIP download contains — they live only on your machine and are untouched by an update.
+
+- **If you cloned with Git:**
+  1. `git pull`
+  2. `npm install` (picks up any dependency changes — safe to run even if nothing changed)
+  3. Restart the app: close and re-open the launcher script, or if it's already running, stop it (`Ctrl+C` in its terminal window) and re-run `npm start`.
+- **If you downloaded a ZIP:** download the latest ZIP again, unzip it to a new folder, then copy your old folder's `config.json` and `.env` into the new one before starting it — those files aren't part of any download, git or ZIP, so they only exist where you originally set them up.
+
+Either way, a restart is required — the running server doesn't hot-reload its own code or pick up `.env` changes on its own.
 
 ## Privacy
 

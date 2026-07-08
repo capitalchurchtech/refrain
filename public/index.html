@@ -21,17 +21,45 @@
       padding-left: 1.25rem;
     }
 
-    /* Go Live — the right-column action button on every search result —
-       uses this brand green instead of DaisyUI's default purple/indigo
-       primary color. */
-    .go-live-btn {
+    /* Every primary-action button (Go Live, Search Lyrics, Save
+       Configuration, Run Comparison, first-run Setup, ...) uses this
+       one shared brand green instead of DaisyUI's default purple/indigo
+       btn-primary — add this class (alongside btn-primary is fine, this
+       overrides it) to any new primary button rather than introducing
+       another one-off purple button or another ID added here. */
+    .btn-brand {
       background-color: #00aa6e;
       border-color: #00aa6e;
       color: #fff;
     }
-    .go-live-btn:hover {
+    .btn-brand:hover {
       background-color: #00925f;
       border-color: #00925f;
+    }
+
+    /* DaisyUI's default tooltip renders data-tip as one unbroken
+       nowrap line — fine for a short label, but the Configuration
+       form's explanatory tooltips run one or more full sentences and
+       would render far wider than the visible page, getting silently
+       clipped by the viewport edge so only the first few words show.
+       Wrap onto multiple lines within a fixed, readable width instead. */
+    .tooltip-info-wide:before {
+      white-space: normal;
+      width: max-content;
+      max-width: 20rem;
+      text-align: left;
+    }
+
+    /* A DaisyUI tooltip's :before is absolutely positioned and stays in
+       the layout (opacity: 0, not display: none) even while closed —
+       one anchored near a container's right edge, combined with
+       tooltip-info-wide's 20rem width above, can extend past the
+       viewport and inflate body's scrollable area even though nothing
+       is visibly showing there. The page's layout never intentionally
+       needs horizontal scroll, so clip it outright rather than chase
+       every wide-tooltip placement individually. */
+    body {
+      overflow-x: hidden;
     }
   </style>
 </head>
@@ -44,7 +72,7 @@
     </h1>
 
     <div class="card bg-base-200">
-      <div class="card-body gap-4">
+      <div class="card-body p-3 gap-4">
         <div>
           <label class="label"><span class="label-text">ProPresenter host</span></label>
           <input id="setup-host" type="text" value="localhost" class="input input-bordered w-full" />
@@ -81,7 +109,7 @@
           credentials into <code>.env</code> directly; see <code>.env.example</code>.
         </p>
 
-        <button id="setup-save-btn" class="btn btn-primary" disabled>Save &amp; Continue</button>
+        <button id="setup-save-btn" class="btn btn-brand" disabled>Save &amp; Continue</button>
 
         <div id="setup-progress" class="hidden">
           <progress id="setup-progress-bar" class="progress progress-primary w-full"></progress>
@@ -93,15 +121,15 @@
 
   <!-- Main app shell — nav rail + content, once setup is complete (Section 13) -->
   <div id="view-app" class="hidden flex min-h-screen">
-    <aside id="nav-rail" class="shrink-0 self-start sticky top-0 h-screen overflow-y-auto bg-base-200 flex flex-col items-stretch py-3 transition-all duration-150 w-16">
-      <div id="brand-row" class="flex items-center px-2 mb-4 overflow-hidden h-9">
+    <aside id="nav-rail" class="fixed top-0 left-0 z-20 h-screen overflow-y-auto bg-base-200 flex flex-col items-stretch py-3 transition-all duration-150 w-16">
+      <button id="brand-row" class="flex items-center px-2 mb-4 overflow-hidden h-9 btn btn-ghost btn-sm justify-start" title="Go to Search">
         <span id="brand-mark" class="shrink-0"></span>
         <span id="brand-logo" class="shrink-0 hidden"></span>
-      </div>
+      </button>
 
       <nav id="nav-items" class="flex flex-col gap-1 flex-1"></nav>
 
-      <div class="flex flex-col gap-1 px-2">
+      <div class="flex flex-col gap-1">
         <button id="theme-toggle" class="btn btn-ghost btn-sm justify-start gap-3 px-2" title="Toggle theme">
           <span id="theme-icon" class="shrink-0"></span>
           <span class="nav-label whitespace-nowrap hidden" id="theme-label">Theme: System</span>
@@ -113,7 +141,7 @@
       </div>
     </aside>
 
-    <main class="flex-1 p-6 max-w-3xl">
+    <main id="main-content" class="flex-1 min-w-0 p-3 max-w-3xl ml-16 transition-all duration-150">
       <section id="view-search">
         <div class="flex items-center justify-between mb-4">
           <div id="index-status" class="text-sm opacity-70"></div>
@@ -123,9 +151,6 @@
 
         <div class="flex gap-2 mb-3">
           <input id="query" type="text" placeholder="Search any slide..." class="input input-bordered w-full" autofocus />
-          <button id="rebuild-btn" class="btn btn-ghost" title="Rebuild index">
-            <i data-lucide="refresh-cw"></i>
-          </button>
         </div>
 
         <div class="flex flex-wrap items-center gap-2 mb-6">

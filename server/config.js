@@ -80,6 +80,59 @@ export function getArrangementModuleStatus(config) {
 }
 
 /**
+ * Which .env values matter for the *current* config, and whether each
+ * is actually set — drives the Health screen's "Environment Variables"
+ * card so editing .env is only ever presented when it would do
+ * something. Mirrors getArrangementModuleStatus's own checks exactly;
+ * update both together if the requirements ever change.
+ */
+export function getEnvRequirements(config) {
+  const reqs = [];
+  const arrangement = config.arrangementModule ?? {};
+  if (!arrangement.enabled) return reqs;
+
+  if (arrangement.storageBackend === "firestore") {
+    reqs.push({
+      name: "FIRESTORE_PROJECT_ID",
+      set: Boolean(process.env.FIRESTORE_PROJECT_ID),
+      note: "Firestore storage backend — required on every machine.",
+    });
+    if (config.role === "logger") {
+      reqs.push({
+        name: "FIRESTORE_SERVICE_ACCOUNT_KEY_PATH",
+        set: Boolean(process.env.FIRESTORE_SERVICE_ACCOUNT_KEY_PATH),
+        note: "Firestore storage backend — required on the logger machine only (it writes; readers only read).",
+      });
+    }
+  }
+
+  if (arrangement.storageBackend === "sftp") {
+    reqs.push(
+      { name: "SFTP_HOST", set: Boolean(process.env.SFTP_HOST), note: "SFTP storage backend." },
+      { name: "SFTP_USERNAME", set: Boolean(process.env.SFTP_USERNAME), note: "SFTP storage backend." },
+      { name: "SFTP_PRIVATE_KEY_PATH", set: Boolean(process.env.SFTP_PRIVATE_KEY_PATH), note: "SFTP storage backend." }
+    );
+  }
+
+  if (arrangement.provider === "planning-center" && config.role === "logger") {
+    reqs.push(
+      {
+        name: "PLANNING_CENTER_APP_ID",
+        set: Boolean(process.env.PLANNING_CENTER_APP_ID),
+        note: "Planning Center provider — required on the logger machine only.",
+      },
+      {
+        name: "PLANNING_CENTER_SECRET",
+        set: Boolean(process.env.PLANNING_CENTER_SECRET),
+        note: "Planning Center provider — required on the logger machine only.",
+      }
+    );
+  }
+
+  return reqs;
+}
+
+/**
  * Each logger instance gets its own persistent machine ID (Section 8.5)
  * — used only for multi-logger collision detection, never shown to the
  * user. Generated once, on first use in logger role, and persisted to

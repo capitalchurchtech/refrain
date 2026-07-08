@@ -122,6 +122,7 @@ export async function runComparison({
   storage,
   machineId,
   force = false,
+  planId = null,
 }) {
   const existing = (await storage.readSongFile(songId)) ?? {
     songId,
@@ -139,7 +140,7 @@ export async function runComparison({
     return { ok: false, conflict: true, existingMachineId: conflictEntry.loggedByMachineId };
   }
 
-  const { sectionSequence: planned } = await provider.getPlannedArrangement(songId, serviceDate);
+  const { sectionSequence: planned } = await provider.getPlannedArrangement(songId, serviceDate, songName, planId);
   const actual = applyMapping(actualGroupSequence, existing.sectionMapping ?? {});
   const diff = diffSequences(planned, actual);
 

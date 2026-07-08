@@ -53,6 +53,7 @@ export async function initNav({ onNavigate, viewIds }) {
   const themeToggle = document.getElementById("theme-toggle");
   const themeIcon = document.getElementById("theme-icon");
   const themeLabel = document.getElementById("theme-label");
+  const brandRow = document.getElementById("brand-row");
   const brandMark = document.getElementById("brand-mark");
   const brandLogo = document.getElementById("brand-logo");
 
@@ -122,6 +123,14 @@ export async function initNav({ onNavigate, viewIds }) {
     rail.classList.toggle("w-16", !pinned);
     rail.classList.toggle("w-56", pinned);
     rail.classList.toggle("collapsed", !pinned);
+    // The rail is `fixed` (Section 13.1: `sticky` detached from the top
+    // near the bottom of a tall page, since a sticky element can't stay
+    // pinned past its own container's bottom edge) — taking it out of
+    // flow means main has to carry a matching margin instead of the
+    // flex layout doing it automatically.
+    const mainContent = document.getElementById("main-content");
+    mainContent.classList.toggle("ml-16", !pinned);
+    mainContent.classList.toggle("ml-56", pinned);
     document.querySelectorAll(".nav-label").forEach((el) => el.classList.toggle("hidden", !pinned));
     // Collapsed: just the mark. Expanded: swap in the full wordmark
     // logo, same as expanding replaces every other icon-only nav item
@@ -136,6 +145,8 @@ export async function initNav({ onNavigate, viewIds }) {
     themeLabel.textContent = `Theme: ${THEME_LABEL[currentTheme]}`;
     setIcon(themeIcon, currentTheme === "dark" ? "moon" : currentTheme === "light" ? "sun" : "sun-moon");
   }
+
+  brandRow.addEventListener("click", () => setActive("search"));
 
   pinToggle.addEventListener("click", async () => {
     pinned = !pinned;

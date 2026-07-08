@@ -22,29 +22,29 @@ export function initLyricsAssist() {
     const { splitters } = await fetch("/api/slide-splitters").then((r) => r.json());
 
     container.innerHTML = `
-      <div class="flex flex-col gap-6 max-w-2xl">
+      <div class="flex flex-col gap-4 max-w-2xl">
         <div class="card bg-base-200">
-          <div class="card-body gap-3">
+          <div class="card-body p-3 gap-3">
             <h2 class="card-title text-base">Find lyrics</h2>
             <p class="text-xs opacity-60">
               Opens a scoped search in a new tab (${escapeHtml(lyricsSites.join(", "))}).
               Refrain never fetches or reads lyrics pages itself — copy what you need from the page that opens.
             </p>
-            <div class="flex gap-2">
+            <div class="flex flex-wrap gap-2">
               <input id="lyrics-song" type="text" placeholder="Song title" class="input input-bordered w-full" />
               <input id="lyrics-artist" type="text" placeholder="Artist (optional)" class="input input-bordered w-full" />
             </div>
-            <button id="lyrics-search-btn" class="btn btn-primary w-fit">
+            <button id="lyrics-search-btn" class="btn btn-brand w-fit">
               <i data-lucide="search"></i> Search Lyrics
             </button>
           </div>
         </div>
 
         <div class="card bg-base-200">
-          <div class="card-body gap-3">
+          <div class="card-body p-3 gap-3">
             <h2 class="card-title text-base">Paste &amp; split into slides</h2>
-            <textarea id="lyrics-paste" rows="8" placeholder="Paste lyrics here..." class="textarea textarea-bordered w-full"></textarea>
-            <div class="flex items-center gap-2">
+            <textarea id="lyrics-paste" rows="5" placeholder="Paste lyrics here..." class="textarea textarea-bordered w-full"></textarea>
+            <div class="flex flex-wrap items-center gap-2">
               <span class="text-sm opacity-70">Split by:</span>
               <select id="lyrics-splitter" class="select select-bordered select-sm">
                 ${splitters
@@ -102,7 +102,7 @@ export function initLyricsAssist() {
       .map(
         (text, i) => `
       <div class="card bg-base-200 shadow-sm">
-        <div class="card-body p-4">
+        <div class="card-body p-3">
           <div class="flex items-start justify-between gap-4">
             <div class="text-sm whitespace-pre-line">${escapeHtml(text)}</div>
             <button class="btn btn-ghost btn-xs shrink-0 copy-slide-btn" data-index="${i}" title="Copy this slide">

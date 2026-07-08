@@ -2,7 +2,6 @@ export function initSearch() {
   const queryInput = document.getElementById("query");
   const resultsEl = document.getElementById("results");
   const statusEl = document.getElementById("index-status");
-  const rebuildBtn = document.getElementById("rebuild-btn");
   const connectionBanner = document.getElementById("connection-banner");
   const dateFilterToggle = document.getElementById("date-filter-toggle");
   const dateFilterPanel = document.getElementById("date-filter-panel");
@@ -61,9 +60,18 @@ export function initSearch() {
       fetch("/api/propresenter/status").then((r) => r.json()),
     ]);
 
-    statusEl.textContent = indexRes.builtAt
-      ? `Index: ${indexRes.presentationCount} presentations, built ${new Date(indexRes.builtAt).toLocaleString()}`
-      : "Index: not built yet";
+    statusEl.innerHTML = indexRes.builtAt
+      ? `
+        <span class="inline-flex items-center gap-1" title="${indexRes.presentationCount} presentations indexed"><i data-lucide="database" class="w-3.5 h-3.5"></i>${indexRes.presentationCount}</span>
+        <span class="inline-flex items-center gap-1 ml-3" title="Index last built"><i data-lucide="clock" class="w-3.5 h-3.5"></i>${new Date(indexRes.builtAt).toLocaleString(undefined, { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
+        ${
+          indexRes.buildDurationMs == null
+            ? ""
+            : `<span class="inline-flex items-center gap-1 ml-3" title="Last rebuild duration"><i data-lucide="timer" class="w-3.5 h-3.5"></i>${formatDuration(indexRes.buildDurationMs)}</span>`
+        }
+      `
+      : `<span class="inline-flex items-center gap-1"><i data-lucide="database" class="w-3.5 h-3.5"></i>Not built yet</span>`;
+    if (window.lucide) window.lucide.createIcons();
 
     if (!connRes.connected) {
       connectionBanner.textContent = `Can't reach ProPresenter at ${connRes.host}:${connRes.port}. Check it's running with Network API enabled (Preferences > Network).`;
@@ -92,31 +100,77 @@ export function initSearch() {
     if (folders) params.set("folders", folders.join(","));
     const res = await fetch(`/api/search?${params}`);
     const { results } = await res.json();
-    renderResults(results);
+    renderResults(results, hasDateFilter, query);
   }
 
-  function renderResults(results) {
+  // Search matches are per-slide, but a song can have several matching
+  // slides (e.g. a repeated chorus) — group them under one song card so
+  // the results read as "songs with matches" rather than one row per
+  // slide, with a song-level "start from the top" action alongside each
+  // slide's own exact-match action.
+  function groupResultsBySong(results) {
+    const songs = new Map();
+    for (const r of results) {
+      if (!songs.has(r.presentationId)) {
+        songs.set(r.presentationId, {
+          presentationId: r.presentationId,
+          presentationName: r.presentationName,
+          appearsIn: r.appearsIn,
+          slides: [],
+        });
+      }
+      songs.get(r.presentationId).slides.push(r);
+    }
+    return [...songs.values()];
+  }
+
+  function renderResults(results, showModifiedDate, query) {
     if (results.length === 0) {
       resultsEl.innerHTML = `<div class="opacity-60 text-center py-8">No matches</div>`;
       return;
     }
 
-    resultsEl.innerHTML = results
+    const songs = groupResultsBySong(results);
+
+    resultsEl.innerHTML = songs
       .map(
-        (r) => `
+        (song) => `
       <div class="card bg-base-200 shadow-sm">
-        <div class="card-body p-4">
+        <div class="card-body p-3 gap-2">
           <div class="flex items-start justify-between gap-4">
             <div>
-              <div class="font-semibold">${escapeHtml(r.presentationName)}</div>
+              <div class="font-semibold">${escapeHtml(song.presentationName)}</div>
               <div class="text-sm opacity-70">
-                Slide ${r.slideIndex + 1}${r.appearsIn.length ? ` &middot; in ${r.appearsIn.length} playlist(s)` : ""}${r.modifiedDate ? ` &middot; modified ${new Date(r.modifiedDate).toLocaleDateString()}` : ""}
+                ${song.slides.length} matching slide${song.slides.length === 1 ? "" : "s"}${song.appearsIn.length ? ` &middot; in ${song.appearsIn.length} playlist(s)` : ""}
               </div>
-              <div class="mt-1 text-sm">${escapeHtml(r.snippet)}</div>
             </div>
-            <button class="btn btn-primary btn-sm shrink-0 go-live-btn" data-presentation-id="${r.presentationId}" data-slide-index="${r.slideIndex}">
-              Go Live
-            </button>
+            <div class="flex flex-col gap-1 shrink-0">
+              <button class="btn btn-brand btn-xs go-live-btn" data-presentation-id="${song.presentationId}" data-slide-index="0">
+                Go Live (Slide 1)
+              </button>
+              <button class="btn btn-outline btn-xs show-in-editor-btn" data-presentation-id="${song.presentationId}">
+                Show in Editor
+              </button>
+            </div>
+          </div>
+          <div class="flex flex-col gap-2 border-t border-base-300 pt-2">
+            ${song.slides
+              .map(
+                (r) => `
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <div class="text-xs opacity-70">
+                    Slide ${r.slideIndex + 1}${showModifiedDate && r.modifiedDate ? ` &middot; modified ${new Date(r.modifiedDate).toLocaleDateString()}` : ""}
+                  </div>
+                  <div class="text-sm">${highlightMatch(r.snippet, query)}</div>
+                </div>
+                <button class="btn btn-brand btn-xs go-live-btn shrink-0" data-presentation-id="${r.presentationId}" data-slide-index="${r.slideIndex}">
+                  Go Live
+                </button>
+              </div>
+            `
+              )
+              .join("")}
           </div>
         </div>
       </div>
@@ -125,31 +179,96 @@ export function initSearch() {
       .join("");
   }
 
+  // String-based (not DOM textContent->innerHTML) so quote characters are
+  // escaped too — this is interpolated into attribute values
+  // (value="${escapeHtml(name)}"), where an unescaped `"` would close the
+  // attribute early and corrupt the tag.
   function escapeHtml(str) {
-    const div = document.createElement("div");
-    div.textContent = str;
-    return div.innerHTML;
+    return String(str ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  // Wraps every case-insensitive occurrence of `query` in the raw
+  // (unescaped) text with <mark>, escaping every other segment — done
+  // this way round (find matches in the raw string, then escape each
+  // piece) rather than escaping first and searching the escaped string,
+  // since escaping could otherwise shift character offsets or make an
+  // exact substring match miss.
+  function highlightMatch(text, query) {
+    const q = (query ?? "").trim();
+    if (!q) return escapeHtml(text);
+
+    const source = String(text ?? "");
+    const lowerSource = source.toLowerCase();
+    const lowerQuery = q.toLowerCase();
+
+    let cursor = 0;
+    let matchStart = lowerSource.indexOf(lowerQuery, cursor);
+    if (matchStart === -1) return escapeHtml(source);
+
+    const parts = [];
+    while (matchStart !== -1) {
+      parts.push(escapeHtml(source.slice(cursor, matchStart)));
+      parts.push(`<mark class="bg-warning text-warning-content rounded px-0.5">${escapeHtml(source.slice(matchStart, matchStart + q.length))}</mark>`);
+      cursor = matchStart + q.length;
+      matchStart = lowerSource.indexOf(lowerQuery, cursor);
+    }
+    parts.push(escapeHtml(source.slice(cursor)));
+    return parts.join("");
+  }
+
+  function formatDuration(ms) {
+    if (!ms || ms < 0) return "under a second";
+    const totalSeconds = Math.round(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    if (minutes === 0) return `${seconds}s`;
+    return `${minutes}m ${seconds}s`;
   }
 
   resultsEl.addEventListener("click", async (e) => {
-    const btn = e.target.closest(".go-live-btn");
-    if (!btn) return;
-    btn.disabled = true;
-    try {
-      const res = await fetch("/api/trigger", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          presentationId: btn.dataset.presentationId,
-          slideIndex: Number(btn.dataset.slideIndex),
-        }),
-      });
-      if (!res.ok) {
-        const { error } = await res.json();
-        alert(`Failed to go live: ${error}`);
+    const liveBtn = e.target.closest(".go-live-btn");
+    if (liveBtn) {
+      liveBtn.disabled = true;
+      try {
+        const res = await fetch("/api/trigger", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            presentationId: liveBtn.dataset.presentationId,
+            slideIndex: Number(liveBtn.dataset.slideIndex),
+          }),
+        });
+        if (!res.ok) {
+          const { error } = await res.json();
+          alert(`Failed to go live: ${error}`);
+        }
+      } finally {
+        liveBtn.disabled = false;
       }
-    } finally {
-      btn.disabled = false;
+      return;
+    }
+
+    const editorBtn = e.target.closest(".show-in-editor-btn");
+    if (editorBtn) {
+      editorBtn.disabled = true;
+      try {
+        const res = await fetch("/api/focus", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ presentationId: editorBtn.dataset.presentationId }),
+        });
+        if (!res.ok) {
+          const { error } = await res.json();
+          alert(`Failed to show in editor: ${error}`);
+        }
+      } finally {
+        editorBtn.disabled = false;
+      }
     }
   });
 
@@ -174,17 +293,6 @@ export function initSearch() {
     dateFromInput.value = "";
     dateToInput.value = "";
     runSearch(queryInput.value);
-  });
-
-  rebuildBtn.addEventListener("click", async () => {
-    rebuildBtn.disabled = true;
-    statusEl.textContent = "Rebuilding index...";
-    try {
-      await fetch("/api/index/rebuild", { method: "POST" });
-      await refreshStatus();
-    } finally {
-      rebuildBtn.disabled = false;
-    }
   });
 
   refreshStatus();

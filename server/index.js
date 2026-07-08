@@ -5,7 +5,10 @@
  * Step 0 is verifying ProPresenter API capabilities against your
  * actual installed version before relying on anything below.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
+import { copyFile } from "node:fs/promises";
+import { exec } from "node:child_process";
+import { platform } from "node:os";
 import express from "express";
 import {
   loadConfig,
@@ -13,6 +16,7 @@ import {
   configFileExists,
   isConfigComplete,
   getArrangementModuleStatus,
+  getEnvRequirements,
   ensureMachineId,
 } from "./config.js";
 import { ProPresenterClient } from "./propresenter-client.js";
@@ -29,8 +33,59 @@ import {
 } from "./search-index.js";
 import { discoverModules, discoverSlideSplitters, discoverProviders, discoverStorageBackends } from "./plugin-loader.js";
 import { runComparison, suggestMapping, getPendingUploadCount } from "./arrangement-diff.js";
+import { normalizeSongTitle } from "../providers/planning-center.js";
 
 const { version } = JSON.parse(readFileSync("./package.json", "utf-8"));
+
+/**
+ * Candidate lyrics sites a church can pick from for the Lyrics-assist
+ * screen's scoped search — capped at 5 selections (config.json's
+ * lyricsSites) since a long `site:a OR site:b OR ...` clause makes the
+ * scoped Google search increasingly unreliable.
+ */
+const LYRICS_SITE_CANDIDATES = [
+  "genius.com",
+  "azlyrics.com",
+  "lyrics.com",
+  "musixmatch.com",
+  "youtube.com",
+  "praisecharts.com",
+  "worshiptogether.com",
+  "hymnary.org",
+  "letssingit.com",
+  "songlyrics.com",
+];
+const MAX_LYRICS_SITES = 5;
+
+/**
+ * Accepts either a bare Planning Center ID ("574087") or a full URL
+ * copy-pasted straight from the browser (e.g.
+ * "https://services.planningcenteronline.com/service_types/574087") —
+ * church admins are far more likely to have the page open than to know
+ * the ID is the trailing number, so pull it out either way. Works for
+ * any PCO resource URL (service types, plans, ...) since they all end
+ * in the numeric id.
+ */
+function extractPcoId(input) {
+  const trimmed = String(input ?? "").trim();
+  const match = trimmed.match(/(\d+)\/?$/);
+  return match ? match[1] : trimmed;
+}
+
+// Defense in depth: an async route handler that throws without its own
+// try/catch produces an unhandled rejection, which crashes the whole
+// process by default on modern Node — taking down an in-progress index
+// rebuild along with it (observed directly: a transient error while
+// polling plugin discovery mid-rebuild killed the server outright).
+// Every route below should still catch its own errors; this is only a
+// last-resort net so a missed one degrades to a logged error instead of
+// an outage.
+process.on("unhandledRejection", (err) => {
+  console.error("Unhandled rejection (server stayed up):", err);
+});
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught exception (server stayed up):", err);
+});
 
 const app = express();
 let config = loadConfig();
@@ -58,6 +113,51 @@ app.get("/api/modules", async (_req, res) => {
   });
 });
 
+const GITHUB_REPO_URL = "https://github.com/capitalchurchtech/refrain";
+const GITHUB_PACKAGE_JSON_URL = "https://raw.githubusercontent.com/capitalchurchtech/refrain/main/package.json";
+
+/** True if `a` (e.g. "0.2.0") is a newer semver than `b` (e.g. "0.1.0"). */
+function isNewerVersion(a, b) {
+  const partsA = String(a).split(".").map(Number);
+  const partsB = String(b).split(".").map(Number);
+  for (let i = 0; i < Math.max(partsA.length, partsB.length); i++) {
+    const diff = (partsA[i] ?? 0) - (partsB[i] ?? 0);
+    if (diff !== 0) return diff > 0;
+  }
+  return false;
+}
+
+/**
+ * Checks the project's own public GitHub repo for a newer package.json
+ * version than the one running locally — not tied to a formal GitHub
+ * Release (the project doesn't cut those consistently yet), just
+ * whatever's on the main branch. A single unauthenticated GET to
+ * GitHub's own infrastructure, not a project-controlled server — no
+ * request identifies this install or its church in any way, consistent
+ * with the "no phone-home" privacy commitment in the README.
+ */
+app.get("/api/version-check", async (_req, res) => {
+  try {
+    const ghRes = await fetch(GITHUB_PACKAGE_JSON_URL, { signal: AbortSignal.timeout(5000) });
+    if (!ghRes.ok) throw new Error(`GitHub responded ${ghRes.status}`);
+    const { version: latestVersion } = await ghRes.json();
+    res.json({
+      currentVersion: version,
+      latestVersion,
+      updateAvailable: isNewerVersion(latestVersion, version),
+      repoUrl: GITHUB_REPO_URL,
+    });
+  } catch (err) {
+    res.json({
+      currentVersion: version,
+      latestVersion: null,
+      updateAvailable: false,
+      repoUrl: GITHUB_REPO_URL,
+      error: err.message,
+    });
+  }
+});
+
 app.get("/api/preferences", (_req, res) => {
   res.json({ theme: config.theme ?? "system", navPinned: Boolean(config.navPinned) });
 });
@@ -77,10 +177,185 @@ app.post("/api/preferences", async (req, res) => {
   res.json({ ok: true });
 });
 
+app.get("/api/config-options", async (_req, res) => {
+  try {
+    const [splitters, providers, backends] = await Promise.all([
+      discoverSlideSplitters(),
+      discoverProviders(),
+      discoverStorageBackends(),
+    ]);
+    res.json({
+      slideSplitters: splitters.map((S) => S.splitterId),
+      providers: providers.map((P) => P.providerId),
+      storageBackends: backends.map((B) => B.backendId),
+      lyricsSiteCandidates: LYRICS_SITE_CANDIDATES,
+      maxLyricsSites: MAX_LYRICS_SITES,
+    });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to list plugin options: ${err.message}` });
+  }
+});
+
+/**
+ * Edits the subset of config.json that's safe to expose as constrained
+ * UI controls (enums validated against real plugin ids, numeric ranges,
+ * required strings) — everything else (lyricsSites, machineId, the
+ * folder-scope settings with their own dedicated endpoints) stays
+ * config.json-file-only so a stray edit here can't corrupt something
+ * more free-form.
+ */
+app.post("/api/config", async (req, res) => {
+  try {
+    const body = req.body ?? {};
+    const newConfig = {
+      ...config,
+      propresenter: { ...config.propresenter },
+      librarySync: { ...config.librarySync },
+      arrangementModule: { ...config.arrangementModule },
+    };
+
+    if (body.role !== undefined) {
+      if (!["reader", "logger"].includes(body.role)) {
+        return res.status(400).json({ error: "role must be \"reader\" or \"logger\"" });
+      }
+      newConfig.role = body.role;
+    }
+
+    const changingConnection =
+      (body.propresenterHost !== undefined && String(body.propresenterHost).trim() !== config.propresenter.host) ||
+      (body.propresenterPort !== undefined && Number(body.propresenterPort) !== config.propresenter.port);
+    if (changingConnection && getRebuildProgress().inProgress) {
+      return res.status(409).json({
+        error: "Can't change the ProPresenter connection while an index rebuild is running — wait for it to finish first.",
+      });
+    }
+
+    if (body.propresenterHost !== undefined) {
+      const host = String(body.propresenterHost).trim();
+      if (!host) return res.status(400).json({ error: "ProPresenter host can't be empty" });
+      newConfig.propresenter.host = host;
+    }
+
+    if (body.propresenterPort !== undefined) {
+      const port = Number(body.propresenterPort);
+      if (!Number.isInteger(port) || port < 1 || port > 65535) {
+        return res.status(400).json({ error: "ProPresenter port must be a whole number between 1 and 65535" });
+      }
+      newConfig.propresenter.port = port;
+    }
+
+    if (body.crawlPlaylists !== undefined) {
+      newConfig.librarySync.crawlPlaylists = Boolean(body.crawlPlaylists);
+    }
+
+    if (body.slideSplitter !== undefined) {
+      const splitters = await discoverSlideSplitters();
+      if (!splitters.some((S) => S.splitterId === body.slideSplitter)) {
+        return res.status(400).json({ error: `Unknown slide splitter "${body.slideSplitter}"` });
+      }
+      newConfig.slideSplitter = body.slideSplitter;
+    }
+
+    if (body.arrangementEnabled !== undefined) {
+      newConfig.arrangementModule.enabled = Boolean(body.arrangementEnabled);
+    }
+
+    if (body.arrangementProvider !== undefined) {
+      const providers = await discoverProviders();
+      if (!providers.some((P) => P.providerId === body.arrangementProvider)) {
+        return res.status(400).json({ error: `Unknown provider "${body.arrangementProvider}"` });
+      }
+      newConfig.arrangementModule.provider = body.arrangementProvider;
+    }
+
+    if (body.arrangementStorageBackend !== undefined) {
+      const backends = await discoverStorageBackends();
+      if (!backends.some((B) => B.backendId === body.arrangementStorageBackend)) {
+        return res.status(400).json({ error: `Unknown storage backend "${body.arrangementStorageBackend}"` });
+      }
+      newConfig.arrangementModule.storageBackend = body.arrangementStorageBackend;
+    }
+
+    if (body.planningCenterServiceTypeId !== undefined) {
+      if (typeof body.planningCenterServiceTypeId !== "string") {
+        return res.status(400).json({ error: "planningCenterServiceTypeId must be a string" });
+      }
+      const id = extractPcoId(body.planningCenterServiceTypeId);
+      newConfig.arrangementModule.planningCenterServiceTypeId = id || null;
+    }
+
+    if (body.lyricsSites !== undefined) {
+      if (!Array.isArray(body.lyricsSites) || body.lyricsSites.length === 0) {
+        return res.status(400).json({ error: "Pick at least one lyrics site" });
+      }
+      if (body.lyricsSites.length > MAX_LYRICS_SITES) {
+        return res.status(400).json({ error: `Pick at most ${MAX_LYRICS_SITES} lyrics sites` });
+      }
+      if (!body.lyricsSites.every((site) => LYRICS_SITE_CANDIDATES.includes(site))) {
+        return res.status(400).json({ error: "Unknown lyrics site in selection" });
+      }
+      newConfig.lyricsSites = body.lyricsSites;
+    }
+
+    try {
+      await saveConfig(newConfig);
+    } catch (err) {
+      return res.status(500).json({ error: `Failed to save config.json: ${err.message}` });
+    }
+    config = newConfig;
+    if (changingConnection) client = new ProPresenterClient(config.propresenter);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to update configuration: ${err.message}` });
+  }
+});
+
+const ENV_PATH = "./.env";
+const ENV_EXAMPLE_PATH = "./.env.example";
+
+/**
+ * Opens .env in the user's default text editor — it's a dotfile, so
+ * Finder/Explorer hide it by default and a first-time user can easily
+ * not realize it exists at all. Creates it from .env.example first if
+ * it's missing, so there's always something to open. macOS-only for
+ * now (`open -t`, LaunchServices' "open with default text editor"
+ * flag); other platforms get a clear message instead of a silent
+ * failure since this whole app assumes a local, single-admin machine.
+ */
+app.post("/api/env/open", async (_req, res) => {
+  try {
+    if (!existsSync(ENV_PATH)) {
+      if (!existsSync(ENV_EXAMPLE_PATH)) {
+        return res.status(404).json({ error: ".env.example not found — can't create a starting .env." });
+      }
+      try {
+        await copyFile(ENV_EXAMPLE_PATH, ENV_PATH);
+      } catch (err) {
+        return res.status(500).json({ error: `Failed to create .env: ${err.message}` });
+      }
+    }
+
+    if (platform() !== "darwin") {
+      return res.status(501).json({
+        error: "Opening .env automatically is only supported on macOS right now — open it manually from the project's root folder.",
+      });
+    }
+
+    exec(`open -t ${ENV_PATH}`, (err) => {
+      if (err) return res.status(500).json({ error: `Failed to open .env: ${err.message}` });
+      res.json({ ok: true });
+    });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to open .env: ${err.message}` });
+  }
+});
+
 function indexStatusPayload() {
   const index = getIndex();
   return {
     builtAt: index.builtAt,
+    buildDurationMs: index.buildDurationMs ?? null,
+    crawledPlaylists: Boolean(index.crawledPlaylists),
     presentationCount: Object.keys(index.presentations).length,
     rebuild: getRebuildProgress(),
   };
@@ -182,6 +457,19 @@ app.post("/api/trigger", async (req, res) => {
   }
 });
 
+app.post("/api/focus", async (req, res) => {
+  const { presentationId } = req.body ?? {};
+  if (!presentationId) {
+    return res.status(400).json({ error: "presentationId is required" });
+  }
+  try {
+    await client.focusPresentation(presentationId);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
 // --- Lyrics search-assist (Section 14) ---
 //
 // The app never fetches or parses lyrics sites or search results itself
@@ -257,7 +545,11 @@ async function getArrangementProvider(storage) {
   if (!Provider) throw new Error(`Unknown arrangement provider "${providerId}"`);
 
   if (providerId === "planning-center") {
-    return new Provider({ appId: process.env.PLANNING_CENTER_APP_ID, secret: process.env.PLANNING_CENTER_SECRET });
+    return new Provider({
+      appId: process.env.PLANNING_CENTER_APP_ID,
+      secret: process.env.PLANNING_CENTER_SECRET,
+      serviceTypeId: config.arrangementModule?.planningCenterServiceTypeId ?? null,
+    });
   }
   return new Provider({ storage });
 }
@@ -281,25 +573,77 @@ app.get("/api/arrangement/status", async (_req, res) => {
   });
 });
 
-/** Every presentation currently in the search index is treated as a "song" — librarySync.folders already scopes this to whatever folder(s) the church calls songs. */
+/**
+ * Which Library folders count as "songs" for drift-tracking — separate
+ * from librarySync.folders (what's searchable). A church might want
+ * sermons searchable without tracking their "arrangement" as if they
+ * were songs. null = every folder currently searched, same as before
+ * this setting existed.
+ */
+/**
+ * Every ProPresenter Library folder (not just currently-indexed ones —
+ * a church should be able to pick their song folder for drift-tracking
+ * independent of whatever's currently in the search scope, e.g. right
+ * after first setup before they've touched Library Sync at all).
+ */
+app.get("/api/arrangement/folders", async (_req, res) => {
+  try {
+    const folders = await client.getLibraryFolders();
+    res.json({
+      folders: (folders ?? []).map((f) => f.name),
+      selected: config.arrangementModule?.folders ?? null,
+    });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+app.post("/api/arrangement/folders", async (req, res) => {
+  try {
+    const { folders } = req.body ?? {};
+    if (folders !== null && !Array.isArray(folders)) {
+      return res.status(400).json({ error: "folders must be an array of names, or null for all" });
+    }
+
+    const newConfig = { ...config, arrangementModule: { ...config.arrangementModule, folders } };
+    try {
+      await saveConfig(newConfig);
+    } catch (err) {
+      return res.status(500).json({ error: `Failed to save config.json: ${err.message}` });
+    }
+    config = newConfig;
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to update arrangement folders: ${err.message}` });
+  }
+});
+
+/** Every presentation in the search index whose Library folder is in scope for drift-tracking (arrangementModule.folders — a subset of librarySync.folders, since only searchable presentations are indexed at all). */
 app.get("/api/arrangement/songs", async (_req, res) => {
   if (!requireArrangementActive(res)) return;
-  const storage = await getStorageBackend();
-  const index = getIndex();
+  try {
+    const storage = await getStorageBackend();
+    const index = getIndex();
+    const trackedFolders = config.arrangementModule?.folders ?? null;
 
-  const songs = await Promise.all(
-    Object.entries(index.presentations).map(async ([presentationId, entry]) => {
-      const record = await storage.readSongFile(presentationId).catch(() => null);
-      return {
-        presentationId,
-        name: entry.name,
-        hasPlannedArrangement: Boolean(record?.manualPlannedArrangement?.length),
-        historyCount: record?.history?.length ?? 0,
-        lastServiceDate: record?.history?.at(-1)?.serviceDate ?? null,
-      };
-    })
-  );
-  res.json({ songs });
+    const songs = await Promise.all(
+      Object.entries(index.presentations)
+        .filter(([, entry]) => !trackedFolders || trackedFolders.includes(entry.folder))
+        .map(async ([presentationId, entry]) => {
+          const record = await storage.readSongFile(presentationId).catch(() => null);
+          return {
+            presentationId,
+            name: entry.name,
+            hasPlannedArrangement: Boolean(record?.manualPlannedArrangement?.length),
+            historyCount: record?.history?.length ?? 0,
+            lastServiceDate: record?.history?.at(-1)?.serviceDate ?? null,
+          };
+        })
+    );
+    res.json({ songs });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to list songs: ${err.message}` });
+  }
 });
 
 app.get("/api/arrangement/song/:presentationId", async (req, res) => {
@@ -362,6 +706,161 @@ app.post("/api/arrangement/song/:presentationId/planned", async (req, res) => {
   const updated = { ...existing, manualPlannedArrangement };
   await storage.writeSongFile(presentationId, updated);
   res.json({ ok: true });
+});
+
+/**
+ * Matches each Planning Center plan song to a ProPresenter presentation
+ * by normalized title — there's no shared stable ID between the two
+ * systems, so this is a best-effort text match, not a guarantee.
+ */
+function matchPlanSongsToPresentations(planSongs) {
+  const index = getIndex();
+  const indexed = Object.entries(index.presentations).map(([presentationId, entry]) => ({
+    presentationId,
+    name: entry.name,
+    normalized: normalizeSongTitle(entry.name),
+  }));
+
+  return planSongs.map((song) => {
+    const normalized = normalizeSongTitle(song.title);
+    const match = indexed.find((p) => p.normalized === normalized);
+    return {
+      title: song.title,
+      sectionSequence: song.sectionSequence,
+      presentationId: match?.presentationId ?? null,
+      presentationName: match?.name ?? null,
+    };
+  });
+}
+
+/** Plain-language description of what changed, for the "update PCO with this" workflow. */
+function describeDrift(diff) {
+  if (!diff.skipped.length && !diff.added.length && !diff.reordered.length) {
+    return "Matches exactly — no changes needed.";
+  }
+  return "Doesn't match what was actually played — consider updating the plan.";
+}
+
+/**
+ * Preview of "this weekend's plan" (Section 8's one-button workflow) —
+ * the most recent past plan for the configured service type, plus which
+ * of its songs Refrain can find in ProPresenter. Read-only: doesn't run
+ * or save any comparisons, just lets the UI show what's about to happen
+ * before the admin commits to it.
+ */
+app.get("/api/arrangement/current-plan", async (req, res) => {
+  if (!requireArrangementActive(res)) return;
+  if (config.arrangementModule?.provider !== "planning-center") {
+    return res.status(409).json({ error: "This only works with the Planning Center provider." });
+  }
+  try {
+    const provider = await getArrangementProvider(await getStorageBackend());
+    const { planId } = req.query;
+    const plan = planId
+      ? (await provider.getRecentPlans(5)).find((p) => p.id === planId)
+      : await provider.getRecentPlan();
+    if (!plan) {
+      return res.status(404).json({
+        error: "No past plan found — check the Service Type ID in Configuration, and that it has at least one plan with a past date.",
+      });
+    }
+    const songs = await provider.getPlanSongs(plan.id);
+    res.json({ plan, songs: matchPlanSongsToPresentations(songs) });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+/** The last 5 already-happened plans for the configured service type, for the UI's plan picker. */
+app.get("/api/arrangement/plans", async (_req, res) => {
+  if (!requireArrangementActive(res)) return;
+  if (config.arrangementModule?.provider !== "planning-center") {
+    return res.status(409).json({ error: "This only works with the Planning Center provider." });
+  }
+  try {
+    const provider = await getArrangementProvider(await getStorageBackend());
+    const plans = await provider.getRecentPlans(5);
+    res.json({ plans });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+/**
+ * The one-button "compare everything from this weekend" workflow:
+ * finds the most recent plan, matches its songs into ProPresenter, runs
+ * (and saves) a real comparison for every match, and returns a
+ * plain-language suggestion per song for what — if anything — PCO's
+ * arrangement should be updated to.
+ */
+app.post("/api/arrangement/compare-all", async (req, res) => {
+  if (!requireArrangementActive(res)) return;
+  if (config.role !== "logger") {
+    return res.status(403).json({ error: "Only the logger machine can run comparisons — see Health for role." });
+  }
+  if (config.arrangementModule?.provider !== "planning-center") {
+    return res.status(409).json({ error: "This only works with the Planning Center provider." });
+  }
+
+  try {
+    const storage = await getStorageBackend();
+    const provider = await getArrangementProvider(storage);
+    const { planId } = req.body ?? {};
+    const plan = planId
+      ? (await provider.getRecentPlans(5)).find((p) => p.id === planId)
+      : await provider.getRecentPlan();
+    if (!plan) {
+      return res.status(404).json({
+        error: "No past plan found — check the Service Type ID in Configuration, and that it has at least one plan with a past date.",
+      });
+    }
+    const serviceDate = plan.sortDate.slice(0, 10);
+    const matched = matchPlanSongsToPresentations(await provider.getPlanSongs(plan.id));
+
+    config = await ensureMachineId(config);
+    const results = [];
+    const unmatched = [];
+    for (const song of matched) {
+      if (!song.presentationId) {
+        unmatched.push({ title: song.title });
+        continue;
+      }
+      const actualGroupSequence = getGroupSequence(song.presentationId);
+      if (!actualGroupSequence) {
+        unmatched.push({ title: song.title, reason: "Matched a presentation, but it's not in the search index." });
+        continue;
+      }
+      try {
+        const result = await runComparison({
+          songId: song.presentationId,
+          songName: song.presentationName,
+          presentationId: song.presentationId,
+          serviceDate,
+          actualGroupSequence,
+          provider,
+          storage,
+          machineId: config.machineId,
+          force: true, // this is a deliberate re-run of the whole weekend, not a single accidental double-click
+          planId: plan.id,
+        });
+        const lastEntry = result.record.history.at(-1);
+        results.push({
+          title: song.title,
+          presentationName: song.presentationName,
+          planned: lastEntry.planned,
+          actual: lastEntry.actual,
+          diff: lastEntry.diff,
+          suggestion: describeDrift(lastEntry.diff),
+        });
+      } catch (err) {
+        unmatched.push({ title: song.title, reason: err.message });
+      }
+    }
+
+    res.json({ plan, serviceDate, results, unmatched });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
 });
 
 app.post("/api/arrangement/compare", async (req, res) => {
@@ -480,10 +979,21 @@ app.get("/api/health", async (_req, res) => {
     index: indexStatusPayload(),
     arrangementModule: {
       status: getArrangementModuleStatus(config),
+      enabled: Boolean(config.arrangementModule?.enabled),
       storageBackend: config.arrangementModule?.storageBackend ?? null,
       provider: config.arrangementModule?.provider ?? null,
+      planningCenterServiceTypeId: config.arrangementModule?.planningCenterServiceTypeId ?? null,
       pendingUploads: await getPendingUploadCount(),
     },
+    config: {
+      librarySync: {
+        folders: config.librarySync?.folders ?? null,
+        crawlPlaylists: Boolean(config.librarySync?.crawlPlaylists),
+      },
+      slideSplitter: config.slideSplitter ?? null,
+      lyricsSites: config.lyricsSites ?? [],
+    },
+    envRequirements: getEnvRequirements(config),
   });
 });
 

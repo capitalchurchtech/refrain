@@ -21,6 +21,8 @@
   "arrangementModule": {
     "enabled": false,
     "provider": "manual",
-    "storageBackend": "local-folder"
+    "storageBackend": "local-folder",
+    "folders": null,
+    "planningCenterServiceTypeId": null
   }
 }
