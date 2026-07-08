@@ -33,6 +33,14 @@ class ArrangementProvider {
 
 `providers/manual.js` is a good reference for the simplest possible implementation (no API call at all — just lets the user type in the arrangement).
 
+**Optional capabilities** — implement only if they apply to your system, and declare the matching static flag so the UI knows to offer them (it never hardcodes a vendor name or assumes every provider has these):
+
+- `static displayName` — a human-readable name for UI copy ("Push to {displayName}", the provider picker). Defaults to a title-cased `providerId` if you don't set it, so this is optional.
+- `static supportsPlanBrowsing = true` + `getRecentPlans(count)` — if your system has a "plan" concept (a named, dated set of songs for a service) that can be listed, this powers the "this weekend's plan" one-button workflow.
+- `static supportsPush = true` + `getArrangementSequence(songId, arrangementId)` and `updateArrangementSequence(songId, arrangementId, sequence)` — if your system supports writing an updated arrangement back, this powers the "push to {provider}" button (always behind an explicit user confirmation — never automatic).
+
+`providers/planning-center.js` implements both.
+
 ## Adding a new storage backend
 
 Storage backends live in `storage/` and answer: where do the per-song arrangement history files live, and how do we read/write them?
@@ -48,8 +56,11 @@ class StorageBackend {
 
 1. Create `storage/your-backend-name.js`, extend `StorageBackend`, implement all three methods.
 2. Export a `backendId` string, used as `arrangementModule.storageBackend` in `config.json`.
-3. Document required `.env` variables (if any) the same way as above.
-4. If your backend needs credentials only for writers (not readers), say so clearly in your file's comments — this matters for the "reader machines need zero setup" goal (see `storage/firestore.js` for the reference pattern: readers need only a public project ID, writers need a service account key).
+3. Optionally set `static displayName` (a human-readable name for the backend picker and health screen) — defaults to a title-cased `backendId` if omitted; override it for anything with unusual capitalization (`storage/sftp.js` sets `"SFTP"`, since the default would produce `"Sftp"`).
+4. Document required `.env` variables (if any) the same way as above.
+5. If your backend needs credentials only for writers (not readers), say so clearly in your file's comments — this matters for the "reader machines need zero setup" goal (see `storage/firestore.js` for the reference pattern: readers need only a public project ID, writers need a service account key).
+
+`storage/firestore.js` and `storage/sftp.js` are currently stubs (interface implemented, methods throw `"Not implemented"`) — good starting points if you want to pick one up.
 
 ## Adding a new slide splitter
 

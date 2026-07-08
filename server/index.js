@@ -6,9 +6,10 @@
  * actual installed version before relying on anything below.
  */
 import { readFileSync, existsSync } from "node:fs";
-import { copyFile } from "node:fs/promises";
+import { copyFile, readdir } from "node:fs/promises";
 import { exec } from "node:child_process";
-import { platform } from "node:os";
+import { platform, homedir } from "node:os";
+import path from "node:path";
 import express from "express";
 import {
   loadConfig,
@@ -32,7 +33,7 @@ import {
   getIndexedFolders,
 } from "./search-index.js";
 import { discoverModules, discoverSlideSplitters, discoverProviders, discoverStorageBackends } from "./plugin-loader.js";
-import { runComparison, suggestMapping, getPendingUploadCount } from "./arrangement-diff.js";
+import { runComparison, suggestMapping, getPendingUploadCount, retryPendingUploads } from "./arrangement-diff.js";
 import { normalizeSongTitle } from "../providers/planning-center.js";
 
 const { version } = JSON.parse(readFileSync("./package.json", "utf-8"));
@@ -186,8 +187,10 @@ app.get("/api/config-options", async (_req, res) => {
     ]);
     res.json({
       slideSplitters: splitters.map((S) => S.splitterId),
-      providers: providers.map((P) => P.providerId),
-      storageBackends: backends.map((B) => B.backendId),
+      // {id, displayName} pairs, not raw ids — so the UI never has to
+      // hardcode a friendly label per known vendor (Section 17.2/17.3).
+      providers: providers.map((P) => ({ id: P.providerId, displayName: P.displayName })),
+      storageBackends: backends.map((B) => ({ id: B.backendId, displayName: B.displayName })),
       lyricsSiteCandidates: LYRICS_SITE_CANDIDATES,
       maxLyricsSites: MAX_LYRICS_SITES,
     });
@@ -276,6 +279,13 @@ app.post("/api/config", async (req, res) => {
       newConfig.arrangementModule.storageBackend = body.arrangementStorageBackend;
     }
 
+    if (body.arrangementLocalFolderPath !== undefined) {
+      if (typeof body.arrangementLocalFolderPath !== "string") {
+        return res.status(400).json({ error: "arrangementLocalFolderPath must be a string" });
+      }
+      newConfig.arrangementModule.localFolderPath = body.arrangementLocalFolderPath.trim() || null;
+    }
+
     if (body.planningCenterServiceTypeId !== undefined) {
       if (typeof body.planningCenterServiceTypeId !== "string") {
         return res.status(400).json({ error: "planningCenterServiceTypeId must be a string" });
@@ -347,6 +357,52 @@ app.post("/api/env/open", async (_req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: `Failed to open .env: ${err.message}` });
+  }
+});
+
+/**
+ * Auto-detect common Google Drive/Dropbox/OneDrive desktop-sync mount
+ * points (Section 17.3's setup helper) — a one-click default instead of
+ * asking a non-technical volunteer to type an exact path. Deliberately
+ * just filesystem checks against well-known locations, no API/OAuth.
+ */
+async function detectSyncedFolderCandidates() {
+  const home = homedir();
+  const candidates = [];
+
+  if (platform() === "darwin") {
+    const cloudStorageDir = path.join(home, "Library", "CloudStorage");
+    const entries = await readdir(cloudStorageDir).catch(() => []);
+    for (const entry of entries) {
+      if (entry.startsWith("GoogleDrive-")) {
+        candidates.push({ label: `Google Drive (${entry.replace("GoogleDrive-", "")})`, path: path.join(cloudStorageDir, entry, "My Drive") });
+      } else if (entry.startsWith("Dropbox")) {
+        candidates.push({ label: "Dropbox", path: path.join(cloudStorageDir, entry) });
+      } else if (entry.startsWith("OneDrive")) {
+        candidates.push({ label: "OneDrive", path: path.join(cloudStorageDir, entry) });
+      }
+    }
+    candidates.push({ label: "Dropbox", path: path.join(home, "Dropbox") });
+  } else if (platform() === "win32") {
+    for (const drive of ["G", "H"]) {
+      candidates.push({ label: "Google Drive", path: `${drive}:\\My Drive` });
+    }
+    candidates.push({ label: "OneDrive", path: path.join(home, "OneDrive") });
+    candidates.push({ label: "Dropbox", path: path.join(home, "Dropbox") });
+  }
+
+  const checked = await Promise.all(
+    candidates.map(async (c) => ({ ...c, exists: existsSync(c.path) }))
+  );
+  return checked.filter((c) => c.exists);
+}
+
+app.get("/api/arrangement/detect-storage-paths", async (_req, res) => {
+  try {
+    const candidates = await detectSyncedFolderCandidates();
+    res.json({ candidates });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to scan for synced folders: ${err.message}` });
   }
 });
 
@@ -511,11 +567,25 @@ app.post("/api/lyrics-assist/split", async (req, res) => {
 // a community-contributed provider/backend just needs providerId /
 // backendId to match config.json, per CONTRIBUTING.md.
 
-async function getStorageBackend() {
+async function getStorageBackendClass() {
   const backends = await discoverStorageBackends();
   const backendId = config.arrangementModule?.storageBackend ?? "local-folder";
   const Backend = backends.find((B) => B.backendId === backendId);
   if (!Backend) throw new Error(`Unknown storage backend "${backendId}"`);
+  return Backend;
+}
+
+async function getStorageBackendDisplayName() {
+  return (await getStorageBackendClass().catch(() => null))?.displayName ?? null;
+}
+
+async function getArrangementProviderDisplayName() {
+  return (await getArrangementProviderClass().catch(() => null))?.displayName ?? null;
+}
+
+async function getStorageBackend() {
+  const Backend = await getStorageBackendClass();
+  const backendId = Backend.backendId;
 
   if (backendId === "local-folder" || backendId === "synced-folder") {
     return new Backend({ dirPath: config.arrangementModule?.localFolderPath ?? "./data/arrangements" });
@@ -538,13 +608,18 @@ async function getStorageBackend() {
   return new Backend();
 }
 
-async function getArrangementProvider(storage) {
+/** The configured provider's class (not an instance) — cheap, no credentials needed, for capability checks. */
+async function getArrangementProviderClass() {
   const providers = await discoverProviders();
   const providerId = config.arrangementModule?.provider ?? "manual";
   const Provider = providers.find((P) => P.providerId === providerId);
   if (!Provider) throw new Error(`Unknown arrangement provider "${providerId}"`);
+  return Provider;
+}
 
-  if (providerId === "planning-center") {
+async function getArrangementProvider(storage) {
+  const Provider = await getArrangementProviderClass();
+  if (Provider.providerId === "planning-center") {
     return new Provider({
       appId: process.env.PLANNING_CENTER_APP_ID,
       secret: process.env.PLANNING_CENTER_SECRET,
@@ -552,6 +627,18 @@ async function getArrangementProvider(storage) {
     });
   }
   return new Provider({ storage });
+}
+
+/** Gates a route on a provider capability (e.g. "supportsPlanBrowsing") rather than a hardcoded vendor name. */
+async function requireProviderCapability(res, capability, featureLabel) {
+  const Provider = await getArrangementProviderClass();
+  if (!Provider[capability]) {
+    res.status(409).json({
+      error: `${featureLabel} needs a church-management provider that supports it (e.g. Planning Center) — the configured provider, ${Provider.displayName}, doesn't.`,
+    });
+    return null;
+  }
+  return Provider;
 }
 
 function requireArrangementActive(res) {
@@ -564,10 +651,18 @@ function requireArrangementActive(res) {
 }
 
 app.get("/api/arrangement/status", async (_req, res) => {
+  const providerId = config.arrangementModule?.provider ?? null;
+  const Provider = providerId ? (await discoverProviders()).find((P) => P.providerId === providerId) : null;
   res.json({
     status: getArrangementModuleStatus(config),
     role: config.role ?? null,
-    provider: config.arrangementModule?.provider ?? null,
+    provider: providerId,
+    // The UI reads these instead of hardcoding a vendor name/behavior,
+    // so it never assumes Planning Center is the only possible
+    // church-management integration (Section 17.2).
+    providerDisplayName: Provider?.displayName ?? null,
+    providerSupportsPush: Provider?.supportsPush ?? false,
+    providerSupportsPlanBrowsing: Provider?.supportsPlanBrowsing ?? false,
     storageBackend: config.arrangementModule?.storageBackend ?? null,
     pendingUploads: await getPendingUploadCount(),
   });
@@ -709,6 +804,63 @@ app.post("/api/arrangement/song/:presentationId/planned", async (req, res) => {
 });
 
 /**
+ * Some songs (medleys, songs PCO structurally can't represent well) will
+ * never cleanly diff-match — this lets the admin flag "always recommend
+ * an update for this song" so the weekend workflow surfaces it every
+ * time instead of relying on the diff to notice.
+ */
+app.post("/api/arrangement/song/:presentationId/always-differs", async (req, res) => {
+  if (!requireArrangementActive(res)) return;
+  const { presentationId } = req.params;
+  const { alwaysDiffers } = req.body ?? {};
+  if (typeof alwaysDiffers !== "boolean") {
+    return res.status(400).json({ error: "alwaysDiffers must be a boolean" });
+  }
+
+  const storage = await getStorageBackend();
+  const groupSequence = getGroupSequence(presentationId) ?? [];
+  const existing = (await storage.readSongFile(presentationId)) ?? {
+    songId: presentationId,
+    songName: getPresentationName(presentationId),
+    propresenterPresentationId: presentationId,
+    sectionMapping: suggestMapping(groupSequence),
+    manualPlannedArrangement: [],
+    history: [],
+  };
+  const updated = { ...existing, alwaysDiffers };
+  await storage.writeSongFile(presentationId, updated);
+  res.json({ ok: true });
+});
+
+/**
+ * Marks one specific past comparison as "ignore this one" — e.g. only
+ * part of the song was played, or the arrangement that week was a
+ * one-off, non-representative departure from how it's normally done.
+ * Keeps the history entry (for audit purposes) but excludes it from
+ * drift suggestions and undoes it without deleting the record.
+ */
+app.post("/api/arrangement/song/:presentationId/history/:serviceDate/ignore", async (req, res) => {
+  if (!requireArrangementActive(res)) return;
+  const { presentationId, serviceDate } = req.params;
+  const { ignored } = req.body ?? {};
+  if (typeof ignored !== "boolean") {
+    return res.status(400).json({ error: "ignored must be a boolean" });
+  }
+
+  const storage = await getStorageBackend();
+  const existing = await storage.readSongFile(presentationId);
+  const entryIndex = existing?.history.findIndex((h) => h.serviceDate === serviceDate) ?? -1;
+  if (entryIndex === -1) {
+    return res.status(404).json({ error: "No comparison found for that song and service date" });
+  }
+
+  const history = [...existing.history];
+  history[entryIndex] = { ...history[entryIndex], ignored };
+  await storage.writeSongFile(presentationId, { ...existing, history });
+  res.json({ ok: true });
+});
+
+/**
  * Matches each Planning Center plan song to a ProPresenter presentation
  * by normalized title — there's no shared stable ID between the two
  * systems, so this is a best-effort text match, not a guarantee.
@@ -729,11 +881,13 @@ function matchPlanSongsToPresentations(planSongs) {
       sectionSequence: song.sectionSequence,
       presentationId: match?.presentationId ?? null,
       presentationName: match?.name ?? null,
+      externalSongId: song.externalSongId ?? null,
+      externalArrangementId: song.externalArrangementId ?? null,
     };
   });
 }
 
-/** Plain-language description of what changed, for the "update PCO with this" workflow. */
+/** Plain-language description of what changed, for the "update the plan" workflow. */
 function describeDrift(diff) {
   if (!diff.skipped.length && !diff.added.length && !diff.reordered.length) {
     return "Matches exactly — no changes needed.";
@@ -750,15 +904,12 @@ function describeDrift(diff) {
  */
 app.get("/api/arrangement/current-plan", async (req, res) => {
   if (!requireArrangementActive(res)) return;
-  if (config.arrangementModule?.provider !== "planning-center") {
-    return res.status(409).json({ error: "This only works with the Planning Center provider." });
-  }
+  if (!(await requireProviderCapability(res, "supportsPlanBrowsing", "This weekend's plan"))) return;
   try {
     const provider = await getArrangementProvider(await getStorageBackend());
     const { planId } = req.query;
-    const plan = planId
-      ? (await provider.getRecentPlans(5)).find((p) => p.id === planId)
-      : await provider.getRecentPlan();
+    const plans = await provider.getRecentPlans(5);
+    const plan = planId ? plans.find((p) => p.id === planId) : plans[0];
     if (!plan) {
       return res.status(404).json({
         error: "No past plan found — check the Service Type ID in Configuration, and that it has at least one plan with a past date.",
@@ -774,9 +925,7 @@ app.get("/api/arrangement/current-plan", async (req, res) => {
 /** The last 5 already-happened plans for the configured service type, for the UI's plan picker. */
 app.get("/api/arrangement/plans", async (_req, res) => {
   if (!requireArrangementActive(res)) return;
-  if (config.arrangementModule?.provider !== "planning-center") {
-    return res.status(409).json({ error: "This only works with the Planning Center provider." });
-  }
+  if (!(await requireProviderCapability(res, "supportsPlanBrowsing", "Plan browsing"))) return;
   try {
     const provider = await getArrangementProvider(await getStorageBackend());
     const plans = await provider.getRecentPlans(5);
@@ -790,25 +939,22 @@ app.get("/api/arrangement/plans", async (_req, res) => {
  * The one-button "compare everything from this weekend" workflow:
  * finds the most recent plan, matches its songs into ProPresenter, runs
  * (and saves) a real comparison for every match, and returns a
- * plain-language suggestion per song for what — if anything — PCO's
- * arrangement should be updated to.
+ * plain-language suggestion per song for what — if anything — the
+ * church-management system's arrangement should be updated to.
  */
 app.post("/api/arrangement/compare-all", async (req, res) => {
   if (!requireArrangementActive(res)) return;
   if (config.role !== "logger") {
     return res.status(403).json({ error: "Only the logger machine can run comparisons — see Health for role." });
   }
-  if (config.arrangementModule?.provider !== "planning-center") {
-    return res.status(409).json({ error: "This only works with the Planning Center provider." });
-  }
+  if (!(await requireProviderCapability(res, "supportsPlanBrowsing", "The weekend compare-all workflow"))) return;
 
   try {
     const storage = await getStorageBackend();
     const provider = await getArrangementProvider(storage);
     const { planId } = req.body ?? {};
-    const plan = planId
-      ? (await provider.getRecentPlans(5)).find((p) => p.id === planId)
-      : await provider.getRecentPlan();
+    const plans = await provider.getRecentPlans(5);
+    const plan = planId ? plans.find((p) => p.id === planId) : plans[0];
     if (!plan) {
       return res.status(404).json({
         error: "No past plan found — check the Service Type ID in Configuration, and that it has at least one plan with a past date.",
@@ -846,11 +992,16 @@ app.post("/api/arrangement/compare-all", async (req, res) => {
         const lastEntry = result.record.history.at(-1);
         results.push({
           title: song.title,
+          presentationId: song.presentationId,
           presentationName: song.presentationName,
           planned: lastEntry.planned,
           actual: lastEntry.actual,
           diff: lastEntry.diff,
           suggestion: describeDrift(lastEntry.diff),
+          alwaysDiffers: result.record.alwaysDiffers ?? false,
+          ignored: lastEntry.ignored ?? false,
+          externalSongId: song.externalSongId,
+          externalArrangementId: song.externalArrangementId,
         });
       } catch (err) {
         unmatched.push({ title: song.title, reason: err.message });
@@ -858,6 +1009,43 @@ app.post("/api/arrangement/compare-all", async (req, res) => {
     }
 
     res.json({ plan, serviceDate, results, unmatched });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+/**
+ * Pushes a song's actual (as-played) arrangement up to the
+ * church-management provider's base arrangement (any provider with
+ * supportsPush) — only ever fired from an explicit, user-clicked
+ * "confirm" in the UI (Section 8), never automatically. Overwrites the
+ * shared Arrangement, so it affects every future plan that reuses it,
+ * not just the plan this was reviewed from. Returns the pre-overwrite
+ * sequence so the UI can offer a one-click undo (just call this route
+ * again with that sequence).
+ */
+app.post("/api/arrangement/push-arrangement", async (req, res) => {
+  if (!requireArrangementActive(res)) return;
+  if (config.role !== "logger") {
+    return res.status(403).json({ error: "Only the logger machine can push arrangements — see Health for role." });
+  }
+  if (!(await requireProviderCapability(res, "supportsPush", "Pushing an arrangement update"))) return;
+
+  const { externalSongId, externalArrangementId, sequence } = req.body ?? {};
+  if (!externalSongId || !externalArrangementId || !Array.isArray(sequence) || !sequence.length) {
+    return res.status(400).json({ error: "externalSongId, externalArrangementId, and a non-empty sequence are required" });
+  }
+  if (sequence.some((s) => String(s).startsWith("[unmapped]"))) {
+    return res.status(400).json({
+      error: "This arrangement has unmapped sections — fix the song's section mapping before pushing this update.",
+    });
+  }
+
+  try {
+    const provider = await getArrangementProvider(await getStorageBackend());
+    const previousSequence = await provider.getArrangementSequence(externalSongId, externalArrangementId);
+    await provider.updateArrangementSequence(externalSongId, externalArrangementId, sequence);
+    res.json({ ok: true, previousSequence });
   } catch (err) {
     res.status(502).json({ error: err.message });
   }
@@ -981,7 +1169,10 @@ app.get("/api/health", async (_req, res) => {
       status: getArrangementModuleStatus(config),
       enabled: Boolean(config.arrangementModule?.enabled),
       storageBackend: config.arrangementModule?.storageBackend ?? null,
+      storageBackendDisplayName: await getStorageBackendDisplayName(),
+      localFolderPath: config.arrangementModule?.localFolderPath ?? null,
       provider: config.arrangementModule?.provider ?? null,
+      providerDisplayName: await getArrangementProviderDisplayName(),
       planningCenterServiceTypeId: config.arrangementModule?.planningCenterServiceTypeId ?? null,
       pendingUploads: await getPendingUploadCount(),
     },
@@ -1021,5 +1212,21 @@ app.listen(port, "127.0.0.1", async () => {
     rebuildIndex(client, config.librarySync).catch((err) => console.error("Background rebuild failed:", err.message));
   } else {
     console.log(`Loaded cached index (built ${existing.builtAt}, ${Object.keys(existing.presentations).length} presentations).`);
+  }
+
+  // Section 8.4: a write that failed last run (backend unreachable) is
+  // staged locally rather than lost — retry it now that the app's back
+  // up, instead of leaving it stuck until the next comparison happens
+  // to touch that exact song again.
+  if (config.role === "logger" && getArrangementModuleStatus(config) === "active") {
+    try {
+      const storage = await getStorageBackend();
+      const { attempted, succeeded } = await retryPendingUploads(storage);
+      if (attempted > 0) {
+        console.log(`Retried ${attempted} pending arrangement upload(s) — ${succeeded} succeeded.`);
+      }
+    } catch (err) {
+      console.error("Pending-upload retry failed:", err.message);
+    }
   }
 });

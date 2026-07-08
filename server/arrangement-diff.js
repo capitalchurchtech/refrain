@@ -144,7 +144,11 @@ export async function runComparison({
   const actual = applyMapping(actualGroupSequence, existing.sectionMapping ?? {});
   const diff = diffSequences(planned, actual);
 
-  const newEntry = { serviceDate, planned, actual, diff, loggedByMachineId: machineId };
+  // Preserve a prior "ignored" mark (e.g. a re-run of the same week after
+  // the admin already flagged it as an atypical, non-representative
+  // performance) — a fresh diff shouldn't silently un-ignore it.
+  const previousEntryForDate = existing.history.find((h) => h.serviceDate === serviceDate);
+  const newEntry = { serviceDate, planned, actual, diff, loggedByMachineId: machineId, ignored: previousEntryForDate?.ignored ?? false };
   const historyWithoutThisDate = existing.history.filter((h) => h.serviceDate !== serviceDate);
   const updated = { ...existing, songName, propresenterPresentationId: presentationId, history: [...historyWithoutThisDate, newEntry] };
 

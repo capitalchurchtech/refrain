@@ -16,6 +16,7 @@ import { StorageBackend } from "./base.js";
  */
 export class SftpStorage extends StorageBackend {
   static backendId = "sftp";
+  static displayName = "SFTP";
 
   constructor({ host, username, privateKeyPath, knownHostFingerprint, remotePath = "/data" } = {}) {
     super();

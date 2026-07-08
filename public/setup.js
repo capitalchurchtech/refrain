@@ -83,7 +83,6 @@ export function initSetup({ onComplete }) {
 
   async function pollBuildProgress() {
     let sawInProgress = false;
-    // eslint-disable-next-line no-constant-condition
     while (true) {
       const status = await fetch("/api/index/status").then((r) => r.json());
       const { rebuild, presentationCount } = status;

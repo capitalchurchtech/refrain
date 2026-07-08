@@ -3,6 +3,14 @@
  * See CONTRIBUTING.md for how to add a new one.
  */
 export class StorageBackend {
+  /** Human-readable name for UI copy (backend picker, health screen) — see ArrangementProvider.displayName for why this isn't hardcoded per-screen. */
+  static get displayName() {
+    return this.backendId
+      .split("-")
+      .map((w) => w[0].toUpperCase() + w.slice(1))
+      .join(" ");
+  }
+
   /** @param {string} songId @returns {Promise<object|null>} */
   async readSongFile(songId) {
     throw new Error("Not implemented");

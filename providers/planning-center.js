@@ -56,6 +56,8 @@ export function normalizeSongTitle(title) {
 
 export class PlanningCenterProvider extends ArrangementProvider {
   static providerId = "planning-center";
+  static supportsPush = true;
+  static supportsPlanBrowsing = true;
 
   constructor({ appId, secret, serviceTypeId = null } = {}) {
     super();
@@ -72,6 +74,19 @@ export class PlanningCenterProvider extends ArrangementProvider {
   async #get(path) {
     const res = await fetch(`${API_BASE}${path}`, {
       headers: this.#authHeader(),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) {
+      throw new Error(`Planning Center API ${path} responded ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async #patch(path, body) {
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: "PATCH",
+      headers: { ...this.#authHeader(), "Content-Type": "application/json" },
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) {
@@ -100,29 +115,71 @@ export class PlanningCenterProvider extends ArrangementProvider {
     return plan ?? null;
   }
 
-  /** A plan's song items, each with whatever section sequence PCO has for it (see module doc for resolution order). */
+  /**
+   * A plan's song items, each with whatever section sequence PCO has for
+   * it (see module doc for resolution order), plus the underlying PCO
+   * song/arrangement IDs when a linked Arrangement exists — needed to
+   * push an updated sequence back to the *base* Arrangement later (the
+   * "always the same" resource behind every plan, as opposed to a
+   * single plan's `custom_arrangement_sequence` override).
+   */
   async getPlanSongs(planId) {
     const items = await this.#get(`/plans/${planId}/items?per_page=200`);
     const songItems = items.data.filter((item) => item.attributes.item_type === "song");
 
     return Promise.all(
       songItems.map(async (item) => {
-        if (item.attributes.custom_arrangement_sequence?.length) {
-          return { title: item.attributes.title, sectionSequence: item.attributes.custom_arrangement_sequence };
-        }
         const songRel = item.relationships.song?.data;
         const arrangementRel = item.relationships.arrangement?.data;
+        // Generic field names (not "pco...") — these are exactly the
+        // songId/arrangementId that getArrangementSequence/
+        // updateArrangementSequence take, so the rest of the app never
+        // needs to know they came from Planning Center specifically.
+        const externalSongId = songRel?.id ?? null;
+        const externalArrangementId = arrangementRel?.id ?? null;
+
+        if (item.attributes.custom_arrangement_sequence?.length) {
+          return {
+            title: item.attributes.title,
+            sectionSequence: item.attributes.custom_arrangement_sequence,
+            externalSongId,
+            externalArrangementId,
+          };
+        }
         if (songRel && arrangementRel) {
           try {
             const arrangement = await this.#get(`/songs/${songRel.id}/arrangements/${arrangementRel.id}`);
-            return { title: item.attributes.title, sectionSequence: arrangement.data.attributes.sequence ?? [] };
+            return {
+              title: item.attributes.title,
+              sectionSequence: arrangement.data.attributes.sequence ?? [],
+              externalSongId,
+              externalArrangementId,
+            };
           } catch {
             // Fall through to the empty-sequence case below.
           }
         }
-        return { title: item.attributes.title, sectionSequence: [] };
+        return { title: item.attributes.title, sectionSequence: [], externalSongId, externalArrangementId };
       })
     );
+  }
+
+  /** The base Arrangement's current sequence — used as an undo backup right before overwriting it. */
+  async getArrangementSequence(songId, arrangementId) {
+    const arrangement = await this.#get(`/songs/${songId}/arrangements/${arrangementId}`);
+    return arrangement.data.attributes.sequence ?? [];
+  }
+
+  /**
+   * Overwrites the base Arrangement's sequence in PCO — affects every
+   * future plan that reuses this arrangement, not just the plan the
+   * update was reviewed from. Only ever called from an explicit,
+   * user-confirmed click (Section 8's "push to PCO" button).
+   */
+  async updateArrangementSequence(songId, arrangementId, sequence) {
+    await this.#patch(`/songs/${songId}/arrangements/${arrangementId}`, {
+      data: { type: "Arrangement", id: arrangementId, attributes: { sequence } },
+    });
   }
 
   async getPlannedArrangement(_songId, _serviceDate, songName, planId = null) {

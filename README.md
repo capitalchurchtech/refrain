@@ -2,7 +2,7 @@
 
 Find any slide, in any presentation, in your entire ProPresenter library — not just playlist names — and jump straight to it live. Built for the moment someone starts a song mid-service and nobody's sure which one it is.
 
-![Refrain search screenshot](docs/screenshot-placeholder.png)
+![Refrain search screenshot](docs/screenshot.png)
 
 ## What it does
 
@@ -73,7 +73,7 @@ Refrain only talks to services you explicitly configure — your own ProPresente
 
 Refrain is built to be extended. Church-management integrations, storage backends, lyrics-to-slide splitting logic, and whole new feature modules are all pluggable — see [CONTRIBUTING.md](CONTRIBUTING.md) for worked examples of adding each kind, and [docs/refrain-architecture.md](docs/refrain-architecture.md) for the full architecture.
 
-Stack: Node.js + Express, Tailwind + DaisyUI, Lucide icons. No database anywhere in the stack — plain JSON, in-memory or in Firestore.
+Stack: Node.js + Express, Tailwind + DaisyUI, Lucide icons. No database anywhere in the stack — plain JSON, in-memory, or on whatever storage backend you configure (local folder by default; Firestore and SFTP backends are stubbed out and open for a contributor to finish — see [CONTRIBUTING.md](CONTRIBUTING.md)).
 
 ## Disclaimer
 

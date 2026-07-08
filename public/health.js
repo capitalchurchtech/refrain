@@ -157,6 +157,47 @@ export function initHealth() {
       });
     }
 
+    const arrangementStorageSelect = document.getElementById("config-arrangement-storage");
+    const storagePathWrap = document.getElementById("config-storage-path-wrap");
+    const detectPathBtn = document.getElementById("detect-storage-path-btn");
+    if (arrangementStorageSelect) {
+      arrangementStorageSelect.addEventListener("change", () => {
+        const backend = arrangementStorageSelect.value;
+        storagePathWrap.classList.toggle("hidden", !["local-folder", "synced-folder"].includes(backend));
+        detectPathBtn.classList.toggle("hidden", backend !== "synced-folder");
+      });
+    }
+    if (detectPathBtn) {
+      detectPathBtn.addEventListener("click", async () => {
+        const resultEl = document.getElementById("detect-storage-path-result");
+        detectPathBtn.disabled = true;
+        resultEl.textContent = "Scanning for Google Drive / Dropbox / OneDrive...";
+        try {
+          const { candidates } = await fetch("/api/arrangement/detect-storage-paths").then((r) => r.json());
+          if (!candidates.length) {
+            resultEl.textContent = "Nothing found — make sure the desktop sync app is installed and has synced at least once, or enter the path by hand.";
+            return;
+          }
+          resultEl.innerHTML = candidates
+            .map(
+              (c) =>
+                `<button type="button" class="btn btn-ghost btn-xs detect-path-option" data-path="${escapeHtml(c.path)}">${escapeHtml(c.label)}: ${escapeHtml(c.path)}</button>`
+            )
+            .join("<br>");
+          resultEl.querySelectorAll(".detect-path-option").forEach((btn) => {
+            btn.addEventListener("click", () => {
+              document.getElementById("config-storage-path").value = btn.dataset.path;
+              resultEl.textContent = "";
+            });
+          });
+        } catch (err) {
+          resultEl.textContent = `Scan failed: ${err.message}`;
+        } finally {
+          detectPathBtn.disabled = false;
+        }
+      });
+    }
+
     const saveConfigBtn = document.getElementById("save-config-btn");
     if (saveConfigBtn) {
       saveConfigBtn.addEventListener("click", async () => {
@@ -170,6 +211,7 @@ export function initHealth() {
           arrangementEnabled: document.getElementById("config-arrangement-enabled").checked,
           arrangementProvider: document.getElementById("config-arrangement-provider").value,
           arrangementStorageBackend: document.getElementById("config-arrangement-storage").value,
+          arrangementLocalFolderPath: document.getElementById("config-storage-path").value,
           planningCenterServiceTypeId: document.getElementById("config-planning-center-service-type").value,
         };
 
@@ -363,9 +405,16 @@ function formatDuration(ms) {
   return `${minutes}m ${seconds}s`;
 }
 
+// Accepts either plain id strings (slide splitters — no vendor-friendly
+// name needed) or {id, displayName} pairs (providers/storage backends —
+// see Section 17.2/17.3) so the visible label is never just a raw id.
 function selectOptions(options, current) {
   return options
-    .map((opt) => `<option value="${escapeHtml(opt)}" ${opt === current ? "selected" : ""}>${escapeHtml(opt)}</option>`)
+    .map((opt) => {
+      const id = typeof opt === "string" ? opt : opt.id;
+      const label = typeof opt === "string" ? opt : opt.displayName;
+      return `<option value="${escapeHtml(id)}" ${id === current ? "selected" : ""}>${escapeHtml(label)}</option>`;
+    })
     .join("");
 }
 
@@ -436,7 +485,7 @@ function renderHealth(health, configOptions, versionInfo) {
           ${ARRANGEMENT_STATUS_LABEL[arrangementModule.status]}
         </div>
         <div class="text-sm opacity-70">
-          Provider: ${arrangementModule.provider ?? "manual"} &middot; Storage: ${arrangementModule.storageBackend ?? "—"}
+          Provider: ${escapeHtml(arrangementModule.providerDisplayName ?? "Manual")} &middot; Storage: ${escapeHtml(arrangementModule.storageBackendDisplayName ?? "—")}
         </div>
         ${
           arrangementModule.status === "misconfigured"
@@ -556,6 +605,19 @@ function renderHealth(health, configOptions, versionInfo) {
                 <span class="label-text">Planning Center Service Type ID ${infoIcon("Which Planning Center Services service type to pull plans from (e.g. your main Sunday service). Refrain always uses that service type's most recent already-happened plan — no need to update this weekly. Paste the service type's full URL or just the trailing number (e.g. 574087) — either works.")}</span>
               </div>
               <input id="config-planning-center-service-type" type="text" class="input input-bordered input-sm" placeholder="574087 or https://services.planningcenteronline.com/service_types/574087" value="${escapeHtml(arrangementModule.planningCenterServiceTypeId ?? "")}" />
+            </label>
+          </div>
+
+          <div id="config-storage-path-wrap" class="${["local-folder", "synced-folder"].includes(arrangementModule.storageBackend ?? "local-folder") ? "" : "hidden"}">
+            <label class="form-control w-full max-w-md">
+              <div class="label py-1">
+                <span class="label-text">Folder path ${infoIcon("Where drift-tracking history gets saved on disk. Leave blank for the default (a folder inside this app). For \"synced-folder\", point this at your Google Drive/Dropbox/OneDrive folder so a reader machine sees the same files once it syncs.")}</span>
+              </div>
+              <div class="flex gap-2">
+                <input id="config-storage-path" type="text" class="input input-bordered input-sm flex-1" placeholder="./data/arrangements" value="${escapeHtml(arrangementModule.localFolderPath ?? "")}" />
+                <button type="button" id="detect-storage-path-btn" class="btn btn-outline btn-sm ${arrangementModule.storageBackend === "synced-folder" ? "" : "hidden"}">Auto-detect</button>
+              </div>
+              <div id="detect-storage-path-result" class="text-xs mt-1"></div>
             </label>
           </div>
         </div>

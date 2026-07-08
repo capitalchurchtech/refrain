@@ -1,10 +1,11 @@
 /**
- * Arrangement drift-tracking screen (Section 8). Only meaningfully
- * wired up for the manual provider + local-folder storage pairing so
- * far — planning-center.js/sftp.js are still stubs, so this screen
- * only appears once config.json's arrangementModule is enabled and
- * active (Section 4.1's three-state gate, enforced by nav.js already
- * hiding "off" and the server 409-ing writes when not "active").
+ * Arrangement drift-tracking screen (Section 8). This screen only
+ * appears once config.json's arrangementModule is enabled and active
+ * (Section 4.1's three-state gate, enforced by nav.js already hiding
+ * "off" and the server 409-ing writes when not "active"). The
+ * "weekend plan" one-button workflow further gates on the configured
+ * provider's supportsPlanBrowsing capability — Planning Center has it,
+ * but nothing here hardcodes that it's the only provider that could.
  */
 export function initArrangement() {
   const container = document.getElementById("view-arrangement");
@@ -14,9 +15,14 @@ export function initArrangement() {
   // between two songs before the first detail fetch resolves) — only
   // the fetch matching the most recently requested id is allowed to render.
   let latestRequestedSongId = null;
-  // Which of the last 5 Planning Center plans the weekend-plan card is
-  // showing; null means "let the server pick the most recent."
+  // Which of the last 5 plans the weekend-plan card is showing; null
+  // means "let the server pick the most recent."
   let selectedPlanId = null;
+  // The configured provider's human-readable name (e.g. "Planning
+  // Center") — read from the server instead of hardcoded, so this
+  // screen's copy never assumes which church-management system is
+  // configured.
+  let providerDisplayName = "the church-management system";
 
   async function render() {
     const status = await fetch("/api/arrangement/status").then((r) => r.json());
@@ -33,7 +39,8 @@ export function initArrangement() {
     const { songs } = await fetch("/api/arrangement/songs").then((r) => r.json());
     currentSongs = songs;
 
-    const showWeekendPlan = status.role === "logger" && status.provider === "planning-center";
+    const showWeekendPlan = status.role === "logger" && status.providerSupportsPlanBrowsing;
+    providerDisplayName = status.providerDisplayName || providerDisplayName;
 
     container.innerHTML = `
       <div class="flex flex-col gap-4 max-w-3xl">
@@ -154,14 +161,45 @@ export function initArrangement() {
           ${data.results
             .map((r) => {
               const matches = !r.diff.skipped.length && !r.diff.added.length && !r.diff.reordered.length;
+              const suggestUpdate = (!matches || r.alwaysDiffers) && !r.ignored;
+              const canPush = suggestUpdate && r.externalSongId && r.externalArrangementId;
               return `
-              <div class="text-sm bg-base-100 rounded p-2">
-                <div class="font-medium flex items-center gap-2">
-                  <i data-lucide="${matches ? "check-circle-2" : "alert-triangle"}" class="w-3.5 h-3.5 shrink-0 ${matches ? "text-success" : "text-warning"}"></i>
-                  ${escapeHtml(r.presentationName ?? r.title)}
+              <div class="text-sm bg-base-100 rounded p-2" data-presentation-id="${escapeHtml(r.presentationId ?? "")}" data-service-date="${escapeHtml(data.serviceDate)}">
+                <div class="font-medium flex items-center justify-between gap-2">
+                  <span class="flex items-center gap-2 min-w-0 truncate">
+                    <i data-lucide="${matches ? "check-circle-2" : "alert-triangle"}" class="w-3.5 h-3.5 shrink-0 ${matches ? "text-success" : "text-warning"}"></i>
+                    ${escapeHtml(r.presentationName ?? r.title)}
+                  </span>
+                  <label class="label cursor-pointer gap-1 py-0 shrink-0" title="Always recommend an update for this song, even when it matches">
+                    <span class="label-text text-xs opacity-60">Always differs</span>
+                    <input type="checkbox" class="toggle toggle-xs always-differs-toggle" ${r.alwaysDiffers ? "checked" : ""} />
+                  </label>
                 </div>
                 ${renderSequenceComparison(r.planned, r.actual)}
-                ${matches ? "" : `<div class="text-warning text-xs mt-1">Consider updating the plan to match what was actually played.</div>`}
+                ${
+                  r.ignored
+                    ? `<div class="text-xs opacity-60 mt-1 flex items-center gap-1"><i data-lucide="eye-off" class="w-3 h-3"></i> Ignored — marked as an atypical, non-representative performance.</div>`
+                    : suggestUpdate
+                      ? `<div class="text-warning text-xs mt-1">${r.alwaysDiffers && matches ? "Flagged as always different — review and update the plan." : "Consider updating the plan to match what was actually played."}</div>`
+                      : ""
+                }
+                <div class="flex items-center gap-2 mt-1">
+                  ${
+                    canPush
+                      ? `<button class="btn btn-brand btn-xs push-arrangement-btn" data-external-song-id="${escapeHtml(r.externalSongId)}" data-external-arrangement-id="${escapeHtml(r.externalArrangementId)}" data-sequence="${escapeHtml(JSON.stringify(r.actual))}">
+                          <i data-lucide="upload" class="w-3 h-3"></i> Push to ${escapeHtml(providerDisplayName)}
+                        </button>`
+                      : ""
+                  }
+                  ${
+                    !matches
+                      ? `<button class="btn btn-ghost btn-xs ignore-week-btn">
+                          <i data-lucide="${r.ignored ? "eye" : "eye-off"}" class="w-3 h-3"></i> ${r.ignored ? "Un-ignore" : "Ignore this week"}
+                        </button>`
+                      : ""
+                  }
+                </div>
+                <div class="push-result text-xs mt-1"></div>
               </div>
             `;
             })
@@ -176,6 +214,7 @@ export function initArrangement() {
           }
         </div>
       `;
+      wireCompareAllResultActions(resultsEl);
       if (window.lucide) window.lucide.createIcons();
       // Song-list counts (historyCount/lastServiceDate) are now stale
       // until the next full render() — not worth a rebuild here, since
@@ -187,6 +226,115 @@ export function initArrangement() {
         if (window.lucide) window.lucide.createIcons();
       }
     }
+  }
+
+  /**
+   * Wires up the two actions inside a freshly-rendered compare-all
+   * results list: the "always differs" flag toggle (persisted per
+   * song), and the "push to {provider}" button (an explicit, confirmed write
+   * to the shared base Arrangement, with a one-click undo using the
+   * pre-overwrite sequence the server hands back).
+   */
+  function wireCompareAllResultActions(resultsEl) {
+    resultsEl.querySelectorAll(".always-differs-toggle").forEach((toggle) => {
+      toggle.addEventListener("change", async (e) => {
+        const presentationId = e.target.closest("[data-presentation-id]")?.dataset.presentationId;
+        if (!presentationId) return;
+        const checked = e.target.checked;
+        e.target.disabled = true;
+        try {
+          await fetch(`/api/arrangement/song/${presentationId}/always-differs`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ alwaysDiffers: checked }),
+          });
+        } catch {
+          e.target.checked = !checked;
+        } finally {
+          e.target.disabled = false;
+        }
+      });
+    });
+
+    resultsEl.querySelectorAll(".push-arrangement-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const { externalSongId, externalArrangementId, sequence } = btn.dataset;
+        const parsedSequence = JSON.parse(sequence);
+        const resultEl = btn.closest("[data-presentation-id]").querySelector(".push-result");
+        const confirmed = window.confirm(
+          `Overwrite this song's arrangement in ${providerDisplayName} with:\n\n${parsedSequence.join(", ")}\n\n` +
+            "This updates the shared arrangement — it will affect every future plan that reuses it, not just this one. You can undo immediately after."
+        );
+        if (!confirmed) return;
+
+        btn.disabled = true;
+        btn.textContent = "Pushing...";
+        try {
+          const res = await fetch("/api/arrangement/push-arrangement", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ externalSongId, externalArrangementId, sequence: parsedSequence }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            resultEl.innerHTML = `<span class="text-warning">${escapeHtml(data.error)}</span>`;
+            btn.remove();
+            return;
+          }
+          btn.remove();
+          resultEl.innerHTML = `
+            <span class="text-success"><i data-lucide="check" class="w-3 h-3 inline"></i> Pushed to ${escapeHtml(providerDisplayName)}.</span>
+            <button class="btn btn-ghost btn-xs undo-push-btn">Undo</button>
+          `;
+          if (window.lucide) window.lucide.createIcons();
+          resultEl.querySelector(".undo-push-btn").addEventListener("click", async (e) => {
+            const undoBtn = e.target;
+            undoBtn.disabled = true;
+            undoBtn.textContent = "Undoing...";
+            try {
+              const undoRes = await fetch("/api/arrangement/push-arrangement", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ externalSongId, externalArrangementId, sequence: data.previousSequence }),
+              });
+              const undoData = await undoRes.json();
+              resultEl.innerHTML = undoRes.ok
+                ? `<span class="opacity-60">Reverted.</span>`
+                : `<span class="text-warning">${escapeHtml(undoData.error)}</span>`;
+            } catch (err) {
+              resultEl.innerHTML = `<span class="text-warning">${escapeHtml(err.message)}</span>`;
+            }
+          });
+        } catch (err) {
+          resultEl.innerHTML = `<span class="text-warning">${escapeHtml(err.message)}</span>`;
+          btn.remove();
+        }
+      });
+    });
+
+    resultsEl.querySelectorAll(".ignore-week-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const container = btn.closest("[data-presentation-id]");
+        const { presentationId, serviceDate } = container.dataset;
+        const currentlyIgnored = btn.textContent.includes("Un-ignore");
+        btn.disabled = true;
+        try {
+          const res = await fetch(`/api/arrangement/song/${presentationId}/history/${serviceDate}/ignore`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ignored: !currentlyIgnored }),
+          });
+          if (!res.ok) throw new Error((await res.json()).error);
+          // Simplest correct way to reflect the new ignored state everywhere
+          // it affects (suggestion banner, push button) is to re-run the
+          // whole comparison view — it's already idempotent and cheap.
+          await runWeekendCompare();
+        } catch (err) {
+          btn.disabled = false;
+          alert(`Failed to update: ${err.message}`);
+        }
+      });
+    });
   }
 
   function renderSongList(songs, role) {
@@ -287,11 +435,25 @@ export function initArrangement() {
                         (h) => {
                           const matches = !h.diff.skipped.length && !h.diff.added.length && !h.diff.reordered.length;
                           return `
-                <div class="text-sm bg-base-100 rounded p-2">
-                  <div class="font-medium flex items-center gap-2">
-                    <i data-lucide="${matches ? "check-circle-2" : "alert-triangle"}" class="w-3.5 h-3.5 shrink-0 ${matches ? "text-success" : "text-warning"}"></i>
-                    ${formatCompactDate(h.serviceDate)}
+                <div class="text-sm bg-base-100 rounded p-2 history-entry" data-service-date="${escapeHtml(h.serviceDate)}">
+                  <div class="font-medium flex items-center justify-between gap-2">
+                    <span class="flex items-center gap-2">
+                      <i data-lucide="${matches ? "check-circle-2" : "alert-triangle"}" class="w-3.5 h-3.5 shrink-0 ${matches ? "text-success" : "text-warning"}"></i>
+                      ${formatCompactDate(h.serviceDate)}
+                    </span>
+                    ${
+                      isLogger && !matches
+                        ? `<button class="btn btn-ghost btn-xs history-ignore-btn">
+                            <i data-lucide="${h.ignored ? "eye" : "eye-off"}" class="w-3 h-3"></i> ${h.ignored ? "Un-ignore" : "Ignore"}
+                          </button>`
+                        : ""
+                    }
                   </div>
+                  ${
+                    h.ignored
+                      ? `<div class="text-xs opacity-60 mt-1 flex items-center gap-1"><i data-lucide="eye-off" class="w-3 h-3"></i> Ignored — atypical performance, excluded from suggestions.</div>`
+                      : ""
+                  }
                   ${renderSequenceComparison(h.planned, h.actual)}
                 </div>
               `;
@@ -332,6 +494,26 @@ export function initArrangement() {
       });
 
       document.getElementById("run-comparison-btn").addEventListener("click", () => runComparison(presentationId, false));
+
+      detailEl.querySelectorAll(".history-ignore-btn").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const serviceDate = btn.closest(".history-entry").dataset.serviceDate;
+          const currentlyIgnored = btn.textContent.includes("Un-ignore");
+          btn.disabled = true;
+          try {
+            const res = await fetch(`/api/arrangement/song/${presentationId}/history/${serviceDate}/ignore`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ignored: !currentlyIgnored }),
+            });
+            if (!res.ok) throw new Error((await res.json()).error);
+            await renderDetail(presentationId, role);
+          } catch (err) {
+            btn.disabled = false;
+            alert(`Failed to update: ${err.message}`);
+          }
+        });
+      });
     }
 
     document.getElementById("arrangement-back-btn").addEventListener("click", () => {
