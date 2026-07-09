@@ -110,11 +110,30 @@ It all happens on your machine, and that's the point rather than a technical foo
 
 ## Installing
 
-You need [Node.js](https://nodejs.org) (the LTS version) and ProPresenter with its network API on (Preferences, then Network).
+You need Node.js and ProPresenter with its network API on (Preferences, then Network).
 
-1. Get the code, either way works:
+### Installing Node.js
+
+Get it from [nodejs.org](https://nodejs.org) and pick the **LTS** build, the one the site labels "Recommended for Most Users". LTS stands for long term support, which is the stable line. Don't grab the "Current" build, since that's the bleeding edge and you don't need it.
+
+On a Mac the simplest route is the `.pkg` installer from that page: double click it and click through, no terminal involved. (If the machine already uses Homebrew, `brew install node` works too, but the installer is easier for a shared booth machine.) On Windows, use the `.msi` installer from the same page.
+
+Any LTS release from Node 18 onward works. If you're installing fresh, just take the newest LTS. You can confirm it worked by opening Terminal and running `node -v`.
+
+### Where to put Refrain
+
+Put the folder somewhere stable that belongs to the same user account that runs ProPresenter, so the login item in the next section can start it. A plain folder in your home directory is the easy answer:
+
+- **macOS:** `~/Refrain` (that is, `/Users/<your-account>/Refrain`).
+- **Windows:** `C:\Refrain` or a `Refrain` folder inside your user folder.
+
+Two things to avoid. Don't put it on the Desktop or in Downloads, where it's easy to drag by accident or get swept up in a cleanup. And don't put it inside a synced folder like iCloud Drive, Dropbox, OneDrive, or Google Drive. Refrain writes a lot of small files (the search index and the installed dependencies), and syncing all of that is wasteful and can cause file lock errors. On a Mac, note that if you have iCloud's "Desktop and Documents" syncing turned on, then `~/Documents` counts as synced too, which is another reason the plain `~/Refrain` location is the safe pick.
+
+### Getting the code and starting it
+
+1. Get the code into that folder, either way works:
    - **Git** (recommended, since updating is then one command): `git clone https://github.com/capitalchurchtech/refrain.git`
-   - **ZIP:** on the [GitHub page](https://github.com/capitalchurchtech/refrain), click Code, then Download ZIP, and unzip it.
+   - **ZIP:** on the [GitHub page](https://github.com/capitalchurchtech/refrain), click Code, then Download ZIP, and unzip it into the folder you chose.
 2. Double click `scripts/start.command` on a Mac or `scripts/start.bat` on Windows. From a terminal it's `npm install && npm start`.
 3. A setup screen opens in your browser. Point it at ProPresenter's host and port, click Test Connection, and you're in.
 
