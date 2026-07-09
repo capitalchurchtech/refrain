@@ -30,8 +30,14 @@
     "inputFolder": null,
     "outputFolder": null,
     "presets": [
-      { "name": "16:9 1080p", "width": 1920, "height": 1080 },
-      { "name": "1:1 900x900", "width": 900, "height": 900 }
+      { "name": "4K UHD (16:9)", "width": 3840, "height": 2160, "abbr": "4k" },
+      { "name": "1440p / 2.5K (16:9)", "width": 2560, "height": 1440, "abbr": "2-5k" },
+      { "name": "1080p (16:9)", "width": 1920, "height": 1080, "abbr": "hd" },
+      { "name": "YouTube thumbnail", "width": 1280, "height": 720, "abbr": "yt" },
+      { "name": "OG / Facebook share", "width": 1200, "height": 630, "abbr": "og" },
+      { "name": "Instagram square (1:1)", "width": 1080, "height": 1080, "abbr": "in_sq" },
+      { "name": "Instagram portrait (4:5)", "width": 1080, "height": 1350, "abbr": "in_pt" },
+      { "name": "Instagram story / Reels (9:16)", "width": 1080, "height": 1920, "abbr": "in_st" }
     ]
   }
 }

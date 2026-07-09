@@ -35,7 +35,8 @@ import {
 } from "./search-index.js";
 import { discoverModules, discoverSlideSplitters, discoverProviders, discoverStorageBackends } from "./plugin-loader.js";
 import { runComparison, suggestMapping, getPendingUploadCount, retryPendingUploads } from "./arrangement-diff.js";
-import { startWatcher as startImageCropWatcher, getImageCropStatus } from "./image-crop.js";
+import { startWatcher as startImageCropWatcher, getImageCropStatus, foldersOverlap, websafeToken } from "./image-crop.js";
+import { generateQr } from "./qr-code.js";
 import { normalizeSongTitle } from "../providers/planning-center.js";
 
 const { version } = JSON.parse(readFileSync("./package.json", "utf-8"));
@@ -111,12 +112,14 @@ app.get("/api/modules", async (_req, res) => {
       navLabel: m.navLabel,
       icon: m.icon,
       route: m.route,
-      enabled:
-        m.id === "arrangement"
-          ? getArrangementModuleStatus(config) !== "off"
-          : m.id === "image-crop"
-            ? getImageCropModuleStatus(config) !== "off"
-            : m.enabledByDefault,
+      // "enabled" here means "show in the nav," not "the feature is running."
+      // The arrangement module is gated (hidden until configured, per its
+      // three-state status) because it needs real setup — credentials, a
+      // storage backend, a role. Image-crop needs none of that: it's a
+      // self-contained local utility with its own on/off toggle on its own
+      // screen, so it's always navigable (you flip it on from inside),
+      // matching how Search/Lyrics are always present.
+      enabled: m.id === "arrangement" ? getArrangementModuleStatus(config) !== "off" : m.enabledByDefault,
     })),
   });
 });
@@ -1101,57 +1104,125 @@ app.post("/api/arrangement/compare", async (req, res) => {
 
 // --- Image Crop module (watched-folder smart cropping) ---
 
-const DEFAULT_IMAGE_CROP_PRESETS = [
-  { name: "16:9 1080p", width: 1920, height: 1080 },
-  { name: "1:1 900x900", width: 900, height: 900 },
+// The full menu of known standard sizes, offered in the UI's "add a
+// common size" picker so a volunteer never has to look up pixel
+// dimensions. `seed: true` ones are what a fresh install starts with —
+// a generous "drop once, get everything" spread across video, social
+// link previews, and the main Instagram shapes. The rest are one click
+// away from the picker. Dimensions are the current widely-cited
+// standards (2024-era); all within MAX_PRESET_DIMENSION.
+// `abbr` is the compact filename suffix (output is `photo_<abbr>.jpg`) —
+// short and websafe so a folder of results is easy to scan. `_` separates
+// parts, `-` stays inside a token (16-9, 2-5k). Custom presets with no
+// abbr fall back to a websafe form of their name.
+const PRESET_CATALOG = [
+  { name: "4K UHD (16:9)", width: 3840, height: 2160, abbr: "4k", seed: true },
+  { name: "1440p / 2.5K (16:9)", width: 2560, height: 1440, abbr: "2-5k", seed: true },
+  { name: "1080p (16:9)", width: 1920, height: 1080, abbr: "hd", seed: true },
+  { name: "YouTube thumbnail", width: 1280, height: 720, abbr: "yt", seed: true },
+  { name: "OG / Facebook share", width: 1200, height: 630, abbr: "og", seed: true },
+  { name: "Instagram square (1:1)", width: 1080, height: 1080, abbr: "in_sq", seed: true },
+  { name: "Instagram portrait (4:5)", width: 1080, height: 1350, abbr: "in_pt", seed: true },
+  { name: "Instagram story / Reels (9:16)", width: 1080, height: 1920, abbr: "in_st", seed: true },
+  { name: "X / Twitter share (16:9)", width: 1200, height: 675, abbr: "x", seed: false },
+  { name: "X / Twitter header", width: 1500, height: 500, abbr: "x_hdr", seed: false },
+  { name: "LinkedIn share", width: 1200, height: 627, abbr: "li", seed: false },
+  { name: "Pinterest pin (2:3)", width: 1000, height: 1500, abbr: "pin", seed: false },
+  { name: "Facebook cover", width: 820, height: 312, abbr: "fb_cov", seed: false },
+  { name: "Ultrawide banner (21:9)", width: 2560, height: 1080, abbr: "uw", seed: false },
 ];
+
+const stripSeedFlag = ({ name, width, height, abbr }) => ({ name, width, height, abbr });
+const DEFAULT_IMAGE_CROP_PRESETS = PRESET_CATALOG.filter((p) => p.seed).map(stripSeedFlag);
+
+// Beyond ~8K per side a single output is hundreds of MB uncompressed —
+// a fat-fingered "10000" shouldn't be able to OOM the box. Comfortably
+// clears any real slide/social target.
+const MAX_PRESET_DIMENSION = 8000;
+const MAX_PRESETS = 25;
 
 app.get("/api/image-crop/status", (_req, res) => {
   res.json({
     status: getImageCropModuleStatus(config),
     config: config.imageCropModule ?? null,
+    catalog: PRESET_CATALOG.map(stripSeedFlag), // for the UI's "add a common size" picker
     ...getImageCropStatus(),
   });
 });
 
 app.post("/api/image-crop/config", async (req, res) => {
-  const { enabled, inputFolder, outputFolder, presets } = req.body ?? {};
-  const newConfig = { ...config, imageCropModule: { ...config.imageCropModule } };
+  try {
+    const { enabled, inputFolder, outputFolder, presets } = req.body ?? {};
+    const newConfig = { ...config, imageCropModule: { ...config.imageCropModule } };
 
-  if (enabled !== undefined) newConfig.imageCropModule.enabled = Boolean(enabled);
-  if (inputFolder !== undefined) {
-    if (typeof inputFolder !== "string") return res.status(400).json({ error: "inputFolder must be a string" });
-    newConfig.imageCropModule.inputFolder = inputFolder.trim() || null;
-  }
-  if (outputFolder !== undefined) {
-    if (typeof outputFolder !== "string") return res.status(400).json({ error: "outputFolder must be a string" });
-    newConfig.imageCropModule.outputFolder = outputFolder.trim() || null;
-  }
-  if (presets !== undefined) {
-    if (
-      !Array.isArray(presets) ||
-      !presets.every((p) => p && typeof p.name === "string" && p.name.trim() && Number.isInteger(p.width) && Number.isInteger(p.height) && p.width > 0 && p.height > 0)
-    ) {
-      return res.status(400).json({ error: "presets must be a non-empty array of { name, width, height } with positive integer dimensions" });
+    if (enabled !== undefined) newConfig.imageCropModule.enabled = Boolean(enabled);
+    if (inputFolder !== undefined) {
+      if (typeof inputFolder !== "string") return res.status(400).json({ error: "inputFolder must be a string" });
+      newConfig.imageCropModule.inputFolder = inputFolder.trim() || null;
     }
-    newConfig.imageCropModule.presets = presets;
-  }
-
-  // First time this module is turned on with no folders configured yet,
-  // default to a zero-setup location inside the app's own data folder —
-  // "drop a file in, it works" shouldn't require picking a path first.
-  if (newConfig.imageCropModule.enabled) {
-    newConfig.imageCropModule.inputFolder ??= "./data/image-crop/input";
-    newConfig.imageCropModule.outputFolder ??= "./data/image-crop/output";
-    if (!newConfig.imageCropModule.presets?.length) {
-      newConfig.imageCropModule.presets = DEFAULT_IMAGE_CROP_PRESETS;
+    if (outputFolder !== undefined) {
+      if (typeof outputFolder !== "string") return res.status(400).json({ error: "outputFolder must be a string" });
+      newConfig.imageCropModule.outputFolder = outputFolder.trim() || null;
     }
-  }
+    if (presets !== undefined) {
+      if (!Array.isArray(presets) || presets.length === 0) {
+        return res.status(400).json({ error: "presets must be a non-empty array" });
+      }
+      if (presets.length > MAX_PRESETS) {
+        return res.status(400).json({ error: `At most ${MAX_PRESETS} presets.` });
+      }
+      const validPreset = (p) =>
+        p &&
+        typeof p.name === "string" &&
+        p.name.trim() &&
+        (p.abbr === undefined || p.abbr === null || typeof p.abbr === "string") &&
+        Number.isInteger(p.width) &&
+        Number.isInteger(p.height) &&
+        p.width > 0 &&
+        p.height > 0 &&
+        p.width <= MAX_PRESET_DIMENSION &&
+        p.height <= MAX_PRESET_DIMENSION;
+      if (!presets.every(validPreset)) {
+        return res.status(400).json({
+          error: `Each preset needs a name and positive integer width/height no larger than ${MAX_PRESET_DIMENSION}px.`,
+        });
+      }
+      // Sanitize any provided abbr through the same websafe rule the
+      // cropper uses, so a hand-edited/hostile value can't reach a filename raw.
+      newConfig.imageCropModule.presets = presets.map((p) => {
+        const preset = { name: p.name.trim(), width: p.width, height: p.height };
+        const abbr = p.abbr ? websafeToken(p.abbr) : "";
+        if (abbr) preset.abbr = abbr;
+        return preset;
+      });
+    }
 
-  config = newConfig;
-  await saveConfig(config);
-  await startImageCropWatcher(getImageCropModuleStatus(config) === "active" ? config.imageCropModule : null);
-  res.json({ ok: true, config: config.imageCropModule });
+    // First time this module is turned on with no folders configured yet,
+    // default to a zero-setup location inside the app's own data folder —
+    // "drop a file in, it works" shouldn't require picking a path first.
+    if (newConfig.imageCropModule.enabled) {
+      newConfig.imageCropModule.inputFolder ??= "./data/image-crop/input";
+      newConfig.imageCropModule.outputFolder ??= "./data/image-crop/output";
+      if (!newConfig.imageCropModule.presets?.length) {
+        newConfig.imageCropModule.presets = DEFAULT_IMAGE_CROP_PRESETS;
+      }
+      if (foldersOverlap(newConfig.imageCropModule.inputFolder, newConfig.imageCropModule.outputFolder)) {
+        return res.status(400).json({
+          error: "Input and output folders can't be the same folder or nested inside one another — cropped outputs would be re-cropped in an endless loop.",
+        });
+      }
+    }
+
+    // Start the watcher against the *candidate* config before persisting,
+    // so a bad path (permission denied, etc.) surfaces as a 400 the user
+    // sees instead of leaving a broken enabled=true saved to disk.
+    await startImageCropWatcher(getImageCropModuleStatus(newConfig) === "active" ? newConfig.imageCropModule : null);
+    config = newConfig;
+    await saveConfig(config);
+    res.json({ ok: true, config: config.imageCropModule });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 app.post("/api/image-crop/open-folder", async (req, res) => {
@@ -1175,6 +1246,18 @@ app.post("/api/image-crop/open-folder", async (req, res) => {
     if (err) return res.status(500).json({ error: `Failed to open folder: ${err.message}` });
     res.json({ ok: true });
   });
+});
+
+// --- QR Codes module (fully local generation) ---
+
+app.post("/api/qr/generate", async (req, res) => {
+  try {
+    const result = await generateQr(req.body ?? {});
+    res.json(result);
+  } catch (err) {
+    // validateQrOptions throws user-facing messages; anything else is a 500.
+    res.status(400).json({ error: err.message });
+  }
 });
 
 // --- First-run setup (Section 6) ---

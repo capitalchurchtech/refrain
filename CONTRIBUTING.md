@@ -1,19 +1,19 @@
 # Contributing to Refrain
 
-Thanks for considering a contribution. Refrain is built so that most extension points don't require touching core code — you add one file in the right folder, following a small interface, and it's picked up automatically at startup. This doc covers the four most common kinds of contribution.
+Thanks for thinking about contributing. Most of the ways you'd want to extend Refrain don't need you to touch the core at all. You add one file (or a small folder) that follows a short interface, and the app picks it up when it starts. This doc covers the common kinds of contribution and the rules that keep the project honest.
 
-Before diving in, skim `docs/refrain-architecture.md` — specifically Section 17.11 (extensibility) — for the reasoning behind what's pluggable and what deliberately isn't.
+If an AI coding agent is writing or helping write your change, read [CLAUDE.md](CLAUDE.md) first. It covers this same ground plus the specific mistakes this codebase has already had to fix, like vendor names leaking into shared code.
 
 ## Ground rules
 
-- Open an issue before a large PR, so we can agree on approach first.
-- Keep the core (`server/propresenter-client.js`, `server/search-index.js`) dependency-free of anything church-management or storage-backend specific. Core search must always work with zero external dependencies beyond ProPresenter.
-- No telemetry, analytics, or phone-home of any kind. This is a hard rule, not a preference — see the README's privacy section.
-- New dependencies should have a real reason. Prefer plain Node/fetch over adding a package where reasonable.
+- Open an issue before a big pull request so we can agree on the approach first.
+- Keep the core (`server/propresenter-client.js`, `server/search-index.js`, and the search and lyrics screens) free of anything specific to a church management system or a storage backend. Search has to keep working with nothing but ProPresenter.
+- No telemetry, analytics, or phoning home of any kind. This is a hard rule, not a preference. See the privacy section of the README.
+- A new dependency needs a real reason. Prefer plain Node and `fetch` over pulling in a package where that's reasonable.
 
-## Adding a new church-management provider
+## Adding a church management provider
 
-Providers live in `providers/` and answer one question: given a song and a service date, what did the church-management system plan for its arrangement?
+Providers live in `providers/`. A provider answers one question: for a given song and service date, what arrangement did the church management system plan?
 
 ```js
 // providers/base.js
@@ -26,24 +26,22 @@ class ArrangementProvider {
 }
 ```
 
-1. Create `providers/your-system-name.js`, extend `ArrangementProvider`, implement both methods.
-2. Export a `providerId` (e.g. `"rock-rms"`) — this is the string users will set as `arrangementModule.provider` in `config.json`.
-3. Document any required `.env` variables in a comment block at the top of the file, and add them (blank) to `.env.example`.
-4. That's it — no central registry file to edit. The app scans `providers/` at startup and picks up anything matching the interface.
+1. Make `providers/your-system.js`, extend `ArrangementProvider`, and implement both methods.
+2. Set a `providerId` (for example `"rock-rms"`). That's the string a user puts in `config.json` under `arrangementModule.provider`.
+3. Document any `.env` variables you need in a comment at the top of the file, and add them, blank, to `.env.example`.
+4. That's it. There's no central list to edit. The app scans `providers/` on startup and registers anything that matches the interface.
 
-`providers/manual.js` is a good reference for the simplest possible implementation (no API call at all — just lets the user type in the arrangement).
+Optional capabilities, which you only implement if they apply, and which you flag with a static property so the UI knows to offer them (nothing in the UI ever hardcodes a vendor name):
 
-**Optional capabilities** — implement only if they apply to your system, and declare the matching static flag so the UI knows to offer them (it never hardcodes a vendor name or assumes every provider has these):
+- `static displayName` gives a readable name for UI text, like "Push to Planning Center" or the provider picker. It defaults to a title cased version of `providerId`, so it's optional.
+- `static supportsPlanBrowsing = true` plus `getRecentPlans(count)` if your system has a "plan" concept (a named, dated set of songs for a service) that can be listed. This drives the "this weekend" one button workflow.
+- `static supportsPush = true` plus `getArrangementSequence(...)` and `updateArrangementSequence(...)` if your system can accept a corrected arrangement back. This drives the "push to (provider)" button, which only ever fires from an explicit confirmation, never on its own.
 
-- `static displayName` — a human-readable name for UI copy ("Push to {displayName}", the provider picker). Defaults to a title-cased `providerId` if you don't set it, so this is optional.
-- `static supportsPlanBrowsing = true` + `getRecentPlans(count)` — if your system has a "plan" concept (a named, dated set of songs for a service) that can be listed, this powers the "this weekend's plan" one-button workflow.
-- `static supportsPush = true` + `getArrangementSequence(songId, arrangementId)` and `updateArrangementSequence(songId, arrangementId, sequence)` — if your system supports writing an updated arrangement back, this powers the "push to {provider}" button (always behind an explicit user confirmation — never automatic).
+`providers/planning-center.js` implements all of these and is the reference. `providers/manual.js` is the opposite end: no API at all, the user just types the arrangement in, which is the option for a church with no church management software.
 
-`providers/planning-center.js` implements both.
+## Adding a storage backend
 
-## Adding a new storage backend
-
-Storage backends live in `storage/` and answer: where do the per-song arrangement history files live, and how do we read/write them?
+Storage backends live in `storage/`. A backend answers: where do the per song arrangement history files live, and how do we read and write them?
 
 ```js
 // storage/base.js
@@ -54,31 +52,31 @@ class StorageBackend {
 }
 ```
 
-1. Create `storage/your-backend-name.js`, extend `StorageBackend`, implement all three methods.
-2. Export a `backendId` string, used as `arrangementModule.storageBackend` in `config.json`.
-3. Optionally set `static displayName` (a human-readable name for the backend picker and health screen) — defaults to a title-cased `backendId` if omitted; override it for anything with unusual capitalization (`storage/sftp.js` sets `"SFTP"`, since the default would produce `"Sftp"`).
-4. Document required `.env` variables (if any) the same way as above.
-5. If your backend needs credentials only for writers (not readers), say so clearly in your file's comments — this matters for the "reader machines need zero setup" goal (see `storage/firestore.js` for the reference pattern: readers need only a public project ID, writers need a service account key).
+1. Make `storage/your-backend.js`, extend `StorageBackend`, implement all three methods.
+2. Set a `backendId`, used in `config.json` under `arrangementModule.storageBackend`.
+3. Optionally set `static displayName` for the picker and health screen. It defaults to a title cased `backendId`, so set it only when that would look wrong. `storage/sftp.js` sets `"SFTP"` because the default would give "Sftp".
+4. Document any `.env` variables the same way as for providers.
+5. If your backend needs credentials only for the machine that writes and not for the ones that read, say so clearly in your comments. That matters for the goal that reader machines need no setup. `storage/firestore.js` is the reference for that pattern.
 
-`storage/firestore.js` and `storage/sftp.js` are currently stubs (interface implemented, methods throw `"Not implemented"`) — good starting points if you want to pick one up.
+`storage/firestore.js` and `storage/sftp.js` are stubs right now: the interface is there, the methods throw. Both are good things to pick up if you want cross machine sharing without a synced folder.
 
-## Adding a new slide splitter
+## Adding a lyrics splitter
 
-Slide splitters live in `slide-splitters/` and turn pasted lyrics text into an array of slide-sized chunks. Churches vary on formatting conventions (one line per slide, stanza grouping, fixed line counts) — this is a genuine point of variation worth supporting.
+Splitters live in `slide-splitters/`. A splitter turns pasted lyrics into an array of slide sized chunks. Churches format differently (one line per slide, grouped by stanza, a fixed line count), so this is a genuine point of variation.
 
 ```js
 // slide-splitters/base.js
 class SlideSplitter {
   split(pastedText) { throw new Error("Not implemented"); }
-  // returns: string[] — one entry per resulting slide
+  // returns: string[], one entry per slide
 }
 ```
 
-Create `slide-splitters/your-splitter-name.js`, extend `SlideSplitter`, implement `split()`. See `slide-splitters/blank-line-delimited.js` for the reference implementation.
+Make `slide-splitters/your-splitter.js`, extend `SlideSplitter`, implement `split()`. See `slide-splitters/blank-line-delimited.js` for the reference.
 
-## Adding a whole new feature module
+## Adding a whole new feature
 
-Modules live in `modules/` and are how new nav-level features get added without touching router/nav code.
+Modules live in `modules/`. This is how a new nav level feature gets added without touching the router or the nav code.
 
 ```js
 // modules/your-feature/module.js
@@ -87,27 +85,30 @@ export default {
   navLabel: "Your Feature",
   icon: "your-lucide-icon-name",
   route: "/your-feature",
-  component: YourFeatureScreen,
-  enabledByDefault: false
+  component: null,
+  enabledByDefault: false,
 };
 ```
 
-This is the right shape for something genuinely new — not a provider, not a storage backend, not a splitter, but a whole new thing Refrain doesn't do yet (a slide-transition checker, whatever else another church finds useful). Self-contained folder, no core files touched.
+This is the right shape for something genuinely new, not a provider or a backend or a splitter, but a whole new thing Refrain doesn't do yet. Self contained folder, no core files touched.
 
-`modules/image-crop/` (paired with `server/image-crop.js` and `public/image-crop.js`) is a real, shipped example of this pattern — a watched-folder smart-image-cropper, unrelated to anything else in the app, added the same way a community contribution would be. Worth reading as a template: it owns its own config, its own screen, and its own `/api/image-crop/*` routes, and nothing in core had to change to add it.
+Two shipped modules are worth reading as templates, both added exactly the way a contribution would be, with nothing in core special cased for them:
 
-## What we won't add as a plugin, and why
+- `modules/image-crop/` (with `server/image-crop.js` and `public/image-crop.js`) is a watched folder image cropper. It owns its own saved config, its own screen, and its own `/api/image-crop/*` routes. Read it when your feature has real setup state.
+- `modules/qr-code/` (with `server/qr-code.js` and `public/qr-code.js`) is a fully local QR generator. It's the simplest possible module: no saved config, one stateless route, always available. Read it when your feature is a pure tool.
 
-- **The ProPresenter integration itself.** It's the product, not a swappable data source.
-- **The core slide-text search algorithm.** No real variation between churches here — if fuzzy/semantic search is ever wanted, build it as a direct upgrade, not a plugin slot.
-- **The lyrics site list.** It's a plain config array, not a class — there's no differing behavior per site, just a different domain string.
+## What we won't make a plugin, and why
 
-If you're not sure whether something belongs as a plugin or in core, open an issue and ask before building it — happy to talk it through.
+- **The ProPresenter integration itself.** It's the product, not a swappable data source. There's no second thing that would sensibly plug in instead.
+- **The core slide text search.** It's simple and central, and it doesn't vary from church to church. If fuzzy or semantic search is ever wanted, that's a direct upgrade to build, not a slot to leave open now.
+- **The lyrics site list.** It's a plain array in config. There's no differing behavior per site, just a different domain, so a class based plugin would be over engineering a list of strings.
+
+If you're not sure whether something belongs in core or as a plugin, open an issue and ask before you build it. Happy to think it through with you.
 
 ## Code style
 
-Nothing elaborate — match what's already there, keep functions small, prefer plain `async`/`await` over callback chains. CI runs lint on every PR.
+Nothing elaborate. Match what's already there, keep functions small, prefer plain `async`/`await`. CI runs the linter on every pull request, so run `npm run lint` before you push.
 
 ## Security issues
 
-Please don't file security issues as public GitHub issues — see [SECURITY.md](SECURITY.md).
+Please don't file security issues as public GitHub issues. See [SECURITY.md](SECURITY.md).

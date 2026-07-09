@@ -86,7 +86,7 @@ export async function initNav({ onNavigate, viewIds }) {
       .map(
         (item) => `
       <button
-        class="nav-item btn btn-ghost btn-sm justify-start gap-3 px-2 ${item.id === activeId ? "btn-active" : ""}"
+        class="nav-item btn btn-ghost btn-sm justify-start gap-3 px-2 relative ${item.id === activeId ? "btn-active" : ""}"
         data-id="${item.id}"
         title="${item.navLabel}"
       >
@@ -101,7 +101,35 @@ export async function initNav({ onNavigate, viewIds }) {
       btn.addEventListener("click", () => setActive(btn.dataset.id));
     });
 
+    applyImageCropDot(); // re-apply after every rebuild (innerHTML reset wipes it)
     if (window.lucide) window.lucide.createIcons();
+  }
+
+  // A small live dot on the Image Crop nav item while its watcher is
+  // running, so you can trust it's active at a glance without opening
+  // the screen (the whole point of the module is not having to).
+  let imageCropWatching = false;
+  function applyImageCropDot() {
+    const btn = navItemsEl.querySelector('[data-id="image-crop"]');
+    if (!btn) return;
+    let dot = btn.querySelector(".watching-dot");
+    if (imageCropWatching && !dot) {
+      dot = document.createElement("span");
+      dot.className = "watching-dot absolute top-1 right-1 w-2 h-2 rounded-full bg-success";
+      dot.title = "Watching for images";
+      btn.appendChild(dot);
+    } else if (!imageCropWatching && dot) {
+      dot.remove();
+    }
+  }
+  async function pollImageCropDot() {
+    try {
+      const s = await fetch("/api/image-crop/status").then((r) => r.json());
+      imageCropWatching = Boolean(s.watching);
+    } catch {
+      imageCropWatching = false;
+    }
+    applyImageCropDot();
   }
 
   function setActive(id) {
@@ -177,4 +205,12 @@ export async function initNav({ onNavigate, viewIds }) {
   applyPinnedState();
   applyThemeUI();
   onNavigate(activeId);
+
+  // Reflect the image-crop watcher's live state in the nav. Polled (not
+  // pushed) — cheap on localhost, and the watcher can start/stop from
+  // its own screen or at boot, so the nav needs to notice either way.
+  if (navItemsEl.querySelector('[data-id="image-crop"]')) {
+    pollImageCropDot();
+    setInterval(pollImageCropDot, 8000);
+  }
 }

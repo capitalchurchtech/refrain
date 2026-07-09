@@ -4,6 +4,7 @@ import { initHealth } from "./health.js";
 import { initLyricsAssist } from "./lyrics-assist.js";
 import { initArrangement } from "./arrangement.js";
 import { initImageCrop } from "./image-crop.js";
+import { initQrCode } from "./qr-code.js";
 import { initNav, applyTheme } from "./nav.js";
 
 const viewSetup = document.getElementById("view-setup");
@@ -15,6 +16,7 @@ const views = {
   "lyrics-assist": document.getElementById("view-lyrics-assist"),
   arrangement: document.getElementById("view-arrangement"),
   "image-crop": document.getElementById("view-image-crop"),
+  "qr-code": document.getElementById("view-qr-code"),
 };
 
 async function boot() {
@@ -47,16 +49,18 @@ function startApp() {
   const lyricsAssist = initLyricsAssist();
   const arrangement = initArrangement();
   const imageCrop = initImageCrop();
+  const qrCode = initQrCode();
 
   const renderers = {
     health: health.render,
     "lyrics-assist": lyricsAssist.render,
     arrangement: arrangement.render,
     "image-crop": imageCrop.render,
+    "qr-code": qrCode.render,
   };
 
   initNav({
-    viewIds: new Set(["search", "lyrics-assist", "arrangement", "image-crop"]),
+    viewIds: new Set(["search", "lyrics-assist", "arrangement", "image-crop", "qr-code"]),
     onNavigate: (id) => {
       for (const [viewId, el] of Object.entries(views)) {
         el.classList.toggle("hidden", viewId !== id);

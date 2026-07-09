@@ -23,4 +23,4 @@ labels: bug
 - Which storage backend / provider, if relevant:
 
 **Logs or screenshots**
-(Please don't paste your `.env` contents — redact any credentials first.)
+(Please don't paste your `.env` contents. Redact any credentials first.)
