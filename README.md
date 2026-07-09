@@ -129,6 +129,8 @@ Put the folder somewhere stable that belongs to the same user account that runs 
 
 Two things to avoid. Don't put it on the Desktop or in Downloads, where it's easy to drag by accident or get swept up in a cleanup. And don't put it inside a synced folder like iCloud Drive, Dropbox, OneDrive, or Google Drive. Refrain writes a lot of small files (the search index and the installed dependencies), and syncing all of that is wasteful and can cause file lock errors. On a Mac, note that if you have iCloud's "Desktop and Documents" syncing turned on, then `~/Documents` counts as synced too, which is another reason the plain `~/Refrain` location is the safe pick.
 
+**On a machine with several user accounts:** Refrain saves its settings, index, and dependencies inside its own folder, so the folder has to be writable by whoever runs it and reachable by the account that runs ProPresenter. If only one account operates the booth, the `~/Refrain` above is still the simplest choice. If several accounts run ProPresenter on the same machine and all want Refrain, install it once in a shared spot instead: on macOS that's `/Users/Shared/Refrain`, which every account can read and write. One shared install means one set of settings, which is what you want anyway since it's one machine and one ProPresenter. Each account that should start it on login adds its own Login Item pointing at `/Users/Shared/Refrain/scripts/start.command`. Only one copy should run at a time (it uses a local port), which is normally fine since one account is active at the booth at once. Skip `/Applications` here: it needs admin rights to write to, and Refrain needs to write into its own folder.
+
 ### Getting the code and starting it
 
 1. Get the code into that folder, either way works:
