@@ -141,6 +141,8 @@ Two things to avoid. Don't put it on the Desktop or in Downloads, where it's eas
 
 If you use the launcher script you don't need to touch a terminal. It installs dependencies on the first run for you.
 
+**Do you need Git?** Only if you choose the Git option above. The ZIP download needs no Git, and nothing else does either: the launcher only runs Node, and the dependencies all come from the npm registry. The upside of Git is that updates become a single `git pull` instead of re-downloading and copying files by hand, which is worth it on a machine you'll update now and then. To install it: on macOS, type `git --version` in Terminal and, if it's missing, accept the Command Line Tools prompt that appears (you don't need full Xcode), or run `xcode-select --install` to trigger it directly. On Windows, use the installer from [git-scm.com](https://git-scm.com/download/win) with its defaults.
+
 ## Updating
 
 Your real settings (`config.json`) and secrets (`.env`) live only on your machine. Git never tracks them and a ZIP download never contains them, so an update leaves them alone.
