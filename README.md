@@ -143,6 +143,20 @@ If you use the launcher script you don't need to touch a terminal. It installs d
 
 **Do you need Git?** Only if you choose the Git option above. The ZIP download needs no Git, and nothing else does either: the launcher only runs Node, and the dependencies all come from the npm registry. The upside of Git is that updates become a single `git pull` instead of re-downloading and copying files by hand, which is worth it on a machine you'll update now and then. To install it: on macOS, type `git --version` in Terminal and, if it's missing, accept the Command Line Tools prompt that appears (you don't need full Xcode), or run `xcode-select --install` to trigger it directly. On Windows, use the installer from [git-scm.com](https://git-scm.com/download/win) with its defaults.
 
+### Starting it automatically on reboot
+
+There are two different things here, and they need different setups.
+
+For an easy way to start Refrain by hand, make an alias of the launcher: right click `scripts/start.command`, choose Make Alias, and drop the alias on the Desktop, in the Dock (the right side, near the Trash), or in the Finder sidebar. That's a one click manual start. It does nothing on its own after a reboot, though, since nobody is there to click it.
+
+For it to come back on its own after a reboot, add a Login Item. On macOS: System Settings, then General, then Login Items, then add `scripts/start.command` (or the shared path, `/Users/Shared/Refrain/scripts/start.command`). It now starts whenever that account logs in. The one catch is that Login Items run at login, not at boot, so after a restart Refrain only comes back once someone logs into that account. On a booth machine that should recover by itself after a power blip or an update, also turn on automatic login for the booth account (System Settings, Users & Groups, "Automatically log in as"). Then a reboot leads to auto login, the Login Item fires, and Refrain is back with no one touching it.
+
+Two notes. The launcher opens a Terminal window and leaves it open because the server runs inside it, which is expected, so just leave it alone. And on a machine with several accounts, the Login Item is per account, so set it up on whichever account runs the booth.
+
+If you'd rather run it with no visible Terminal window and have it restart itself if it ever crashes, that's a `launchd` LaunchAgent, which is more setup than most booth machines need. It's a fine option if you want it, just not the default path here.
+
+On Windows the equivalent is a shortcut to `scripts/start.bat` placed in the Startup folder (press Win+R, type `shell:startup`, and drop the shortcut there).
+
 ## Updating
 
 Your real settings (`config.json`) and secrets (`.env`) live only on your machine. Git never tracks them and a ZIP download never contains them, so an update leaves them alone.
