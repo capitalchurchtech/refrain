@@ -70,6 +70,19 @@ If your library runs to hundreds of presentations or playlists, a full index bui
 
 Set `folders` to `null` to index every library folder. Set `crawlPlaylists` to `true` to also record which playlist each presentation belongs to, which is the slowest part of a build, so it's off by default. Search still covers every presentation in the chosen folders either way.
 
+### Seeing what a pastor changed
+
+A common headache: someone says "I made an update" to a sermon-notes presentation that runs many pages, and you need to find what actually changed. Search gets you to a slide by its text, but it doesn't compare two versions of a document. For that, a diff tool is the right companion. Put the old and new text side by side and it highlights exactly what moved, got added, or got cut.
+
+Keep sermon content on your own machine and use a tool that runs locally rather than a website you paste into (that would send the text off your network, which is the thing this whole project avoids):
+
+- **VS Code** (free, Mac/Windows/Linux): open both files, right click one and pick "Select for Compare", then right click the other and pick "Compare with Selected".
+- **Meld** (free, open source) or **WinMerge** (free, Windows only): purpose-built visual diff tools.
+- **Beyond Compare** or **Kaleidoscope** (paid): polished options a lot of people like.
+- Already in your tools: **Word** has Review, then Compare for two `.docx` files, and macOS ships `diff` in Terminal and FileMerge with Xcode's command line tools.
+
+If the notes live somewhere with version history already (Google Docs, a Word file on OneDrive, anything under Git), its built-in "see version history" or "compare" is usually the fastest path of all.
+
 ## Image cropping
 
 Turn it on from the **Image Crop** screen. There's nothing to edit in a config file. The first time you enable it, Refrain makes an input and output folder for you. Drop a picture in the input folder and a few seconds later you'll have one cropped copy per preset in the output folder. The original isn't deleted: it moves into a `processed` subfolder inside the **output** folder, so your input folder stays empty like a proper drop box and everything you'd look at (the crops and the untouched original) is in one place.
