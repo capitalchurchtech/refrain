@@ -153,9 +153,15 @@ For it to come back on its own after a reboot, add a Login Item. On macOS: Syste
 
 Two notes. The launcher opens a Terminal window and the server runs inside it, so don't close that window: closing it (or quitting Terminal) stops Refrain, and macOS will usually warn you first with a "terminate running processes" prompt. To get it out of the way without stopping it, minimize the window (Cmd+M) or hide the app (Cmd+H). And on a machine with several accounts, the Login Item is per account, so set it up on whichever account runs the booth.
 
-If you'd rather run it with no Terminal window at all, so there's nothing to keep open or close by accident, and have it restart itself if it ever crashes, that's a `launchd` LaunchAgent. It runs Refrain in the background as a real service. It's more setup than most booth machines need, but it's a fine option if the open window bothers you.
-
 On Windows the equivalent is a shortcut to `scripts/start.bat` placed in the Startup folder (press Win+R, type `shell:startup`, and drop the shortcut there).
+
+### Running it with no Terminal window (macOS)
+
+If you'd rather not have a Terminal window sitting open at all, run Refrain as a background service with `launchd`. It stays running with nothing to keep open or close by accident, starts at login, and relaunches itself if it ever crashes.
+
+Double-click `scripts/install-launchagent.command`. It finds your Node install, writes a LaunchAgent pointed at wherever you put Refrain, and starts it. From then on Refrain runs quietly in the background, and its output goes to `logs/refrain.out.log` and `logs/refrain.err.log` in the Refrain folder if you ever need to check on it. To undo it, double-click `scripts/uninstall-launchagent.command`.
+
+Two things to know. If you'd already set Refrain up with `start.command` or a Login Item, remove that after installing the service so two copies don't run at once. And a LaunchAgent still only starts once the account logs in, so for a hands-free recovery after a full reboot, turn on automatic login for the booth account as described above.
 
 ## Updating
 

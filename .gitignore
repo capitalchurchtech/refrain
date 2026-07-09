@@ -12,6 +12,7 @@ node_modules/
 cache/
 staging/
 data/
+logs/
 
 # Keys & credentials
 keys/
