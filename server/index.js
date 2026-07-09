@@ -37,7 +37,7 @@ import {
 import { discoverModules, discoverSlideSplitters, discoverProviders, discoverStorageBackends } from "./plugin-loader.js";
 import { runComparison, suggestMapping, getPendingUploadCount, retryPendingUploads } from "./arrangement-diff.js";
 import { startWatcher as startImageCropWatcher, getImageCropStatus, foldersOverlap, websafeToken } from "./image-crop.js";
-import { generateQr } from "./qr-code.js";
+import { generateQr, getQrHistoryList, getQrHistoryEntry, addQrHistoryEntry, clearQrHistory } from "./qr-code.js";
 import { normalizeSongTitle } from "../providers/planning-center.js";
 
 const { version } = JSON.parse(readFileSync("./package.json", "utf-8"));
@@ -1291,6 +1291,42 @@ app.post("/api/qr/generate", async (req, res) => {
   } catch (err) {
     // validateQrOptions throws user-facing messages; anything else is a 500.
     res.status(400).json({ error: err.message });
+  }
+});
+
+// Recent-codes history: the last 20 downloaded codes, for one-click restore.
+app.get("/api/qr/history", async (_req, res) => {
+  try {
+    res.json({ entries: await getQrHistoryList() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/qr/history/:id", async (req, res) => {
+  try {
+    const entry = await getQrHistoryEntry(req.params.id);
+    if (!entry) return res.status(404).json({ error: "No saved code with that id." });
+    res.json(entry);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/qr/history", async (req, res) => {
+  try {
+    res.json({ entries: await addQrHistoryEntry(req.body ?? {}) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete("/api/qr/history", async (_req, res) => {
+  try {
+    await clearQrHistory();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

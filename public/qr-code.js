@@ -140,6 +140,8 @@ export function initQrCode() {
             <div class="text-xs opacity-50 text-center">SVG is best for print (scales with no blur). Logos apply to PNG only.</div>
           </div>
         </div>
+
+        <div id="qr-recent"></div>
       </div>
     `;
 
@@ -179,6 +181,7 @@ export function initQrCode() {
     document.getElementById("qr-download-svg").addEventListener("click", () => downloadCurrent("svg"));
 
     renderFields();
+    renderRecent();
     if (window.lucide) window.lucide.createIcons();
     applyDefaultLogo(); // not awaited — the preview just updates a moment later once it resolves
   }
@@ -379,6 +382,7 @@ export function initQrCode() {
         const { svg } = await postGenerate({ ...currentOptions(), content, format: "svg", logoDataUrl: null });
         triggerDownload(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`, `qr-${state.type}.svg`);
       }
+      saveToHistory(content); // record this download in the recent list, then refresh it
     } catch (err) {
       const errEl = document.getElementById("qr-error");
       errEl.textContent = err.message;
@@ -406,6 +410,135 @@ export function initQrCode() {
 
   function infoIcon(tip) {
     return `<span class="tooltip tooltip-info-wide" data-tip="${escapeHtml(tip)}"><i data-lucide="info" class="w-3.5 h-3.5 opacity-50 cursor-help align-text-top"></i></span>`;
+  }
+
+  // --- Recent codes ---
+
+  // A short, human label for a code, from its type and fields.
+  function describeEntry() {
+    const f = state.fields;
+    switch (state.type) {
+      case "url":
+        return (f.url || "URL").trim();
+      case "text":
+        return (f.text || "Text").slice(0, 40);
+      case "wifi":
+        return `WiFi: ${f.ssid || ""}`.trim();
+      case "vcard":
+        return [f.firstName, f.lastName].filter(Boolean).join(" ") || f.org || "Contact";
+      case "email":
+        return `Email: ${f.to || ""}`.trim();
+      case "phone":
+        return `Phone: ${f.number || ""}`.trim();
+      case "sms":
+        return `SMS: ${f.number || ""}`.trim();
+      default:
+        return "QR code";
+    }
+  }
+
+  // Records the code just downloaded, then refreshes the strip. History is
+  // a convenience, so a failure here never blocks the download.
+  async function saveToHistory(content) {
+    try {
+      await fetch("/api/qr/history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content,
+          label: describeEntry(),
+          type: state.type,
+          fields: state.fields,
+          size: state.size,
+          margin: state.margin,
+          ecLevel: state.ecLevel,
+          dark: state.dark,
+          light: state.light,
+          logoDataUrl: state.logoDataUrl,
+        }),
+      });
+      renderRecent();
+    } catch {
+      // ignore
+    }
+  }
+
+  async function renderRecent() {
+    const el = document.getElementById("qr-recent");
+    if (!el) return;
+    let entries = [];
+    try {
+      entries = (await fetch("/api/qr/history").then((r) => r.json())).entries ?? [];
+    } catch {
+      entries = [];
+    }
+    if (!entries.length) {
+      el.innerHTML = "";
+      return;
+    }
+    el.innerHTML = `
+      <div class="divider my-1"></div>
+      <div class="flex items-center justify-between mb-1">
+        <div class="text-sm font-semibold">Recent codes</div>
+        <button id="qr-recent-clear" class="btn btn-ghost btn-xs">Clear</button>
+      </div>
+      <div class="text-xs opacity-60 mb-2">Your last ${entries.length} downloaded ${entries.length === 1 ? "code" : "codes"}. Click one to restore its settings.</div>
+      <div class="flex flex-wrap gap-2">
+        ${entries
+          .map(
+            (e) => `
+          <button class="qr-recent-item flex flex-col items-center gap-1 p-1 rounded hover:bg-base-200 w-24" data-id="${escapeHtml(e.id)}" title="${escapeHtml(e.label)}">
+            <img src="${escapeHtml(e.thumb)}" alt="" class="w-16 h-16 rounded bg-white" />
+            <span class="text-xs opacity-70 w-full truncate text-center">${escapeHtml(e.label)}</span>
+          </button>`
+          )
+          .join("")}
+      </div>
+    `;
+
+    el.querySelectorAll(".qr-recent-item").forEach((btn) => {
+      btn.addEventListener("click", () => restoreEntry(btn.dataset.id));
+    });
+    document.getElementById("qr-recent-clear").addEventListener("click", async () => {
+      try {
+        await fetch("/api/qr/history", { method: "DELETE" });
+      } catch {
+        // ignore
+      }
+      renderRecent();
+    });
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  async function restoreEntry(id) {
+    let entry = null;
+    try {
+      const res = await fetch(`/api/qr/history/${encodeURIComponent(id)}`);
+      if (res.ok) entry = await res.json();
+    } catch {
+      entry = null;
+    }
+    if (!entry) return;
+
+    state.type = entry.type;
+    state.fields = { ...entry.fields };
+    state.size = entry.size;
+    state.margin = entry.margin;
+    state.ecLevel = entry.ecLevel;
+    state.dark = entry.dark;
+    state.light = entry.light;
+    state.logoDataUrl = entry.logoDataUrl ?? null;
+
+    render(); // rebuilds the form with the restored values and re-previews
+
+    // A large logo isn't kept in history, so tell the user to re-add it.
+    if (!entry.logoDataUrl && entry.logoOmitted) {
+      const errEl = document.getElementById("qr-error");
+      if (errEl) {
+        errEl.textContent = "Settings restored. Re-add the logo (it was too large to keep in history).";
+        errEl.classList.remove("hidden");
+      }
+    }
   }
 
   function escapeHtml(str) {

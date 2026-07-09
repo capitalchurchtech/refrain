@@ -13,9 +13,22 @@
  */
 import QRCode from "qrcode";
 import sharp from "sharp";
+import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import path from "node:path";
 
 const EC_LEVELS = new Set(["L", "M", "Q", "H"]);
 const HEX_COLOR = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
+// Recent-codes history (the last N codes the user actually downloaded),
+// kept as plain JSON in the data folder like the rest of the app. Each
+// entry stores what's needed to rebuild the code plus a small thumbnail
+// for the list. A logo is kept inline only when it's small; a large one
+// is dropped (flagged), so the file can't balloon.
+const HISTORY_PATH = "./data/qr-history.json";
+const MAX_HISTORY = 20;
+const MAX_STORED_LOGO_CHARS = 200_000; // ~150KB of image; bigger logos aren't kept for restore
+const THUMB_SIZE = 160;
 
 export const QR_LIMITS = {
   maxContentLength: 2000, // well under QR's hard capacity, generous for URLs/vCards
@@ -108,4 +121,94 @@ export async function generateQr(rawOpts) {
     .toBuffer();
 
   return { format: "png", dataUrl: `data:image/png;base64,${composited.toString("base64")}` };
+}
+
+// --- Recent-codes history ---
+
+async function readHistory() {
+  try {
+    const raw = await readFile(HISTORY_PATH, "utf-8");
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    // Missing or unreadable history is just an empty list, not an error.
+    return [];
+  }
+}
+
+async function writeHistory(entries) {
+  await mkdir(path.dirname(HISTORY_PATH), { recursive: true });
+  const tmp = `${HISTORY_PATH}.tmp`;
+  await writeFile(tmp, JSON.stringify(entries, null, 2));
+  await rename(tmp, HISTORY_PATH);
+}
+
+const appearanceSignature = (e) => [e.content, e.size, e.margin, e.ecLevel, e.dark, e.light, Boolean(e.logoDataUrl) || Boolean(e.logoOmitted)].join("|");
+
+/** The list for the UI: newest first, with the heavy logo stripped (see getQrHistoryEntry for the full one). */
+export async function getQrHistoryList() {
+  const entries = await readHistory();
+  return entries.map(({ logoDataUrl, ...rest }) => ({ ...rest, logoRestorable: Boolean(logoDataUrl) }));
+}
+
+/** One full entry including its stored logo, for a faithful restore. */
+export async function getQrHistoryEntry(id) {
+  const entries = await readHistory();
+  return entries.find((e) => e.id === id) ?? null;
+}
+
+/**
+ * Records a downloaded code. Validates the render params, builds a small
+ * thumbnail, keeps the logo inline only if it's small, dedupes against the
+ * newest entry, caps at MAX_HISTORY, and returns the updated (stripped) list.
+ */
+export async function addQrHistoryEntry(input = {}) {
+  const { content, label, type, fields } = input;
+  // Reuse the generator's validation on the render options.
+  const opts = validateQrOptions({ ...input, format: "png" });
+  if (!type || typeof type !== "string") throw new Error("type is required");
+
+  const entries = await readHistory();
+
+  const logoStorable = opts.logoDataUrl && opts.logoDataUrl.length <= MAX_STORED_LOGO_CHARS;
+  const candidate = {
+    id: randomUUID(),
+    createdAt: new Date().toISOString(),
+    label: typeof label === "string" && label.trim() ? label.slice(0, 120) : content.slice(0, 60),
+    type,
+    fields: fields && typeof fields === "object" ? fields : {},
+    content,
+    size: opts.size,
+    margin: opts.margin,
+    ecLevel: opts.ecLevel,
+    dark: opts.dark,
+    light: opts.light,
+    logoDataUrl: logoStorable ? opts.logoDataUrl : null,
+    logoOmitted: Boolean(opts.logoDataUrl) && !logoStorable,
+  };
+
+  // Skip if identical to the most recent entry (re-downloading the same code shouldn't pile up duplicates).
+  if (entries[0] && appearanceSignature(entries[0]) === appearanceSignature(candidate)) {
+    return entries.map(({ logoDataUrl, ...rest }) => ({ ...rest, logoRestorable: Boolean(logoDataUrl) }));
+  }
+
+  const { dataUrl: thumb } = await generateQr({
+    content,
+    format: "png",
+    size: THUMB_SIZE,
+    margin: opts.margin,
+    ecLevel: opts.ecLevel,
+    dark: opts.dark,
+    light: opts.light,
+    logoDataUrl: opts.logoDataUrl,
+  });
+  candidate.thumb = thumb;
+
+  const updated = [candidate, ...entries].slice(0, MAX_HISTORY);
+  await writeHistory(updated);
+  return updated.map(({ logoDataUrl, ...rest }) => ({ ...rest, logoRestorable: Boolean(logoDataUrl) }));
+}
+
+export async function clearQrHistory() {
+  await writeHistory([]);
 }
