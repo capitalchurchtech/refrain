@@ -21,6 +21,27 @@
       padding-left: 1.25rem;
     }
 
+    /* Narrow screens (<450px): every pixel counts, so a *collapsed* rail
+       shrinks to a thin edge handle instead of reserving its usual 64px —
+       main-content's margin shrinks to match, reclaiming ~52px. Hovering
+       (or focusing a nav button via keyboard) pops it back to full width;
+       since the rail is `position: fixed` and already layers above the
+       page (z-20), that's a pure overlay with no reflow of main-content. */
+    @media (max-width: 449px) {
+      #nav-rail.collapsed {
+        width: 0.75rem;
+        overflow-x: hidden;
+      }
+      #main-content.ml-16 {
+        margin-left: 0.75rem;
+      }
+      #nav-rail.collapsed:hover,
+      #nav-rail.collapsed:focus-within {
+        width: 4rem;
+        overflow-x: visible;
+      }
+    }
+
     /* Every primary-action button (Go Live, Search Lyrics, Save
        Configuration, Run Comparison, first-run Setup, ...) uses this
        one shared brand green instead of DaisyUI's default purple/indigo

@@ -198,6 +198,32 @@ export function initHealth() {
       });
     }
 
+    const backupConfigBtn = document.getElementById("backup-config-btn");
+    if (backupConfigBtn) {
+      backupConfigBtn.addEventListener("click", async () => {
+        backupConfigBtn.disabled = true;
+        try {
+          const res = await fetch("/api/config/export");
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            alert(data.error || "Failed to back up config.json.");
+            return;
+          }
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `refrain-config-backup-${new Date().toISOString().slice(0, 10)}.json`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+        } finally {
+          backupConfigBtn.disabled = false;
+        }
+      });
+    }
+
     const saveConfigBtn = document.getElementById("save-config-btn");
     if (saveConfigBtn) {
       saveConfigBtn.addEventListener("click", async () => {
@@ -208,6 +234,8 @@ export function initHealth() {
           crawlPlaylists: document.getElementById("config-crawl-playlists").checked,
           slideSplitter: document.getElementById("config-slide-splitter").value,
           lyricsSites: Array.from(document.querySelectorAll(".config-lyrics-site-checkbox:checked")).map((el) => el.value),
+          qrDefaultBaseUrl: document.getElementById("config-qr-base-url").value,
+          qrDefaultLogoUrl: document.getElementById("config-qr-logo-url").value,
           arrangementEnabled: document.getElementById("config-arrangement-enabled").checked,
           arrangementProvider: document.getElementById("config-arrangement-provider").value,
           arrangementStorageBackend: document.getElementById("config-arrangement-storage").value,
@@ -575,6 +603,24 @@ function renderHealth(health, configOptions, versionInfo) {
 
           <div class="divider my-0"></div>
 
+          <div class="text-sm font-semibold">QR Codes</div>
+          <div class="flex flex-wrap gap-3">
+            <label class="form-control w-full max-w-xs">
+              <div class="label py-1">
+                <span class="label-text">Default base URL ${infoIcon("Pre-fills the URL field on the QR Codes screen (and the Website field on the vCard type) so you're not retyping your church's site every time. Leave blank for no default.")}</span>
+              </div>
+              <input id="config-qr-base-url" type="text" class="input input-bordered input-sm" placeholder="https://yourchurch.org" value="${escapeHtml(config.qrCodeModule?.defaultBaseUrl ?? "")}" />
+            </label>
+            <label class="form-control w-full max-w-xs">
+              <div class="label py-1">
+                <span class="label-text">Default logo ${infoIcon("Pre-loads this image as the QR Codes screen's center logo, so you don't have to re-upload your church's logo every time. Accepts a local path served by Refrain (e.g. img/mylogo.png) or a full URL. Still replaceable/clearable per code.", "left")}</span>
+              </div>
+              <input id="config-qr-logo-url" type="text" class="input input-bordered input-sm" placeholder="img/mylogo.png" value="${escapeHtml(config.qrCodeModule?.defaultLogoUrl ?? "")}" />
+            </label>
+          </div>
+
+          <div class="divider my-0"></div>
+
           <label class="label cursor-pointer justify-start gap-2 w-fit">
             <input type="checkbox" id="config-arrangement-enabled" class="checkbox checkbox-sm" ${arrangementModule.enabled ? "checked" : ""} />
             <span class="label-text">Enable arrangement drift tracking ${infoIcon("Turns on the Arrangement screen, which compares what a song's arrangement was planned to be against what ProPresenter actually played through during service.")}</span>
@@ -623,6 +669,9 @@ function renderHealth(health, configOptions, versionInfo) {
         </div>
 
         <div class="flex items-center gap-3 mt-3">
+          <button id="backup-config-btn" class="btn btn-sm btn-outline w-fit">
+            <i data-lucide="download" class="w-4 h-4"></i> Backup Config
+          </button>
           <button id="save-config-btn" class="btn btn-sm btn-brand w-fit">Save Configuration</button>
           <span id="config-save-status" class="text-sm"></span>
         </div>

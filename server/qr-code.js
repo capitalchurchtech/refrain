@@ -30,7 +30,7 @@ export const QR_LIMITS = {
  * show the user) on anything off. Returned object is normalized.
  */
 export function validateQrOptions(opts = {}) {
-  const { content, format = "png", size = 512, margin = 2, ecLevel = "M", dark = "#000000", light = "#ffffff", logoDataUrl = null } = opts;
+  const { content, format = "png", size = 512, margin = 3, ecLevel = "L", dark = "#000000", light = "#ffffff", logoDataUrl = null } = opts;
 
   if (typeof content !== "string" || !content.trim()) throw new Error("Nothing to encode — enter some content.");
   if (content.length > QR_LIMITS.maxContentLength) throw new Error(`Content is too long for a QR code (max ${QR_LIMITS.maxContentLength} characters).`);

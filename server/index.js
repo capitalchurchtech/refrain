@@ -20,6 +20,7 @@ import {
   getImageCropModuleStatus,
   getEnvRequirements,
   ensureMachineId,
+  readConfigFileRaw,
 } from "./config.js";
 import { ProPresenterClient } from "./propresenter-client.js";
 import {
@@ -209,6 +210,17 @@ app.get("/api/config-options", async (_req, res) => {
   }
 });
 
+// Byte-for-byte config.json download — offered right before "Save
+// Configuration" on Health, so there's always a one-click way back to
+// the exact prior state if a change turns out to be wrong.
+app.get("/api/config/export", (_req, res) => {
+  const raw = readConfigFileRaw();
+  if (raw === null) return res.status(404).json({ error: "config.json doesn't exist yet." });
+  res.setHeader("Content-Type", "application/json");
+  res.setHeader("Content-Disposition", `attachment; filename="refrain-config-backup-${new Date().toISOString().slice(0, 10)}.json"`);
+  res.send(raw);
+});
+
 /**
  * Edits the subset of config.json that's safe to expose as constrained
  * UI controls (enums validated against real plugin ids, numeric ranges,
@@ -225,6 +237,7 @@ app.post("/api/config", async (req, res) => {
       propresenter: { ...config.propresenter },
       librarySync: { ...config.librarySync },
       arrangementModule: { ...config.arrangementModule },
+      qrCodeModule: { ...config.qrCodeModule },
     };
 
     if (body.role !== undefined) {
@@ -315,6 +328,20 @@ app.post("/api/config", async (req, res) => {
         return res.status(400).json({ error: "Unknown lyrics site in selection" });
       }
       newConfig.lyricsSites = body.lyricsSites;
+    }
+
+    if (body.qrDefaultBaseUrl !== undefined) {
+      if (typeof body.qrDefaultBaseUrl !== "string") {
+        return res.status(400).json({ error: "qrDefaultBaseUrl must be a string" });
+      }
+      newConfig.qrCodeModule.defaultBaseUrl = body.qrDefaultBaseUrl.trim() || null;
+    }
+
+    if (body.qrDefaultLogoUrl !== undefined) {
+      if (typeof body.qrDefaultLogoUrl !== "string") {
+        return res.status(400).json({ error: "qrDefaultLogoUrl must be a string" });
+      }
+      newConfig.qrCodeModule.defaultLogoUrl = body.qrDefaultLogoUrl.trim() || null;
     }
 
     try {
@@ -1250,6 +1277,13 @@ app.post("/api/image-crop/open-folder", async (req, res) => {
 
 // --- QR Codes module (fully local generation) ---
 
+app.get("/api/qr/config", (_req, res) => {
+  res.json({
+    defaultBaseUrl: config.qrCodeModule?.defaultBaseUrl || null,
+    defaultLogoUrl: config.qrCodeModule?.defaultLogoUrl || null,
+  });
+});
+
 app.post("/api/qr/generate", async (req, res) => {
   try {
     const result = await generateQr(req.body ?? {});
@@ -1351,6 +1385,10 @@ app.get("/api/health", async (_req, res) => {
       },
       slideSplitter: config.slideSplitter ?? null,
       lyricsSites: config.lyricsSites ?? [],
+      qrCodeModule: {
+        defaultBaseUrl: config.qrCodeModule?.defaultBaseUrl ?? null,
+        defaultLogoUrl: config.qrCodeModule?.defaultLogoUrl ?? null,
+      },
     },
     envRequirements: getEnvRequirements(config),
   });

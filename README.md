@@ -102,7 +102,9 @@ Leave Refrain running (minimized is fine). Drop pictures on the shortcut and the
 
 Open the **QR Codes** screen (it's always there, nothing to set up), pick a type, and a scannable code renders as you type. Download it as a PNG (with an optional logo in the middle) or an SVG, which is the better choice for print because it scales to any size with no blur.
 
-Types covered: website link, plain text, WiFi network (scanning it joins the network, which is handy for a guest WiFi sign), contact card (vCard), email, phone, and SMS. You can set the size, colors, quiet zone, and error correction level. Adding a logo bumps error correction up automatically so the code still scans.
+Types covered: website link, plain text, WiFi network (scanning it joins the network, which is handy for a guest WiFi sign), contact card (vCard), email, phone, and SMS. You can set the size, colors, quiet zone, and error correction level (defaults to a light quiet zone and low error correction, since that reads cleanly on a screen and there's no print damage to guard against). Adding a logo bumps error correction up automatically so the code still scans.
+
+If your church always points codes at the same site and logo, set `qrCodeModule.defaultBaseUrl` and `qrCodeModule.defaultLogoUrl` on the Health screen's Configuration form (or directly in `config.json`) so the URL field and the center logo are pre-filled every time instead of retyping and re-uploading them. Either is still replaceable or clearable per code. The logo value can be a local path Refrain already serves (e.g. `img/mylogo.png`) or a full URL.
 
 It all happens on your machine, and that's the point rather than a technical footnote. A lot of "free" online QR generators encode a link back through their own domain instead of your actual content, which leaves them able to expire the code, throttle it, add tracking, or start charging later. That can quietly break a code you already printed on 500 bulletins. A code made here holds your content directly, with nobody in the middle.
 

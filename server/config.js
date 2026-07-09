@@ -27,6 +27,11 @@ export function configFileExists() {
   return existsSync(CONFIG_PATH);
 }
 
+/** The exact on-disk config.json text, for the Health screen's "Backup Config" download — a plain read, not the parsed/merged in-memory object, so a restore is a byte-for-byte match. */
+export function readConfigFileRaw() {
+  return configFileExists() ? readFileSync(CONFIG_PATH, "utf-8") : null;
+}
+
 /**
  * Whether config.json exists and has the fields the app actually needs
  * to run (Section 6) — used to decide whether to show first-run setup.

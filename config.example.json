@@ -39,5 +39,9 @@
       { "name": "Instagram portrait (4:5)", "width": 1080, "height": 1350, "abbr": "in_pt" },
       { "name": "Instagram story / Reels (9:16)", "width": 1080, "height": 1920, "abbr": "in_st" }
     ]
+  },
+  "qrCodeModule": {
+    "defaultBaseUrl": null,
+    "defaultLogoUrl": null
   }
 }

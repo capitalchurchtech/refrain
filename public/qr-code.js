@@ -20,8 +20,8 @@ export function initQrCode() {
     type: "url",
     fields: {},
     size: 512,
-    margin: 2,
-    ecLevel: "M",
+    margin: 3,
+    ecLevel: "L",
     dark: "#000000",
     light: "#ffffff",
     logoDataUrl: null,
@@ -30,7 +30,50 @@ export function initQrCode() {
   let lastPngDataUrl = null;
   let debounceTimer = null;
 
-  function render() {
+  // Fetched once per session, not once per render — re-fetching every
+  // time this tab is revisited would be harmless for the base URL
+  // (seeding only ever applies to an untouched `undefined` field, see
+  // renderFields), but for the logo it would silently undo a user's
+  // deliberate "Clear" click on every tab switch.
+  let qrDefaults = null;
+  let qrDefaultsPromise = null;
+  let defaultLogoApplied = false;
+
+  function loadQrDefaults() {
+    if (!qrDefaultsPromise) {
+      qrDefaultsPromise = fetch("/api/qr/config")
+        .then((r) => r.json())
+        .then((d) => (qrDefaults = d))
+        .catch(() => (qrDefaults = {}));
+    }
+    return qrDefaultsPromise;
+  }
+
+  // Pre-loads the configured default logo (Health screen's "Default
+  // logo" field) as this session's starting logo, same idea as the
+  // default base URL — one fetch, only ever attempted once, so a
+  // manual "Clear" click sticks for the rest of the session even after
+  // navigating away and back.
+  async function applyDefaultLogo() {
+    if (defaultLogoApplied) return;
+    defaultLogoApplied = true;
+    if (!qrDefaults?.defaultLogoUrl || state.logoDataUrl) return;
+    try {
+      const res = await fetch(qrDefaults.defaultLogoUrl);
+      if (!res.ok) return;
+      const blob = await res.blob();
+      if (!blob.type.startsWith("image/")) return;
+      state.logoDataUrl = await fileToDataUrl(blob);
+      document.getElementById("qr-logo-clear")?.classList.remove("hidden");
+      schedulePreview();
+    } catch {
+      // Missing/unreachable default logo shouldn't block the rest of
+      // the screen — just carry on with no logo, same as if none were configured.
+    }
+  }
+
+  async function render() {
+    await loadQrDefaults();
     container.innerHTML = `
       <div class="flex flex-col gap-4 max-w-3xl">
         <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="qr-code" class="w-5 h-5"></i> QR Codes</h1>
@@ -137,6 +180,7 @@ export function initQrCode() {
 
     renderFields();
     if (window.lucide) window.lucide.createIcons();
+    applyDefaultLogo(); // not awaited — the preview just updates a moment later once it resolves
   }
 
   const FIELDS = {
@@ -170,6 +214,20 @@ export function initQrCode() {
   function renderFields() {
     const el = document.getElementById("qr-fields");
     const defs = FIELDS[state.type] ?? [];
+
+    // Seed defaults before building the HTML below, so the rendered
+    // input actually shows the seeded value instead of needing a second
+    // render — e.g. the WiFi encryption select's initial value, or the
+    // configured default base URL for the url/vCard-website fields
+    // (only when the field's genuinely untouched: `undefined`, not an
+    // empty string, so a user who deliberately clears it stays cleared).
+    defs.forEach((f) => {
+      if (f.type === "select" && state.fields[f.key] === undefined) state.fields[f.key] = f.options[0][0];
+      if (f.key === "url" && state.fields[f.key] === undefined && qrDefaults?.defaultBaseUrl) {
+        state.fields[f.key] = qrDefaults.defaultBaseUrl;
+      }
+    });
+
     el.innerHTML = defs
       .map((f) => {
         const val = escapeHtml(state.fields[f.key] ?? "");
@@ -187,11 +245,6 @@ export function initQrCode() {
           <input type="${f.type ?? "text"}" data-key="${f.key}" class="input input-bordered input-sm qr-field" placeholder="${escapeHtml(f.placeholder ?? "")}" value="${val}" /></label>`;
       })
       .join("");
-
-    // Seed defaults (e.g. the WiFi encryption select's initial value).
-    defs.forEach((f) => {
-      if (f.type === "select" && state.fields[f.key] === undefined) state.fields[f.key] = f.options[0][0];
-    });
 
     el.querySelectorAll(".qr-field").forEach((input) => {
       input.addEventListener("input", (e) => {
