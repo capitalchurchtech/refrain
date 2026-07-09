@@ -42,6 +42,7 @@
   },
   "qrCodeModule": {
     "defaultBaseUrl": null,
-    "defaultLogoUrl": null
+    "defaultLogoUrl": null,
+    "recentLimit": 20
   }
 }

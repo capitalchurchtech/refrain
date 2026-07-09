@@ -26,9 +26,16 @@ const HEX_COLOR = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 // for the list. A logo is kept inline only when it's small; a large one
 // is dropped (flagged), so the file can't balloon.
 const HISTORY_PATH = "./data/qr-history.json";
-const MAX_HISTORY = 20;
+const MAX_HISTORY = 100; // hard ceiling; the effective count is configurable (qrCodeModule.recentLimit), default 20
+const DEFAULT_HISTORY = 20;
 const MAX_STORED_LOGO_CHARS = 200_000; // ~150KB of image; bigger logos aren't kept for restore
 const THUMB_SIZE = 160;
+
+// Normalize a requested limit into a whole number within [0, MAX_HISTORY].
+function clampLimit(limit) {
+  const n = Number.isInteger(limit) ? limit : DEFAULT_HISTORY;
+  return Math.max(0, Math.min(n, MAX_HISTORY));
+}
 
 export const QR_LIMITS = {
   maxContentLength: 2000, // well under QR's hard capacity, generous for URLs/vCards
@@ -145,10 +152,10 @@ async function writeHistory(entries) {
 
 const appearanceSignature = (e) => [e.content, e.size, e.margin, e.ecLevel, e.dark, e.light, Boolean(e.logoDataUrl) || Boolean(e.logoOmitted)].join("|");
 
-/** The list for the UI: newest first, with the heavy logo stripped (see getQrHistoryEntry for the full one). */
-export async function getQrHistoryList() {
+/** The list for the UI: newest first, capped at `limit`, with the heavy logo stripped (see getQrHistoryEntry for the full one). */
+export async function getQrHistoryList(limit = DEFAULT_HISTORY) {
   const entries = await readHistory();
-  return entries.map(({ logoDataUrl, ...rest }) => ({ ...rest, logoRestorable: Boolean(logoDataUrl) }));
+  return entries.slice(0, clampLimit(limit)).map(({ logoDataUrl, ...rest }) => ({ ...rest, logoRestorable: Boolean(logoDataUrl) }));
 }
 
 /** One full entry including its stored logo, for a faithful restore. */
@@ -160,15 +167,23 @@ export async function getQrHistoryEntry(id) {
 /**
  * Records a downloaded code. Validates the render params, builds a small
  * thumbnail, keeps the logo inline only if it's small, dedupes against the
- * newest entry, caps at MAX_HISTORY, and returns the updated (stripped) list.
+ * newest entry, caps at `limit` (0 turns the list off), and returns the
+ * updated (stripped) list.
  */
-export async function addQrHistoryEntry(input = {}) {
+export async function addQrHistoryEntry(input = {}, limit = DEFAULT_HISTORY) {
+  const cap = clampLimit(limit);
   const { content, label, type, fields } = input;
   // Reuse the generator's validation on the render options.
   const opts = validateQrOptions({ ...input, format: "png" });
   if (!type || typeof type !== "string") throw new Error("type is required");
 
   const entries = await readHistory();
+
+  // Recent list turned off (limit 0): keep nothing.
+  if (cap === 0) {
+    if (entries.length) await writeHistory([]);
+    return [];
+  }
 
   const logoStorable = opts.logoDataUrl && opts.logoDataUrl.length <= MAX_STORED_LOGO_CHARS;
   const candidate = {
@@ -189,7 +204,7 @@ export async function addQrHistoryEntry(input = {}) {
 
   // Skip if identical to the most recent entry (re-downloading the same code shouldn't pile up duplicates).
   if (entries[0] && appearanceSignature(entries[0]) === appearanceSignature(candidate)) {
-    return entries.map(({ logoDataUrl, ...rest }) => ({ ...rest, logoRestorable: Boolean(logoDataUrl) }));
+    return entries.slice(0, cap).map(({ logoDataUrl, ...rest }) => ({ ...rest, logoRestorable: Boolean(logoDataUrl) }));
   }
 
   const { dataUrl: thumb } = await generateQr({
@@ -204,7 +219,7 @@ export async function addQrHistoryEntry(input = {}) {
   });
   candidate.thumb = thumb;
 
-  const updated = [candidate, ...entries].slice(0, MAX_HISTORY);
+  const updated = [candidate, ...entries].slice(0, cap);
   await writeHistory(updated);
   return updated.map(({ logoDataUrl, ...rest }) => ({ ...rest, logoRestorable: Boolean(logoDataUrl) }));
 }

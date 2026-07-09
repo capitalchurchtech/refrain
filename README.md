@@ -74,6 +74,8 @@ Set `folders` to `null` to index every library folder. Set `crawlPlaylists` to `
 
 Turn it on from the **Image Crop** screen. There's nothing to edit in a config file. The first time you enable it, Refrain makes an input and output folder for you. Drop a picture in the input folder and a few seconds later you'll have one cropped copy per preset in the output folder. The original moves into a `processed` subfolder rather than getting deleted, so nothing is lost.
 
+You can point the input and output at any folders you like on that screen. On a multi-user machine this follows the same logic as where you installed Refrain: if you installed it in the shared `/Users/Shared/Refrain`, the folders it makes for you are already under there, so every account can reach them. If it's in one account's `~/Refrain`, the folders live there too, which is fine when that account does the cropping. Only if you want other accounts to drop images and collect results should you move the folders to a shared spot (a `/Users/Shared` subfolder), and make sure the account running Refrain can read and write them, since that's the account whose watcher does the work.
+
 It starts with a set of presets that covers most needs in one pass:
 
 | Preset | Size | Preset | Size |
@@ -106,7 +108,7 @@ Types covered: website link, plain text, WiFi network (scanning it joins the net
 
 If your church always points codes at the same site and logo, set `qrCodeModule.defaultBaseUrl` and `qrCodeModule.defaultLogoUrl` on the Health screen's Configuration form (or directly in `config.json`) so the URL field and the center logo are pre-filled every time instead of retyping and re-uploading them. Either is still replaceable or clearable per code. The logo value can be a local path Refrain already serves (e.g. `img/mylogo.png`) or a full URL.
 
-Every code you download is saved to a **Recent codes** strip at the bottom of the screen, up to the last 20. Click any one to bring back its type, content, and appearance so you can re-download it or tweak it, no retyping. A large uploaded logo isn't kept (it would bloat the history), so restoring one of those brings back everything except the logo, which you re-add. Clear the whole strip any time with the Clear button.
+Every code you download is saved to a **Recent codes** strip at the bottom of the screen. Click any one to bring back its type, content, and appearance so you can re-download it or tweak it, no retyping. A large uploaded logo isn't kept (it would bloat the history), so restoring one of those brings back everything except the logo, which you re-add. Clear the whole strip any time with the Clear button. How many to keep is up to you: set `qrCodeModule.recentLimit` on the Health screen's Configuration form (or in `config.json`), from 0 (turn the strip off) up to 100, defaulting to 20.
 
 It all happens on your machine, and that's the point rather than a technical footnote. A lot of "free" online QR generators encode a link back through their own domain instead of your actual content, which leaves them able to expire the code, throttle it, add tracking, or start charging later. That can quietly break a code you already printed on 500 bulletins. A code made here holds your content directly, with nobody in the middle.
 

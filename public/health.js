@@ -236,6 +236,7 @@ export function initHealth() {
           lyricsSites: Array.from(document.querySelectorAll(".config-lyrics-site-checkbox:checked")).map((el) => el.value),
           qrDefaultBaseUrl: document.getElementById("config-qr-base-url").value,
           qrDefaultLogoUrl: document.getElementById("config-qr-logo-url").value,
+          qrRecentLimit: Number(document.getElementById("config-qr-recent-limit").value),
           arrangementEnabled: document.getElementById("config-arrangement-enabled").checked,
           arrangementProvider: document.getElementById("config-arrangement-provider").value,
           arrangementStorageBackend: document.getElementById("config-arrangement-storage").value,
@@ -616,6 +617,12 @@ function renderHealth(health, configOptions, versionInfo) {
                 <span class="label-text">Default logo ${infoIcon("Pre-loads this image as the QR Codes screen's center logo, so you don't have to re-upload your church's logo every time. Accepts a local path served by Refrain (e.g. img/mylogo.png) or a full URL. Still replaceable/clearable per code.", "left")}</span>
               </div>
               <input id="config-qr-logo-url" type="text" class="input input-bordered input-sm" placeholder="img/mylogo.png" value="${escapeHtml(config.qrCodeModule?.defaultLogoUrl ?? "")}" />
+            </label>
+            <label class="form-control w-full max-w-xs">
+              <div class="label py-1">
+                <span class="label-text">Recent codes to keep ${infoIcon("How many recently-downloaded codes the QR Codes screen keeps for one-click restore. 0 turns the recent list off; max 100.", "left")}</span>
+              </div>
+              <input id="config-qr-recent-limit" type="number" min="0" max="100" step="1" class="input input-bordered input-sm w-28" value="${config.qrCodeModule?.recentLimit ?? 20}" />
             </label>
           </div>
 

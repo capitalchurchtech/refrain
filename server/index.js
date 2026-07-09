@@ -344,6 +344,14 @@ app.post("/api/config", async (req, res) => {
       newConfig.qrCodeModule.defaultLogoUrl = body.qrDefaultLogoUrl.trim() || null;
     }
 
+    if (body.qrRecentLimit !== undefined) {
+      const n = Number(body.qrRecentLimit);
+      if (!Number.isInteger(n) || n < 0 || n > QR_MAX_RECENT_LIMIT) {
+        return res.status(400).json({ error: `qrRecentLimit must be a whole number from 0 to ${QR_MAX_RECENT_LIMIT}` });
+      }
+      newConfig.qrCodeModule.recentLimit = n;
+    }
+
     try {
       await saveConfig(newConfig);
     } catch (err) {
@@ -1277,10 +1285,20 @@ app.post("/api/image-crop/open-folder", async (req, res) => {
 
 // --- QR Codes module (fully local generation) ---
 
+// How many recently-downloaded codes to keep for one-click restore.
+// Configurable (qrCodeModule.recentLimit); 0 turns the recent list off.
+const QR_DEFAULT_RECENT_LIMIT = 20;
+const QR_MAX_RECENT_LIMIT = 100;
+function qrRecentLimit() {
+  const n = config.qrCodeModule?.recentLimit;
+  return Number.isInteger(n) && n >= 0 && n <= QR_MAX_RECENT_LIMIT ? n : QR_DEFAULT_RECENT_LIMIT;
+}
+
 app.get("/api/qr/config", (_req, res) => {
   res.json({
     defaultBaseUrl: config.qrCodeModule?.defaultBaseUrl || null,
     defaultLogoUrl: config.qrCodeModule?.defaultLogoUrl || null,
+    recentLimit: qrRecentLimit(),
   });
 });
 
@@ -1294,10 +1312,10 @@ app.post("/api/qr/generate", async (req, res) => {
   }
 });
 
-// Recent-codes history: the last 20 downloaded codes, for one-click restore.
+// Recent-codes history: the last N downloaded codes, for one-click restore.
 app.get("/api/qr/history", async (_req, res) => {
   try {
-    res.json({ entries: await getQrHistoryList() });
+    res.json({ entries: await getQrHistoryList(qrRecentLimit()) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1315,7 +1333,7 @@ app.get("/api/qr/history/:id", async (req, res) => {
 
 app.post("/api/qr/history", async (req, res) => {
   try {
-    res.json({ entries: await addQrHistoryEntry(req.body ?? {}) });
+    res.json({ entries: await addQrHistoryEntry(req.body ?? {}, qrRecentLimit()) });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -1424,6 +1442,7 @@ app.get("/api/health", async (_req, res) => {
       qrCodeModule: {
         defaultBaseUrl: config.qrCodeModule?.defaultBaseUrl ?? null,
         defaultLogoUrl: config.qrCodeModule?.defaultLogoUrl ?? null,
+        recentLimit: qrRecentLimit(),
       },
     },
     envRequirements: getEnvRequirements(config),
