@@ -120,7 +120,7 @@ Two things a user can flag on a comparison:
 
 ## Image crop
 
-Watches an input folder and, for every image dropped in, writes one cropped copy per configured preset to an output folder, then moves the original into a `processed` subfolder. Nothing is deleted.
+Watches an input folder and, for every image dropped in, writes one cropped copy per configured preset to an output folder, then moves the original into a `processed` subfolder of the output folder (not the input folder, so the input stays empty like a drop box). Nothing is deleted. The output folder isn't watched, so keeping `processed` there can't cause a reprocessing loop.
 
 Design choices worth knowing:
 

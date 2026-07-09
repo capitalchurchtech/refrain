@@ -19,7 +19,7 @@ Refrain already did that groundwork, and it did it as a plugin system rather tha
 
 **Slide search.** Type any word and Refrain finds every slide that contains it, anywhere in your library and across playlists, then lets you send it live or open it in the editor with one click. This is the core feature and it works on its own with nothing more than ProPresenter.
 
-**Lyrics helper.** For a song your library doesn't have yet, Refrain runs a scoped web search across lyrics sites, then helps you paste the words in and split them into slides in one step instead of breaking them up by hand.
+**Lyrics helper.** For a song your library doesn't have yet, Refrain runs a scoped web search across lyrics sites (or copies the search link so you can run it in a full browser window), then helps you paste the words in, clean up the junk that comes with a web copy (hidden characters, odd spacing, curly quotes), and split them into slides in one step instead of breaking them up by hand.
 
 **Arrangement tracking (optional).** Compares the arrangement your church management system planned for a song against what actually got run in ProPresenter, and can push the correction back so you stop making the same edit every week. Skippable, and it needs no setup if you don't want it.
 
@@ -72,7 +72,7 @@ Set `folders` to `null` to index every library folder. Set `crawlPlaylists` to `
 
 ## Image cropping
 
-Turn it on from the **Image Crop** screen. There's nothing to edit in a config file. The first time you enable it, Refrain makes an input and output folder for you. Drop a picture in the input folder and a few seconds later you'll have one cropped copy per preset in the output folder. The original moves into a `processed` subfolder rather than getting deleted, so nothing is lost.
+Turn it on from the **Image Crop** screen. There's nothing to edit in a config file. The first time you enable it, Refrain makes an input and output folder for you. Drop a picture in the input folder and a few seconds later you'll have one cropped copy per preset in the output folder. The original isn't deleted: it moves into a `processed` subfolder inside the **output** folder, so your input folder stays empty like a proper drop box and everything you'd look at (the crops and the untouched original) is in one place.
 
 You can point the input and output at any folders you like on that screen. On a multi-user machine this follows the same logic as where you installed Refrain: if you installed it in the shared `/Users/Shared/Refrain`, the folders it makes for you are already under there, so every account can reach them. If it's in one account's `~/Refrain`, the folders live there too, which is fine when that account does the cropping. Only if you want other accounts to drop images and collect results should you move the folders to a shared spot (a `/Users/Shared` subfolder), and make sure the account running Refrain can read and write them, since that's the account whose watcher does the work.
 
@@ -111,6 +111,10 @@ If your church always points codes at the same site and logo, set `qrCodeModule.
 Every code you download is saved to a **Recent codes** strip at the bottom of the screen. Click any one to bring back its type, content, and appearance so you can re-download it or tweak it, no retyping. A large uploaded logo isn't kept (it would bloat the history), so restoring one of those brings back everything except the logo, which you re-add. Clear the whole strip any time with the Clear button. How many to keep is up to you: set `qrCodeModule.recentLimit` on the Health screen's Configuration form (or in `config.json`), from 0 (turn the strip off) up to 100, defaulting to 20.
 
 It all happens on your machine, and that's the point rather than a technical footnote. A lot of "free" online QR generators encode a link back through their own domain instead of your actual content, which leaves them able to expire the code, throttle it, add tracking, or start charging later. That can quietly break a code you already printed on 500 bulletins. A code made here holds your content directly, with nobody in the middle.
+
+## Appearance
+
+The icon near the bottom of the sidebar cycles the theme: System, Light, Dark, and Blackroom. Dark uses high-contrast text so it stays readable on a plain (non-retina) booth monitor. Blackroom is a true-black, high-contrast option that's easy on the eyes in a dark room and looks good on an OLED screen. Your choice is remembered.
 
 ## Installing
 

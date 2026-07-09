@@ -34,9 +34,14 @@ export function initLyricsAssist() {
               <input id="lyrics-song" type="text" placeholder="Song title" class="input input-bordered w-full" />
               <input id="lyrics-artist" type="text" placeholder="Artist (optional)" class="input input-bordered w-full" />
             </div>
-            <button id="lyrics-search-btn" class="btn btn-brand w-fit">
-              <i data-lucide="search"></i> Search Lyrics
-            </button>
+            <div class="flex flex-wrap items-center gap-2">
+              <button id="lyrics-search-btn" class="btn btn-brand w-fit">
+                <i data-lucide="search"></i> Search Lyrics
+              </button>
+              <button id="lyrics-copy-search-btn" class="btn btn-outline btn-sm w-fit" title="Copy the search link so you can paste it into a full browser window">
+                <span class="copy-search-icon"><i data-lucide="copy"></i></span> Copy search link
+              </button>
+            </div>
           </div>
         </div>
 
@@ -44,6 +49,15 @@ export function initLyricsAssist() {
           <div class="card-body p-3 gap-3">
             <h2 class="card-title text-base">Paste &amp; split into slides</h2>
             <textarea id="lyrics-paste" rows="5" placeholder="Paste lyrics here..." class="textarea textarea-bordered w-full"></textarea>
+            <div class="flex flex-wrap items-center gap-2">
+              <button id="lyrics-clean-btn" class="btn btn-outline btn-xs" title="Remove hidden characters copied from the web, tidy up spacing and blank lines, and optionally straighten curly quotes and dashes">
+                <i data-lucide="eraser" class="w-3.5 h-3.5"></i> Clean up text
+              </button>
+              <label class="label cursor-pointer gap-1 py-0">
+                <input type="checkbox" id="lyrics-straighten" class="checkbox checkbox-xs" checked />
+                <span class="label-text text-xs">Straighten quotes &amp; dashes</span>
+              </label>
+            </div>
             <div class="flex flex-wrap items-center gap-2">
               <span class="text-sm opacity-70">Split by:</span>
               <select id="lyrics-splitter" class="select select-bordered select-sm">
@@ -66,18 +80,59 @@ export function initLyricsAssist() {
 
     if (window.lucide) window.lucide.createIcons();
 
-    document.getElementById("lyrics-search-btn").addEventListener("click", () => {
+    // Builds the scoped search URL, or null if there's no song title yet.
+    function currentSearchUrl() {
       const song = document.getElementById("lyrics-song").value.trim();
       const artist = document.getElementById("lyrics-artist").value.trim();
-      if (!song) return;
-
+      if (!song) return null;
       const siteScope = lyricsSites.map((site) => `site:${site}`).join(" OR ");
       const query = `(${siteScope}) "${song}" ${artist} lyrics`.trim();
-      window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, "_blank", "noopener");
+      return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+    }
+
+    document.getElementById("lyrics-search-btn").addEventListener("click", () => {
+      const url = currentSearchUrl();
+      if (!url) return;
+      // An anchor click (rather than window.open with a features string)
+      // opens a normal full-size browser tab instead of a cramped popup.
+      const a = document.createElement("a");
+      a.href = url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    });
+
+    document.getElementById("lyrics-copy-search-btn").addEventListener("click", async (e) => {
+      const url = currentSearchUrl();
+      if (!url) return;
+      const iconWrap = e.currentTarget.querySelector(".copy-search-icon");
+      let ok = true;
+      try {
+        await navigator.clipboard.writeText(url);
+      } catch {
+        ok = false;
+      }
+      iconWrap.innerHTML = `<i data-lucide="${ok ? "check" : "x"}"></i>`;
+      if (window.lucide) window.lucide.createIcons();
+      setTimeout(() => {
+        iconWrap.innerHTML = `<i data-lucide="copy"></i>`;
+        if (window.lucide) window.lucide.createIcons();
+      }, 1200);
+    });
+
+    document.getElementById("lyrics-clean-btn").addEventListener("click", () => {
+      const ta = document.getElementById("lyrics-paste");
+      const straighten = document.getElementById("lyrics-straighten").checked;
+      ta.value = cleanLyrics(ta.value, straighten);
     });
 
     document.getElementById("lyrics-preview-btn").addEventListener("click", async () => {
-      const text = document.getElementById("lyrics-paste").value;
+      // Always drop invisible/control characters before splitting, even if
+      // the user didn't press Clean up — they can't see them to know to,
+      // and they otherwise ride along into the slides.
+      const text = stripInvisible(document.getElementById("lyrics-paste").value);
       const splitterId = document.getElementById("lyrics-splitter").value;
       if (!text.trim()) return;
 
@@ -89,6 +144,45 @@ export function initLyricsAssist() {
 
       renderSlides(slides);
     });
+  }
+
+  // Removes characters that are invisible or have no business in slide
+  // text: zero-width spaces, the BOM, word joiners, and control codes.
+  // Non-breaking spaces become normal spaces. Safe to run silently since
+  // none of it changes anything you can see.
+  function stripInvisible(text) {
+    return String(text)
+      // Zero-width space/joiner/non-joiner, word joiner, BOM. Alternation
+      // rather than a character class, which ESLint flags as misleading
+      // when it contains joiner characters.
+      .replace(/\u200B|\u200C|\u200D|\u2060|\uFEFF/g, "")
+      // Control characters (newline and tab are deliberately kept). The
+      // control-char match is the whole point here, so the lint rule
+      // against it doesn't apply.
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+      .replace(/\u00A0/g, " "); // non-breaking space -> normal space
+  }
+
+  // The visible cleanup behind the "Clean up text" button: strip the
+  // invisibles above, turn tabs into spaces, collapse runs of spaces and
+  // extra blank lines, trim trailing space, and (optionally) straighten
+  // curly quotes, dashes, and ellipses into plain ASCII. Accented letters
+  // and other real characters are left alone, so non-English lyrics survive.
+  function cleanLyrics(text, straightenQuotes) {
+    let t = stripInvisible(String(text).replace(/\r\n?/g, "\n")).replace(/\t/g, " ");
+    if (straightenQuotes) {
+      t = t
+        .replace(/[\u2018\u2019\u201A\u201B]/g, "'") // curly single quotes
+        .replace(/[\u201C\u201D\u201E\u201F]/g, '"') // curly double quotes
+        .replace(/[\u2013\u2014\u2015]/g, "-") // en/em/bar dashes
+        .replace(/\u2026/g, "..."); // ellipsis
+    }
+    t = t
+      .split("\n")
+      .map((line) => line.replace(/ {2,}/g, " ").replace(/\s+$/, ""))
+      .join("\n");
+    return t.replace(/\n{3,}/g, "\n\n").replace(/^\n+/, "").replace(/\n+$/, "");
   }
 
   function renderSlides(slides) {

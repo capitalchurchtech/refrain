@@ -114,7 +114,11 @@ async function processImage(filePath, config) {
       outputs.push(preset.name);
     }
 
-    const processedDir = path.join(config.inputFolder, "processed");
+    // The original goes to a processed/ folder alongside the outputs, not
+    // in the input folder, so the input folder stays empty like a drop box
+    // and everything you'd look at (crops plus the untouched original) is
+    // in one place. The output folder isn't watched, so this can't loop.
+    const processedDir = path.join(config.outputFolder, "processed");
     await mkdir(processedDir, { recursive: true });
     // Don't clobber an earlier same-named original already in processed/.
     let dest = path.join(processedDir, path.basename(filePath));

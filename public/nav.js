@@ -8,8 +8,9 @@
  * button, persisted in config.json's theme.
  */
 
-const THEME_CYCLE = ["system", "light", "dark"];
-const THEME_LABEL = { system: "System", light: "Light", dark: "Dark" };
+const THEME_CYCLE = ["system", "light", "dark", "blackroom"];
+const THEME_LABEL = { system: "System", light: "Light", dark: "Dark", blackroom: "Blackroom" };
+const THEME_ICON = { system: "sun-moon", light: "sun", dark: "moon", blackroom: "moon-star" };
 
 // Explicit ordering, most-used first — module-discovery order (readdir,
 // effectively alphabetical) isn't a usage-frequency order, and it isn't
@@ -36,13 +37,20 @@ export async function injectSvg(el, path, sizeClasses = []) {
 }
 
 export function applyTheme(theme) {
+  const blackroom = theme === "blackroom";
+  // Blackroom rides on top of the dark theme (see index.html) via a
+  // class, so it inherits dark's accent colors; system resolves to the
+  // OS preference; everything else maps to its own DaisyUI theme.
   const resolved =
     theme === "system"
       ? window.matchMedia("(prefers-color-scheme: dark)").matches
         ? "dark"
         : "light"
-      : theme;
+      : blackroom
+        ? "dark"
+        : theme;
   document.documentElement.dataset.theme = resolved;
+  document.documentElement.classList.toggle("blackroom", blackroom);
 }
 
 export async function initNav({ onNavigate, viewIds }) {
@@ -171,7 +179,7 @@ export async function initNav({ onNavigate, viewIds }) {
   function applyThemeUI() {
     applyTheme(currentTheme);
     themeLabel.textContent = `Theme: ${THEME_LABEL[currentTheme]}`;
-    setIcon(themeIcon, currentTheme === "dark" ? "moon" : currentTheme === "light" ? "sun" : "sun-moon");
+    setIcon(themeIcon, THEME_ICON[currentTheme] ?? "sun-moon");
   }
 
   brandRow.addEventListener("click", () => setActive("search"));
