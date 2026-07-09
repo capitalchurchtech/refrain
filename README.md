@@ -151,9 +151,9 @@ For an easy way to start Refrain by hand, make an alias of the launcher: right c
 
 For it to come back on its own after a reboot, add a Login Item. On macOS: System Settings, then General, then Login Items, then add `scripts/start.command` (or the shared path, `/Users/Shared/Refrain/scripts/start.command`). It now starts whenever that account logs in. The one catch is that Login Items run at login, not at boot, so after a restart Refrain only comes back once someone logs into that account. On a booth machine that should recover by itself after a power blip or an update, also turn on automatic login for the booth account (System Settings, Users & Groups, "Automatically log in as"). Then a reboot leads to auto login, the Login Item fires, and Refrain is back with no one touching it.
 
-Two notes. The launcher opens a Terminal window and leaves it open because the server runs inside it, which is expected, so just leave it alone. And on a machine with several accounts, the Login Item is per account, so set it up on whichever account runs the booth.
+Two notes. The launcher opens a Terminal window and the server runs inside it, so don't close that window: closing it (or quitting Terminal) stops Refrain, and macOS will usually warn you first with a "terminate running processes" prompt. To get it out of the way without stopping it, minimize the window (Cmd+M) or hide the app (Cmd+H). And on a machine with several accounts, the Login Item is per account, so set it up on whichever account runs the booth.
 
-If you'd rather run it with no visible Terminal window and have it restart itself if it ever crashes, that's a `launchd` LaunchAgent, which is more setup than most booth machines need. It's a fine option if you want it, just not the default path here.
+If you'd rather run it with no Terminal window at all, so there's nothing to keep open or close by accident, and have it restart itself if it ever crashes, that's a `launchd` LaunchAgent. It runs Refrain in the background as a real service. It's more setup than most booth machines need, but it's a fine option if the open window bothers you.
 
 On Windows the equivalent is a shortcut to `scripts/start.bat` placed in the Startup folder (press Win+R, type `shell:startup`, and drop the shortcut there).
 
