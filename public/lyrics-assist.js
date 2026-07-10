@@ -65,6 +65,10 @@ export function initLyricsAssist() {
                   .map((s) => `<option value="${s.id}" ${s.id === defaultSplitterId ? "selected" : ""}>${splitterLabel(s.id)}</option>`)
                   .join("")}
               </select>
+              <label class="label cursor-pointer gap-1 py-0" title="Collapse blocks that repeat word for word (a chorus written out every time) into one slide each, and show the play order so you can build the arrangement.">
+                <input type="checkbox" id="lyrics-group-repeats" class="checkbox checkbox-xs" />
+                <span class="label-text text-xs">Group repeats</span>
+              </label>
               <button id="lyrics-preview-btn" class="btn btn-outline btn-sm">Preview Slides</button>
             </div>
             <p class="text-xs opacity-60">
@@ -142,8 +146,42 @@ export function initLyricsAssist() {
         body: JSON.stringify({ text, splitterId }),
       }).then((r) => r.json());
 
-      renderSlides(slides);
+      renderSlides(slides, document.getElementById("lyrics-group-repeats").checked);
     });
+  }
+
+  // Groups blocks that repeat word for word (after light normalization:
+  // trimmed lines, collapsed spaces, case-insensitive, blank lines
+  // ignored). Returns the unique blocks in first-seen order, each with a
+  // short label (A, B, C...) and how many times it occurred, plus the
+  // full play order as a list of those labels. Matching is exact, not
+  // fuzzy, so a chorus that changes even one word stays its own block
+  // rather than being wrongly merged and lost.
+  function groupRepeats(slides) {
+    const normalize = (s) =>
+      s
+        .split("\n")
+        .map((l) => l.trim().replace(/\s+/g, " "))
+        .filter(Boolean)
+        .join("\n")
+        .toLowerCase();
+    const byKey = new Map();
+    const unique = [];
+    const order = [];
+    slides.forEach((text) => {
+      const key = normalize(text);
+      if (!byKey.has(key)) {
+        const index = unique.length;
+        const label = index < 26 ? String.fromCharCode(65 + index) : `#${index + 1}`;
+        const block = { label, text, count: 0 };
+        byKey.set(key, block);
+        unique.push(block);
+      }
+      const block = byKey.get(key);
+      block.count += 1;
+      order.push(block.label);
+    });
+    return { unique, order };
   }
 
   // Removes characters that are invisible or have no business in slide
@@ -185,20 +223,54 @@ export function initLyricsAssist() {
     return t.replace(/\n{3,}/g, "\n\n").replace(/^\n+/, "").replace(/\n+$/, "");
   }
 
-  function renderSlides(slides) {
+  function renderSlides(slides, grouped) {
     const slidesEl = document.getElementById("lyrics-slides");
     if (slides.length === 0) {
       slidesEl.innerHTML = `<div class="opacity-60 text-center py-4">No slides — try a different splitter or check your paste.</div>`;
       return;
     }
 
-    slidesEl.innerHTML = slides
-      .map(
-        (text, i) => `
+    const { unique, order } = groupRepeats(slides);
+    const hasRepeats = order.length !== unique.length;
+
+    // In grouped mode each card is a unique block (with its label and
+    // repeat count); otherwise it's every slide as split, unchanged.
+    const cards = grouped
+      ? unique.map((u) => ({ text: u.text, heading: `${u.label} · appears ${u.count}×` }))
+      : slides.map((text) => ({ text }));
+
+    // A "play order" line only makes sense once something repeats.
+    const orderLine = order.join(", ");
+    const header = grouped
+      ? `<div class="card bg-base-200 shadow-sm">
+           <div class="card-body p-3 gap-1">
+             <div class="flex items-center justify-between gap-2">
+               <span class="text-sm font-semibold">Play order</span>
+               <button class="btn btn-ghost btn-xs shrink-0 copy-order-btn" title="Copy the play order">
+                 <span class="copy-icon"><i data-lucide="copy"></i></span>
+               </button>
+             </div>
+             <div class="text-sm">${escapeHtml(orderLine)}</div>
+             <div class="text-xs opacity-60">${unique.length} unique ${unique.length === 1 ? "slide" : "slides"} below. Create each once, then arrange them in this order.</div>
+           </div>
+         </div>`
+      : hasRepeats
+        ? `<div class="alert py-2 text-sm">
+             <i data-lucide="copy-check" class="w-4 h-4 shrink-0"></i>
+             <span>Some blocks repeat word for word. Tick <strong>Group repeats</strong> and preview again to collapse them into one slide each plus a play order.</span>
+           </div>`
+        : "";
+
+    slidesEl.innerHTML =
+      header +
+      cards
+        .map(
+          (card, i) => `
       <div class="card bg-base-200 shadow-sm">
         <div class="card-body p-3">
+          ${card.heading ? `<div class="text-xs font-semibold opacity-70">${escapeHtml(card.heading)}</div>` : ""}
           <div class="flex items-start justify-between gap-4">
-            <div class="text-sm whitespace-pre-line">${escapeHtml(text)}</div>
+            <div class="text-sm whitespace-pre-line">${escapeHtml(card.text)}</div>
             <button class="btn btn-ghost btn-xs shrink-0 copy-slide-btn" data-index="${i}" title="Copy this slide">
               <span class="copy-icon"><i data-lucide="copy"></i></span>
             </button>
@@ -206,15 +278,16 @@ export function initLyricsAssist() {
         </div>
       </div>
     `
-      )
-      .join("");
+        )
+        .join("");
 
-    slidesEl.querySelectorAll(".copy-slide-btn").forEach((btn) => {
+    // Shared copy-with-feedback for a button given the text to copy.
+    const wireCopy = (btn, getText) =>
       btn.addEventListener("click", async () => {
         const iconWrap = btn.querySelector(".copy-icon");
         let copied = true;
         try {
-          await navigator.clipboard.writeText(slides[Number(btn.dataset.index)]);
+          await navigator.clipboard.writeText(getText());
         } catch {
           // Clipboard access can be denied (permissions, non-HTTPS
           // context) — fail visibly rather than silently doing nothing.
@@ -231,7 +304,10 @@ export function initLyricsAssist() {
           if (window.lucide) window.lucide.createIcons();
         }, 1200);
       });
-    });
+
+    slidesEl.querySelectorAll(".copy-slide-btn").forEach((btn) => wireCopy(btn, () => cards[Number(btn.dataset.index)].text));
+    const orderBtn = slidesEl.querySelector(".copy-order-btn");
+    if (orderBtn) wireCopy(orderBtn, () => orderLine);
 
     if (window.lucide) window.lucide.createIcons();
   }

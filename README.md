@@ -19,7 +19,7 @@ Refrain already did that groundwork, and it did it as a plugin system rather tha
 
 **Slide search.** Type any word and Refrain finds every slide that contains it, anywhere in your library and across playlists, then lets you send it live or open it in the editor with one click. This is the core feature and it works on its own with nothing more than ProPresenter.
 
-**Lyrics helper.** For a song your library doesn't have yet, Refrain runs a scoped web search across lyrics sites (or copies the search link so you can run it in a full browser window), then helps you paste the words in, clean up the junk that comes with a web copy (hidden characters, odd spacing, curly quotes), and split them into slides in one step instead of breaking them up by hand.
+**Lyrics helper.** For a song your library doesn't have yet, Refrain runs a scoped web search across lyrics sites (or copies the search link so you can run it in a full browser window), then helps you paste the words in, clean up the junk that comes with a web copy (hidden characters, odd spacing, curly quotes), and split them into slides in one step instead of breaking them up by hand. It can also spot blocks that repeat word for word (a chorus written out every time) and collapse them into one slide each, with the play order laid out so you can build the arrangement.
 
 **Arrangement tracking (optional).** Compares the arrangement your church management system planned for a song against what actually got run in ProPresenter, and can push the correction back so you stop making the same edit every week. Skippable, and it needs no setup if you don't want it.
 
