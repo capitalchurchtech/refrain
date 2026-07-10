@@ -85,7 +85,7 @@ If the notes live somewhere with version history already (Google Docs, a Word fi
 
 ## Image cropping
 
-Turn it on from the **Image Crop** screen. There's nothing to edit in a config file. The first time you enable it, Refrain makes an input and output folder for you. Drop a picture in the input folder and a few seconds later you'll have one cropped copy per preset in the output folder. The original isn't deleted: it moves into a `processed` subfolder inside the **output** folder, so your input folder stays empty like a proper drop box and everything you'd look at (the crops and the untouched original) is in one place.
+Turn it on from the **Image Crop** screen. There's nothing to edit in a config file. Refrain creates a default input and output folder inside its own folder up front (and pre-fills them on the screen), so you can hit **Open**, make an alias of the input folder wherever's handy, and drop pictures straight in. You can still point it at any other folders instead. Drop a picture in the input folder and a few seconds later you'll have one cropped copy per preset in the output folder. The original isn't deleted: it moves into a `processed` subfolder inside the **output** folder, so your input folder stays empty like a proper drop box and everything you'd look at (the crops and the untouched original) is in one place.
 
 You can point the input and output at any folders you like on that screen. On a multi-user machine this follows the same logic as where you installed Refrain: if you installed it in the shared `/Users/Shared/Refrain`, the folders it makes for you are already under there, so every account can reach them. If it's in one account's `~/Refrain`, the folders live there too, which is fine when that account does the cropping. Only if you want other accounts to drop images and collect results should you move the folders to a shared spot (a `/Users/Shared` subfolder), and make sure the account running Refrain can read and write them, since that's the account whose watcher does the work.
 
@@ -189,7 +189,9 @@ Two things to know. If you'd already set Refrain up with `start.command` or a Lo
 
 Your real settings (`config.json`) and secrets (`.env`) live only on your machine. Git never tracks them and a ZIP download never contains them, so an update leaves them alone. That includes anything you customized: your crop presets and their labels, QR defaults, folder paths, and the rest all live in `config.json`, so an update never resets them. The flip side is that the new default presets that ship with an update only appear on a fresh install; on an existing machine you add any you want from the "Add common size" picker, which always reflects the latest version.
 
-If you cloned with Git:
+**The easy way (Git installs):** the Health screen has an **Updates** section that shows your installed version next to the latest one, with an **Update now** button that fetches the latest code and installs any new dependencies in one click. Or double-click `scripts/update.command` (Mac) / `scripts/update.bat` (Windows) to do the same without opening the app. Either way, restart Refrain afterward to finish (or, if you run it as the background service, it picks the update up on its next restart).
+
+If you'd rather do it by hand, or want to know what those do under the hood:
 
 1. `git pull`
 2. `npm install` (picks up any new dependencies, and is safe to run when nothing changed)

@@ -8,8 +8,11 @@
 import { readFileSync, existsSync } from "node:fs";
 import { copyFile, readdir, mkdir } from "node:fs/promises";
 import { exec, execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { platform, homedir } from "node:os";
 import path from "node:path";
+
+const execFileAsync = promisify(execFile);
 import express from "express";
 import {
   loadConfig,
@@ -158,6 +161,7 @@ app.get("/api/version-check", async (_req, res) => {
       latestVersion,
       updateAvailable: isNewerVersion(latestVersion, version),
       repoUrl: GITHUB_REPO_URL,
+      gitInstall: existsSync(".git"),
     });
   } catch (err) {
     res.json({
@@ -165,8 +169,32 @@ app.get("/api/version-check", async (_req, res) => {
       latestVersion: null,
       updateAvailable: false,
       repoUrl: GITHUB_REPO_URL,
+      gitInstall: existsSync(".git"),
       error: err.message,
     });
+  }
+});
+
+/**
+ * One-click update for Git installs: fast-forward pull plus npm install.
+ * Doesn't restart the server (the caller tells the user to relaunch, or
+ * the background service picks it up on its next restart). ZIP installs
+ * have no .git and are told to use the ZIP re-download flow instead.
+ */
+app.post("/api/update", async (_req, res) => {
+  if (!existsSync(".git")) {
+    return res.status(409).json({
+      error: "This copy of Refrain wasn't set up with Git, so it can't update itself. Download the latest ZIP from GitHub instead (see the README's Updating section).",
+    });
+  }
+  try {
+    const pull = await execFileAsync("git", ["pull", "--ff-only"], { timeout: 120000 });
+    const install = await execFileAsync("npm", ["install"], { timeout: 300000 });
+    const output = [pull.stdout, pull.stderr, install.stdout, install.stderr].filter(Boolean).join("\n").trim();
+    res.json({ ok: true, output });
+  } catch (err) {
+    // git/npm failures put the useful message on stderr.
+    res.status(500).json({ error: (err.stderr || err.message || "Update failed").trim() });
   }
 });
 
@@ -1186,6 +1214,13 @@ const PRESET_CATALOG = [
 const stripSeedFlag = ({ name, width, height, abbr }) => ({ name, width, height, abbr });
 const DEFAULT_IMAGE_CROP_PRESETS = PRESET_CATALOG.filter((p) => p.seed).map(stripSeedFlag);
 
+// Default drop folders inside the app's own data folder. Created at
+// startup (see below) so a volunteer can find and alias them right away,
+// and pre-filled in the UI. They can still point the module at any other
+// folder instead.
+const DEFAULT_IMAGE_CROP_INPUT = "./data/image-crop/input";
+const DEFAULT_IMAGE_CROP_OUTPUT = "./data/image-crop/output";
+
 // Beyond ~8K per side a single output is hundreds of MB uncompressed —
 // a fat-fingered "10000" shouldn't be able to OOM the box. Comfortably
 // clears any real slide/social target.
@@ -1197,6 +1232,7 @@ app.get("/api/image-crop/status", (_req, res) => {
     status: getImageCropModuleStatus(config),
     config: config.imageCropModule ?? null,
     catalog: PRESET_CATALOG.map(stripSeedFlag), // for the UI's "add a common size" picker
+    defaults: { inputFolder: DEFAULT_IMAGE_CROP_INPUT, outputFolder: DEFAULT_IMAGE_CROP_OUTPUT },
     ...getImageCropStatus(),
   });
 });
@@ -1252,8 +1288,8 @@ app.post("/api/image-crop/config", async (req, res) => {
     // default to a zero-setup location inside the app's own data folder —
     // "drop a file in, it works" shouldn't require picking a path first.
     if (newConfig.imageCropModule.enabled) {
-      newConfig.imageCropModule.inputFolder ??= "./data/image-crop/input";
-      newConfig.imageCropModule.outputFolder ??= "./data/image-crop/output";
+      newConfig.imageCropModule.inputFolder ??= DEFAULT_IMAGE_CROP_INPUT;
+      newConfig.imageCropModule.outputFolder ??= DEFAULT_IMAGE_CROP_OUTPUT;
       if (!newConfig.imageCropModule.presets?.length) {
         newConfig.imageCropModule.presets = DEFAULT_IMAGE_CROP_PRESETS;
       }
@@ -1507,6 +1543,17 @@ app.listen(port, "127.0.0.1", async () => {
     } catch (err) {
       console.error("Pending-upload retry failed:", err.message);
     }
+  }
+
+  // Create the default image-crop folders up front (even if the module is
+  // off) so a volunteer can open and alias them straight away, and they're
+  // the paths the screen pre-fills. Harmless if unused; they can point the
+  // module at a different folder instead.
+  try {
+    await mkdir(DEFAULT_IMAGE_CROP_INPUT, { recursive: true });
+    await mkdir(DEFAULT_IMAGE_CROP_OUTPUT, { recursive: true });
+  } catch (err) {
+    console.error("Couldn't create default image-crop folders:", err.message);
   }
 
   if (getImageCropModuleStatus(config) === "active") {

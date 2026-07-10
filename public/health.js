@@ -47,6 +47,39 @@ export function initHealth() {
 
     if (window.lucide) window.lucide.createIcons();
 
+    const updateNowBtn = document.getElementById("update-now-btn");
+    if (updateNowBtn) {
+      const statusEl = document.getElementById("update-status");
+      updateNowBtn.addEventListener("click", async () => {
+        updateNowBtn.disabled = true;
+        statusEl.textContent = "Updating...";
+        statusEl.className = "text-sm opacity-70";
+        try {
+          const res = await fetch("/api/update", { method: "POST" });
+          const data = await res.json();
+          if (!res.ok) {
+            statusEl.textContent = data.error;
+            statusEl.className = "text-sm text-warning";
+            updateNowBtn.disabled = false;
+            return;
+          }
+          statusEl.textContent = "Updated. Restart Refrain to finish.";
+          statusEl.className = "text-sm text-success";
+        } catch (err) {
+          statusEl.textContent = `Update failed: ${err.message}`;
+          statusEl.className = "text-sm text-warning";
+          updateNowBtn.disabled = false;
+        }
+      });
+    }
+    const recheckBtn = document.getElementById("update-recheck-btn");
+    if (recheckBtn) {
+      recheckBtn.addEventListener("click", () => {
+        versionCheck = null; // bust the cached check so it re-fetches
+        render();
+      });
+    }
+
     const btn = document.getElementById("health-rebuild-btn");
     if (btn) {
       const btnLabel = document.getElementById("health-rebuild-btn-label");
@@ -730,9 +763,40 @@ function renderHealth(health, configOptions, versionInfo) {
     </div>
   `;
 
+    const latest = versionInfo?.latestVersion;
+  const updatesCard = `
+    <div class="card bg-base-200">
+      <div class="card-body p-3">
+        <h2 class="card-title text-base"><i data-lucide="refresh-cw" class="w-4 h-4 opacity-70"></i> Updates</h2>
+        <div class="text-sm opacity-70">
+          Installed: <span class="font-mono">v${escapeHtml(version)}</span>
+          &middot; Latest: <span class="font-mono">${latest ? "v" + escapeHtml(latest) : "couldn't check"}</span>
+        </div>
+        ${
+          versionInfo?.updateAvailable
+            ? `<div class="badge badge-info gap-1"><i data-lucide="arrow-up-circle" class="w-3 h-3"></i> Update available</div>`
+            : latest
+              ? `<div class="badge badge-success gap-1"><i data-lucide="check-circle-2" class="w-3 h-3"></i> Up to date</div>`
+              : ""
+        }
+        ${
+          versionInfo?.gitInstall
+            ? `<div class="flex flex-wrap items-center gap-2 mt-1">
+                 <button id="update-now-btn" class="btn btn-brand btn-sm">Update now</button>
+                 <button id="update-recheck-btn" class="btn btn-ghost btn-sm">Check again</button>
+                 <span id="update-status" class="text-sm"></span>
+               </div>
+               <div class="text-xs opacity-60">Or double-click <span class="font-mono">scripts/update.command</span>. Either way, restart Refrain afterward to finish.</div>`
+            : `<div class="text-sm mt-1">This copy wasn't installed with Git, so download the latest ZIP from <a href="${escapeHtml(versionInfo?.repoUrl ?? "")}" target="_blank" rel="noopener" class="link">GitHub</a> and copy your <span class="font-mono">config.json</span> and <span class="font-mono">.env</span> into it. Your settings are never overwritten.</div>`
+        }
+      </div>
+    </div>
+  `;
+
   return `
     <div class="flex flex-col gap-4">
       ${propresenterCard}
+      ${updatesCard}
       ${indexCard}
       ${arrangementCard}
       ${configCard}

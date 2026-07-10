@@ -13,8 +13,13 @@ export function initImageCrop() {
   async function render() {
     const data = await fetch("/api/image-crop/status").then((r) => r.json());
     const cfg = data.config ?? {};
+    const defaults = data.defaults ?? {};
     workingPresets = (cfg.presets ?? []).map((p) => ({ ...p }));
     catalog = data.catalog ?? [];
+    // Pre-fill the folder fields with the ready-made default folders (which
+    // already exist on disk to alias), while still letting the user change them.
+    const inputFolderValue = cfg.inputFolder ?? defaults.inputFolder ?? "";
+    const outputFolderValue = cfg.outputFolder ?? defaults.outputFolder ?? "";
 
     container.innerHTML = `
       <div class="flex flex-col gap-4 max-w-2xl">
@@ -34,14 +39,14 @@ export function initImageCrop() {
             <label class="form-control flex-1 min-w-[16rem]">
               <div class="label py-1"><span class="label-text">Input folder</span></div>
               <div class="flex gap-2">
-                <input id="crop-input-folder" type="text" class="input input-bordered input-sm flex-1" placeholder="./data/image-crop/input" value="${escapeHtml(cfg.inputFolder ?? "")}" />
+                <input id="crop-input-folder" type="text" class="input input-bordered input-sm flex-1" placeholder="${escapeHtml(defaults.inputFolder ?? "")}" value="${escapeHtml(inputFolderValue)}" />
                 <button type="button" class="btn btn-outline btn-sm crop-open-folder-btn" data-which="input">Open</button>
               </div>
             </label>
             <label class="form-control flex-1 min-w-[16rem]">
               <div class="label py-1"><span class="label-text">Output folder</span></div>
               <div class="flex gap-2">
-                <input id="crop-output-folder" type="text" class="input input-bordered input-sm flex-1" placeholder="./data/image-crop/output" value="${escapeHtml(cfg.outputFolder ?? "")}" />
+                <input id="crop-output-folder" type="text" class="input input-bordered input-sm flex-1" placeholder="${escapeHtml(defaults.outputFolder ?? "")}" value="${escapeHtml(outputFolderValue)}" />
                 <button type="button" class="btn btn-outline btn-sm crop-open-folder-btn" data-which="output">Open</button>
               </div>
             </label>
