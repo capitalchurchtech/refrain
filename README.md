@@ -89,18 +89,17 @@ Turn it on from the **Image Crop** screen. There's nothing to edit in a config f
 
 You can point the input and output at any folders you like on that screen. On a multi-user machine this follows the same logic as where you installed Refrain: if you installed it in the shared `/Users/Shared/Refrain`, the folders it makes for you are already under there, so every account can reach them. If it's in one account's `~/Refrain`, the folders live there too, which is fine when that account does the cropping. Only if you want other accounts to drop images and collect results should you move the folders to a shared spot (a `/Users/Shared` subfolder), and make sure the account running Refrain can read and write them, since that's the account whose watcher does the work.
 
-It starts with a set of presets that covers most needs in one pass:
+It starts with a set of presets aimed at what a service drops straight onto a screen: a 1080p slide background and the lower-third and book graphic sizes.
 
 | Preset | Size | Preset | Size |
 |---|---|---|---|
-| 4K UHD (16:9) | 3840x2160 | Instagram square | 1080x1080 |
-| 1440p / 2.5K (16:9) | 2560x1440 | Instagram portrait | 1080x1350 |
-| 1080p (16:9) | 1920x1080 | Instagram story / Reels | 1080x1920 |
-| YouTube thumbnail | 1280x720 | OG / Facebook share | 1200x630 |
+| 1080p (16:9) | 1920x1080 | Thirds tall | 605x808 |
+| Thirds square | 693x693 | Book graphic | 515x787 |
+| Thirds wide | 777x502 | | |
 
-An **Add common size** picker offers more standard sizes (X/Twitter share and header, LinkedIn, Pinterest, Facebook cover, ultrawide banner) so you never have to look up pixel dimensions, and **Add custom** covers anything else. Delete the ones you don't want. Every preset in the list becomes one output file per picture you drop.
+An **Add common size** picker holds the rest (4K, 1440p, YouTube thumbnail, OG/Facebook, the Instagram shapes, X/Twitter, LinkedIn, Pinterest, Facebook cover, ultrawide) so you never have to look up pixel dimensions, and **Add custom** covers anything else. Delete the ones you don't want. Every preset in the list becomes one output file per picture you drop.
 
-Output files keep the original name plus a short tag so a folder of results is easy to read. `promo.jpg` comes back as `promo_yt.jpg`, `promo_in_sq.jpg`, `promo_hd.jpg` and so on, and each row shows its tag. Custom presets get a lowercase, filename safe tag made from their name.
+Output files keep the original name plus the preset's label, so `promo.jpg` comes back as `promo_thirds-sq.jpg`, `promo_book.jpg`, and so on. The label is the last box on each preset row and you can edit it to anything (it's cleaned up to be filename safe on save); leave it blank and it's derived from the preset name.
 
 Cropping uses [smartcrop.js](https://github.com/jwagner/smartcrop.js), which picks the most visually important region rather than blindly centering. There's no model to download and no GPU involved, and it holds up across the mix of images a church actually has: portraits, worship graphics, text heavy slides. Face detection is a possible future add for photo heavy work, not something you need to get value now.
 
@@ -120,6 +119,8 @@ Open the **QR Codes** screen (it's always there, nothing to set up), pick a type
 Types covered: website link, plain text, WiFi network (scanning it joins the network, which is handy for a guest WiFi sign), contact card (vCard), email, phone, and SMS. You can set the size, colors, quiet zone, and error correction level (defaults to a light quiet zone and low error correction, since that reads cleanly on a screen and there's no print damage to guard against). Adding a logo bumps error correction up automatically so the code still scans.
 
 If your church always points codes at the same site and logo, set `qrCodeModule.defaultBaseUrl` and `qrCodeModule.defaultLogoUrl` on the Health screen's Configuration form (or directly in `config.json`) so the URL field and the center logo are pre-filled every time instead of retyping and re-uploading them. Either is still replaceable or clearable per code. The logo value can be a local path Refrain already serves (e.g. `img/mylogo.png`) or a full URL.
+
+You can also set a **default QR size** (`qrCodeModule.defaultSize`, on the same form) to the pixel size your screen layout expects. The screen then starts at that size, so a code you make drops onto the screen at the right size with no resizing. It's still adjustable per code.
 
 Every code you download is saved to a **Recent codes** strip at the bottom of the screen. Click any one to bring back its type, content, and appearance so you can re-download it or tweak it, no retyping. A large uploaded logo isn't kept (it would bloat the history), so restoring one of those brings back everything except the logo, which you re-add. Clear the whole strip any time with the Clear button. How many to keep is up to you: set `qrCodeModule.recentLimit` on the Health screen's Configuration form (or in `config.json`), from 0 (turn the strip off) up to 100, defaulting to 20.
 
@@ -186,7 +187,7 @@ Two things to know. If you'd already set Refrain up with `start.command` or a Lo
 
 ## Updating
 
-Your real settings (`config.json`) and secrets (`.env`) live only on your machine. Git never tracks them and a ZIP download never contains them, so an update leaves them alone.
+Your real settings (`config.json`) and secrets (`.env`) live only on your machine. Git never tracks them and a ZIP download never contains them, so an update leaves them alone. That includes anything you customized: your crop presets and their labels, QR defaults, folder paths, and the rest all live in `config.json`, so an update never resets them. The flip side is that the new default presets that ship with an update only appear on a fresh install; on an existing machine you add any you want from the "Add common size" picker, which always reflects the latest version.
 
 If you cloned with Git:
 

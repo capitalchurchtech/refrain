@@ -37,7 +37,7 @@ import {
 import { discoverModules, discoverSlideSplitters, discoverProviders, discoverStorageBackends } from "./plugin-loader.js";
 import { runComparison, suggestMapping, getPendingUploadCount, retryPendingUploads } from "./arrangement-diff.js";
 import { startWatcher as startImageCropWatcher, getImageCropStatus, foldersOverlap, websafeToken } from "./image-crop.js";
-import { generateQr, getQrHistoryList, getQrHistoryEntry, addQrHistoryEntry, clearQrHistory } from "./qr-code.js";
+import { generateQr, getQrHistoryList, getQrHistoryEntry, addQrHistoryEntry, clearQrHistory, QR_LIMITS } from "./qr-code.js";
 import { normalizeSongTitle } from "../providers/planning-center.js";
 
 const { version } = JSON.parse(readFileSync("./package.json", "utf-8"));
@@ -350,6 +350,20 @@ app.post("/api/config", async (req, res) => {
         return res.status(400).json({ error: `qrRecentLimit must be a whole number from 0 to ${QR_MAX_RECENT_LIMIT}` });
       }
       newConfig.qrCodeModule.recentLimit = n;
+    }
+
+    if (body.qrDefaultSize !== undefined) {
+      // Blank clears it (back to the built-in default). Otherwise it must be
+      // a pixel size within the generator's allowed range.
+      if (body.qrDefaultSize === "" || body.qrDefaultSize === null) {
+        newConfig.qrCodeModule.defaultSize = null;
+      } else {
+        const n = Number(body.qrDefaultSize);
+        if (!Number.isInteger(n) || n < QR_LIMITS.minSize || n > QR_LIMITS.maxSize) {
+          return res.status(400).json({ error: `qrDefaultSize must be a whole number from ${QR_LIMITS.minSize} to ${QR_LIMITS.maxSize}` });
+        }
+        newConfig.qrCodeModule.defaultSize = n;
+      }
     }
 
     try {
@@ -1139,26 +1153,28 @@ app.post("/api/arrangement/compare", async (req, res) => {
 
 // --- Image Crop module (watched-folder smart cropping) ---
 
-// The full menu of known standard sizes, offered in the UI's "add a
-// common size" picker so a volunteer never has to look up pixel
-// dimensions. `seed: true` ones are what a fresh install starts with —
-// a generous "drop once, get everything" spread across video, social
-// link previews, and the main Instagram shapes. The rest are one click
-// away from the picker. Dimensions are the current widely-cited
-// standards (2024-era); all within MAX_PRESET_DIMENSION.
-// `abbr` is the compact filename suffix (output is `photo_<abbr>.jpg`) —
-// short and websafe so a folder of results is easy to scan. `_` separates
-// parts, `-` stays inside a token (16-9, 2-5k). Custom presets with no
-// abbr fall back to a websafe form of their name.
+// The full menu of known sizes, offered in the UI's "add a common size"
+// picker so a volunteer never has to look up pixel dimensions. `seed: true`
+// ones are what a fresh install starts with; the rest are one click away
+// from the picker. The seeded set is a slide background (1080p) plus the
+// lower-third and book graphic sizes a service typically drops straight
+// onto a screen at native size; the social/video sizes sit in the menu.
+// `abbr` is the compact, editable filename suffix (output is
+// `photo_<abbr>.jpg`); `_` separates parts, `-` stays inside a token.
+// Custom presets with no abbr fall back to a websafe form of their name.
 const PRESET_CATALOG = [
-  { name: "4K UHD (16:9)", width: 3840, height: 2160, abbr: "4k", seed: true },
-  { name: "1440p / 2.5K (16:9)", width: 2560, height: 1440, abbr: "2-5k", seed: true },
   { name: "1080p (16:9)", width: 1920, height: 1080, abbr: "hd", seed: true },
-  { name: "YouTube thumbnail", width: 1280, height: 720, abbr: "yt", seed: true },
-  { name: "OG / Facebook share", width: 1200, height: 630, abbr: "og", seed: true },
-  { name: "Instagram square (1:1)", width: 1080, height: 1080, abbr: "in_sq", seed: true },
-  { name: "Instagram portrait (4:5)", width: 1080, height: 1350, abbr: "in_pt", seed: true },
-  { name: "Instagram story / Reels (9:16)", width: 1080, height: 1920, abbr: "in_st", seed: true },
+  { name: "Thirds square", width: 693, height: 693, abbr: "thirds-sq", seed: true },
+  { name: "Thirds wide", width: 777, height: 502, abbr: "thirds-wide", seed: true },
+  { name: "Thirds tall", width: 605, height: 808, abbr: "thirds-tall", seed: true },
+  { name: "Book graphic", width: 515, height: 787, abbr: "book", seed: true },
+  { name: "4K UHD (16:9)", width: 3840, height: 2160, abbr: "4k", seed: false },
+  { name: "1440p / 2.5K (16:9)", width: 2560, height: 1440, abbr: "2-5k", seed: false },
+  { name: "YouTube thumbnail", width: 1280, height: 720, abbr: "yt", seed: false },
+  { name: "OG / Facebook share", width: 1200, height: 630, abbr: "og", seed: false },
+  { name: "Instagram square (1:1)", width: 1080, height: 1080, abbr: "in_sq", seed: false },
+  { name: "Instagram portrait (4:5)", width: 1080, height: 1350, abbr: "in_pt", seed: false },
+  { name: "Instagram story / Reels (9:16)", width: 1080, height: 1920, abbr: "in_st", seed: false },
   { name: "X / Twitter share (16:9)", width: 1200, height: 675, abbr: "x", seed: false },
   { name: "X / Twitter header", width: 1500, height: 500, abbr: "x_hdr", seed: false },
   { name: "LinkedIn share", width: 1200, height: 627, abbr: "li", seed: false },
@@ -1298,6 +1314,7 @@ app.get("/api/qr/config", (_req, res) => {
   res.json({
     defaultBaseUrl: config.qrCodeModule?.defaultBaseUrl || null,
     defaultLogoUrl: config.qrCodeModule?.defaultLogoUrl || null,
+    defaultSize: config.qrCodeModule?.defaultSize || null,
     recentLimit: qrRecentLimit(),
   });
 });
@@ -1442,6 +1459,7 @@ app.get("/api/health", async (_req, res) => {
       qrCodeModule: {
         defaultBaseUrl: config.qrCodeModule?.defaultBaseUrl ?? null,
         defaultLogoUrl: config.qrCodeModule?.defaultLogoUrl ?? null,
+        defaultSize: config.qrCodeModule?.defaultSize ?? null,
         recentLimit: qrRecentLimit(),
       },
     },

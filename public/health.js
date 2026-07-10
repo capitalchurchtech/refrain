@@ -237,6 +237,7 @@ export function initHealth() {
           qrDefaultBaseUrl: document.getElementById("config-qr-base-url").value,
           qrDefaultLogoUrl: document.getElementById("config-qr-logo-url").value,
           qrRecentLimit: Number(document.getElementById("config-qr-recent-limit").value),
+          qrDefaultSize: document.getElementById("config-qr-default-size").value,
           arrangementEnabled: document.getElementById("config-arrangement-enabled").checked,
           arrangementProvider: document.getElementById("config-arrangement-provider").value,
           arrangementStorageBackend: document.getElementById("config-arrangement-storage").value,
@@ -623,6 +624,12 @@ function renderHealth(health, configOptions, versionInfo) {
                 <span class="label-text">Recent codes to keep ${infoIcon("How many recently-downloaded codes the QR Codes screen keeps for one-click restore. 0 turns the recent list off; max 100.", "left")}</span>
               </div>
               <input id="config-qr-recent-limit" type="number" min="0" max="100" step="1" class="input input-bordered input-sm w-28" value="${config.qrCodeModule?.recentLimit ?? 20}" />
+            </label>
+            <label class="form-control w-full max-w-xs">
+              <div class="label py-1">
+                <span class="label-text">Default QR size (px) ${infoIcon("The QR Codes screen starts at this pixel size, so a code you make drops onto your screen layout at the right size with no resizing. Leave blank for the built-in default (512). Still adjustable per code.", "left")}</span>
+              </div>
+              <input id="config-qr-default-size" type="number" min="64" max="2000" step="1" class="input input-bordered input-sm w-28" placeholder="512" value="${config.qrCodeModule?.defaultSize ?? ""}" />
             </label>
           </div>
 

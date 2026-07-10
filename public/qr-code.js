@@ -38,6 +38,7 @@ export function initQrCode() {
   let qrDefaults = null;
   let qrDefaultsPromise = null;
   let defaultLogoApplied = false;
+  let defaultSizeApplied = false;
 
   function loadQrDefaults() {
     if (!qrDefaultsPromise) {
@@ -74,6 +75,13 @@ export function initQrCode() {
 
   async function render() {
     await loadQrDefaults();
+    // Start at the church's configured default size (so a generated code
+    // drops onto the screen at the right size with no resize). Applied
+    // once per session so a manual size change isn't reset on tab switch.
+    if (!defaultSizeApplied) {
+      defaultSizeApplied = true;
+      if (qrDefaults?.defaultSize) state.size = qrDefaults.defaultSize;
+    }
     container.innerHTML = `
       <div class="flex flex-col gap-4 max-w-3xl">
         <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="qr-code" class="w-5 h-5"></i> QR Codes</h1>

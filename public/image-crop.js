@@ -59,7 +59,7 @@ export function initImageCrop() {
 
           <div>
             <div class="text-sm font-semibold mb-1">Output presets</div>
-            <div class="text-xs opacity-60 mb-1">Every image dropped in the input folder is cropped to <em>each</em> of these. Delete any you don't need. Outputs keep the original name plus a short suffix (shown at the end of each row) — e.g. <span class="font-mono">photo_yt.jpg</span>, <span class="font-mono">photo_in_sq.jpg</span>.</div>
+            <div class="text-xs opacity-60 mb-1">Every image dropped in the input folder is cropped to <em>each</em> of these. Delete any you don't need. Outputs are named the original plus the label in the last box, e.g. <span class="font-mono">photo_thirds-sq.jpg</span>. Edit that label to whatever you like; leave it blank to derive it from the name.</div>
             <div class="flex flex-col gap-1" id="crop-presets-list"></div>
             <div class="flex flex-wrap items-center gap-2 mt-2">
               <select id="crop-catalog-select" class="select select-bordered select-xs"></select>
@@ -160,7 +160,8 @@ export function initImageCrop() {
         <input type="number" min="1" class="input input-bordered input-xs w-20 crop-preset-width" placeholder="W" value="${p.width}" data-index="${i}" />
         <span class="opacity-50 text-xs">x</span>
         <input type="number" min="1" class="input input-bordered input-xs w-20 crop-preset-height" placeholder="H" value="${p.height}" data-index="${i}" />
-        <span class="text-xs opacity-50 font-mono w-24 truncate text-right" title="Filename suffix">_${escapeHtml(presetSuffix(p))}</span>
+        <span class="opacity-40 text-xs font-mono">_</span>
+        <input type="text" class="input input-bordered input-xs w-28 font-mono crop-preset-abbr" placeholder="${escapeHtml(websafeToken(p.name))}" value="${escapeHtml(p.abbr ?? "")}" data-index="${i}" title="Filename label (leave blank to derive from the name)" />
         <button type="button" class="btn btn-ghost btn-xs crop-remove-preset-btn" data-index="${i}"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
       </div>
     `
@@ -171,12 +172,18 @@ export function initImageCrop() {
       el.addEventListener("input", (e) => {
         const p = workingPresets[e.target.dataset.index];
         p.name = e.target.value;
-        // A typed custom name has no abbr, so its suffix derives from the
-        // name — keep the shown suffix in sync as they type.
+        // With no explicit label, the filename tag derives from the name —
+        // keep the label field's placeholder in step as they type.
         if (!p.abbr) {
-          const hint = e.target.closest(".flex").querySelector(".font-mono");
-          if (hint) hint.textContent = `_${presetSuffix(p)}`;
+          const abbrInput = e.target.closest(".flex").querySelector(".crop-preset-abbr");
+          if (abbrInput) abbrInput.placeholder = websafeToken(p.name);
         }
+      });
+    });
+    listEl.querySelectorAll(".crop-preset-abbr").forEach((el) => {
+      el.addEventListener("input", (e) => {
+        // Blank means "derive from the name", so store it as no abbr.
+        workingPresets[e.target.dataset.index].abbr = e.target.value.trim() || undefined;
       });
     });
     listEl.querySelectorAll(".crop-preset-width").forEach((el) => {
@@ -282,8 +289,8 @@ export function initImageCrop() {
       .replace(/'/g, "&#39;");
   }
 
-  // Mirrors server/image-crop.js's websafeToken/presetSuffix so the row
-  // hint matches the actual output filename the server will produce.
+  // Mirrors server/image-crop.js's websafeToken so the label field's
+  // placeholder matches the tag the server would derive from the name.
   function websafeToken(s) {
     return String(s ?? "")
       .toLowerCase()
@@ -292,9 +299,6 @@ export function initImageCrop() {
       .replace(/-{2,}/g, "-")
       .replace(/_{2,}/g, "_")
       .replace(/^[_-]+|[_-]+$/g, "");
-  }
-  function presetSuffix(preset) {
-    return (preset.abbr && websafeToken(preset.abbr)) || websafeToken(preset.name) || "preset";
   }
 
   return { render };
