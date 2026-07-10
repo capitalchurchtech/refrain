@@ -92,7 +92,7 @@ export function initImageCrop() {
                  <i data-lucide="check-circle-2" class="w-4 h-4 shrink-0"></i>
                  <div class="min-w-0">
                    <div class="font-medium">Ready — drop images into the input folder.${data.processing ? " Processing…" : ""}</div>
-                   <div class="text-xs opacity-80 truncate">Watching <span class="font-mono">${escapeHtml(cfg.inputFolder ?? "")}</span> · output to <span class="font-mono">${escapeHtml(cfg.outputFolder ?? "")}</span> · ${(cfg.presets ?? []).length} preset${(cfg.presets ?? []).length === 1 ? "" : "s"}</div>
+                   <div class="text-xs opacity-80">${(cfg.presets ?? []).length} preset${(cfg.presets ?? []).length === 1 ? "" : "s"}, cropped into the output folder.</div>
                  </div>
                </div>`
             : `<div class="text-sm opacity-60 flex items-center gap-2"><i data-lucide="eye-off" class="w-3.5 h-3.5"></i> Not watching — tick <strong class="font-medium">Enable</strong> above and Save to start.</div>`

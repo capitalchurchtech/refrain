@@ -91,16 +91,17 @@
       --bc: 92% 0.015 264;
     }
 
-    /* "Blackroom": a true-black, high-contrast theme for a dark booth.
-       It layers on top of the dark theme (applyTheme sets data-theme=dark
-       and adds this class) so it inherits dark's accent colors and only
-       blackens the surfaces and pushes text to near-white. The class
-       beats the [data-theme] attribute on specificity, so these win. */
+    /* "Blackroom": a near-black theme for a dark booth. It layers on top
+       of the dark theme (applyTheme sets data-theme=dark and adds this
+       class) so it inherits dark's accent colors and just darkens the
+       surfaces. Text and button outlines are a soft off-white rather than
+       pure white — full white on pure black glares in a dark room. The
+       class beats the [data-theme] attribute on specificity, so these win. */
     html.blackroom {
-      --b1: 0% 0 0;
+      --b1: 6% 0 0;
       --b2: 11% 0 0;
-      --b3: 18% 0 0;
-      --bc: 96% 0 0;
+      --b3: 16% 0 0;
+      --bc: 80% 0 0;
     }
   </style>
 </head>
