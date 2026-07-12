@@ -23,7 +23,10 @@ export default [
     },
   },
   {
-    files: ["public/**/*.js"],
+    // Front-end code: the app's own public/ plus any self-contained
+    // module's own public/ folder (modules/<id>/public/**), which is
+    // browser code served to the Follow-style module screens.
+    files: ["public/**/*.js", "modules/*/public/**/*.js"],
     languageOptions: {
       ecmaVersion: "latest",
       sourceType: "module",

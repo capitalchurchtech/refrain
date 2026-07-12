@@ -28,18 +28,19 @@ export function initHealth() {
     const wasLibrarySyncOpen = document.getElementById("library-sync-details")?.open ?? false;
     const scrollY = window.scrollY;
 
-    const [health, libraryFolders, configOptions, versionInfo] = await Promise.all([
+    const [health, libraryFolders, configOptions, versionInfo, moduleList] = await Promise.all([
       fetch("/api/health").then((r) => r.json()),
       fetch("/api/library-folders").then((r) => (r.ok ? r.json() : { folders: [], selected: null, error: true })),
       fetch("/api/config-options").then((r) => r.json()),
       fetchVersionCheck(),
+      fetch("/api/modules").then((r) => r.json()).catch(() => ({ modules: [] })),
     ]);
     const trackArrangement = health.arrangementModule.status !== "off";
     const arrangementFolders = trackArrangement
       ? await fetch("/api/arrangement/folders").then((r) => (r.ok ? r.json() : { folders: [], selected: null, error: true }))
       : null;
     container.innerHTML =
-      renderHealth(health, configOptions, versionInfo) + renderLibraryCard(libraryFolders, arrangementFolders);
+      renderHealth(health, configOptions, versionInfo, moduleList.modules ?? []) + renderLibraryCard(libraryFolders, arrangementFolders);
 
     const librarySyncDetails = document.getElementById("library-sync-details");
     if (librarySyncDetails) librarySyncDetails.open = wasLibrarySyncOpen;
@@ -337,6 +338,29 @@ export function initHealth() {
       });
     }
 
+    document.querySelectorAll(".config-module-toggle").forEach((cb) => {
+      cb.addEventListener("change", async () => {
+        const id = cb.dataset.id;
+        const supported = cb.dataset.supported === "true";
+        cb.disabled = true;
+        try {
+          await fetch(`/api/modules/${id}/enabled`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ enabled: cb.checked }),
+          });
+        } catch {
+          // Non-fatal — the reload/re-render below reflects the real state.
+        }
+        // On a supported platform this adds/removes the module's sidebar
+        // entry and screen, so reload to reflect it cleanly. On an
+        // unsupported platform enabling is inert — just re-render to keep
+        // the "not supported" note visible.
+        if (supported) location.reload();
+        else render();
+      });
+    });
+
     const openEnvBtn = document.getElementById("open-env-btn");
     if (openEnvBtn) {
       openEnvBtn.addEventListener("click", async () => {
@@ -511,7 +535,37 @@ function selectOptions(options, current) {
     .join("");
 }
 
-function renderHealth(health, configOptions, versionInfo) {
+// Enable toggles for opt-in modules that expose a `configToggle` (see
+// each module's module.js). Generic — this never names a specific module.
+// An experimental module reports platformSupported:false where it can't
+// run (e.g. Whisper-on-MLX off Apple Silicon); there the toggle still
+// shows but is annotated as unsupported, since enabling it does nothing.
+function renderExperimentalModules(modules) {
+  const items = (modules ?? []).filter((m) => m.configToggle);
+  if (!items.length) return "";
+  return `
+    <div class="divider my-0"></div>
+    <div class="text-sm font-semibold">Experimental modules</div>
+    <div class="text-xs opacity-60">Opt-in features that aren't part of the core app, off by default. Turning one on adds it to the sidebar.</div>
+    ${items
+      .map(
+        (m) => `
+      <label class="label cursor-pointer justify-start gap-2 w-fit">
+        <input type="checkbox" class="checkbox checkbox-sm config-module-toggle" data-id="${escapeHtml(m.id)}" data-supported="${m.platformSupported ? "true" : "false"}" ${m.enabled ? "checked" : ""} />
+        <span class="label-text">${escapeHtml(m.configToggle.label)} ${infoIcon(m.configToggle.help)}</span>
+      </label>
+      ${
+        !m.platformSupported && m.platformMessage
+          ? `<div class="text-xs text-warning ml-6 -mt-1">${escapeHtml(m.platformMessage)}</div>`
+          : ""
+      }
+    `
+      )
+      .join("")}
+  `;
+}
+
+function renderHealth(health, configOptions, versionInfo, modules = []) {
   const { propresenter, index, arrangementModule, role, version, config, envRequirements } = health;
 
   const propresenterCard = `
@@ -748,6 +802,8 @@ function renderHealth(health, configOptions, versionInfo) {
               <div id="detect-storage-path-result" class="text-xs mt-1"></div>
             </label>
           </div>
+
+          ${renderExperimentalModules(modules)}
         </div>
 
         <div class="flex items-center gap-3 mt-3">

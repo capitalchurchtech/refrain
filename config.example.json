@@ -42,5 +42,8 @@
     "defaultLogoUrl": null,
     "defaultSize": null,
     "recentLimit": 20
+  },
+  "followModule": {
+    "enabled": false
   }
 }

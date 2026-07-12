@@ -42,7 +42,7 @@ async function boot() {
   if (window.lucide) window.lucide.createIcons();
 }
 
-function startApp() {
+async function startApp() {
   viewApp.classList.remove("hidden");
   initSearch();
   const health = initHealth();
@@ -59,8 +59,41 @@ function startApp() {
     "qr-code": qrCode.render,
   };
 
+  const builtInViewIds = ["search", "lyrics-assist", "arrangement", "image-crop", "qr-code"];
+  const viewIds = new Set(builtInViewIds);
+
+  // Self-contained modules that ship their own screen (served from
+  // modules/<id>/public/<id>.js) instead of being statically wired in
+  // above. Their screen JS is imported lazily on first navigation, so a
+  // module that's absent or disabled costs the front end nothing. This
+  // is generic — it names no specific module.
+  try {
+    const { modules } = await fetch("/api/modules").then((r) => r.json());
+    const mainContent = document.getElementById("main-content");
+    for (const m of modules) {
+      if (!m.enabled || builtInViewIds.includes(m.id) || views[m.id]) continue;
+      const section = document.createElement("section");
+      section.id = `view-${m.id}`;
+      section.className = "hidden";
+      mainContent.appendChild(section);
+      views[m.id] = section;
+      viewIds.add(m.id);
+      let screen = null;
+      renderers[m.id] = async () => {
+        if (!screen) {
+          const mod = await import(`/module-assets/${m.id}/${m.id}.js`);
+          const factory = mod.initModule ?? mod.default;
+          screen = factory(section, { moduleId: m.id });
+        }
+        await screen.render();
+      };
+    }
+  } catch {
+    // Module discovery failed — the core app still works without it.
+  }
+
   initNav({
-    viewIds: new Set(["search", "lyrics-assist", "arrangement", "image-crop", "qr-code"]),
+    viewIds,
     onNavigate: (id) => {
       for (const [viewId, el] of Object.entries(views)) {
         el.classList.toggle("hidden", viewId !== id);

@@ -38,7 +38,8 @@ import {
   getPresentationName,
   getIndexedFolders,
 } from "./search-index.js";
-import { discoverModules, discoverSlideSplitters, discoverProviders, discoverStorageBackends } from "./plugin-loader.js";
+import { discoverSlideSplitters, discoverProviders, discoverStorageBackends } from "./plugin-loader.js";
+import { createModuleHost } from "./module-host.js";
 import { runComparison, suggestMapping, getPendingUploadCount, retryPendingUploads } from "./arrangement-diff.js";
 import { startWatcher as startImageCropWatcher, getImageCropStatus, foldersOverlap, websafeToken } from "./image-crop.js";
 import { generateQr, getQrHistoryList, getQrHistoryEntry, addQrHistoryEntry, clearQrHistory, QR_LIMITS } from "./qr-code.js";
@@ -100,17 +101,65 @@ const app = express();
 let config = loadConfig();
 let client = new ProPresenterClient(config.propresenter);
 
+// Generic host for self-contained modules under modules/<id>/ (see
+// server/module-host.js). A module can own server routes and a front-end
+// screen without any core file importing or naming it; its backend is
+// loaded lazily and only while it's enabled. `getConfig` hands it the
+// live config each request so it always sees the current on/off state.
+const moduleHost = createModuleHost({ getConfig: () => config });
+
+// Kill any running module backends (e.g. an experimental module's audio
+// sidecar) on shutdown so nothing is ever orphaned. Generic — covers
+// every module the host has spun up.
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  process.on(signal, async () => {
+    try {
+      await moduleHost.teardownAll();
+    } catch {
+      // Shutting down regardless.
+    }
+    process.exit(0);
+  });
+}
+
 app.use(express.static("public"));
 app.use(express.json());
 
-// TODO: mount module *routes* discovered via plugin-loader.js, per
-// docs/refrain-architecture.md Section 17.11, once a module has real
-// server-side endpoints of its own (arrangement, lyrics-assist).
+// Module routes + front-end assets, discovered per request (Section
+// 17.11). This is what the old "mount module routes" TODO intended:
+// a disabled module never has its backend loaded, so it costs nothing.
+app.get("/module-assets/:moduleId/*", moduleHost.assetsHandler);
+app.use("/api/module/:moduleId", moduleHost.apiDispatcher);
+
+// Turn an opt-in module on/off — writes config[<module.configKey>].enabled
+// and tears the backend down on disable. Generic: never names a module.
+app.post("/api/modules/:id/enabled", async (req, res) => {
+  try {
+    const metas = await moduleHost.discoverModuleMetas();
+    const meta = metas.find((m) => m.id === req.params.id);
+    if (!meta?.configKey) {
+      return res.status(404).json({ error: `Unknown configurable module "${req.params.id}".` });
+    }
+    const enabled = Boolean(req.body?.enabled);
+    const key = meta.configKey;
+    const newConfig = { ...config, [key]: { ...(config[key] ?? {}), enabled } };
+    try {
+      await saveConfig(newConfig);
+    } catch (err) {
+      return res.status(500).json({ error: `Failed to save config.json: ${err.message}` });
+    }
+    config = newConfig;
+    if (!enabled) await moduleHost.teardown(meta.id);
+    res.json({ ok: true, enabled: typeof meta.isEnabled === "function" ? meta.isEnabled(newConfig) : enabled });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to update module: ${err.message}` });
+  }
+});
 
 // --- Nav (Section 13) — driven by registered modules, not hardcoded ---
 
 app.get("/api/modules", async (_req, res) => {
-  const modules = await discoverModules();
+  const modules = await moduleHost.discoverModuleMetas();
   res.json({
     modules: modules.map((m) => ({
       id: m.id,
@@ -118,13 +167,24 @@ app.get("/api/modules", async (_req, res) => {
       icon: m.icon,
       route: m.route,
       // "enabled" here means "show in the nav," not "the feature is running."
-      // The arrangement module is gated (hidden until configured, per its
-      // three-state status) because it needs real setup — credentials, a
-      // storage backend, a role. Image-crop needs none of that: it's a
-      // self-contained local utility with its own on/off toggle on its own
-      // screen, so it's always navigable (you flip it on from inside),
-      // matching how Search/Lyrics are always present.
-      enabled: m.id === "arrangement" ? getArrangementModuleStatus(config) !== "off" : m.enabledByDefault,
+      // A self-contained module can decide this itself via isEnabled(config)
+      // (e.g. an experimental module that's off until turned on, and inert on
+      // an unsupported platform). The arrangement module keeps its existing
+      // status gate; image-crop/qr have no gate and are always navigable
+      // (you flip them on from inside), matching how Search/Lyrics always are.
+      enabled:
+        typeof m.isEnabled === "function"
+          ? m.isEnabled(config)
+          : m.id === "arrangement"
+            ? getArrangementModuleStatus(config) !== "off"
+            : m.enabledByDefault,
+      // Generic metadata so the Health screen can render an enable toggle
+      // for opt-in modules without any core file naming a specific one.
+      experimental: Boolean(m.experimental),
+      configKey: m.configKey ?? null,
+      configToggle: m.configToggle ?? null,
+      platformSupported: typeof m.platformSupported === "function" ? m.platformSupported() : true,
+      platformMessage: m.platformMessage ?? null,
     })),
   });
 });

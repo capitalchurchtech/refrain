@@ -34,6 +34,10 @@ Thumbs.db
 *.log
 npm-debug.log*
 
+# Python bytecode cache (the Follow module ships a Python sidecar)
+__pycache__/
+*.pyc
+
 # Build output (if a bundler is added later)
 dist/
 build/
