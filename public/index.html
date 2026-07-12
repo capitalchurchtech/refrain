@@ -116,6 +116,12 @@
     <div class="card bg-base-200">
       <div class="card-body p-3 gap-4">
         <div>
+          <button id="setup-detect-btn" class="btn btn-brand btn-sm">Detect ProPresenter</button>
+          <span id="setup-detect-result" class="text-sm ml-2"></span>
+          <p class="text-xs opacity-60 mt-1">Scans for ProPresenter's Network API (make sure it's enabled in ProPresenter's Preferences &gt; Network first). Or enter the host and port by hand below.</p>
+        </div>
+
+        <div>
           <label class="label"><span class="label-text">ProPresenter host</span></label>
           <input id="setup-host" type="text" value="localhost" class="input input-bordered w-full" />
         </div>

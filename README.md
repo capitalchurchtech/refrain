@@ -159,7 +159,7 @@ Two things to avoid. Don't put it on the Desktop or in Downloads, where it's eas
    - **Git** (recommended, since updating is then one command): `git clone https://github.com/capitalchurchtech/refrain.git`
    - **ZIP:** on the [GitHub page](https://github.com/capitalchurchtech/refrain), click Code, then Download ZIP, and unzip it into the folder you chose.
 2. Double click `scripts/start.command` on a Mac or `scripts/start.bat` on Windows. From a terminal it's `npm install && npm start`.
-3. A setup screen opens in your browser. Point it at ProPresenter's host and port, click Test Connection, and you're in.
+3. A setup screen opens in your browser. Click **Detect ProPresenter** to find it on the network and fill in the host and port automatically (make sure ProPresenter's Network API is on first, under Preferences then Network). You can still type the host and port by hand and hit Test Connection instead. Then you're in.
 
 If you use the launcher script you don't need to touch a terminal. It installs dependencies on the first run for you.
 

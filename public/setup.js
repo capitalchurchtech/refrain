@@ -11,6 +11,8 @@ export function initSetup({ onComplete }) {
 
   const hostInput = document.getElementById("setup-host");
   const portInput = document.getElementById("setup-port");
+  const detectBtn = document.getElementById("setup-detect-btn");
+  const detectResult = document.getElementById("setup-detect-result");
   const testBtn = document.getElementById("setup-test-btn");
   const testResult = document.getElementById("setup-test-result");
   const saveBtn = document.getElementById("setup-save-btn");
@@ -27,6 +29,37 @@ export function initSetup({ onComplete }) {
   function getSelectedRole() {
     return document.querySelector('input[name="setup-role"]:checked')?.value ?? null;
   }
+
+  detectBtn.addEventListener("click", async () => {
+    detectBtn.disabled = true;
+    detectResult.textContent = "Scanning...";
+    detectResult.className = "text-sm ml-2 opacity-70";
+    try {
+      const res = await fetch("/api/setup/scan", { method: "POST" });
+      const data = await res.json();
+      const found = data.candidates?.[0];
+      if (found) {
+        // Found via the API itself, so we already know it works — fill the
+        // fields and treat the connection as verified.
+        hostInput.value = found.host;
+        portInput.value = found.port;
+        connectionVerified = true;
+        testResult.textContent = "";
+        const extra = data.candidates.length > 1 ? ` (+${data.candidates.length - 1} more found)` : "";
+        detectResult.textContent = `Found ${found.name} at ${found.host}:${found.port}${extra}`;
+        detectResult.className = "text-sm ml-2 text-success";
+      } else {
+        detectResult.textContent = "No ProPresenter found. Make sure its Network API is on, or enter the host and port below.";
+        detectResult.className = "text-sm ml-2 text-warning";
+      }
+    } catch (err) {
+      detectResult.textContent = `Scan failed: ${err.message}`;
+      detectResult.className = "text-sm ml-2 text-error";
+    } finally {
+      detectBtn.disabled = false;
+      updateSaveEnabled();
+    }
+  });
 
   testBtn.addEventListener("click", async () => {
     testBtn.disabled = true;

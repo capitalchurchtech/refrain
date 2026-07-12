@@ -26,6 +26,7 @@ import {
   readConfigFileRaw,
 } from "./config.js";
 import { ProPresenterClient } from "./propresenter-client.js";
+import { scanForProPresenter } from "./propresenter-scan.js";
 import {
   loadIndexFromDisk,
   rebuildIndex,
@@ -1409,6 +1410,15 @@ app.get("/api/setup/status", (_req, res) => {
     propresenter: config.propresenter,
     role: config.role ?? null,
   });
+});
+
+app.post("/api/setup/scan", async (_req, res) => {
+  try {
+    const candidates = await scanForProPresenter({ configuredPort: config.propresenter?.port ?? null });
+    res.json({ candidates });
+  } catch (err) {
+    res.status(500).json({ error: `Scan failed: ${err.message}` });
+  }
 });
 
 app.post("/api/setup/test-connection", async (req, res) => {
