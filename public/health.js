@@ -80,6 +80,36 @@ export function initHealth() {
       });
     }
 
+    const configDetectBtn = document.getElementById("config-detect-btn");
+    if (configDetectBtn) {
+      const detectResult = document.getElementById("config-detect-result");
+      configDetectBtn.addEventListener("click", async () => {
+        configDetectBtn.disabled = true;
+        detectResult.textContent = "Scanning...";
+        detectResult.className = "text-sm opacity-70";
+        try {
+          const res = await fetch("/api/setup/scan", { method: "POST" });
+          const data = await res.json();
+          const found = data.candidates?.[0];
+          if (found) {
+            document.getElementById("config-host").value = found.host;
+            document.getElementById("config-port").value = found.port;
+            const extra = data.candidates.length > 1 ? ` (+${data.candidates.length - 1} more)` : "";
+            detectResult.textContent = `Found ${found.name} at ${found.host}:${found.port}${extra} — Save to apply.`;
+            detectResult.className = "text-sm text-success";
+          } else {
+            detectResult.textContent = "No ProPresenter found. Make sure its Network API is on, or type the host and port above.";
+            detectResult.className = "text-sm text-warning";
+          }
+        } catch (err) {
+          detectResult.textContent = `Scan failed: ${err.message}`;
+          detectResult.className = "text-sm text-error";
+        } finally {
+          configDetectBtn.disabled = false;
+        }
+      });
+    }
+
     const btn = document.getElementById("health-rebuild-btn");
     if (btn) {
       const btnLabel = document.getElementById("health-rebuild-btn-label");
@@ -600,6 +630,11 @@ function renderHealth(health, configOptions, versionInfo) {
               <input id="config-port" type="number" min="1" max="65535" class="input input-bordered input-sm" value="${propresenter.port}" />
             </label>
           </div>
+          <div class="flex items-center gap-2">
+            <button type="button" id="config-detect-btn" class="btn btn-outline btn-sm">Detect ProPresenter</button>
+            <span id="config-detect-result" class="text-sm"></span>
+          </div>
+          <div class="text-xs opacity-60">Scans the network for ProPresenter's API and fills in the host and port above. Save to apply.</div>
 
           <label class="label cursor-pointer justify-start gap-2 w-fit">
             <input type="checkbox" id="config-crawl-playlists" class="checkbox checkbox-sm" ${config.librarySync.crawlPlaylists ? "checked" : ""} />
