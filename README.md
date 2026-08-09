@@ -27,6 +27,8 @@ Refrain already did that groundwork, and it did it as a plugin system rather tha
 
 **QR codes.** Generate a scannable code for a link, a WiFi network, a contact card and more, all on your own machine, with no third party generator that could expire your printed code or start charging later.
 
+**Spell check.** Pick a playlist and Refrain scans its slides for likely typos before they go up on the screen. It leans on the words already common across your own library, so worship vocabulary and names it has seen before don't get flagged. Refrain can't edit slides itself, so it flags each word and jumps you to the slide in ProPresenter to fix it, and "Ignore" teaches it a word for good.
+
 **A real plugin system under all of it.** Church management integrations, storage backends, lyrics splitting rules, and whole new screens are all things you add as files in a folder, not core surgery. When your team hits something Refrain doesn't do yet, the answer is "add a module", not "wait for a rewrite".
 
 ## What's finished and what isn't
@@ -41,6 +43,7 @@ Working today:
 - Arrangement storage on a Local Folder (single machine) or a Synced Folder (a Google Drive, Dropbox, or OneDrive folder your desktop app already keeps in sync, which is how two machines share without any server).
 - Image cropping, end to end.
 - QR codes, end to end.
+- Spell check across a playlist's slides, end to end.
 
 Wired up but not finished (the interface exists, the methods currently refuse to run):
 
@@ -125,6 +128,14 @@ You can also set a **default QR size** (`qrCodeModule.defaultSize`, on the same 
 Every code you download is saved to a **Recent codes** strip at the bottom of the screen. Click any one to bring back its type, content, and appearance so you can re-download it or tweak it, no retyping. A large uploaded logo isn't kept (it would bloat the history), so restoring one of those brings back everything except the logo, which you re-add. Clear the whole strip any time with the Clear button. How many to keep is up to you: set `qrCodeModule.recentLimit` on the Health screen's Configuration form (or in `config.json`), from 0 (turn the strip off) up to 100, defaulting to 20.
 
 It all happens on your machine, and that's the point rather than a technical footnote. A lot of "free" online QR generators encode a link back through their own domain instead of your actual content, which leaves them able to expire the code, throttle it, add tracking, or start charging later. That can quietly break a code you already printed on 500 bulletins. A code made here holds your content directly, with nobody in the middle.
+
+## Spell check
+
+Open the **Spell Check** screen (always there, nothing to set up), pick a playlist, and Refrain reads every slide in it and flags words that look like typos. It's a picker rather than "whatever's live right now" on purpose: jumping to a slide during a service could pull you off the item you're actually running, so you choose when to look.
+
+The trick to keeping it useful is that it doesn't just check against a plain English dictionary, which would light up half your worship lyrics. A word is only flagged if the dictionary doesn't know it **and** it's rare across your own library. So the names, places, and worship words your church uses all the time (the ones that show up on slides week after week) are treated as correct, and what's left is mostly real mistakes. Each flag comes with a suggested fix.
+
+Refrain can't edit slides through ProPresenter's API, so it flags the word and gives you two buttons: **Show in Editor** opens the presentation in ProPresenter so you can fix it, and **Go Live** puts that slide up. If a flag is a word you use on purpose that just isn't common yet, hit **Ignore** and it goes on an allowlist (`spellcheckModule.allowlist` in `config.json`) so it's never flagged again.
 
 ## Appearance
 

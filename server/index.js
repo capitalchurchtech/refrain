@@ -37,11 +37,13 @@ import {
   getGroupSequence,
   getPresentationName,
   getIndexedFolders,
+  extractSlides,
 } from "./search-index.js";
 import { discoverModules, discoverSlideSplitters, discoverProviders, discoverStorageBackends } from "./plugin-loader.js";
 import { runComparison, suggestMapping, getPendingUploadCount, retryPendingUploads } from "./arrangement-diff.js";
 import { startWatcher as startImageCropWatcher, getImageCropStatus, foldersOverlap, websafeToken } from "./image-crop.js";
 import { generateQr, getQrHistoryList, getQrHistoryEntry, addQrHistoryEntry, clearQrHistory, QR_LIMITS } from "./qr-code.js";
+import { loadSpeller, findTypos, tokenize } from "./spellcheck.js";
 import { normalizeSongTitle } from "../providers/planning-center.js";
 
 const { version } = JSON.parse(readFileSync("./package.json", "utf-8"));
@@ -611,6 +613,99 @@ app.post("/api/focus", async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(502).json({ error: err.message });
+  }
+});
+
+// --- Spell check (typo-finding for a chosen playlist's slides) ---
+
+const SPELLCHECK_MIN_LIBRARY_HITS = 2; // a word in >= this many presentations is treated as known church vocabulary
+const SPELLCHECK_MAX_PRESENTATIONS = 120; // guard against an enormous playlist
+
+/** Lowercased words that appear across enough of the indexed library to be real vocabulary, not typos. */
+function libraryKnownWords() {
+  const known = new Set();
+  const counts = new Map();
+  for (const entry of Object.values(getIndex().presentations)) {
+    const inThis = new Set();
+    for (const slide of entry.slides ?? []) for (const w of tokenize(slide.text)) inThis.add(w.toLowerCase());
+    for (const w of inThis) {
+      const n = (counts.get(w) ?? 0) + 1;
+      counts.set(w, n);
+      if (n >= SPELLCHECK_MIN_LIBRARY_HITS) known.add(w);
+    }
+  }
+  return known;
+}
+
+/** Flattens ProPresenter's playlist tree into a selectable list of {id, name}. */
+function flattenPlaylists(node, out = []) {
+  if (Array.isArray(node)) {
+    for (const n of node) flattenPlaylists(n, out);
+    return out;
+  }
+  if (!node || typeof node !== "object") return out;
+  if (Array.isArray(node.playlists)) flattenPlaylists(node.playlists, out);
+  const id = node.id?.uuid ?? node.uuid;
+  const name = node.id?.name ?? node.name;
+  if (node.field_type === "playlist" && id && name) out.push({ id, name });
+  flattenPlaylists(node.children ?? [], out);
+  return out;
+}
+
+app.get("/api/spellcheck/playlists", async (_req, res) => {
+  try {
+    const tree = await client.getPlaylists();
+    res.json({ playlists: flattenPlaylists(tree), allowlist: config.spellcheckModule?.allowlist ?? [] });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+app.post("/api/spellcheck/scan", async (req, res) => {
+  const { playlistId } = req.body ?? {};
+  if (!playlistId) return res.status(400).json({ error: "playlistId is required" });
+  try {
+    const [{ items }, speller] = await Promise.all([client.getPlaylistItems(playlistId), loadSpeller()]);
+    const knownWords = libraryKnownWords();
+    const allowlist = new Set((config.spellcheckModule?.allowlist ?? []).map((w) => w.toLowerCase()));
+
+    const presentations = [];
+    const scanned = items.slice(0, SPELLCHECK_MAX_PRESENTATIONS);
+    for (const item of scanned) {
+      let slides;
+      try {
+        slides = extractSlides(await client.getPresentation(item.id));
+      } catch {
+        continue; // a single unreadable presentation shouldn't sink the whole scan
+      }
+      const flaggedSlides = [];
+      for (const slide of slides) {
+        const words = findTypos(slide.text, { knownWords, allowlist, speller });
+        if (words.length) flaggedSlides.push({ slideIndex: slide.index, text: slide.text, words });
+      }
+      if (flaggedSlides.length) {
+        presentations.push({ presentationId: item.id, presentationName: item.name, slides: flaggedSlides });
+      }
+    }
+
+    res.json({ presentations, scannedCount: scanned.length, truncated: items.length > scanned.length });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+app.post("/api/spellcheck/allow", async (req, res) => {
+  const { word } = req.body ?? {};
+  if (typeof word !== "string" || !word.trim()) return res.status(400).json({ error: "word is required" });
+  const lower = word.trim().toLowerCase();
+  const current = config.spellcheckModule?.allowlist ?? [];
+  const allowlist = current.includes(lower) ? current : [...current, lower];
+  config = { ...config, spellcheckModule: { ...config.spellcheckModule, allowlist } };
+  try {
+    await saveConfig(config);
+    res.json({ ok: true, allowlist });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to save allowlist: ${err.message}` });
   }
 });
 

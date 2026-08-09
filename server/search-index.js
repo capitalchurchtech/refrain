@@ -233,7 +233,7 @@ function resolveOrderedGroups(presentationDoc) {
     : rawGroups;
 }
 
-function extractSlides(presentationDoc) {
+export function extractSlides(presentationDoc) {
   const orderedGroups = resolveOrderedGroups(presentationDoc);
   const slides = [];
   let index = 0;
