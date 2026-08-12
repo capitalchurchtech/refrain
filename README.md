@@ -38,7 +38,7 @@ Being straight about this, since "plugin system" can promise more than it delive
 Working today:
 
 - Slide search, Go Live, Show in Editor, and the date and library filters.
-- The Return bar, to snap back to the slide that was live before an app jump.
+- The Return bar, to reopen the presentation that was live before an app jump.
 - The lyrics helper and paste to slides.
 - Arrangement tracking end to end, with the Manual provider (you type the arrangement in) and the Planning Center provider (pulled automatically, including the one button "compare this weekend" workflow and pushing a fix back).
 - Arrangement storage on a Local Folder (single machine) or a Synced Folder (a Google Drive, Dropbox, or OneDrive folder your desktop app already keeps in sync, which is how two machines share without any server).
@@ -76,9 +76,9 @@ Set `folders` to `null` to index every library folder. Set `crawlPlaylists` to `
 
 ### Snapping back after a tangent
 
-Live services wander. A singer goes to a song that wasn't in the plan, you search it up and hit Go Live, and now you need to get back to exactly where the plan was, fast. The moment you use the app to jump somewhere, Refrain quietly remembers the slide that was live right before, and a **Return** bar appears across the top of every screen: one click puts that slide back live.
+Live services wander. A singer goes to a song that wasn't in the plan, you search it up and hit Go Live, and now you need to get back to exactly where the plan was, fast. The moment you use the app to jump somewhere, Refrain quietly remembers the slide that was live right before, and a **Return** bar appears across the top of every screen: one click brings that presentation back up in ProPresenter's editor so you can pick the next slide yourself.
 
-It only remembers the slide from that one app jump, captured at the click. If you then advance seven slides by hand in ProPresenter during the tangent, Return still takes you back to where you were before the jump, not seven slides into the detour. Once you've returned, the bar clears until the next time you jump from the app. Nothing to set up, and it works with search alone.
+Return opens the presentation, it doesn't fire a slide live, so it never changes what's on the screens out from under you mid-song. It only remembers the slide from that one app jump, captured at the click, and tells you which slide you were on. If you then advance seven slides by hand in ProPresenter during the tangent, Return still takes you back to where you were before the jump, not seven slides into the detour. Once you've returned, the bar clears until the next time you jump from the app. Nothing to set up, and it works with search alone.
 
 ### Seeing what a pastor changed
 

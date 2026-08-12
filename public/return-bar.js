@@ -29,7 +29,7 @@ export function initReturnBar() {
     if (current === key) return;
     current = key;
     const name = pin.name ? `“${escapeHtml(pin.name)}”` : "the previous slide";
-    label.innerHTML = `Jumped away from ${name} (slide ${pin.slideIndex + 1}). <span class="opacity-70">Return puts it back live.</span>`;
+    label.innerHTML = `Jumped away from ${name} (slide ${pin.slideIndex + 1}). <span class="opacity-70">Return opens it in the editor so you can pick what's next.</span>`;
     bar.classList.remove("hidden");
     if (window.lucide) window.lucide.createIcons();
   }

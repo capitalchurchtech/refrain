@@ -641,17 +641,15 @@ app.get("/api/return-pin", (_req, res) => {
   res.json({ pin: returnPin });
 });
 
-// Snap back to the pinned slide and consume the pin. Distinct from
-// /api/trigger so returning doesn't re-arm the pin at the spot we're
-// leaving (which would strand it where we already are).
+// Snap back to where we were before the jump: bring that presentation up
+// in ProPresenter's editor (not live) so the operator can pick the next
+// slide themselves, then consume the pin. Deliberately focus-only, not a
+// trigger — returning must never change what's on the screens mid-service.
 app.post("/api/return", async (req, res) => {
   if (!returnPin) return res.status(409).json({ error: "Nothing to return to." });
   const target = returnPin;
   try {
-    await client.triggerSlide(target.presentationId, target.slideIndex);
-    await client.focusPresentation(target.presentationId).catch(() => {
-      // focusing the editor is a nice-to-have; the return already went live
-    });
+    await client.focusPresentation(target.presentationId);
     returnPin = null;
     res.json({ ok: true, returnedTo: target });
   } catch (err) {
