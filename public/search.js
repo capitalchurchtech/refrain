@@ -246,6 +246,8 @@ export function initSearch() {
         if (!res.ok) {
           const { error } = await res.json();
           alert(`Failed to go live: ${error}`);
+        } else {
+          window.refreshReturnBar?.();
         }
       } finally {
         liveBtn.disabled = false;

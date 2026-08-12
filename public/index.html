@@ -190,6 +190,17 @@
     </aside>
 
     <main id="main-content" class="flex-1 min-w-0 p-3 max-w-3xl ml-16 transition-all duration-150">
+      <!-- App-wide "Return" bar (Section: snap-back). Hidden until an
+           app-initiated Go Live arms a return pin server-side; then it
+           shows on every screen so the operator can snap back to where the
+           plan was in one click. -->
+      <div id="return-bar" class="hidden alert alert-warning py-2 px-3 mb-3 flex items-center justify-between gap-2">
+        <span id="return-bar-label" class="text-sm"></span>
+        <button id="return-bar-btn" class="btn btn-brand btn-sm shrink-0">
+          <i data-lucide="corner-up-left" class="w-4 h-4"></i> Return
+        </button>
+      </div>
+
       <section id="view-search">
         <div class="flex items-center justify-between mb-4">
           <div id="index-status" class="text-sm opacity-70"></div>

@@ -6,6 +6,7 @@ import { initArrangement } from "./arrangement.js";
 import { initImageCrop } from "./image-crop.js";
 import { initQrCode } from "./qr-code.js";
 import { initSpellcheck } from "./spellcheck.js";
+import { initReturnBar } from "./return-bar.js";
 import { initNav, applyTheme } from "./nav.js";
 
 const viewSetup = document.getElementById("view-setup");
@@ -53,6 +54,7 @@ function startApp() {
   const imageCrop = initImageCrop();
   const qrCode = initQrCode();
   const spellcheck = initSpellcheck();
+  initReturnBar();
 
   const renderers = {
     health: health.render,

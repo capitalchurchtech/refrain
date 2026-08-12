@@ -141,6 +141,25 @@ export class ProPresenterClient {
   async focusPresentation(presentationId) {
     await this.#get(`/v1/presentation/${presentationId}/focus`);
   }
+
+  /**
+   * Reads the slide that's live right now: which presentation and its
+   * 0-based flat slide index (the same index space triggerSlide uses, so
+   * the pair round-trips straight back through triggerSlide). Returns null
+   * when nothing is live or the API doesn't report it, so callers can
+   * degrade rather than arm a bogus "return" target.
+   *
+   * Response shape (PP v1):
+   *   { presentation_index: { index, presentation_id: { uuid, name } } }
+   */
+  async getCurrentSlide() {
+    const data = await this.#get("/v1/presentation/slide_index");
+    const pi = data?.presentation_index;
+    const uuid = pi?.presentation_id?.uuid;
+    const index = pi?.index;
+    if (!uuid || typeof index !== "number" || index < 0) return null;
+    return { presentationId: uuid, slideIndex: index, name: pi.presentation_id.name ?? null };
+  }
 }
 
 export { normalizeText };

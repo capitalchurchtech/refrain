@@ -137,6 +137,7 @@ export function initSpellcheck() {
             body: JSON.stringify({ presentationId: btn.dataset.presentationId, slideIndex: Number(btn.dataset.slideIndex) }),
           });
           if (!res.ok) alert(`Failed to go live: ${(await res.json()).error}`);
+          else window.refreshReturnBar?.();
         } finally {
           btn.disabled = false;
         }

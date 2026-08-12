@@ -38,6 +38,7 @@ Being straight about this, since "plugin system" can promise more than it delive
 Working today:
 
 - Slide search, Go Live, Show in Editor, and the date and library filters.
+- The Return bar, to snap back to the slide that was live before an app jump.
 - The lyrics helper and paste to slides.
 - Arrangement tracking end to end, with the Manual provider (you type the arrangement in) and the Planning Center provider (pulled automatically, including the one button "compare this weekend" workflow and pushing a fix back).
 - Arrangement storage on a Local Folder (single machine) or a Synced Folder (a Google Drive, Dropbox, or OneDrive folder your desktop app already keeps in sync, which is how two machines share without any server).
@@ -72,6 +73,12 @@ If your library runs to hundreds of presentations or playlists, a full index bui
 ```
 
 Set `folders` to `null` to index every library folder. Set `crawlPlaylists` to `true` to also record which playlist each presentation belongs to, which is the slowest part of a build, so it's off by default. Search still covers every presentation in the chosen folders either way.
+
+### Snapping back after a tangent
+
+Live services wander. A singer goes to a song that wasn't in the plan, you search it up and hit Go Live, and now you need to get back to exactly where the plan was, fast. The moment you use the app to jump somewhere, Refrain quietly remembers the slide that was live right before, and a **Return** bar appears across the top of every screen: one click puts that slide back live.
+
+It only remembers the slide from that one app jump, captured at the click. If you then advance seven slides by hand in ProPresenter during the tangent, Return still takes you back to where you were before the jump, not seven slides into the detour. Once you've returned, the bar clears until the next time you jump from the app. Nothing to set up, and it works with search alone.
 
 ### Seeing what a pastor changed
 

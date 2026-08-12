@@ -585,12 +585,32 @@ app.get("/api/search/folders", (_req, res) => {
   res.json({ folders: getIndexedFolders() });
 });
 
+// The "return pin": a single-slot memory of the slide that was live the
+// instant the operator last used the app to jump somewhere. It arms only
+// on an app-initiated Go Live and is captured once, so advancing slides by
+// hand in ProPresenter afterward never moves it — letting a worship
+// operator snap back to where the plan was before a tangent. In-memory on
+// purpose: it's ephemeral live-service state, not data worth persisting.
+let returnPin = null;
+
 app.post("/api/trigger", async (req, res) => {
   const { presentationId, slideIndex } = req.body ?? {};
   if (!presentationId || slideIndex === undefined) {
     return res.status(400).json({ error: "presentationId and slideIndex are required" });
   }
   try {
+    // Capture where we are before jumping, so "Return" can bring us back.
+    // Best-effort: if we can't read the current slide, keep whatever pin
+    // we had rather than clobbering a good one with a failed read. Don't
+    // arm a pin that points at the very slide we're about to trigger.
+    try {
+      const current = await client.getCurrentSlide();
+      if (current && !(current.presentationId === presentationId && current.slideIndex === Number(slideIndex))) {
+        returnPin = current;
+      }
+    } catch {
+      // reading the current slide is a convenience; never fail the jump over it
+    }
     await client.triggerSlide(presentationId, slideIndex);
     await client.focusPresentation(presentationId).catch(() => {
       // Focusing the editor is a nice-to-have; the trigger already
@@ -612,6 +632,30 @@ app.post("/api/focus", async (req, res) => {
     await client.focusPresentation(presentationId);
     res.json({ ok: true });
   } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// Current return pin, for the app-wide "Return" bar to show/hide itself.
+app.get("/api/return-pin", (_req, res) => {
+  res.json({ pin: returnPin });
+});
+
+// Snap back to the pinned slide and consume the pin. Distinct from
+// /api/trigger so returning doesn't re-arm the pin at the spot we're
+// leaving (which would strand it where we already are).
+app.post("/api/return", async (req, res) => {
+  if (!returnPin) return res.status(409).json({ error: "Nothing to return to." });
+  const target = returnPin;
+  try {
+    await client.triggerSlide(target.presentationId, target.slideIndex);
+    await client.focusPresentation(target.presentationId).catch(() => {
+      // focusing the editor is a nice-to-have; the return already went live
+    });
+    returnPin = null;
+    res.json({ ok: true, returnedTo: target });
+  } catch (err) {
+    // leave the pin armed so the operator can try again
     res.status(502).json({ error: err.message });
   }
 });
