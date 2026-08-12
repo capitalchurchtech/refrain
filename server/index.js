@@ -658,6 +658,65 @@ app.post("/api/return", async (req, res) => {
   }
 });
 
+// --- Live output controls (the "Live" page) ---
+
+// Layers ProPresenter's clear API accepts. "Clear All" fans out across the
+// visible ones (audio left alone, since clearing it would cut a playing
+// track, which isn't what a screens-focused "clear" button implies).
+const CLEAR_LAYERS = ["slide", "media", "props", "messages", "announcements", "video_input"];
+
+// The church's own Looks and Macros, for the big-button grid. Degrades to
+// empty lists (not an error) if ProPresenter is unreachable, so the Clear
+// buttons still render and work.
+app.get("/api/live/controls", async (_req, res) => {
+  const [looks, macros] = await Promise.all([
+    client.getLooks().catch(() => []),
+    client.getMacros().catch(() => []),
+  ]);
+  res.json({ looks, macros });
+});
+
+app.post("/api/live/clear", async (req, res) => {
+  const { layer } = req.body ?? {};
+  const layers = layer === "all" ? CLEAR_LAYERS : [layer];
+  if (layers.some((l) => !CLEAR_LAYERS.includes(l))) {
+    return res.status(400).json({ error: `Unknown layer: ${layer}` });
+  }
+  try {
+    // Clear every requested layer; report a failure only if they all fail,
+    // so one unsupported layer can't block clearing the rest of the screen.
+    const results = await Promise.allSettled(layers.map((l) => client.clearLayer(l)));
+    if (results.every((r) => r.status === "rejected")) {
+      throw results[0].reason;
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+app.post("/api/live/look", async (req, res) => {
+  const { id } = req.body ?? {};
+  if (!id) return res.status(400).json({ error: "id is required" });
+  try {
+    await client.triggerLook(id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+app.post("/api/live/macro", async (req, res) => {
+  const { id } = req.body ?? {};
+  if (!id) return res.status(400).json({ error: "id is required" });
+  try {
+    await client.triggerMacro(id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
 // --- Spell check (typo-finding for a chosen playlist's slides) ---
 
 const SPELLCHECK_MIN_LIBRARY_HITS = 2; // a word in >= this many presentations is treated as known church vocabulary

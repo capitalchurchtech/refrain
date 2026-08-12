@@ -6,6 +6,7 @@ import { initArrangement } from "./arrangement.js";
 import { initImageCrop } from "./image-crop.js";
 import { initQrCode } from "./qr-code.js";
 import { initSpellcheck } from "./spellcheck.js";
+import { initLive } from "./live.js";
 import { initReturnBar } from "./return-bar.js";
 import { initNav, applyTheme } from "./nav.js";
 
@@ -20,6 +21,7 @@ const views = {
   "image-crop": document.getElementById("view-image-crop"),
   "qr-code": document.getElementById("view-qr-code"),
   spellcheck: document.getElementById("view-spellcheck"),
+  live: document.getElementById("view-live"),
 };
 
 async function boot() {
@@ -54,6 +56,7 @@ function startApp() {
   const imageCrop = initImageCrop();
   const qrCode = initQrCode();
   const spellcheck = initSpellcheck();
+  const live = initLive();
   initReturnBar();
 
   const renderers = {
@@ -63,10 +66,11 @@ function startApp() {
     "image-crop": imageCrop.render,
     "qr-code": qrCode.render,
     spellcheck: spellcheck.render,
+    live: live.render,
   };
 
   initNav({
-    viewIds: new Set(["search", "lyrics-assist", "arrangement", "image-crop", "qr-code", "spellcheck"]),
+    viewIds: new Set(["search", "lyrics-assist", "arrangement", "image-crop", "qr-code", "spellcheck", "live"]),
     onNavigate: (id) => {
       for (const [viewId, el] of Object.entries(views)) {
         el.classList.toggle("hidden", viewId !== id);

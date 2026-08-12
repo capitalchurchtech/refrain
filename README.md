@@ -39,6 +39,7 @@ Working today:
 
 - Slide search, Go Live, Show in Editor, and the date and library filters.
 - The Return bar, to reopen the presentation that was live before an app jump.
+- The Live page: big Clear buttons plus one button per Look and Macro.
 - The lyrics helper and paste to slides.
 - Arrangement tracking end to end, with the Manual provider (you type the arrangement in) and the Planning Center provider (pulled automatically, including the one button "compare this weekend" workflow and pushing a fix back).
 - Arrangement storage on a Local Folder (single machine) or a Synced Folder (a Google Drive, Dropbox, or OneDrive folder your desktop app already keeps in sync, which is how two machines share without any server).
@@ -92,6 +93,14 @@ Keep sermon content on your own machine and use a tool that runs locally rather 
 - Already in your tools: **Word** has Review, then Compare for two `.docx` files, and macOS ships `diff` in Terminal and FileMerge with Xcode's command line tools.
 
 If the notes live somewhere with version history already (Google Docs, a Word file on OneDrive, anything under Git), its built-in "see version history" or "compare" is usually the fastest path of all.
+
+## Live page
+
+Open the **Live** screen for a set of big, high-contrast buttons meant to be hit at a glance from the back of a dark room. The **Clear** row gets things off the screen fast: Clear All, or just the slide, media, or messages layer on their own. These always work, since they're standard ProPresenter layers.
+
+Below that, Refrain lists the **Looks** and **Macros** you've set up in ProPresenter, one button each, pulled live. So your own "Logo", "Black", "Motion", or whatever you've named them show up by name with nothing to configure here, and tapping one switches the screens to it. If ProPresenter is unreachable the Clear buttons still work; the Looks and Macros just won't be listed until it's back.
+
+Nothing here fires a slide live on its own, so it's safe to keep open during a service. It works with search alone, no setup.
 
 ## Image cropping
 

@@ -160,6 +160,48 @@ export class ProPresenterClient {
     if (!uuid || typeof index !== "number" || index < 0) return null;
     return { presentationId: uuid, slideIndex: index, name: pi.presentation_id.name ?? null };
   }
+
+  // --- Live output controls (the "Live" page) ---
+  // Looks and Macros are user-defined in ProPresenter, so the church's own
+  // "Logo", "Black", "Motion", etc. come through by name rather than being
+  // hardcoded here. Each list entry is { id: { uuid, name, index } }.
+
+  /** The display Looks configured in this ProPresenter. */
+  async getLooks() {
+    return normalizeIdList(await this.#get("/v1/looks"));
+  }
+
+  /** Activates a Look by uuid (changes what each screen shows). */
+  async triggerLook(id) {
+    await this.#get(`/v1/look/${id}/trigger`);
+  }
+
+  /** The Macros configured in this ProPresenter. */
+  async getMacros() {
+    return normalizeIdList(await this.#get("/v1/macros"));
+  }
+
+  /** Runs a Macro by uuid. */
+  async triggerMacro(id) {
+    await this.#get(`/v1/macro/${id}/trigger`);
+  }
+
+  /**
+   * Clears one output layer. Valid layers per the API:
+   * audio, props, messages, announcements, slide, media, video_input.
+   */
+  async clearLayer(layer) {
+    await this.#get(`/v1/clear/layer/${layer}`);
+  }
+}
+
+// The list endpoints (looks, macros, and similar) return arrays of
+// { id: { uuid, name, index } }. Flatten to the shape the UI needs, dropping
+// anything without a usable uuid so a malformed entry can't render a dead button.
+function normalizeIdList(list) {
+  return (Array.isArray(list) ? list : [])
+    .map((entry) => ({ id: entry?.id?.uuid, name: entry?.id?.name ?? "Untitled" }))
+    .filter((entry) => entry.id);
 }
 
 export { normalizeText };
