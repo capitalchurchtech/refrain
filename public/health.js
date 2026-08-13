@@ -38,8 +38,12 @@ export function initHealth() {
     const arrangementFolders = trackArrangement
       ? await fetch("/api/arrangement/folders").then((r) => (r.ok ? r.json() : { folders: [], selected: null, error: true }))
       : null;
-    container.innerHTML =
-      renderHealth(health, configOptions, versionInfo) + renderLibraryCard(libraryFolders, arrangementFolders);
+    container.innerHTML = `
+      <div class="flex flex-col gap-4 max-w-3xl">
+        <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="heart-pulse" class="w-5 h-5"></i> Health</h1>
+        ${renderHealth(health, configOptions, versionInfo)}
+        ${renderLibraryCard(libraryFolders, arrangementFolders)}
+      </div>`;
 
     const librarySyncDetails = document.getElementById("library-sync-details");
     if (librarySyncDetails) librarySyncDetails.open = wasLibrarySyncOpen;

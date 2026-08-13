@@ -24,7 +24,8 @@ export function initLyricsAssist() {
     const { splitters } = await fetch("/api/slide-splitters").then((r) => r.json());
 
     container.innerHTML = `
-      <div class="flex flex-col gap-4 max-w-2xl">
+      <div class="flex flex-col gap-4 max-w-3xl">
+        <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="music" class="w-5 h-5"></i> Lyrics</h1>
         <div class="card bg-base-200">
           <div class="card-body p-3 gap-3">
             <h2 class="card-title text-base">Find lyrics</h2>

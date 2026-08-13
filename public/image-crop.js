@@ -22,7 +22,7 @@ export function initImageCrop() {
     const outputFolderValue = cfg.outputFolder ?? defaults.outputFolder ?? "";
 
     container.innerHTML = `
-      <div class="flex flex-col gap-4 max-w-2xl">
+      <div class="flex flex-col gap-4 max-w-3xl">
         <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="crop" class="w-5 h-5"></i> Image Crop</h1>
         <p class="text-sm opacity-70">
           Drop an image into the input folder and it's automatically cropped and resized to every preset below —

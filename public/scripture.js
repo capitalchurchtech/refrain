@@ -43,7 +43,7 @@ export function initScripture() {
     const defaultSplitterId = splitters.some((s) => s.id === "blank-line-delimited") ? "blank-line-delimited" : splitters[0]?.id;
 
     container.innerHTML = `
-      <div class="flex flex-col gap-4 max-w-2xl">
+      <div class="flex flex-col gap-4 max-w-3xl">
         <div>
           <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="book-open" class="w-5 h-5"></i> Scripture</h1>
           <p class="text-sm opacity-70">
