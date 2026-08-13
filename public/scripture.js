@@ -9,7 +9,12 @@
  * one to reach for original-language study (interlinear, Strong's), but it
  * doesn't carry some modern versions (NIV, NLT, MSG), so when the chosen
  * version isn't on BLB the BLB link falls back to the configured default.
+ *
+ * A second step lets the user paste the passage they copied from the site
+ * and split it into slide-sized blocks (shared with the lyrics helper).
+ * Refrain still never fetches scripture itself; it only formats the paste.
  */
+import { cleanText, splitText, renderSlidePreview, splitterLabel } from "./slide-tools.js";
 
 // Versions offered in the picker. blb is the Blue Letter Bible translation
 // code, or null when BLB doesn't carry that version (licensing).
@@ -30,8 +35,12 @@ export function initScripture() {
   const container = document.getElementById("view-scripture");
 
   async function render() {
-    const { biblegatewayVersion, blueletterTranslation } = await fetch("/api/scripture/config").then((r) => r.json());
+    const [{ biblegatewayVersion, blueletterTranslation }, { splitters }] = await Promise.all([
+      fetch("/api/scripture/config").then((r) => r.json()),
+      fetch("/api/slide-splitters").then((r) => r.json()),
+    ]);
     const defaultVersion = VERSIONS.some((v) => v.code === biblegatewayVersion) ? biblegatewayVersion : "NIV";
+    const defaultSplitterId = splitters.some((s) => s.id === "blank-line-delimited") ? "blank-line-delimited" : splitters[0]?.id;
 
     container.innerHTML = `
       <div class="flex flex-col gap-4 max-w-2xl">
@@ -69,6 +78,38 @@ export function initScripture() {
             <p id="scripture-blb-note" class="text-xs opacity-60"></p>
           </div>
         </div>
+
+        <div class="card bg-base-200">
+          <div class="card-body p-3 gap-3">
+            <h2 class="card-title text-base">Paste &amp; split into slides</h2>
+            <p class="text-xs opacity-60">
+              Copied the passage from the site? Paste it here to tidy it up and split it into slide-sized
+              blocks. Refrain never fetches scripture itself, it only formats what you paste.
+            </p>
+            <textarea id="scripture-paste" rows="5" placeholder="Paste the passage here..." class="textarea textarea-bordered w-full"></textarea>
+            <div class="flex flex-wrap items-center gap-2">
+              <button id="scripture-clean-btn" class="btn btn-outline btn-xs" title="Remove hidden characters copied from the web, tidy spacing, and optionally straighten curly quotes and dashes">
+                <i data-lucide="eraser" class="w-3.5 h-3.5"></i> Clean up text
+              </button>
+              <label class="label cursor-pointer gap-1 py-0">
+                <input type="checkbox" id="scripture-straighten" class="checkbox checkbox-xs" checked />
+                <span class="label-text text-xs">Straighten quotes &amp; dashes</span>
+              </label>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-sm opacity-70">Split by:</span>
+              <select id="scripture-splitter" class="select select-bordered select-sm">
+                ${splitters.map((s) => `<option value="${escapeHtml(s.id)}" ${s.id === defaultSplitterId ? "selected" : ""}>${escapeHtml(splitterLabel(s.id))}</option>`).join("")}
+              </select>
+              <button id="scripture-preview-btn" class="btn btn-outline btn-sm">Preview Slides</button>
+            </div>
+            <p class="text-xs opacity-60">
+              Copy each slide below into a new presentation in ProPresenter (its API can't create slides for you).
+            </p>
+          </div>
+        </div>
+
+        <div id="scripture-slides" class="flex flex-col gap-2"></div>
       </div>
     `;
     if (window.lucide) window.lucide.createIcons();
@@ -117,6 +158,19 @@ export function initScripture() {
     // Enter in the reference field opens Bible Gateway, the common case.
     refEl.addEventListener("keydown", (e) => {
       if (e.key === "Enter") openTab(bibleGatewayUrl());
+    });
+
+    // Paste & split into slides (shared with the lyrics helper).
+    document.getElementById("scripture-clean-btn").addEventListener("click", () => {
+      const ta = document.getElementById("scripture-paste");
+      ta.value = cleanText(ta.value, document.getElementById("scripture-straighten").checked);
+    });
+
+    document.getElementById("scripture-preview-btn").addEventListener("click", async () => {
+      const text = document.getElementById("scripture-paste").value;
+      if (!text.trim()) return;
+      const slides = await splitText(text, document.getElementById("scripture-splitter").value);
+      renderSlidePreview(document.getElementById("scripture-slides"), slides, false);
     });
   }
 

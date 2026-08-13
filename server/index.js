@@ -837,7 +837,9 @@ app.get("/api/slide-splitters", async (_req, res) => {
   res.json({ splitters: splitters.map((S) => ({ id: S.splitterId })) });
 });
 
-app.post("/api/lyrics-assist/split", async (req, res) => {
+// Generic text -> slides splitter, shared by the lyrics helper and the
+// Scripture page (both let the user paste text they copied from a site).
+app.post("/api/slides/split", async (req, res) => {
   const { text, splitterId } = req.body ?? {};
   if (!text) return res.status(400).json({ error: "text is required" });
 

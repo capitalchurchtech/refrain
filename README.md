@@ -101,6 +101,8 @@ Open the **Scripture** screen, type a reference ("John 3:16", "Romans 8", "Psalm
 
 Bible Gateway carries nearly every translation, so that's the one for reading and copying a passage. Blue Letter Bible is the one for original-language study (interlinear, Strong's numbers, Hebrew and Greek word tools). Because Blue Letter Bible doesn't carry some modern versions (NIV, NLT, The Message), when you've picked one of those the Blue Letter link opens your configured fallback translation instead, and the screen tells you so. Set the defaults with `scriptureModule.biblegatewayVersion` and `scriptureModule.blueletterTranslation` in `config.json`.
 
+Once you've copied the passage from the site, the same page has a **Paste and split into slides** step, the same one the lyrics helper uses: paste the text, clean up the junk that rides along from a web copy, and split it into slide-sized blocks to drop into ProPresenter. Refrain still never fetches scripture itself, so any version is fine since you did the copying by hand.
+
 ## Live page
 
 Open the **Live** screen for a set of big, high-contrast buttons meant to be hit at a glance from the back of a dark room. The **Clear** row gets things off the screen fast: Clear All, or just the slide, media, or messages layer on their own. These always work, since they're standard ProPresenter layers.
