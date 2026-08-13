@@ -26,8 +26,11 @@
        main-content's margin shrinks to match, reclaiming ~52px. Hovering
        (or focusing a nav button via keyboard) pops it back to full width;
        since the rail is `position: fixed` and already layers above the
-       page (z-20), that's a pure overlay with no reflow of main-content. */
-    @media (max-width: 449px) {
+       page (z-20), that's a pure overlay with no reflow of main-content.
+       Gated to pointer devices (hover: hover): on a touch phone there's no
+       hover to pop it back, so the sliver would trap the operator with no
+       way to reach even the expand button. Touch keeps the full icon rail. */
+    @media (max-width: 449px) and (hover: hover) {
       #nav-rail.collapsed {
         width: 0.75rem;
         overflow-x: hidden;
@@ -39,6 +42,20 @@
       #nav-rail.collapsed:focus-within {
         width: 4rem;
         overflow-x: visible;
+      }
+    }
+
+    /* Touch devices have no hover and no keyboard, so tap targets need to be
+       comfortably large. Bump the nav items and bottom controls to a ~44px
+       minimum, and drop the icon-only tooltips' reliance on hover isn't an
+       issue since expanded labels are the primary affordance there. */
+    @media (hover: none) {
+      #nav-items .nav-item,
+      #nav-help-toggle,
+      #theme-toggle,
+      #nav-pin-toggle,
+      #brand-row {
+        min-height: 2.75rem;
       }
     }
 
