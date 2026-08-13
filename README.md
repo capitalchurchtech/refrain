@@ -56,6 +56,7 @@ Wired up but not finished (the interface exists, the methods currently refuse to
 Not independently checked:
 
 - Only tested against ProPresenter 7.x on the machines that built it. Other versions may need small path adjustments. See Compatibility below.
+- The live-output features (Return bar, the Live page's Looks, Macros, and message poster) were built to ProPresenter's documented API but confirmed only against fake servers during development. If you run a live rig, [docs/propresenter-verification.md](docs/propresenter-verification.md) is a twenty-minute checklist to confirm them, with the exact response to capture if any endpoint differs on your version.
 
 ## What you need
 
