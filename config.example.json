@@ -45,5 +45,9 @@
   },
   "spellcheckModule": {
     "allowlist": []
+  },
+  "scriptureModule": {
+    "biblegatewayVersion": "NIV",
+    "blueletterTranslation": "KJV"
   }
 }

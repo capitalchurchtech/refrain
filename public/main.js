@@ -7,6 +7,7 @@ import { initImageCrop } from "./image-crop.js";
 import { initQrCode } from "./qr-code.js";
 import { initSpellcheck } from "./spellcheck.js";
 import { initLive } from "./live.js";
+import { initScripture } from "./scripture.js";
 import { initReturnBar } from "./return-bar.js";
 import { initNav, applyTheme } from "./nav.js";
 
@@ -22,6 +23,7 @@ const views = {
   "qr-code": document.getElementById("view-qr-code"),
   spellcheck: document.getElementById("view-spellcheck"),
   live: document.getElementById("view-live"),
+  scripture: document.getElementById("view-scripture"),
 };
 
 async function boot() {
@@ -57,6 +59,7 @@ function startApp() {
   const qrCode = initQrCode();
   const spellcheck = initSpellcheck();
   const live = initLive();
+  const scripture = initScripture();
   initReturnBar();
 
   const renderers = {
@@ -67,10 +70,11 @@ function startApp() {
     "qr-code": qrCode.render,
     spellcheck: spellcheck.render,
     live: live.render,
+    scripture: scripture.render,
   };
 
   initNav({
-    viewIds: new Set(["search", "lyrics-assist", "arrangement", "image-crop", "qr-code", "spellcheck", "live"]),
+    viewIds: new Set(["search", "lyrics-assist", "arrangement", "image-crop", "qr-code", "spellcheck", "live", "scripture"]),
     onNavigate: (id) => {
       for (const [viewId, el] of Object.entries(views)) {
         el.classList.toggle("hidden", viewId !== id);

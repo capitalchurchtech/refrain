@@ -41,6 +41,7 @@ Working today:
 - The Return bar, to reopen the presentation that was live before an app jump.
 - The Live page: big Clear buttons plus one button per Look and Macro.
 - The lyrics helper and paste to slides.
+- Scripture lookup, opening a reference in Bible Gateway or Blue Letter Bible.
 - Arrangement tracking end to end, with the Manual provider (you type the arrangement in) and the Planning Center provider (pulled automatically, including the one button "compare this weekend" workflow and pushing a fix back).
 - Arrangement storage on a Local Folder (single machine) or a Synced Folder (a Google Drive, Dropbox, or OneDrive folder your desktop app already keeps in sync, which is how two machines share without any server).
 - Image cropping, end to end.
@@ -93,6 +94,12 @@ Keep sermon content on your own machine and use a tool that runs locally rather 
 - Already in your tools: **Word** has Review, then Compare for two `.docx` files, and macOS ships `diff` in Terminal and FileMerge with Xcode's command line tools.
 
 If the notes live somewhere with version history already (Google Docs, a Word file on OneDrive, anything under Git), its built-in "see version history" or "compare" is usually the fastest path of all.
+
+## Scripture lookup
+
+Open the **Scripture** screen, type a reference ("John 3:16", "Romans 8", "Psalm 23:1-6"), pick a version, and open it in **Bible Gateway** or **Blue Letter Bible** in a new tab (or copy the link to open in a full browser). It's the same idea as the lyrics helper: Refrain builds the link and hands you off, it never fetches or stores scripture text, so there's no bundled bible to keep updated and no version-licensing problem.
+
+Bible Gateway carries nearly every translation, so that's the one for reading and copying a passage. Blue Letter Bible is the one for original-language study (interlinear, Strong's numbers, Hebrew and Greek word tools). Because Blue Letter Bible doesn't carry some modern versions (NIV, NLT, The Message), when you've picked one of those the Blue Letter link opens your configured fallback translation instead, and the screen tells you so. Set the defaults with `scriptureModule.biblegatewayVersion` and `scriptureModule.blueletterTranslation` in `config.json`.
 
 ## Live page
 

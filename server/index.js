@@ -824,6 +824,14 @@ app.get("/api/lyrics-assist/config", (_req, res) => {
   });
 });
 
+app.get("/api/scripture/config", (_req, res) => {
+  const s = config.scriptureModule ?? {};
+  res.json({
+    biblegatewayVersion: s.biblegatewayVersion ?? "NIV",
+    blueletterTranslation: s.blueletterTranslation ?? "KJV",
+  });
+});
+
 app.get("/api/slide-splitters", async (_req, res) => {
   const splitters = await discoverSlideSplitters();
   res.json({ splitters: splitters.map((S) => ({ id: S.splitterId })) });
