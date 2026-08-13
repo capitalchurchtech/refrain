@@ -109,8 +109,8 @@ export function initSpellcheck() {
                   )
                   .join("")}
                 <span class="flex-1"></span>
-                <button class="btn btn-ghost btn-xs spellcheck-editor-btn" data-presentation-id="${escapeHtml(p.presentationId)}">Show in Editor</button>
                 <button class="btn btn-brand btn-xs spellcheck-live-btn" data-presentation-id="${escapeHtml(p.presentationId)}" data-slide-index="${s.slideIndex}">Go Live</button>
+                <button class="btn btn-outline btn-xs spellcheck-editor-btn" data-presentation-id="${escapeHtml(p.presentationId)}">Show in Editor</button>
               </div>
             </div>`
             )

@@ -12,11 +12,37 @@ const THEME_CYCLE = ["system", "light", "dark", "blackroom"];
 const THEME_LABEL = { system: "System", light: "Light", dark: "Dark", blackroom: "Blackroom" };
 const THEME_ICON = { system: "sun-moon", light: "sun", dark: "moon", blackroom: "moon-star" };
 
-// Explicit ordering, most-used first — module-discovery order (readdir,
-// effectively alphabetical) isn't a usage-frequency order, and it isn't
-// stable to rely on for "which tab a first-time user sees first."
-const NAV_PRIORITY = { search: 0, "lyrics-assist": 1, arrangement: 2 };
+// Explicit ordering and grouping, by when a tool is used in the week:
+// live-service tools first, prep tools next, system last. Module-discovery
+// order (readdir, effectively alphabetical) isn't a usage order and would
+// bury an in-service tool like Live behind a prep tool like Image Crop. A
+// module not listed here falls to the end of the prep group.
+const NAV_PRIORITY = {
+  search: 0,
+  live: 1,
+  scripture: 2,
+  "lyrics-assist": 3,
+  spellcheck: 4,
+  arrangement: 5,
+  "image-crop": 6,
+  "qr-code": 7,
+};
 const DEFAULT_PRIORITY = 99;
+
+// Which visual group each item sits in; a thin divider is drawn where the
+// group changes, so the in-service / prep / system split is visible.
+const NAV_GROUP = {
+  search: "service",
+  live: "service",
+  scripture: "service",
+  "lyrics-assist": "service",
+  spellcheck: "service",
+  arrangement: "prep",
+  "image-crop": "prep",
+  "qr-code": "prep",
+  health: "system",
+};
+const DEFAULT_GROUP = "prep";
 
 const svgCache = new Map();
 
@@ -90,9 +116,17 @@ export async function initNav({ onNavigate, viewIds }) {
   let pinned = Boolean(prefs.navPinned);
 
   function renderItems() {
+    let prevGroup = null;
     navItemsEl.innerHTML = items
-      .map(
-        (item) => `
+      .map((item) => {
+        const group = NAV_GROUP[item.id] ?? DEFAULT_GROUP;
+        // A thin divider where the group changes (service -> prep -> system).
+        const divider =
+          prevGroup && group !== prevGroup
+            ? `<div class="border-t border-base-300 my-1 mx-2" aria-hidden="true"></div>`
+            : "";
+        prevGroup = group;
+        return `${divider}
       <button
         class="nav-item btn btn-ghost btn-sm justify-start gap-3 px-2 relative ${item.id === activeId ? "btn-active" : ""}"
         data-id="${item.id}"
@@ -101,8 +135,8 @@ export async function initNav({ onNavigate, viewIds }) {
         <i data-lucide="${item.icon}" class="shrink-0"></i>
         <span class="nav-label whitespace-nowrap ${pinned ? "" : "hidden"}">${item.navLabel}</span>
       </button>
-    `
-      )
+    `;
+      })
       .join("");
 
     navItemsEl.querySelectorAll(".nav-item").forEach((btn) => {
@@ -144,6 +178,26 @@ export async function initNav({ onNavigate, viewIds }) {
     activeId = id;
     renderItems();
     onNavigate(id);
+    // Opening Search puts the cursor in the box, so it's ready to type from
+    // any tab (this is what the "/" and Cmd/Ctrl+K shortcuts land on, and
+    // it also re-focuses when you click back to the Search tab).
+    if (id === "search") focusSearchInput();
+  }
+
+  function focusSearchInput() {
+    const q = document.getElementById("query");
+    if (q) {
+      q.focus();
+      q.select();
+    }
+  }
+
+  // True when the keyboard focus is in a field, so a bare "/" is left alone
+  // to be typed rather than hijacked as a shortcut.
+  function isTypingTarget(el) {
+    if (!el) return false;
+    const tag = el.tagName;
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
   }
 
   // Lucide's createIcons() replaces each <i data-lucide> element with a
@@ -207,6 +261,18 @@ export async function initNav({ onNavigate, viewIds }) {
 
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
     if (currentTheme === "system") applyTheme("system");
+  });
+
+  // Global shortcuts: "/" or Cmd/Ctrl+K jumps to Search from any tab and
+  // focuses the box. "/" is ignored while a field has focus so it can still
+  // be typed; Cmd/Ctrl+K works even from a field.
+  document.addEventListener("keydown", (e) => {
+    const cmdK = (e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K");
+    const slash = e.key === "/" && !isTypingTarget(document.activeElement);
+    if (cmdK || slash) {
+      e.preventDefault();
+      setActive("search");
+    }
   });
 
   renderItems();
