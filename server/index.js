@@ -669,11 +669,12 @@ const CLEAR_LAYERS = ["slide", "media", "props", "messages", "announcements", "v
 // empty lists (not an error) if ProPresenter is unreachable, so the Clear
 // buttons still render and work.
 app.get("/api/live/controls", async (_req, res) => {
-  const [looks, macros] = await Promise.all([
+  const [looks, macros, messages] = await Promise.all([
     client.getLooks().catch(() => []),
     client.getMacros().catch(() => []),
+    client.getMessages().catch(() => []),
   ]);
-  res.json({ looks, macros });
+  res.json({ looks, macros, messages });
 });
 
 app.post("/api/live/clear", async (req, res) => {
@@ -711,6 +712,28 @@ app.post("/api/live/macro", async (req, res) => {
   if (!id) return res.status(400).json({ error: "id is required" });
   try {
     await client.triggerMacro(id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+app.post("/api/live/message", async (req, res) => {
+  const { id, values } = req.body ?? {};
+  if (!id) return res.status(400).json({ error: "id is required" });
+  try {
+    await client.triggerMessage(id, values);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+app.post("/api/live/message-clear", async (req, res) => {
+  const { id } = req.body ?? {};
+  if (!id) return res.status(400).json({ error: "id is required" });
+  try {
+    await client.clearMessage(id);
     res.json({ ok: true });
   } catch (err) {
     res.status(502).json({ error: err.message });

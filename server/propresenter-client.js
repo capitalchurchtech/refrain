@@ -51,6 +51,21 @@ export class ProPresenterClient {
     return res.status === 204 ? null : res.json();
   }
 
+  // Some endpoints (message triggering) are POST with a JSON body, unlike
+  // the GET-based trigger/clear calls used everywhere else.
+  async #post(path, body) {
+    const res = await fetch(`${this.baseUrl}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) {
+      throw new Error(`ProPresenter API ${path} responded ${res.status}`);
+    }
+    return res.status === 204 ? null : res.json().catch(() => null);
+  }
+
   async testConnection() {
     await this.#get("/v1/status/layers");
     return true;
@@ -193,6 +208,60 @@ export class ProPresenterClient {
   async clearLayer(layer) {
     await this.#get(`/v1/clear/layer/${layer}`);
   }
+
+  // --- Messages (the on-screen announcement layer) ---
+  // Messages are pre-built in ProPresenter with named tokens (a text field,
+  // a timer, etc.). Refrain fills the text tokens and shows the message,
+  // which is what makes an urgent "come to childcare" note a type-and-post
+  // instead of a dig through ProPresenter's message UI.
+
+  /**
+   * The configured messages, each normalized to { id, name, tokens }, where
+   * tokens is [{ name, kind: "text"|"timer" }]. Only text tokens are
+   * fillable from Refrain; timer tokens are surfaced but not editable here.
+   */
+  async getMessages() {
+    const list = await this.#get("/v1/messages");
+    return (Array.isArray(list) ? list : [])
+      .map((m) => ({
+        id: m?.id?.uuid,
+        name: m?.id?.name ?? "Untitled",
+        tokens: extractMessageTokens(m),
+      }))
+      .filter((m) => m.id);
+  }
+
+  /**
+   * Shows a message. `values` is [{ name, text }] for its text tokens;
+   * they're sent in the token shape ProPresenter's trigger endpoint expects.
+   */
+  async triggerMessage(id, values) {
+    const body = (values ?? []).map((v) => ({ name: v.name, text: { text: v.text ?? "" } }));
+    await this.#post(`/v1/message/${id}/trigger`, body);
+  }
+
+  /** Hides a message that's currently showing. */
+  async clearMessage(id) {
+    await this.#get(`/v1/message/${id}/clear`);
+  }
+}
+
+// Pulls token descriptors out of a message. ProPresenter has described
+// tokens as entries inside `message_components` (mixed with plain static
+// strings) and, in some shapes, as a `tokens` array — accept either, and
+// treat a token as a timer only when it clearly is, defaulting to text.
+function extractMessageTokens(message) {
+  const raw = Array.isArray(message?.message_components)
+    ? message.message_components
+    : Array.isArray(message?.tokens)
+      ? message.tokens
+      : [];
+  return raw
+    .filter((c) => c && typeof c === "object" && (c.name ?? c.id?.name))
+    .map((c) => ({
+      name: c.name ?? c.id?.name,
+      kind: c.timer || c.type === "timer" ? "timer" : "text",
+    }));
 }
 
 // The list endpoints (looks, macros, and similar) return arrays of

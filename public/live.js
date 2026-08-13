@@ -19,6 +19,21 @@ export function initLive() {
           <p class="text-sm opacity-70">Get things off the screen, or switch what the screens are showing. Big buttons on purpose.</p>
         </div>
 
+        <div id="live-message-wrap" class="hidden">
+          <div class="text-xs uppercase tracking-wide opacity-60 mb-2">Message on screen</div>
+          <div class="card bg-base-200">
+            <div class="card-body p-3 gap-3">
+              <select id="live-message-select" class="select select-bordered select-sm hidden"></select>
+              <div id="live-message-fields" class="flex flex-col gap-2"></div>
+              <div class="flex gap-2">
+                <button id="live-message-post" class="btn btn-brand h-16 flex-1 text-base"><span class="flex items-center gap-2"><i data-lucide="send" class="w-5 h-5"></i> Post to screen</span></button>
+                <button id="live-message-clear" class="btn btn-outline h-16"><span class="flex items-center gap-2"><i data-lucide="x" class="w-5 h-5"></i> Clear</span></button>
+              </div>
+              <p class="text-xs opacity-60">Fills a message you set up once in ProPresenter and shows it, so an urgent code is type-and-post. Clear takes it back down.</p>
+            </div>
+          </div>
+        </div>
+
         <div>
           <div class="text-xs uppercase tracking-wide opacity-60 mb-2">Clear</div>
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -47,15 +62,62 @@ export function initLive() {
     wireClearButtons();
 
     try {
-      const { looks, macros } = await fetch("/api/live/controls").then((r) => r.json());
+      const { looks, macros, messages } = await fetch("/api/live/controls").then((r) => r.json());
+      renderMessages(messages ?? []);
       renderButtons("live-looks", "live-looks-wrap", looks, "look");
       renderButtons("live-macros", "live-macros-wrap", macros, "macro");
       if (!looks.length && !macros.length) {
         setStatus("No Looks or Macros found in ProPresenter (or it's unreachable). The Clear buttons still work.");
       }
     } catch {
-      setStatus("Couldn't reach ProPresenter to load Looks and Macros. The Clear buttons still work.");
+      setStatus("Couldn't reach ProPresenter to load its controls. The Clear buttons still work.");
     }
+  }
+
+  // The message poster. Only messages with a fillable text token can be
+  // posted from here, so timer-only messages are left out. When several
+  // qualify, a small picker chooses between them.
+  function renderMessages(messages) {
+    const postable = (messages ?? []).filter((m) => m.tokens?.some((t) => t.kind === "text"));
+    if (!postable.length) return;
+
+    const wrap = document.getElementById("live-message-wrap");
+    const select = document.getElementById("live-message-select");
+    const fields = document.getElementById("live-message-fields");
+    const postBtn = document.getElementById("live-message-post");
+    const clearBtn = document.getElementById("live-message-clear");
+
+    select.innerHTML = postable.map((m) => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)}</option>`).join("");
+    select.classList.toggle("hidden", postable.length < 2);
+
+    const selected = () => postable.find((m) => m.id === select.value) ?? postable[0];
+
+    function renderFields() {
+      const m = selected();
+      fields.innerHTML = m.tokens
+        .filter((t) => t.kind === "text")
+        .map(
+          (t) => `
+        <label class="form-control">
+          <div class="label py-0"><span class="label-text text-xs opacity-70">${escapeHtml(t.name)}</span></div>
+          <input class="input input-bordered live-message-token" data-token="${escapeHtml(t.name)}" placeholder="Type the message..." />
+        </label>`
+        )
+        .join("");
+    }
+
+    select.addEventListener("change", renderFields);
+    renderFields();
+
+    postBtn.addEventListener("click", () => {
+      const m = selected();
+      const values = [...fields.querySelectorAll(".live-message-token")].map((inp) => ({ name: inp.dataset.token, text: inp.value }));
+      fire(postBtn, "/api/live/message", { id: m.id, values }, "Post");
+    });
+    clearBtn.addEventListener("click", () => fire(clearBtn, "/api/live/message-clear", { id: selected().id }, "Clear message"));
+
+    wrap.classList.remove("hidden");
+    if (window.lucide) window.lucide.createIcons();
   }
 
   function renderButtons(gridId, wrapId, items, kind) {

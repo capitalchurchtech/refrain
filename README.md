@@ -39,7 +39,7 @@ Working today:
 
 - Slide search, Go Live, Show in Editor, and the date and library filters.
 - The Return bar, to reopen the presentation that was live before an app jump.
-- The Live page: big Clear buttons plus one button per Look and Macro.
+- The Live page: a message poster for urgent codes, big Clear buttons, and one button per Look and Macro.
 - The lyrics helper and paste to slides.
 - Scripture lookup, opening a reference in Bible Gateway or Blue Letter Bible.
 - Arrangement tracking end to end, with the Manual provider (you type the arrangement in) and the Planning Center provider (pulled automatically, including the one button "compare this weekend" workflow and pushing a fix back).
@@ -107,7 +107,9 @@ Once you've copied the passage from the site, the same page has a **Paste and sp
 
 Open the **Live** screen for a set of big, high-contrast buttons meant to be hit at a glance from the back of a dark room. The **Clear** row gets things off the screen fast: Clear All, or just the slide, media, or messages layer on their own. These always work, since they're standard ProPresenter layers.
 
-Below that, Refrain lists the **Looks** and **Macros** you've set up in ProPresenter, one button each, pulled live. So your own "Logo", "Black", "Motion", or whatever you've named them show up by name with nothing to configure here, and tapping one switches the screens to it. If ProPresenter is unreachable the Clear buttons still work; the Looks and Macros just won't be listed until it's back.
+At the top is a **message poster** for the thing that always comes up urgently mid-service: a code that needs to go on the screen right now, like "Parent of child 1234, please come to childcare downstairs." You set up a message once in ProPresenter (a message with a text token), and from then on Refrain gives you a plain text box and a big **Post to screen** button, so posting a code is type-and-hit-post instead of digging through ProPresenter's message setup every time. **Clear** takes it back down. If you have more than one such message a small picker chooses between them; messages with no text field to fill (a timer, say) aren't listed here.
+
+Below that, Refrain lists the **Looks** and **Macros** you've set up in ProPresenter, one button each, pulled live. So your own "Logo", "Black", "Motion", or whatever you've named them show up by name with nothing to configure here, and tapping one switches the screens to it. If ProPresenter is unreachable the Clear buttons still work; the message poster, Looks, and Macros just won't be listed until it's back.
 
 Nothing here fires a slide live on its own, so it's safe to keep open during a service. It works with search alone, no setup.
 
