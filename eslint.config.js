@@ -31,6 +31,16 @@ export default [
     },
   },
   {
+    // Tests run under Node's built-in test runner, so they need Node
+    // globals even though they exercise both server and public modules.
+    files: ["test/**/*.js"],
+    languageOptions: {
+      ecmaVersion: "latest",
+      sourceType: "module",
+      globals: { ...globals.node },
+    },
+  },
+  {
     ignores: ["node_modules/", "cache/", "staging/", "data/"],
   },
 ];
