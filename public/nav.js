@@ -122,7 +122,7 @@ export async function initNav({ onNavigate, viewIds }) {
   function renderItems() {
     let prevGroup = null;
     navItemsEl.innerHTML = items
-      .map((item) => {
+      .map((item, i) => {
         const group = NAV_GROUP[item.id] ?? DEFAULT_GROUP;
         // A thin divider where the group changes (service -> prep -> system).
         const divider =
@@ -130,6 +130,9 @@ export async function initNav({ onNavigate, viewIds }) {
             ? `<div class="border-t border-base-content/25 my-2 mx-2" aria-hidden="true"></div>`
             : "";
         prevGroup = group;
+        // The number key that jumps here (first nine items), revealed while
+        // Cmd/Ctrl is held via the .nav-key CSS.
+        const keyBadge = i < 9 ? `<kbd class="kbd kbd-xs nav-key">${i + 1}</kbd>` : "";
         return `${divider}
       <button
         class="nav-item btn btn-ghost btn-sm justify-start gap-3 px-2 relative ${item.id === activeId ? "btn-active" : ""}"
@@ -138,6 +141,7 @@ export async function initNav({ onNavigate, viewIds }) {
       >
         <i data-lucide="${item.icon}" class="shrink-0"></i>
         <span class="nav-label whitespace-nowrap ${pinned ? "" : "hidden"}">${item.navLabel}</span>
+        ${keyBadge}
       </button>
     `;
       })
@@ -274,32 +278,103 @@ export async function initNav({ onNavigate, viewIds }) {
   const shortcutsOpen = () => shortcutsModal && !shortcutsModal.classList.contains("hidden");
   document.getElementById("nav-help-toggle")?.addEventListener("click", openShortcuts);
   document.getElementById("shortcuts-close")?.addEventListener("click", closeShortcuts);
-  // Click on the backdrop (not the card) closes it.
   shortcutsModal?.addEventListener("click", (e) => {
     if (e.target === shortcutsModal) closeShortcuts();
   });
 
-  // Global shortcuts: "/" or Cmd/Ctrl+K jumps to Search from any tab and
-  // focuses the box; "?" opens this help; Esc closes it. "/" and "?" are
-  // ignored while a field has focus so they can still be typed; Cmd/Ctrl+K
-  // works even from a field.
+  // Welcome / how-to overlay for volunteers, shown on start until dismissed.
+  const welcomeModal = document.getElementById("welcome-modal");
+  const welcomeDontShow = document.getElementById("welcome-dontshow");
+  let welcomeDismissed = Boolean(prefs.welcomeDismissed);
+  const welcomeOpen = () => welcomeModal && !welcomeModal.classList.contains("hidden");
+  const openWelcome = () => {
+    if (!welcomeModal) return;
+    if (welcomeDontShow) welcomeDontShow.checked = welcomeDismissed;
+    welcomeModal.classList.remove("hidden");
+  };
+  const closeWelcome = async () => {
+    welcomeModal?.classList.add("hidden");
+    const next = Boolean(welcomeDontShow?.checked);
+    if (next !== welcomeDismissed) {
+      welcomeDismissed = next;
+      await fetch("/api/preferences", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ welcomeDismissed: next }),
+      });
+    }
+  };
+  document.getElementById("welcome-close")?.addEventListener("click", closeWelcome);
+  document.getElementById("welcome-gotit")?.addEventListener("click", closeWelcome);
+  welcomeModal?.addEventListener("click", (e) => {
+    if (e.target === welcomeModal) closeWelcome();
+  });
+  // Cross-links between the two help surfaces.
+  document.getElementById("welcome-shortcuts-link")?.addEventListener("click", () => {
+    closeWelcome();
+    openShortcuts();
+  });
+  document.getElementById("shortcuts-welcome-link")?.addEventListener("click", () => {
+    closeShortcuts();
+    openWelcome();
+  });
+
+  // Hold Cmd/Ctrl to reveal each item's number badge. Cleared on release or
+  // window blur, so a missed keyup (e.g. an OS shortcut stealing focus)
+  // doesn't leave the badges stuck on.
+  const hideKeys = () => rail.classList.remove("reveal-keys");
+  window.addEventListener("keyup", (e) => {
+    if (e.key === "Meta" || e.key === "Control") hideKeys();
+  });
+  window.addEventListener("blur", hideKeys);
+
+  // Global keys. "/" or Cmd/Ctrl+K jumps to Search and focuses the box; a
+  // digit 1-9 jumps to that nav item (bare, or with Cmd/Ctrl — browsers may
+  // reserve Cmd/Ctrl+digit for tab switching, so the bare digit is the
+  // reliable path); "?" opens help; Esc closes an open overlay. "/", "?",
+  // and bare digits are ignored while a field has focus so they can still
+  // be typed.
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && shortcutsOpen()) {
-      closeShortcuts();
+    if (e.metaKey || e.ctrlKey) rail.classList.add("reveal-keys");
+
+    // While an overlay is open, only Esc does anything.
+    if (shortcutsOpen()) {
+      if (e.key === "Escape") closeShortcuts();
       return;
     }
+    if (welcomeOpen()) {
+      if (e.key === "Escape") closeWelcome();
+      return;
+    }
+
     const typing = isTypingTarget(document.activeElement);
+
     if (e.key === "?" && !typing) {
       e.preventDefault();
       openShortcuts();
       return;
     }
+
     const cmdK = (e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K");
     const slash = e.key === "/" && !typing;
     if (cmdK || slash) {
       e.preventDefault();
-      closeShortcuts();
       setActive("search");
+      return;
+    }
+
+    const digit = e.key >= "1" && e.key <= "9" ? Number(e.key) : 0;
+    if (digit) {
+      const withMod = e.metaKey || e.ctrlKey;
+      const bare = !e.metaKey && !e.ctrlKey && !e.altKey && !typing;
+      if (withMod || bare) {
+        const item = items[digit - 1];
+        if (item) {
+          e.preventDefault();
+          hideKeys();
+          setActive(item.id);
+        }
+      }
     }
   });
 
@@ -307,6 +382,7 @@ export async function initNav({ onNavigate, viewIds }) {
   applyPinnedState();
   applyThemeUI();
   onNavigate(activeId);
+  if (!welcomeDismissed) openWelcome();
 
   // Reflect the image-crop watcher's live state in the nav. Polled (not
   // pushed) — cheap on localhost, and the watcher can start/stop from

@@ -204,14 +204,19 @@ app.post("/api/update", async (_req, res) => {
 app.get("/api/preferences", (_req, res) => {
   // navPinned is left as null when the user hasn't chosen, so the frontend
   // can default a first-time user to the expanded (labelled) nav.
-  res.json({ theme: config.theme ?? "system", navPinned: config.navPinned ?? null });
+  res.json({
+    theme: config.theme ?? "system",
+    navPinned: config.navPinned ?? null,
+    welcomeDismissed: Boolean(config.welcomeDismissed),
+  });
 });
 
 app.post("/api/preferences", async (req, res) => {
-  const { theme, navPinned } = req.body ?? {};
+  const { theme, navPinned, welcomeDismissed } = req.body ?? {};
   const newConfig = { ...config };
   if (theme !== undefined) newConfig.theme = theme;
   if (navPinned !== undefined) newConfig.navPinned = Boolean(navPinned);
+  if (welcomeDismissed !== undefined) newConfig.welcomeDismissed = Boolean(welcomeDismissed);
 
   try {
     await saveConfig(newConfig);

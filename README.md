@@ -168,7 +168,9 @@ Refrain can't edit slides through ProPresenter's API, so it flags the word and g
 
 The sidebar groups screens by when you use them: the in-service tools (Search, Live, Scripture, Lyrics, Spell Check) first, the prep tools (Arrangement, Image Crop, QR Codes) next, then Health, with a divider between each group. It starts expanded with labels the first time so nothing is a mystery icon; collapse it to a thin icon rail with the button at the bottom once you know your way around, and that choice is remembered.
 
-Press **/** or **Cmd/Ctrl+K** from any screen to jump straight to Search with the cursor in the box. Press **?** any time (or click **Shortcuts** at the bottom of the sidebar) for the full list.
+The first time you open Refrain (and every start after, until you tick "Don't show this on start") a short **Welcome** card reminds volunteers of the three things they'll actually use: Search, Go Live / Show in Editor, and Return. Setup and the other tools are for the tech admin. You can bring it back any time from **Shortcuts** at the bottom of the sidebar.
+
+Press **/** or **Cmd/Ctrl+K** from any screen to jump straight to Search with the cursor in the box. Each sidebar screen also has a number: press **1** through **9** to jump to it, and hold **Cmd/Ctrl** to see the numbers appear next to the labels. Press **?** any time (or click **Shortcuts** at the bottom of the sidebar) for the full list.
 
 ## Appearance
 

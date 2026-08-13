@@ -42,6 +42,18 @@
       }
     }
 
+    /* Per-item number badges for keyboard nav. Hidden until the user holds
+       Cmd/Ctrl (nav.js adds .reveal-keys to the rail), so the hint appears
+       on demand rather than cluttering the rail. Suppressed while collapsed,
+       where there's no room beside an icon-only button. */
+    .nav-key {
+      display: none;
+      margin-left: auto;
+    }
+    #nav-rail.reveal-keys:not(.collapsed) .nav-key {
+      display: inline-flex;
+    }
+
     /* Every primary-action button (Go Live, Search Lyrics, Save
        Configuration, Run Comparison, first-run Setup, ...) uses this
        one shared brand green instead of DaisyUI's default purple/indigo
@@ -280,10 +292,51 @@
             <kbd class="kbd kbd-sm shrink-0">?</kbd>
           </div>
           <div class="flex items-center justify-between gap-4">
+            <span>Jump to a screen by number</span>
+            <span class="shrink-0"><kbd class="kbd kbd-sm">1</kbd>…<kbd class="kbd kbd-sm">9</kbd> <span class="opacity-50">(hold</span> <kbd class="kbd kbd-sm">⌘/Ctrl</kbd> <span class="opacity-50">to see them)</span></span>
+          </div>
+          <div class="flex items-center justify-between gap-4">
             <span>Close this dialog</span>
             <kbd class="kbd kbd-sm shrink-0">Esc</kbd>
           </div>
         </div>
+        <button id="shortcuts-welcome-link" class="link text-xs opacity-70 text-left">New here? How to use Refrain</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- First-look welcome for volunteers: the three things they do (search, jump, return) -->
+  <div id="welcome-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div class="card bg-base-200 border border-base-300 shadow-xl max-w-md w-full">
+      <div class="card-body p-5 gap-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold">Welcome to Refrain</h2>
+          <button id="welcome-close" class="btn btn-ghost btn-xs btn-square" title="Close"><i data-lucide="x"></i></button>
+        </div>
+        <p class="text-sm opacity-70">The three things you'll use during a service:</p>
+        <div class="flex flex-col gap-3">
+          <div class="flex gap-3">
+            <i data-lucide="search" class="w-5 h-5 mt-0.5 shrink-0 opacity-70"></i>
+            <div class="text-sm"><span class="font-medium">Search</span> — type any word to find any slide in your library. Press <kbd class="kbd kbd-xs">/</kbd> from anywhere to jump here.</div>
+          </div>
+          <div class="flex gap-3">
+            <i data-lucide="play" class="w-5 h-5 mt-0.5 shrink-0 opacity-70"></i>
+            <div class="text-sm"><span class="font-medium">Go Live</span> puts a slide on the screens. <span class="font-medium">Show in Editor</span> opens it in ProPresenter without changing what's live.</div>
+          </div>
+          <div class="flex gap-3">
+            <i data-lucide="corner-up-left" class="w-5 h-5 mt-0.5 shrink-0 opacity-70"></i>
+            <div class="text-sm"><span class="font-medium">Return</span> — after you jump somewhere, a bar appears up top to send you back to where the plan was.</div>
+          </div>
+        </div>
+        <p class="text-xs opacity-60">Setup, arrangements, and the image and QR tools are for your tech admin. These live features work when Refrain is connected to ProPresenter.</p>
+        <div class="flex items-center justify-between gap-3 pt-1">
+          <label class="label cursor-pointer gap-2 py-0">
+            <input type="checkbox" id="welcome-dontshow" class="checkbox checkbox-xs" />
+            <span class="label-text text-xs">Don't show this on start</span>
+          </label>
+          <button id="welcome-gotit" class="btn btn-brand btn-sm">Got it</button>
+        </div>
+        <button id="welcome-shortcuts-link" class="link text-xs opacity-70 text-left">See keyboard shortcuts</button>
       </div>
     </div>
   </div>
