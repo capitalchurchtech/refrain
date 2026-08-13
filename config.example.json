@@ -5,7 +5,7 @@
   },
   "role": "reader",
   "theme": "system",
-  "navPinned": false,
+  "navPinned": null,
   "lyricsSites": [
     "genius.com",
     "azlyrics.com",

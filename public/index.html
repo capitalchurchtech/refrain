@@ -178,6 +178,10 @@
       <nav id="nav-items" class="flex flex-col gap-1 flex-1"></nav>
 
       <div class="flex flex-col gap-1">
+        <button id="nav-help-toggle" class="btn btn-ghost btn-sm justify-start gap-3 px-2" title="Keyboard shortcuts (?)">
+          <span class="shrink-0"><i data-lucide="keyboard"></i></span>
+          <span class="nav-label whitespace-nowrap hidden">Shortcuts</span>
+        </button>
         <button id="theme-toggle" class="btn btn-ghost btn-sm justify-start gap-3 px-2" title="Toggle theme">
           <span id="theme-icon" class="shrink-0"></span>
           <span class="nav-label whitespace-nowrap hidden" id="theme-label">Theme: System</span>
@@ -256,6 +260,32 @@
 
       <section id="view-scripture" class="hidden"></section>
     </main>
+  </div>
+
+  <!-- Keyboard shortcuts help, opened by the "?" key or the Shortcuts nav button -->
+  <div id="shortcuts-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div class="card bg-base-200 border border-base-300 shadow-xl max-w-sm w-full" id="shortcuts-card">
+      <div class="card-body p-4 gap-3">
+        <div class="flex items-center justify-between">
+          <h2 class="text-base font-semibold flex items-center gap-2"><i data-lucide="keyboard" class="w-5 h-5"></i> Keyboard shortcuts</h2>
+          <button id="shortcuts-close" class="btn btn-ghost btn-xs btn-square" title="Close"><i data-lucide="x"></i></button>
+        </div>
+        <div class="flex flex-col gap-2 text-sm">
+          <div class="flex items-center justify-between gap-4">
+            <span>Jump to Search from any screen</span>
+            <span class="shrink-0"><kbd class="kbd kbd-sm">/</kbd> <span class="opacity-50">or</span> <kbd class="kbd kbd-sm">⌘/Ctrl</kbd><kbd class="kbd kbd-sm">K</kbd></span>
+          </div>
+          <div class="flex items-center justify-between gap-4">
+            <span>Show this help</span>
+            <kbd class="kbd kbd-sm shrink-0">?</kbd>
+          </div>
+          <div class="flex items-center justify-between gap-4">
+            <span>Close this dialog</span>
+            <kbd class="kbd kbd-sm shrink-0">Esc</kbd>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script type="module" src="main.js"></script>

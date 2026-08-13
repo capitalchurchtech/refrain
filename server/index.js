@@ -202,7 +202,9 @@ app.post("/api/update", async (_req, res) => {
 });
 
 app.get("/api/preferences", (_req, res) => {
-  res.json({ theme: config.theme ?? "system", navPinned: Boolean(config.navPinned) });
+  // navPinned is left as null when the user hasn't chosen, so the frontend
+  // can default a first-time user to the expanded (labelled) nav.
+  res.json({ theme: config.theme ?? "system", navPinned: config.navPinned ?? null });
 });
 
 app.post("/api/preferences", async (req, res) => {

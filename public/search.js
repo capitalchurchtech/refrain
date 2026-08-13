@@ -87,7 +87,7 @@ export function initSearch() {
     // timeframe" browse mode — only bail out when there's truly nothing
     // to search on.
     if (!query && !hasDateFilter) {
-      resultsEl.innerHTML = "";
+      showEmptyHint();
       return;
     }
     const params = new URLSearchParams({ q: query });
@@ -299,4 +299,17 @@ export function initSearch() {
 
   refreshStatus();
   initLibraryFilter();
+  showEmptyHint();
+
+  // Shown before the first keystroke (and whenever the box is cleared), so
+  // the empty screen teaches what to do instead of sitting blank.
+  function showEmptyHint() {
+    resultsEl.innerHTML = `
+      <div class="opacity-60 text-center py-10 flex flex-col items-center gap-2">
+        <i data-lucide="search" class="w-8 h-8 opacity-40"></i>
+        <div>Type any word to find any slide across your library.</div>
+        <div class="text-xs">Press <kbd class="kbd kbd-xs">/</kbd> from any screen to jump here.</div>
+      </div>`;
+    if (window.lucide) window.lucide.createIcons();
+  }
 }

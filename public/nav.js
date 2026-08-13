@@ -113,7 +113,11 @@ export async function initNav({ onNavigate, viewIds }) {
 
   let activeId = items[0]?.id ?? "search";
   let currentTheme = prefs.theme ?? "system";
-  let pinned = Boolean(prefs.navPinned);
+  // Expanded by default until the user chooses: on a fresh install navPinned
+  // is unset (null), so a first-time user sees labels rather than a wall of
+  // unlabeled icons. Once they collapse or expand, that choice (true/false)
+  // is stored and respected.
+  let pinned = prefs.navPinned == null ? true : Boolean(prefs.navPinned);
 
   function renderItems() {
     let prevGroup = null;
@@ -123,7 +127,7 @@ export async function initNav({ onNavigate, viewIds }) {
         // A thin divider where the group changes (service -> prep -> system).
         const divider =
           prevGroup && group !== prevGroup
-            ? `<div class="border-t border-base-300 my-1 mx-2" aria-hidden="true"></div>`
+            ? `<div class="border-t border-base-content/25 my-2 mx-2" aria-hidden="true"></div>`
             : "";
         prevGroup = group;
         return `${divider}
@@ -263,14 +267,38 @@ export async function initNav({ onNavigate, viewIds }) {
     if (currentTheme === "system") applyTheme("system");
   });
 
+  // Keyboard-shortcuts help overlay, opened by "?" or the Shortcuts button.
+  const shortcutsModal = document.getElementById("shortcuts-modal");
+  const openShortcuts = () => shortcutsModal?.classList.remove("hidden");
+  const closeShortcuts = () => shortcutsModal?.classList.add("hidden");
+  const shortcutsOpen = () => shortcutsModal && !shortcutsModal.classList.contains("hidden");
+  document.getElementById("nav-help-toggle")?.addEventListener("click", openShortcuts);
+  document.getElementById("shortcuts-close")?.addEventListener("click", closeShortcuts);
+  // Click on the backdrop (not the card) closes it.
+  shortcutsModal?.addEventListener("click", (e) => {
+    if (e.target === shortcutsModal) closeShortcuts();
+  });
+
   // Global shortcuts: "/" or Cmd/Ctrl+K jumps to Search from any tab and
-  // focuses the box. "/" is ignored while a field has focus so it can still
-  // be typed; Cmd/Ctrl+K works even from a field.
+  // focuses the box; "?" opens this help; Esc closes it. "/" and "?" are
+  // ignored while a field has focus so they can still be typed; Cmd/Ctrl+K
+  // works even from a field.
   document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && shortcutsOpen()) {
+      closeShortcuts();
+      return;
+    }
+    const typing = isTypingTarget(document.activeElement);
+    if (e.key === "?" && !typing) {
+      e.preventDefault();
+      openShortcuts();
+      return;
+    }
     const cmdK = (e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K");
-    const slash = e.key === "/" && !isTypingTarget(document.activeElement);
+    const slash = e.key === "/" && !typing;
     if (cmdK || slash) {
       e.preventDefault();
+      closeShortcuts();
       setActive("search");
     }
   });

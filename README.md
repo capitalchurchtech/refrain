@@ -164,6 +164,12 @@ The trick to keeping it useful is that it doesn't just check against a plain Eng
 
 Refrain can't edit slides through ProPresenter's API, so it flags the word and gives you two buttons: **Show in Editor** opens the presentation in ProPresenter so you can fix it, and **Go Live** puts that slide up. If a flag is a word you use on purpose that just isn't common yet, hit **Ignore** and it goes on an allowlist (`spellcheckModule.allowlist` in `config.json`) so it's never flagged again.
 
+## Getting around
+
+The sidebar groups screens by when you use them: the in-service tools (Search, Live, Scripture, Lyrics, Spell Check) first, the prep tools (Arrangement, Image Crop, QR Codes) next, then Health, with a divider between each group. It starts expanded with labels the first time so nothing is a mystery icon; collapse it to a thin icon rail with the button at the bottom once you know your way around, and that choice is remembered.
+
+Press **/** or **Cmd/Ctrl+K** from any screen to jump straight to Search with the cursor in the box. Press **?** any time (or click **Shortcuts** at the bottom of the sidebar) for the full list.
+
 ## Appearance
 
 The icon near the bottom of the sidebar cycles the theme: System, Light, Dark, and Blackroom. Dark uses high-contrast text so it stays readable on a plain (non-retina) booth monitor. Blackroom is a true-black, high-contrast option that's easy on the eyes in a dark room and looks good on an OLED screen. Your choice is remembered.
