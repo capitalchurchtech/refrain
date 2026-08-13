@@ -349,6 +349,15 @@ export async function initNav({ onNavigate, viewIds }) {
 
     const typing = isTypingTarget(document.activeElement);
 
+    // On the empty Search box, swallow a bare "/" — pressing it there is the
+    // focus-search reflex, not a character to insert, so it shouldn't leave a
+    // stray slash. A non-empty query still keeps "/" so terms like "24/7" work.
+    const active = document.activeElement;
+    if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey && active && active.id === "query" && active.value === "") {
+      e.preventDefault();
+      return;
+    }
+
     if (e.key === "?" && !typing) {
       e.preventDefault();
       openShortcuts();
