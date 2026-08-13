@@ -9,6 +9,7 @@ import { initSpellcheck } from "./spellcheck.js";
 import { initLive } from "./live.js";
 import { initScripture } from "./scripture.js";
 import { initReturnBar } from "./return-bar.js";
+import { installGlobalErrorBoundary, safeRender } from "./error-boundary.js";
 import { initNav, applyTheme } from "./nav.js";
 
 const viewSetup = document.getElementById("view-setup");
@@ -50,6 +51,7 @@ async function boot() {
 }
 
 function startApp() {
+  installGlobalErrorBoundary();
   viewApp.classList.remove("hidden");
   initSearch();
   const health = initHealth();
@@ -79,7 +81,9 @@ function startApp() {
       for (const [viewId, el] of Object.entries(views)) {
         el.classList.toggle("hidden", viewId !== id);
       }
-      renderers[id]?.();
+      // Guard the render: a thrown renderer must not blank the screen, since
+      // the target view is already the only one visible by this point.
+      safeRender(renderers[id], views[id], id);
     },
   });
 }
