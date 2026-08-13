@@ -182,7 +182,7 @@
   <!-- Main app shell — nav rail + content, once setup is complete (Section 13) -->
   <div id="view-app" class="hidden flex min-h-screen">
     <aside id="nav-rail" class="fixed top-0 left-0 z-20 h-screen overflow-y-auto bg-base-200 flex flex-col items-stretch py-3 transition-all duration-150 w-16">
-      <button id="brand-row" class="flex items-center px-2 mb-4 overflow-hidden h-9 btn btn-ghost btn-sm justify-start" title="Go to Search">
+      <button id="brand-row" class="flex items-center px-2 mb-4 overflow-hidden h-9 btn btn-ghost btn-sm justify-start" title="Go to Search" aria-label="Go to Search">
         <span id="brand-mark" class="shrink-0"></span>
         <span id="brand-logo" class="shrink-0 hidden"></span>
       </button>
@@ -210,7 +210,7 @@
            app-initiated Go Live arms a return pin server-side; then it
            shows on every screen so the operator can snap back to where the
            plan was in one click. -->
-      <div id="return-bar" class="hidden alert alert-warning py-2 px-3 mb-3 flex items-center justify-between gap-2">
+      <div id="return-bar" class="hidden alert alert-warning py-2 px-3 mb-3 flex items-center justify-between gap-2" role="status" aria-live="polite">
         <span id="return-bar-label" class="text-sm"></span>
         <button id="return-bar-btn" class="btn btn-brand btn-sm shrink-0">
           <i data-lucide="corner-up-left" class="w-4 h-4"></i> Return
@@ -275,12 +275,12 @@
   </div>
 
   <!-- Keyboard shortcuts help, opened by the "?" key or the Shortcuts nav button -->
-  <div id="shortcuts-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+  <div id="shortcuts-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title">
     <div class="card bg-base-200 border border-base-300 shadow-xl max-w-sm w-full" id="shortcuts-card">
       <div class="card-body p-4 gap-3">
         <div class="flex items-center justify-between">
-          <h2 class="text-base font-semibold flex items-center gap-2"><i data-lucide="keyboard" class="w-5 h-5"></i> Keyboard shortcuts</h2>
-          <button id="shortcuts-close" class="btn btn-ghost btn-xs btn-square" title="Close"><i data-lucide="x"></i></button>
+          <h2 id="shortcuts-title" class="text-base font-semibold flex items-center gap-2"><i data-lucide="keyboard" class="w-5 h-5"></i> Keyboard shortcuts</h2>
+          <button id="shortcuts-close" class="btn btn-ghost btn-xs btn-square" title="Close" aria-label="Close"><i data-lucide="x"></i></button>
         </div>
         <div class="flex flex-col gap-2 text-sm">
           <div class="flex items-center justify-between gap-4">
@@ -306,12 +306,12 @@
   </div>
 
   <!-- First-look welcome for volunteers: the three things they do (search, jump, return) -->
-  <div id="welcome-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+  <div id="welcome-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
     <div class="card bg-base-200 border border-base-300 shadow-xl max-w-md w-full">
       <div class="card-body p-5 gap-4">
         <div class="flex items-center justify-between">
-          <h2 class="text-lg font-semibold">Welcome to Refrain</h2>
-          <button id="welcome-close" class="btn btn-ghost btn-xs btn-square" title="Close"><i data-lucide="x"></i></button>
+          <h2 id="welcome-title" class="text-lg font-semibold">Welcome to Refrain</h2>
+          <button id="welcome-close" class="btn btn-ghost btn-xs btn-square" title="Close" aria-label="Close"><i data-lucide="x"></i></button>
         </div>
         <p class="text-sm opacity-70">The three things you'll use during a service:</p>
         <div class="flex flex-col gap-3">

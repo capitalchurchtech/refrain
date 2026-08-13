@@ -132,7 +132,7 @@ export async function initNav({ onNavigate, viewIds }) {
         prevGroup = group;
         // The number key that jumps here (first nine items), revealed while
         // Cmd/Ctrl is held via the .nav-key CSS.
-        const keyBadge = i < 9 ? `<kbd class="kbd kbd-xs nav-key">${i + 1}</kbd>` : "";
+        const keyBadge = i < 9 ? `<kbd class="kbd kbd-xs nav-key" aria-hidden="true">${i + 1}</kbd>` : "";
         return `${divider}
       <button
         class="nav-item btn btn-ghost btn-sm justify-start gap-3 px-2 relative ${item.id === activeId ? "btn-active" : ""}"
@@ -271,11 +271,50 @@ export async function initNav({ onNavigate, viewIds }) {
     if (currentTheme === "system") applyTheme("system");
   });
 
+  // --- Modal focus management (accessibility) ---
+  // On open, remember what had focus and move focus into the dialog; on
+  // close, return focus to where it was. Tab is trapped inside the dialog.
+  let modalReturnFocus = null;
+  const focusablesIn = (el) =>
+    [...el.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter(
+      (n) => n.offsetParent !== null
+    );
+  const onModalOpen = (modal) => {
+    modalReturnFocus = document.activeElement;
+    const f = focusablesIn(modal);
+    (f[0] ?? modal).focus?.();
+  };
+  const onModalClose = () => {
+    if (modalReturnFocus?.focus) modalReturnFocus.focus();
+    modalReturnFocus = null;
+  };
+  const trapTab = (e, modal) => {
+    const f = focusablesIn(modal);
+    if (!f.length) return;
+    const first = f[0];
+    const last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
+
   // Keyboard-shortcuts help overlay, opened by "?" or the Shortcuts button.
   const shortcutsModal = document.getElementById("shortcuts-modal");
-  const openShortcuts = () => shortcutsModal?.classList.remove("hidden");
-  const closeShortcuts = () => shortcutsModal?.classList.add("hidden");
   const shortcutsOpen = () => shortcutsModal && !shortcutsModal.classList.contains("hidden");
+  const openShortcuts = () => {
+    if (!shortcutsModal || shortcutsOpen()) return;
+    shortcutsModal.classList.remove("hidden");
+    onModalOpen(shortcutsModal);
+  };
+  const closeShortcuts = () => {
+    if (!shortcutsOpen()) return;
+    shortcutsModal.classList.add("hidden");
+    onModalClose();
+  };
   document.getElementById("nav-help-toggle")?.addEventListener("click", openShortcuts);
   document.getElementById("shortcuts-close")?.addEventListener("click", closeShortcuts);
   shortcutsModal?.addEventListener("click", (e) => {
@@ -288,12 +327,15 @@ export async function initNav({ onNavigate, viewIds }) {
   let welcomeDismissed = Boolean(prefs.welcomeDismissed);
   const welcomeOpen = () => welcomeModal && !welcomeModal.classList.contains("hidden");
   const openWelcome = () => {
-    if (!welcomeModal) return;
+    if (!welcomeModal || welcomeOpen()) return;
     if (welcomeDontShow) welcomeDontShow.checked = welcomeDismissed;
     welcomeModal.classList.remove("hidden");
+    onModalOpen(welcomeModal);
   };
   const closeWelcome = async () => {
-    welcomeModal?.classList.add("hidden");
+    if (!welcomeOpen()) return;
+    welcomeModal.classList.add("hidden");
+    onModalClose();
     const next = Boolean(welcomeDontShow?.checked);
     if (next !== welcomeDismissed) {
       welcomeDismissed = next;
@@ -337,13 +379,16 @@ export async function initNav({ onNavigate, viewIds }) {
   document.addEventListener("keydown", (e) => {
     if (e.metaKey || e.ctrlKey) rail.classList.add("reveal-keys");
 
-    // While an overlay is open, only Esc does anything.
-    if (shortcutsOpen()) {
-      if (e.key === "Escape") closeShortcuts();
-      return;
-    }
-    if (welcomeOpen()) {
-      if (e.key === "Escape") closeWelcome();
+    // While an overlay is open, trap Tab inside it and let Esc close it;
+    // nothing else fires.
+    const openModal = shortcutsOpen() ? shortcutsModal : welcomeOpen() ? welcomeModal : null;
+    if (openModal) {
+      if (e.key === "Escape") {
+        if (openModal === shortcutsModal) closeShortcuts();
+        else closeWelcome();
+      } else if (e.key === "Tab") {
+        trapTab(e, openModal);
+      }
       return;
     }
 
