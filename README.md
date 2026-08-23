@@ -27,7 +27,7 @@ Refrain already did that groundwork, and it did it as a plugin system rather tha
 
 **QR codes.** Generate a scannable code for a link, a WiFi network, a contact card and more, all on your own machine, with no third party generator that could expire your printed code or start charging later.
 
-**Spell check.** Pick a playlist and Refrain scans its slides for likely typos before they go up on the screen. It leans on the words already common across your own library, so worship vocabulary and names it has seen before don't get flagged. Refrain can't edit slides itself, so it flags each word and jumps you to the slide in ProPresenter to fix it, and "Ignore" teaches it a word for good.
+**Spell check.** Pick a playlist and Refrain scans its slides for likely typos before they go up on the screen. Words it flags that are correct for your church go on an **Ignored words** list you can see and edit, so a mis-click never hides a real typo for good. It leans on the words already common across your own library, so worship vocabulary and names it has seen before don't get flagged. Refrain can't edit slides itself, so it flags each word and jumps you to the slide in ProPresenter to fix it, and "Ignore" teaches it a word for good.
 
 **A real plugin system under all of it.** Church management integrations, storage backends, lyrics splitting rules, and whole new screens are all things you add as files in a folder, not core surgery. When your team hits something Refrain doesn't do yet, the answer is "add a module", not "wait for a rewrite".
 

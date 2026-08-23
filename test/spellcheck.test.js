@@ -64,3 +64,46 @@ test("findTypos returns at most four suggestions", () => {
   const flagged = findTypos("wrongword", { knownWords: new Set(), allowlist: new Set(), speller });
   assert.equal(flagged[0].suggestions.length, 4);
 });
+
+// --- allowlist editing ---
+
+import { parseWordList, addToAllowlist, removeFromAllowlist } from "../server/spellcheck.js";
+
+test("parseWordList accepts commas, spaces and newlines", () => {
+  assert.deepEqual(parseWordList("Yahweh, Hosanna  o'er\nZion"), ["yahweh", "hosanna", "o'er", "zion"]);
+});
+
+test("parseWordList dedupes and ignores empties", () => {
+  assert.deepEqual(parseWordList("Zion,, zion ,ZION"), ["zion"]);
+  assert.deepEqual(parseWordList("   "), []);
+  assert.deepEqual(parseWordList(null), []);
+});
+
+test("addToAllowlist lowercases, dedupes and sorts", () => {
+  assert.deepEqual(addToAllowlist(["zion"], "Yahweh, ZION"), ["yahweh", "zion"]);
+});
+
+test("addToAllowlist accepts an array as well as typed text", () => {
+  assert.deepEqual(addToAllowlist([], ["Hosanna"]), ["hosanna"]);
+});
+
+test("removeFromAllowlist takes a word out and leaves the rest", () => {
+  assert.deepEqual(removeFromAllowlist(["hosanna", "yahweh", "zion"], "Yahweh"), ["hosanna", "zion"]);
+});
+
+test("removeFromAllowlist is not upset by a word that isn't there", () => {
+  assert.deepEqual(removeFromAllowlist(["zion"], "nothere"), ["zion"]);
+  assert.deepEqual(removeFromAllowlist([], "zion"), []);
+});
+
+test("an allowlisted word stops being flagged, and unallowing brings it back", () => {
+  // The round trip is the whole point: a list you cannot correct would hide a
+  // real typo forever.
+  const speller = { correct: (w) => w.toLowerCase() !== "yahweh", suggest: () => [] };
+  const flagged = (allow) =>
+    findTypos("Yahweh reigns", { knownWords: new Set(), allowlist: new Set(allow), speller }).map((f) => f.word);
+
+  const withWord = addToAllowlist([], "Yahweh");
+  assert.deepEqual(flagged(withWord), [], "ignored while on the list");
+  assert.deepEqual(flagged(removeFromAllowlist(withWord, "Yahweh")), ["Yahweh"], "flagged again once removed");
+});

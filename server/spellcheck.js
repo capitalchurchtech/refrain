@@ -60,3 +60,44 @@ export function findTypos(text, { knownWords, allowlist, speller }) {
 export async function loadSpeller() {
   return getSpeller();
 }
+
+/**
+ * Allowlist editing.
+ *
+ * The allowlist is the pressure valve for a spell checker pointed at worship
+ * lyrics: names, archaic forms and CCLI spellings that are correct here but not
+ * in any dictionary. Adding has to be one click from a flagged word, but a list
+ * you cannot see or correct is worse than none, because one mis-click silently
+ * hides a real typo forever. So these are separate, pure, and both directions.
+ *
+ * Words are stored lowercased, since matching is case-insensitive, and kept
+ * sorted so the saved config reads sensibly and diffs cleanly.
+ */
+
+/** Splits typed input into words. Accepts commas, spaces or newlines. */
+export function parseWordList(input) {
+  return [
+    ...new Set(
+      String(input ?? "")
+        .split(/[\s,;]+/)
+        .map((w) => w.trim().toLowerCase())
+        .filter(Boolean)
+    ),
+  ];
+}
+
+/** Adds words, deduped case-insensitively, leaving the rest untouched. */
+export function addToAllowlist(current, words) {
+  const out = new Set((current ?? []).map((w) => String(w).toLowerCase()));
+  // Normalize whichever shape arrived: an array skipping the lowercasing would
+  // let "Zion" and "zion" both be stored, defeating the dedupe.
+  const incoming = Array.isArray(words) ? words.map((w) => String(w).trim().toLowerCase()).filter(Boolean) : parseWordList(words);
+  for (const w of incoming) out.add(w);
+  return [...out].sort();
+}
+
+/** Removes words. A word that isn't there is not an error. */
+export function removeFromAllowlist(current, words) {
+  const drop = new Set((Array.isArray(words) ? words : parseWordList(words)).map((w) => String(w).toLowerCase()));
+  return (current ?? []).map((w) => String(w).toLowerCase()).filter((w) => !drop.has(w)).sort();
+}

@@ -26,6 +26,27 @@ export function initSpellcheck() {
           <button id="spellcheck-scan-btn" class="btn btn-brand btn-sm" disabled>Check spelling</button>
         </div>
 
+        <details id="spellcheck-allowlist-panel" class="collapse collapse-arrow bg-base-200 rounded">
+          <summary class="collapse-title text-sm font-medium min-h-0 py-2">
+            Ignored words <span id="spellcheck-allowlist-count" class="opacity-60"></span>
+          </summary>
+          <div class="collapse-content flex flex-col gap-2">
+            <p class="text-xs opacity-60">
+              Words here are never flagged. Add the names, archaic spellings and song titles your church
+              uses on purpose. Removing a word makes it checkable again on the next scan.
+            </p>
+            <div id="spellcheck-allowlist-chips" class="flex flex-wrap gap-1"></div>
+            <div class="flex flex-wrap items-end gap-2">
+              <label class="form-control flex-1 min-w-[14rem]">
+                <div class="label py-0"><span class="label-text text-xs opacity-70">Add words (commas, spaces or one per line)</span></div>
+                <input id="spellcheck-allowlist-input" class="input input-bordered input-sm" placeholder="Yahweh, Hosanna, o'er" />
+              </label>
+              <button id="spellcheck-allowlist-add" class="btn btn-brand btn-sm">Add</button>
+            </div>
+            <span id="spellcheck-allowlist-status" class="text-xs"></span>
+          </div>
+        </details>
+
         <div id="spellcheck-status" class="text-sm opacity-70"></div>
         <div id="spellcheck-results" class="flex flex-col gap-3"></div>
       </div>
@@ -46,6 +67,18 @@ export function initSpellcheck() {
       select.innerHTML = `<option value="">Couldn't load playlists</option>`;
       document.getElementById("spellcheck-status").textContent = err.message;
     }
+
+    await loadAllowlist();
+
+    document.getElementById("spellcheck-allowlist-add").addEventListener("click", async () => {
+      const input = document.getElementById("spellcheck-allowlist-input");
+      if (!input.value.trim()) return;
+      await mutateAllowlist("/api/spellcheck/allow", { words: input.value });
+      input.value = "";
+    });
+    document.getElementById("spellcheck-allowlist-input").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") document.getElementById("spellcheck-allowlist-add").click();
+    });
 
     select.addEventListener("change", () => (scanBtn.disabled = !select.value));
     scanBtn.addEventListener("click", () => runScan(select.value, scanBtn));
@@ -104,7 +137,7 @@ export function initSpellcheck() {
                     (w) => `
                   <span class="badge badge-warning gap-1 spellcheck-word" data-word="${escapeHtml(w.word)}" title="${w.suggestions.length ? "Suggestions: " + escapeHtml(w.suggestions.join(", ")) : "No suggestions"}">
                     ${escapeHtml(w.word)}${w.suggestions.length ? ` → ${escapeHtml(w.suggestions[0])}` : ""}
-                    <button class="spellcheck-ignore-btn ml-1" data-word="${escapeHtml(w.word)}" title="Ignore this word everywhere (add to allowlist)">×</button>
+                    <button class="spellcheck-ignore-btn ml-1 underline decoration-dotted" data-word="${escapeHtml(w.word)}" title="Never flag this word again. You can undo it under Ignored words.">ignore</button>
                   </span>`
                   )
                   .join("")}
@@ -181,8 +214,10 @@ export function initSpellcheck() {
         } catch {
           // allowlisting is a convenience; don't block the UI on a failure
         }
-        // Drop every occurrence of this word from the current results without a re-scan.
+        // Drop every occurrence from the shown results without a re-scan, and
+        // refresh the panel so the word visibly lands somewhere undoable.
         dropWordFromResults(word);
+        loadAllowlist();
       })
     );
   }
@@ -214,6 +249,60 @@ export function initSpellcheck() {
 
   function escapeRegExp(s) {
     return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  // The list is shown as removable chips: a word ignored by mistake would
+  // otherwise hide a real typo forever with no way to find out.
+  async function loadAllowlist() {
+    const chips = document.getElementById("spellcheck-allowlist-chips");
+    const count = document.getElementById("spellcheck-allowlist-count");
+    if (!chips) return;
+    let allowlist = [];
+    try {
+      allowlist = (await fetch("/api/spellcheck/allowlist").then((r) => r.json())).allowlist ?? [];
+    } catch {
+      chips.innerHTML = `<span class="text-xs opacity-60">Couldn't load the ignored words.</span>`;
+      return;
+    }
+    count.textContent = allowlist.length ? `(${allowlist.length})` : "(none yet)";
+    chips.innerHTML = allowlist.length
+      ? allowlist
+          .map(
+            (w) => `<span class="badge badge-ghost gap-1">${escapeHtml(w)}
+              <button class="spellcheck-unallow-btn" data-word="${escapeHtml(w)}" title="Stop ignoring &quot;${escapeHtml(w)}&quot;" aria-label="Stop ignoring ${escapeHtml(w)}">&times;</button>
+            </span>`
+          )
+          .join("")
+      : `<span class="text-xs opacity-60">Nothing ignored yet. Use <em>ignore</em> on a flagged word, or add words below.</span>`;
+
+    chips.querySelectorAll(".spellcheck-unallow-btn").forEach((btn) =>
+      btn.addEventListener("click", () => mutateAllowlist("/api/spellcheck/unallow", { word: btn.dataset.word }))
+    );
+  }
+
+  async function mutateAllowlist(url, body) {
+    const status = document.getElementById("spellcheck-allowlist-status");
+    status.textContent = "Saving...";
+    status.className = "text-xs opacity-60";
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        status.textContent = data.error;
+        status.className = "text-xs text-error";
+        return;
+      }
+      status.textContent = "Saved.";
+      status.className = "text-xs text-success";
+      await loadAllowlist();
+    } catch (err) {
+      status.textContent = err.message;
+      status.className = "text-xs text-error";
+    }
   }
 
   function escapeHtml(str) {

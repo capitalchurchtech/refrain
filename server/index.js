@@ -67,7 +67,7 @@ import { discoverModules, discoverSlideSplitters, discoverProviders, discoverSto
 import { runComparison, suggestMapping, getPendingUploadCount, retryPendingUploads } from "./arrangement-diff.js";
 import { startWatcher as startImageCropWatcher, getImageCropStatus, foldersOverlap, websafeToken } from "./image-crop.js";
 import { generateQr, getQrHistoryList, getQrHistoryEntry, addQrHistoryEntry, clearQrHistory, QR_LIMITS } from "./qr-code.js";
-import { loadSpeller, findTypos, tokenize } from "./spellcheck.js";
+import { loadSpeller, findTypos, tokenize, addToAllowlist, removeFromAllowlist, parseWordList } from "./spellcheck.js";
 import { normalizeSongTitle } from "../providers/planning-center.js";
 
 const { version } = JSON.parse(readFileSync("./package.json", "utf-8"));
@@ -1155,19 +1155,40 @@ app.post("/api/spellcheck/scan", async (req, res) => {
   }
 });
 
-app.post("/api/spellcheck/allow", async (req, res) => {
-  const { word } = req.body ?? {};
-  if (typeof word !== "string" || !word.trim()) return res.status(400).json({ error: "word is required" });
-  const lower = word.trim().toLowerCase();
-  const current = config.spellcheckModule?.allowlist ?? [];
-  const allowlist = current.includes(lower) ? current : [...current, lower];
-  config = { ...config, spellcheckModule: { ...config.spellcheckModule, allowlist } };
+/**
+ * Saves an allowlist, only swapping the in-memory config once the write has
+ * actually landed. The previous version updated config first, so a failed write
+ * left the running app disagreeing with the file on disk.
+ */
+async function saveAllowlist(allowlist, res) {
+  const next = { ...config, spellcheckModule: { ...config.spellcheckModule, allowlist } };
   try {
-    await saveConfig(config);
-    res.json({ ok: true, allowlist });
+    await saveConfig(next);
   } catch (err) {
-    res.status(500).json({ error: `Failed to save allowlist: ${err.message}` });
+    return res.status(500).json({ error: `Failed to save the ignored words: ${err.message}` });
   }
+  config = next;
+  return res.json({ ok: true, allowlist });
+}
+
+app.get("/api/spellcheck/allowlist", (_req, res) => {
+  res.json({ allowlist: config.spellcheckModule?.allowlist ?? [] });
+});
+
+app.post("/api/spellcheck/allow", async (req, res) => {
+  const { word, words } = req.body ?? {};
+  // Accepts one word (the inline Ignore button) or a typed list, so a whole
+  // set of known-good church vocabulary can be pasted in at once.
+  const incoming = parseWordList(words ?? word);
+  if (!incoming.length) return res.status(400).json({ error: "Type at least one word to ignore." });
+  return saveAllowlist(addToAllowlist(config.spellcheckModule?.allowlist ?? [], incoming), res);
+});
+
+app.post("/api/spellcheck/unallow", async (req, res) => {
+  const { word, words } = req.body ?? {};
+  const outgoing = parseWordList(words ?? word);
+  if (!outgoing.length) return res.status(400).json({ error: "Say which word to stop ignoring." });
+  return saveAllowlist(removeFromAllowlist(config.spellcheckModule?.allowlist ?? [], outgoing), res);
 });
 
 // --- Lyrics search-assist (Section 14) ---
