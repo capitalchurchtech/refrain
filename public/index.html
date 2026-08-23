@@ -147,7 +147,19 @@
         <div>
           <button id="setup-detect-btn" class="btn btn-brand btn-sm">Detect ProPresenter</button>
           <span id="setup-detect-result" class="text-sm ml-2"></span>
-          <p class="text-xs opacity-60 mt-1">Scans for ProPresenter's Network API (make sure it's enabled in ProPresenter's Preferences &gt; Network first). Or enter the host and port by hand below.</p>
+          <p class="text-xs opacity-60 mt-1">Looks for ProPresenter's Network API <strong>on this machine only</strong> (make sure it's enabled in ProPresenter's Preferences &gt; Network first). Or enter the host and port by hand below.</p>
+
+          <div id="setup-network-scan-offer" class="alert alert-warning py-2 text-sm mt-2 items-start hidden">
+            <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
+            <span>
+              <strong>Searching the rest of the network is a bigger deal.</strong>
+              It contacts every address on your local network looking for ProPresenter. Any
+              ProPresenter it finds belongs to another machine that may be mid-service, and
+              some networks treat a sweep like this as suspicious. Only do it if you know
+              ProPresenter is running on a different computer.
+              <button id="setup-network-scan-btn" class="btn btn-warning btn-xs mt-2 block">Search the network anyway</button>
+            </span>
+          </div>
         </div>
 
         <div>

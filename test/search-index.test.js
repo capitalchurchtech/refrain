@@ -97,3 +97,43 @@ test("isServiceDay covers Saturday and Sunday only", () => {
   assert.equal(day("2026-08-26T10:00:00"), false, "Wednesday");
   assert.equal(day("2026-08-21T10:00:00"), false, "Friday");
 });
+
+test("the rebuild paces itself instead of hammering ProPresenter", async () => {
+  // rebuildIndex persists to ./cache relative to the working directory, so this
+  // MUST run in a throwaway cwd. Without it the test overwrites the real
+  // search index with its three mock presentations.
+  const { mkdtemp, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const origCwd = process.cwd();
+  const tmp = await mkdtemp(join(tmpdir(), "refrain-pace-"));
+  process.chdir(tmp);
+  try {
+  // A tight loop of back-to-back fetches was measured making a real
+  // ProPresenter stop answering slide triggers, so the crawl must pause
+  // between documents. This asserts the pacing is actually applied.
+  const { rebuildIndex } = await import("../server/search-index.js");
+  const calls = [];
+  const client = {
+    getLibrary: async () => [
+      { id: "a", name: "A", folder: "Songs" },
+      { id: "b", name: "B", folder: "Songs" },
+      { id: "c", name: "C", folder: "Songs" },
+    ],
+    getPresentation: async (id) => {
+      calls.push({ id, at: Date.now() });
+      return { presentation: { current_arrangement: "", groups: [{ uuid: "g", slides: [{ text: id }] }] } };
+    },
+    getFileDates: async () => ({ createdDate: null, modifiedDate: null }),
+  };
+  const started = Date.now();
+  await rebuildIndex(client, { folders: ["Songs"], crawlPlaylists: false }, []);
+  const elapsed = Date.now() - started;
+
+    assert.equal(calls.length, 3, "every presentation still gets fetched");
+    assert.ok(elapsed >= 240, `three paced fetches should take real time, took ${elapsed}ms`);
+  } finally {
+    process.chdir(origCwd);
+    await rm(tmp, { recursive: true, force: true });
+  }
+});

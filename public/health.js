@@ -87,12 +87,20 @@ export function initHealth() {
     const configDetectBtn = document.getElementById("config-detect-btn");
     if (configDetectBtn) {
       const detectResult = document.getElementById("config-detect-result");
-      configDetectBtn.addEventListener("click", async () => {
-        configDetectBtn.disabled = true;
-        detectResult.textContent = "Scanning...";
+      const networkOffer = document.getElementById("config-network-scan-offer");
+
+      // Local-only unless the operator escalates: a network sweep reaches other
+      // machines' ProPresenter, which may be live.
+      const runDetect = async (button, scanNetwork) => {
+        button.disabled = true;
+        detectResult.textContent = scanNetwork ? "Searching the network..." : "Looking on this machine...";
         detectResult.className = "text-sm opacity-70";
         try {
-          const res = await fetch("/api/setup/scan", { method: "POST" });
+          const res = await fetch("/api/setup/scan", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ scanNetwork }),
+          });
           const data = await res.json();
           const found = data.candidates?.[0];
           if (found) {
@@ -101,17 +109,28 @@ export function initHealth() {
             const extra = data.candidates.length > 1 ? ` (+${data.candidates.length - 1} more)` : "";
             detectResult.textContent = `Found ${found.name} at ${found.host}:${found.port}${extra} — Save to apply.`;
             detectResult.className = "text-sm text-success";
-          } else {
-            detectResult.textContent = "No ProPresenter found. Make sure its Network API is on, or type the host and port above.";
+            networkOffer?.classList.add("hidden");
+          } else if (scanNetwork) {
+            detectResult.textContent = "Nothing found on the network either. Type the host and port above.";
             detectResult.className = "text-sm text-warning";
+          } else {
+            detectResult.textContent = "No ProPresenter on this machine. Check its Network API is on, or type the host and port above.";
+            detectResult.className = "text-sm text-warning";
+            networkOffer?.classList.remove("hidden");
+            if (window.lucide) window.lucide.createIcons();
           }
         } catch (err) {
           detectResult.textContent = `Scan failed: ${err.message}`;
           detectResult.className = "text-sm text-error";
         } finally {
-          configDetectBtn.disabled = false;
+          button.disabled = false;
         }
-      });
+      };
+
+      configDetectBtn.addEventListener("click", () => runDetect(configDetectBtn, false));
+      document
+        .getElementById("config-network-scan-btn")
+        ?.addEventListener("click", (e) => runDetect(e.currentTarget, true));
     }
 
     const btn = document.getElementById("health-rebuild-btn");
@@ -686,7 +705,19 @@ function renderHealth(health, configOptions, versionInfo) {
             <button type="button" id="config-detect-btn" class="btn btn-outline btn-sm">Detect ProPresenter</button>
             <span id="config-detect-result" class="text-sm"></span>
           </div>
-          <div class="text-xs opacity-60">Scans the network for ProPresenter's API and fills in the host and port above. Save to apply.</div>
+          <div class="text-xs opacity-60">Looks for ProPresenter's API <strong>on this machine only</strong> and fills in the host and port above. Save to apply.</div>
+
+          <div id="config-network-scan-offer" class="alert alert-warning py-2 text-sm items-start hidden">
+            <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
+            <span>
+              <strong>Searching the rest of the network is a bigger deal.</strong>
+              It contacts every address on your local network looking for ProPresenter. Any
+              ProPresenter it finds belongs to another machine that may be mid-service, and
+              some networks treat a sweep like this as suspicious. Only do it if you know
+              ProPresenter is running on a different computer.
+              <button type="button" id="config-network-scan-btn" class="btn btn-warning btn-xs mt-2 block">Search the network anyway</button>
+            </span>
+          </div>
 
           <label class="label cursor-pointer justify-start gap-2 w-fit">
             <input type="checkbox" id="config-crawl-playlists" class="checkbox checkbox-sm" ${config.librarySync.crawlPlaylists ? "checked" : ""} />

@@ -17,6 +17,20 @@ const REBUILD_TIME_GATE_MS = 24 * 60 * 60 * 1000;
 // and the arrangement each presentation was indexed under.
 const SCHEMA_VERSION = 2;
 const PRESENTATION_FETCH_CONCURRENCY = 1;
+/**
+ * Pause between presentation fetches during a rebuild.
+ *
+ * A rebuild used to be a tight loop of hundreds of back-to-back API calls.
+ * Measured against a real ProPresenter 21.3: under that load its response
+ * times went from 0.2s to nearly 6s and it stopped answering slide triggers
+ * altogether. ProPresenter is a live production tool, and Refrain is a guest
+ * on its API, so the crawl now paces itself rather than taking everything the
+ * API will give. Rebuilds get slower; they are already a "do this when
+ * nothing is happening" job (see isServiceDay), so that is the right trade.
+ */
+const FETCH_PACING_MS = 120;
+
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 let currentIndex = { builtAt: null, presentations: {} };
 let rebuildInFlight = null;
@@ -136,6 +150,7 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
         if (playlistsFetched % 100 === 0 || playlistsFetched === playlistIds.length) {
           console.log(`Crawling playlists... ${playlistsFetched}/${playlistIds.length}`);
         }
+        await pause(FETCH_PACING_MS);
       });
       if (playlistFailures > 0) {
         console.log(`${playlistFailures} playlist(s) failed/timed out and were skipped.`);
@@ -168,6 +183,9 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
       }
       fetched += 1;
       rebuildProgress.current = fetched;
+      // Breathe between documents so ProPresenter stays responsive to the
+      // operator while this runs.
+      await pause(FETCH_PACING_MS);
       if (fetched % 50 === 0 || fetched === idsNeedingSlides.length) {
         console.log(`Indexing... ${fetched}/${idsNeedingSlides.length} presentations`);
       }

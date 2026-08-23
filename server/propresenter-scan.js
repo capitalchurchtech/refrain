@@ -9,9 +9,12 @@
  *      and it's the overwhelmingly common case (Refrain is a sidecar on
  *      the ProPresenter Mac). A couple of common ports are also probed on
  *      localhost as a fallback for non-macOS or odd setups.
- *   2. Only if nothing's local: scan each private /24 for the common
- *      ports, checking the TCP port is open before the HTTP confirm so
- *      empty addresses don't each cost a full timeout.
+ *   2. Scanning the wider network is OPT-IN and never happens on its own.
+ *      It sweeps each private /24 for the common ports, which means touching
+ *      every address on the network including other people's machines. That
+ *      is a real thing to do to a network you share, and a ProPresenter on
+ *      another machine is a live production tool, so it only runs when the
+ *      operator explicitly asks for it.
  *
  * A host:port is confirmed as ProPresenter by GET /v1/status/layers (the
  * same call the client's testConnection uses, known to 200 on a real
@@ -105,7 +108,7 @@ function privateSubnets() {
 /**
  * @returns {Promise<{host: string, port: number, name: string}[]>}
  */
-export async function scanForProPresenter({ configuredPort = null } = {}) {
+export async function scanForProPresenter({ configuredPort = null, scanNetwork = false } = {}) {
   const commonPorts = [...new Set([configuredPort, 1025].filter((p) => Number.isInteger(p) && p > 0))];
 
   // 1. Same machine.
@@ -113,7 +116,9 @@ export async function scanForProPresenter({ configuredPort = null } = {}) {
   const local = (await pool(localPorts, 16, (port) => identify("127.0.0.1", port))).filter(Boolean);
   if (local.length) return dedupe(local);
 
-  // 2. LAN fallback.
+  // 2. The wider network, only when explicitly asked. Sweeping every address
+  // on a shared network is not something to do as a silent fallback.
+  if (!scanNetwork) return [];
   const targets = [];
   for (const { base, own } of privateSubnets()) {
     for (let h = 1; h <= 254; h++) {

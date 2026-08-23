@@ -1970,9 +1970,14 @@ app.get("/api/setup/status", (_req, res) => {
   });
 });
 
-app.post("/api/setup/scan", async (_req, res) => {
+app.post("/api/setup/scan", async (req, res) => {
   try {
-    const candidates = await scanForProPresenter({ configuredPort: config.propresenter?.port ?? null });
+    // Scanning beyond this machine only happens when the caller asks for it.
+    const scanNetwork = Boolean(req.body?.scanNetwork);
+    const candidates = await scanForProPresenter({
+      configuredPort: config.propresenter?.port ?? null,
+      scanNetwork,
+    });
     res.json({ candidates });
   } catch (err) {
     res.status(500).json({ error: `Scan failed: ${err.message}` });

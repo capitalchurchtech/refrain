@@ -30,12 +30,20 @@ export function initSetup({ onComplete }) {
     return document.querySelector('input[name="setup-role"]:checked')?.value ?? null;
   }
 
-  detectBtn.addEventListener("click", async () => {
-    detectBtn.disabled = true;
-    detectResult.textContent = "Scanning...";
+  const networkOffer = document.getElementById("setup-network-scan-offer");
+
+  // scanNetwork is off unless the operator explicitly escalates: sweeping the
+  // network touches other machines' ProPresenter, which may be live.
+  async function runDetect(button, scanNetwork) {
+    button.disabled = true;
+    detectResult.textContent = scanNetwork ? "Searching the network..." : "Looking on this machine...";
     detectResult.className = "text-sm ml-2 opacity-70";
     try {
-      const res = await fetch("/api/setup/scan", { method: "POST" });
+      const res = await fetch("/api/setup/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scanNetwork }),
+      });
       const data = await res.json();
       const found = data.candidates?.[0];
       if (found) {
@@ -48,18 +56,30 @@ export function initSetup({ onComplete }) {
         const extra = data.candidates.length > 1 ? ` (+${data.candidates.length - 1} more found)` : "";
         detectResult.textContent = `Found ${found.name} at ${found.host}:${found.port}${extra}`;
         detectResult.className = "text-sm ml-2 text-success";
-      } else {
-        detectResult.textContent = "No ProPresenter found. Make sure its Network API is on, or enter the host and port below.";
+        networkOffer?.classList.add("hidden");
+      } else if (scanNetwork) {
+        detectResult.textContent = "Nothing found on the network either. Enter the host and port by hand below.";
         detectResult.className = "text-sm ml-2 text-warning";
+      } else {
+        detectResult.textContent = "No ProPresenter on this machine. Check its Network API is on, or enter the host and port below.";
+        detectResult.className = "text-sm ml-2 text-warning";
+        // Only now offer the wider search, with its warning.
+        networkOffer?.classList.remove("hidden");
+        if (window.lucide) window.lucide.createIcons();
       }
     } catch (err) {
       detectResult.textContent = `Scan failed: ${err.message}`;
       detectResult.className = "text-sm ml-2 text-error";
     } finally {
-      detectBtn.disabled = false;
+      button.disabled = false;
       updateSaveEnabled();
     }
-  });
+  }
+
+  detectBtn.addEventListener("click", () => runDetect(detectBtn, false));
+  document
+    .getElementById("setup-network-scan-btn")
+    ?.addEventListener("click", (e) => runDetect(e.currentTarget, true));
 
   testBtn.addEventListener("click", async () => {
     testBtn.disabled = true;
