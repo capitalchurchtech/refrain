@@ -179,6 +179,10 @@ The first time you open Refrain (and every start after, until you tick "Don't sh
 
 Press **/** or **Cmd/Ctrl+K** from any screen to jump straight to Search with the cursor in the box. Each sidebar screen also has a number: press **1** through **9** to jump to it, and hold **Cmd/Ctrl** to see the numbers appear next to the labels. Press **?** any time (or click **Shortcuts** at the bottom of the sidebar) for the full list.
 
+## Sharing one library between two macOS accounts
+
+If ProPresenter runs under two macOS accounts on the same Mac and you want just the Songs library kept in step between them, [docs/cross-account-library-sync.md](docs/cross-account-library-sync.md) has a tested recipe: what a library looks like on disk, why a symlink does not work, and copy-only sync scripts with dated snapshots and a guard that refuses to run against an empty source. It never deletes anything, on the grounds that a song library is years of work.
+
 ## Appearance
 
 The icon near the bottom of the sidebar cycles the theme: System, Light, Dark, and Blackroom. Dark uses high-contrast text so it stays readable on a plain (non-retina) booth monitor. Blackroom is a true-black, high-contrast option that's easy on the eyes in a dark room and looks good on an OLED screen. Your choice is remembered.
