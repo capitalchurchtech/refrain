@@ -84,6 +84,92 @@ export function initHealth() {
       });
     }
 
+    const diagnoseBtn = document.getElementById("pp-diagnose-btn");
+    if (diagnoseBtn) {
+      const statusEl = document.getElementById("pp-diagnose-status");
+      const resultsEl = document.getElementById("pp-diagnose-results");
+
+      // Severity drives the stripe and chip so the worst thing reads first
+      // without having to be read at all.
+      const TONE = {
+        problem: { border: "border-error", chip: "badge-error", label: "Problem" },
+        warn: { border: "border-warning", chip: "badge-warning", label: "Check" },
+        info: { border: "border-info", chip: "badge-info", label: "Info" },
+        ok: { border: "border-success", chip: "badge-success", label: "OK" },
+      };
+
+      diagnoseBtn.addEventListener("click", async () => {
+        diagnoseBtn.disabled = true;
+        statusEl.textContent = "Checking this machine...";
+        resultsEl.innerHTML = "";
+        try {
+          const data = await fetch("/api/propresenter/diagnose").then((r) => r.json());
+          statusEl.textContent = `Checked ${new Date(data.checkedAt).toLocaleTimeString()}`;
+          resultsEl.innerHTML = (data.findings ?? [])
+            .map((f, i) => {
+              const tone = TONE[f.severity] ?? TONE.info;
+              return `
+              <div class="border-l-2 ${tone.border} bg-base-100 rounded p-2 flex flex-col gap-1">
+                <div class="flex items-start justify-between gap-2">
+                  <div class="text-sm font-medium">
+                    <span class="badge ${tone.chip} badge-sm mr-1">${tone.label}</span>${escapeHtml(f.title)}
+                  </div>
+                  ${
+                    f.prompt
+                      ? `<button type="button" class="btn btn-ghost btn-xs shrink-0 pp-copy-prompt" data-index="${i}" title="Copy a ready-made prompt to paste into Claude Code">
+                           <span class="copy-icon"><i data-lucide="clipboard"></i></span> Copy prompt
+                         </button>`
+                      : ""
+                  }
+                </div>
+                <div class="text-xs opacity-70 whitespace-pre-line">${escapeHtml(f.detail)}</div>
+                ${
+                  f.command
+                    ? `<div class="flex items-center gap-2 mt-1">
+                         <code class="text-xs bg-base-200 rounded px-2 py-1 flex-1 overflow-x-auto whitespace-nowrap">${escapeHtml(f.command)}</code>
+                         <button type="button" class="btn btn-ghost btn-xs shrink-0 pp-copy-command" data-index="${i}" title="Copy this command">
+                           <span class="copy-icon"><i data-lucide="copy"></i></span>
+                         </button>
+                       </div>`
+                    : ""
+                }
+              </div>`;
+            })
+            .join("");
+          if (window.lucide) window.lucide.createIcons();
+
+          // Copy with visible confirmation: under pressure a silent copy is
+          // indistinguishable from a dead button.
+          const wireCopy = (selector, pick) =>
+            resultsEl.querySelectorAll(selector).forEach((btn) =>
+              btn.addEventListener("click", async () => {
+                const text = pick(data.findings[Number(btn.dataset.index)]);
+                const iconWrap = btn.querySelector(".copy-icon");
+                let ok = true;
+                try {
+                  await navigator.clipboard.writeText(text);
+                } catch {
+                  ok = false;
+                }
+                iconWrap.innerHTML = `<i data-lucide="${ok ? "check" : "x"}"></i>`;
+                if (window.lucide) window.lucide.createIcons();
+                if (!ok) btn.title = "Couldn't copy - select the text manually";
+                setTimeout(() => {
+                  iconWrap.innerHTML = `<i data-lucide="${selector.includes("prompt") ? "clipboard" : "copy"}"></i>`;
+                  if (window.lucide) window.lucide.createIcons();
+                }, 1200);
+              })
+            );
+          wireCopy(".pp-copy-prompt", (f) => f.prompt);
+          wireCopy(".pp-copy-command", (f) => f.command);
+        } catch (err) {
+          statusEl.textContent = `Diagnose failed: ${err.message}`;
+        } finally {
+          diagnoseBtn.disabled = false;
+        }
+      });
+    }
+
     const configDetectBtn = document.getElementById("config-detect-btn");
     if (configDetectBtn) {
       const detectResult = document.getElementById("config-detect-result");
@@ -563,6 +649,13 @@ function renderHealth(health, configOptions, versionInfo) {
     <div class="card bg-base-200">
       <div class="card-body p-3">
         <h2 class="card-title text-base"><i data-lucide="cast" class="w-4 h-4 opacity-70"></i> ProPresenter Connection</h2>
+        <div class="flex items-center gap-2 mt-1">
+          <button type="button" id="pp-diagnose-btn" class="btn btn-outline btn-xs">
+            <i data-lucide="stethoscope" class="w-3.5 h-3.5"></i> Diagnose
+          </button>
+          <span id="pp-diagnose-status" class="text-xs opacity-60"></span>
+        </div>
+        <div id="pp-diagnose-results" class="flex flex-col gap-2"></div>
         ${
           propresenter.connected
             ? `<div class="badge badge-success gap-1"><i data-lucide="check-circle-2" class="w-3 h-3"></i> Connected</div>

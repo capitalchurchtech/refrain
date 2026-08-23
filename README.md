@@ -48,6 +48,7 @@ Working today:
 - QR codes, end to end.
 - Spell check across a playlist's slides, end to end.
 - Library Sync (optional, off by default): copies one library between two machines or accounts, add-and-update only, with snapshots.
+- ProPresenter first aid on the Health screen: when it won't start, Diagnose explains why and hands you a command plus a ready-made prompt.
 
 Wired up but not finished (the interface exists, the methods currently refuse to run):
 

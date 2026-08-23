@@ -29,6 +29,14 @@ import {
 import { ProPresenterClient } from "./propresenter-client.js";
 import { scanForProPresenter } from "./propresenter-scan.js";
 import {
+  buildFindings,
+  deriveSupportRoot,
+  findOrphanedHelpers,
+  readWorkspaceState,
+  readCrashReports,
+  readLibraryConsistency,
+} from "./propresenter-doctor.js";
+import {
   loadIndexFromDisk,
   rebuildIndex,
   shouldAutoRebuild,
@@ -1967,6 +1975,92 @@ app.get("/api/setup/status", (_req, res) => {
     needsSetup: !isConfigComplete(config),
     propresenter: config.propresenter,
     role: config.role ?? null,
+  });
+});
+
+
+/**
+ * Read-only first aid for "ProPresenter won't start".
+ *
+ * Deliberately diagnosis only: it reports what it sees and hands back a command
+ * plus a ready-made prompt, and never kills a process or moves a file itself.
+ * Refrain stays up when ProPresenter doesn't, which is what makes this useful
+ * at all, but that is also why it must not be able to make things worse.
+ */
+app.get("/api/propresenter/diagnose", async (_req, res) => {
+  const host = config.propresenter?.host ?? "localhost";
+  const port = config.propresenter?.port ?? null;
+  const isLocalHost = Boolean(client.isLocalHost);
+
+  let connected = false;
+  try {
+    await client.testConnection();
+    connected = true;
+  } catch {
+    connected = false;
+  }
+
+  // Only look at this machine's files when this machine is the one running
+  // ProPresenter; otherwise the answers would describe the wrong computer.
+  let processes = { available: false };
+  let workspaceState = { available: false, workspaces: [] };
+  let crashReports = { available: false, reports: [] };
+  let libraryConsistency = { available: false, folders: [], dangling: [] };
+  let supportRoot = null;
+
+  if (isLocalHost) {
+    try {
+      const { stdout } = await execFileAsync("ps", ["-Ao", "pid,ppid,comm"], { timeout: 5000 });
+      processes = { available: true, ...findOrphanedHelpers(stdout) };
+    } catch {
+      processes = { available: false };
+    }
+
+    // Prefer a path derived from something real over a hardcoded vendor
+    // location: a running helper's own executable path, or a presentation path
+    // from the API while it still answers.
+    const helperPath = (processes.rows ?? []).map((r) => r.comm).find((c) => c.includes("/ProPresenter/")) ?? null;
+    let presentationPath = null;
+    if (connected) {
+      try {
+        const items = await client.getLibrary(config.librarySync?.folders ?? null);
+        if (items?.length) {
+          const doc = await client.getPresentation(items[0].id);
+          presentationPath = doc?.presentation?.presentation_path ?? null;
+        }
+      } catch {
+        /* best effort only */
+      }
+    }
+    supportRoot = deriveSupportRoot({ helperPath, presentationPath, home: homedir() });
+
+    if (supportRoot) {
+      workspaceState = await readWorkspaceState(supportRoot);
+      libraryConsistency = await readLibraryConsistency(
+        supportRoot,
+        presentationPath ? path.resolve(path.dirname(presentationPath), "../..") : null
+      );
+    }
+    crashReports = await readCrashReports(homedir());
+  }
+
+  res.json({
+    checkedAt: new Date().toISOString(),
+    host,
+    port,
+    isLocalHost,
+    connected,
+    supportRoot,
+    findings: buildFindings({
+      connected,
+      host,
+      port,
+      isLocalHost,
+      processes,
+      workspaceState,
+      crashReports,
+      libraryConsistency,
+    }),
   });
 });
 
