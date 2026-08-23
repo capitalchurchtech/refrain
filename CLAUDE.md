@@ -51,5 +51,6 @@ If you ship something partly stubbed (interface there, methods throwing, like `s
 ## Git
 
 - Commit only when asked. Push only when asked. Finishing a feature is not, on its own, permission to commit it.
+- Every release gets a GitHub release page, always. `npm version X --no-git-tag-version`, commit "Release vX", `git tag -a vX`, push both, then `gh release create vX` with notes. A tag without a release page is an incomplete release: the release page is where a church admin actually looks to see what changed and whether to update.
 - Don't force push, don't rewrite history on `main`, don't skip CI or lint to get something through.
 - If you're running autonomously with no human reviewing before merge, be more careful than you would with a backstop, not less. The checks above exist because real church infrastructure and real (if small) user trust ride on this staying honest and stable.
