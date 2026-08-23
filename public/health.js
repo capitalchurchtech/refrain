@@ -581,6 +581,16 @@ function renderHealth(health, configOptions, versionInfo) {
             : ""
         }
         ${
+          index.autoRebuildDeferred
+            ? `<div class="alert alert-info py-2 text-sm mt-2 items-start">
+                 <i data-lucide="pause-circle" class="w-4 h-4 shrink-0 mt-0.5"></i>
+                 <span><strong>${index.builtAt ? "This index is out of date" : "No index has been built yet"}, and Refrain did not rebuild it automatically because it is a Saturday or Sunday.</strong>
+                 ${index.builtAt ? "Search still works from the existing index." : "Search will stay empty until you build it."}
+                 Rebuild it below once you have a clear hour or two, or leave it until after the weekend.</span>
+               </div>`
+            : ""
+        }
+        ${
           index.rebuild.inProgress
             ? `<div class="text-sm mt-1">Rebuilding (${index.rebuild.stage}): ${index.rebuild.current}/${index.rebuild.total || "?"}</div>
                <div class="alert alert-warning py-2 text-sm mt-2 items-start">

@@ -257,6 +257,18 @@ export function getIndexedArrangementNames() {
   return [...names].sort((a, b) => a.localeCompare(b));
 }
 
+/**
+ * Saturday or Sunday, when a church is most likely to be setting up for or
+ * running a service. A rebuild crawls the whole library and makes
+ * ProPresenter sluggish for as long as it runs, so Refrain never starts one
+ * by itself on these days: it waits to be asked. Local time on purpose,
+ * since "is it the weekend" means the operator's weekend.
+ */
+export function isServiceDay(now = new Date()) {
+  const day = now.getDay();
+  return day === 0 || day === 6;
+}
+
 export function shouldAutoRebuild(index) {
   if (!index?.builtAt) return true;
   // An older-schema cache still loads and still searches — slides just lack

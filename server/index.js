@@ -39,6 +39,7 @@ import {
   getIndexedFolders,
   extractSlides,
   getIndexedArrangementNames,
+  isServiceDay,
 } from "./search-index.js";
 import { resolveArrangement, flattenGroups, findLiveIndex } from "./arrangements.js";
 import { discoverModules, discoverSlideSplitters, discoverProviders, discoverStorageBackends } from "./plugin-loader.js";
@@ -547,9 +548,15 @@ app.get("/api/arrangement/detect-storage-paths", async (_req, res) => {
   }
 });
 
+// Set at boot when a rebuild was due but deliberately skipped because it's
+// a service day, so the Health screen can say so instead of just showing a
+// stale index with no explanation.
+let autoRebuildDeferred = false;
+
 function indexStatusPayload() {
   const index = getIndex();
   return {
+    autoRebuildDeferred,
     builtAt: index.builtAt,
     buildDurationMs: index.buildDurationMs ?? null,
     crawledPlaylists: Boolean(index.crawledPlaylists),
@@ -617,8 +624,11 @@ app.post("/api/library-folders", async (req, res) => {
   });
 });
 
+// An explicit rebuild is always honored, service day or not — the whole
+// point of the deferral is that the operator decides.
 app.post("/api/index/rebuild", async (_req, res) => {
   try {
+    autoRebuildDeferred = false; // the operator has taken it in hand
     const index = await rebuildIndex(client, config.librarySync, preferredArrangements());
     res.json({ builtAt: index.builtAt, presentationCount: Object.keys(index.presentations).length });
   } catch (err) {
@@ -1863,17 +1873,31 @@ app.listen(port, "127.0.0.1", async () => {
 
   const existing = await loadIndexFromDisk();
   if (!existing) {
-    console.log("No search index cache found — building initial index...");
-    try {
-      await rebuildIndex(client, config.librarySync, preferredArrangements());
-      console.log("Initial index build complete.");
-    } catch (err) {
-      console.error("Initial index build failed:", err.message);
-      console.error("Check ProPresenter is running with its Network API enabled (Preferences > Network).");
+    if (isServiceDay()) {
+      // Never start an hour-long library crawl on a Saturday or Sunday
+      // unasked — that's exactly when ProPresenter needs to stay responsive.
+      autoRebuildDeferred = true;
+      console.log("No search index cache found, but it's a service day — not building automatically.");
+      console.log("Search will be empty until you press Rebuild Now on the Health screen.");
+    } else {
+      console.log("No search index cache found — building initial index...");
+      try {
+        await rebuildIndex(client, config.librarySync, preferredArrangements());
+        console.log("Initial index build complete.");
+      } catch (err) {
+        console.error("Initial index build failed:", err.message);
+        console.error("Check ProPresenter is running with its Network API enabled (Preferences > Network).");
+      }
     }
   } else if (shouldAutoRebuild(existing)) {
-    console.log("Cached index is stale (older than a day, or built by a previous version) — rebuilding in background...");
-    rebuildIndex(client, config.librarySync, preferredArrangements()).catch((err) => console.error("Background rebuild failed:", err.message));
+    if (isServiceDay()) {
+      autoRebuildDeferred = true;
+      console.log("Cached index is stale, but it's a service day — not rebuilding automatically.");
+      console.log("The existing index still works; rebuild from the Health screen when you have a clear hour or two.");
+    } else {
+      console.log("Cached index is stale (older than a day, or built by a previous version) — rebuilding in background...");
+      rebuildIndex(client, config.librarySync, preferredArrangements()).catch((err) => console.error("Background rebuild failed:", err.message));
+    }
   } else {
     console.log(`Loaded cached index (built ${existing.builtAt}, ${Object.keys(existing.presentations).length} presentations).`);
   }

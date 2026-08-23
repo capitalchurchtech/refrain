@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { extractSlides } from "../server/search-index.js";
+import { extractSlides, isServiceDay } from "../server/search-index.js";
 import { normalizeText } from "../server/propresenter-client.js";
 
 test("normalizeText collapses newlines and runs of whitespace", () => {
@@ -86,4 +86,14 @@ test("extractSlides honors a preferred arrangement over the selected one", () =>
     ["chorus"],
     "with no preference it still follows ProPresenter's selection"
   );
+});
+
+test("isServiceDay covers Saturday and Sunday only", () => {
+  // A rebuild must never kick off by itself on a service day.
+  const day = (iso) => isServiceDay(new Date(iso));
+  assert.equal(day("2026-08-22T10:00:00"), true, "Saturday");
+  assert.equal(day("2026-08-23T10:00:00"), true, "Sunday");
+  assert.equal(day("2026-08-24T10:00:00"), false, "Monday");
+  assert.equal(day("2026-08-26T10:00:00"), false, "Wednesday");
+  assert.equal(day("2026-08-21T10:00:00"), false, "Friday");
 });
