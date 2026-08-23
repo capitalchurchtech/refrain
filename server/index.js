@@ -38,7 +38,9 @@ import {
   getPresentationName,
   getIndexedFolders,
   extractSlides,
+  getIndexedArrangementNames,
 } from "./search-index.js";
+import { resolveArrangement, flattenGroups, findLiveIndex } from "./arrangements.js";
 import { discoverModules, discoverSlideSplitters, discoverProviders, discoverStorageBackends } from "./plugin-loader.js";
 import { runComparison, suggestMapping, getPendingUploadCount, retryPendingUploads } from "./arrangement-diff.js";
 import { startWatcher as startImageCropWatcher, getImageCropStatus, foldersOverlap, websafeToken } from "./image-crop.js";
@@ -227,6 +229,20 @@ app.post("/api/preferences", async (req, res) => {
   res.json({ ok: true });
 });
 
+/**
+ * Arrangement names to prefer when indexing, most-preferred first (e.g.
+ * ["FS","T"]). A church names its arrangements for its own service styles,
+ * and which one the library happens to have selected is arbitrary, so this
+ * says which ones actually get run. Empty/absent = follow ProPresenter's
+ * own selection, as before this setting existed.
+ */
+function preferredArrangements() {
+  const list = config.preferredArrangements;
+  return Array.isArray(list) ? list.filter((n) => typeof n === "string" && n.trim()) : [];
+}
+
+const MAX_PREFERRED_ARRANGEMENTS = 10;
+
 app.get("/api/config-options", async (_req, res) => {
   try {
     const [splitters, providers, backends] = await Promise.all([
@@ -242,6 +258,11 @@ app.get("/api/config-options", async (_req, res) => {
       storageBackends: backends.map((B) => ({ id: B.backendId, displayName: B.displayName })),
       lyricsSiteCandidates: LYRICS_SITE_CANDIDATES,
       maxLyricsSites: MAX_LYRICS_SITES,
+      // Real arrangement names seen in the built index, so the admin picks
+      // from what their own ProPresenter actually has rather than typing
+      // church-specific labels blind.
+      arrangementNameCandidates: getIndexedArrangementNames(),
+      maxPreferredArrangements: MAX_PREFERRED_ARRANGEMENTS,
     });
   } catch (err) {
     res.status(500).json({ error: `Failed to list plugin options: ${err.message}` });
@@ -366,6 +387,29 @@ app.post("/api/config", async (req, res) => {
         return res.status(400).json({ error: "Unknown lyrics site in selection" });
       }
       newConfig.lyricsSites = body.lyricsSites;
+    }
+
+    if (body.preferredArrangements !== undefined) {
+      if (!Array.isArray(body.preferredArrangements)) {
+        return res.status(400).json({ error: "preferredArrangements must be a list" });
+      }
+      const cleaned = body.preferredArrangements
+        .map((n) => String(n ?? "").trim())
+        .filter(Boolean);
+      if (cleaned.length > MAX_PREFERRED_ARRANGEMENTS) {
+        return res
+          .status(400)
+          .json({ error: `Pick at most ${MAX_PREFERRED_ARRANGEMENTS} preferred arrangements` });
+      }
+      // Deduped case-insensitively, keeping the admin's stated order — that
+      // order is the priority when a song has more than one of them.
+      const seen = new Set();
+      newConfig.preferredArrangements = cleaned.filter((n) => {
+        const k = n.toLowerCase();
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
     }
 
     if (body.qrDefaultBaseUrl !== undefined) {
@@ -568,14 +612,14 @@ app.post("/api/library-folders", async (req, res) => {
   // build (Section 5.3). The caller polls /api/index/status for
   // progress rather than this request staying open for what could be
   // a slow full-library crawl.
-  rebuildIndex(client, config.librarySync).catch((err) => {
+  rebuildIndex(client, config.librarySync, preferredArrangements()).catch((err) => {
     console.error("Library-scope rebuild failed:", err.message);
   });
 });
 
 app.post("/api/index/rebuild", async (_req, res) => {
   try {
-    const index = await rebuildIndex(client, config.librarySync);
+    const index = await rebuildIndex(client, config.librarySync, preferredArrangements());
     res.json({ builtAt: index.builtAt, presentationCount: Object.keys(index.presentations).length });
   } catch (err) {
     res.status(502).json({ error: err.message });
@@ -600,31 +644,79 @@ app.get("/api/search/folders", (_req, res) => {
 // purpose: it's ephemeral live-service state, not data worth persisting.
 let returnPin = null;
 
+/**
+ * Re-points a stored slide index at the slide the operator actually clicked.
+ *
+ * The trigger API takes a bare flat index and resolves it against whichever
+ * arrangement the presentation currently has selected. The index was computed
+ * when the library was indexed, possibly under a different arrangement — and
+ * arrangements reorder and repeat groups, so the same number can be a
+ * completely different lyric. Re-reading the presentation now and re-finding
+ * the slide by its (group, offset) anchor keeps "the slide you clicked is the
+ * slide that fires" true across an arrangement switch.
+ *
+ * Every failure path falls back to the requested index, so this can only make
+ * Go Live more accurate, never less available.
+ */
+async function resolveTriggerIndex(presentationId, requestedIndex, anchor) {
+  if (!anchor || (!anchor.groupId && !anchor.slideText)) {
+    return { index: requestedIndex, corrected: false, arrangementName: null };
+  }
+  try {
+    const doc = await client.getPresentation(presentationId);
+    // Deliberately the LIVE selection, not preferredArrangements(): ProPresenter
+    // will interpret whatever number we send against what it has selected now.
+    const live = resolveArrangement(doc, []);
+    const found = findLiveIndex(flattenGroups(live.groups), {
+      groupId: anchor.groupId ?? null,
+      groupOffset: Number.isInteger(anchor.groupOffset) ? anchor.groupOffset : null,
+      index: requestedIndex,
+      text: anchor.slideText ?? "",
+    });
+    if (found === null) {
+      return { index: requestedIndex, corrected: false, arrangementName: live.arrangementName };
+    }
+    return { index: found, corrected: found !== requestedIndex, arrangementName: live.arrangementName };
+  } catch {
+    return { index: requestedIndex, corrected: false, arrangementName: null };
+  }
+}
+
 app.post("/api/trigger", async (req, res) => {
-  const { presentationId, slideIndex } = req.body ?? {};
+  const { presentationId, slideIndex, groupId, groupOffset, slideText } = req.body ?? {};
   if (!presentationId || slideIndex === undefined) {
     return res.status(400).json({ error: "presentationId and slideIndex are required" });
   }
   try {
-    // Capture where we are before jumping, so "Return" can bring us back.
-    // Best-effort: if we can't read the current slide, keep whatever pin
-    // we had rather than clobbering a good one with a failed read. Don't
-    // arm a pin that points at the very slide we're about to trigger.
-    try {
-      const current = await client.getCurrentSlide();
-      if (current && !(current.presentationId === presentationId && current.slideIndex === Number(slideIndex))) {
-        returnPin = current;
-      }
-    } catch {
-      // reading the current slide is a convenience; never fail the jump over it
+    const requested = Number(slideIndex);
+
+    // Both reads are independent of each other, and ProPresenter can take
+    // seconds per call on a busy machine, so run them together rather than
+    // stacking their latency ahead of the slide actually going live. Reading
+    // the current slide is best-effort: if it fails, keep whatever pin we had
+    // rather than clobbering a good one.
+    const [target, current] = await Promise.all([
+      resolveTriggerIndex(presentationId, requested, { groupId, groupOffset, slideText }),
+      client.getCurrentSlide().catch(() => null),
+    ]);
+
+    // Capture where we were before jumping, so "Return" can bring us back.
+    // Compared against the corrected index, since that's what will fire.
+    if (current && !(current.presentationId === presentationId && current.slideIndex === target.index)) {
+      returnPin = current;
     }
-    await client.triggerSlide(presentationId, slideIndex);
-    await client.focusPresentation(presentationId).catch(() => {
-      // Focusing the editor is a nice-to-have; the trigger already
-      // succeeded and put the right thing live, so don't fail the
-      // request over this.
+
+    await client.triggerSlide(presentationId, target.index);
+    // Deliberately not awaited: the slide is already live, and focusing the
+    // editor measured ~3s on a real machine. It's a nice-to-have, so it must
+    // not hold up the operator's response.
+    client.focusPresentation(presentationId).catch(() => {});
+    res.json({
+      ok: true,
+      firedIndex: target.index,
+      corrected: target.corrected,
+      arrangementName: target.arrangementName,
     });
-    res.json({ ok: true });
   } catch (err) {
     res.status(502).json({ error: err.message });
   }
@@ -805,14 +897,24 @@ app.post("/api/spellcheck/scan", async (req, res) => {
     for (const item of scanned) {
       let slides;
       try {
-        slides = extractSlides(await client.getPresentation(item.id));
+        slides = extractSlides(await client.getPresentation(item.id), preferredArrangements());
       } catch {
         continue; // a single unreadable presentation shouldn't sink the whole scan
       }
       const flaggedSlides = [];
       for (const slide of slides) {
         const words = findTypos(slide.text, { knownWords, allowlist, speller });
-        if (words.length) flaggedSlides.push({ slideIndex: slide.index, text: slide.text, words });
+        // Carry the slide's anchor so Go Live from here survives an
+        // arrangement switch between this scan and the click.
+        if (words.length) {
+          flaggedSlides.push({
+            slideIndex: slide.index,
+            groupId: slide.groupId ?? null,
+            groupOffset: slide.groupOffset ?? null,
+            text: slide.text,
+            words,
+          });
+        }
       }
       if (flaggedSlides.length) {
         presentations.push({ presentationId: item.id, presentationName: item.name, slides: flaggedSlides });
@@ -1694,7 +1796,7 @@ app.post("/api/setup", async (req, res) => {
   // First-run always needs a full build (Section 5.3) — kick it off after
   // responding so the setup screen can poll /api/index/status for progress
   // rather than holding the request open.
-  rebuildIndex(client, config.librarySync).catch((err) => {
+  rebuildIndex(client, config.librarySync, preferredArrangements()).catch((err) => {
     console.error("Setup index build failed:", err.message);
   });
 });
@@ -1738,6 +1840,7 @@ app.get("/api/health", async (_req, res) => {
       },
       slideSplitter: config.slideSplitter ?? null,
       lyricsSites: config.lyricsSites ?? [],
+      preferredArrangements: preferredArrangements(),
       qrCodeModule: {
         defaultBaseUrl: config.qrCodeModule?.defaultBaseUrl ?? null,
         defaultLogoUrl: config.qrCodeModule?.defaultLogoUrl ?? null,
@@ -1762,15 +1865,15 @@ app.listen(port, "127.0.0.1", async () => {
   if (!existing) {
     console.log("No search index cache found — building initial index...");
     try {
-      await rebuildIndex(client, config.librarySync);
+      await rebuildIndex(client, config.librarySync, preferredArrangements());
       console.log("Initial index build complete.");
     } catch (err) {
       console.error("Initial index build failed:", err.message);
       console.error("Check ProPresenter is running with its Network API enabled (Preferences > Network).");
     }
   } else if (shouldAutoRebuild(existing)) {
-    console.log("Cached index is stale (>24h old) — rebuilding in background...");
-    rebuildIndex(client, config.librarySync).catch((err) => console.error("Background rebuild failed:", err.message));
+    console.log("Cached index is stale (older than a day, or built by a previous version) — rebuilding in background...");
+    rebuildIndex(client, config.librarySync, preferredArrangements()).catch((err) => console.error("Background rebuild failed:", err.message));
   } else {
     console.log(`Loaded cached index (built ${existing.builtAt}, ${Object.keys(existing.presentations).length} presentations).`);
   }

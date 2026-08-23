@@ -116,6 +116,9 @@ export function initSearch() {
           presentationId: r.presentationId,
           presentationName: r.presentationName,
           appearsIn: r.appearsIn,
+          // Which arrangement these slide numbers came from, so the operator
+          // can see whether they're looking at FS, T, or raw document order.
+          arrangementName: r.arrangementName ?? null,
           slides: [],
         });
       }
@@ -139,7 +142,10 @@ export function initSearch() {
         <div class="card-body p-3 gap-2">
           <div class="flex items-start justify-between gap-4">
             <div>
-              <div class="font-semibold">${escapeHtml(song.presentationName)}</div>
+              <div class="font-semibold flex items-center gap-2">
+                ${escapeHtml(song.presentationName)}
+                ${song.arrangementName ? `<span class="badge badge-ghost badge-sm shrink-0" title="Indexed from the &quot;${escapeHtml(song.arrangementName)}&quot; arrangement">${escapeHtml(song.arrangementName)}</span>` : ""}
+              </div>
               <div class="text-sm opacity-70">
                 ${song.slides.length} matching slide${song.slides.length === 1 ? "" : "s"}${song.appearsIn.length ? ` &middot; in ${song.appearsIn.length} playlist(s)` : ""}
               </div>
@@ -160,11 +166,11 @@ export function initSearch() {
               <div class="flex items-start justify-between gap-3">
                 <div>
                   <div class="text-xs opacity-70">
-                    Slide ${r.slideIndex + 1}${showModifiedDate && r.modifiedDate ? ` &middot; modified ${new Date(r.modifiedDate).toLocaleDateString()}` : ""}
+                    Slide ${r.slideIndex + 1}${r.repeatCount > 1 ? ` &middot; sung ${r.repeatCount}&times;` : ""}${showModifiedDate && r.modifiedDate ? ` &middot; modified ${new Date(r.modifiedDate).toLocaleDateString()}` : ""}
                   </div>
                   <div class="text-sm">${highlightMatch(r.snippet, query)}</div>
                 </div>
-                <button class="btn btn-brand btn-xs go-live-btn shrink-0" data-presentation-id="${r.presentationId}" data-slide-index="${r.slideIndex}">
+                <button class="btn btn-brand btn-xs go-live-btn shrink-0" data-presentation-id="${r.presentationId}" data-slide-index="${r.slideIndex}" data-group-id="${escapeHtml(r.groupId ?? "")}" data-group-offset="${r.groupOffset ?? ""}" data-slide-text="${escapeHtml(r.snippet ?? "")}">
                   Go Live
                 </button>
               </div>
@@ -238,9 +244,15 @@ export function initSearch() {
         const res = await fetch("/api/trigger", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          // The anchor lets the server re-find this exact slide if
+          // ProPresenter is now on a different arrangement than the one this
+          // index was built from (see resolveTriggerIndex).
           body: JSON.stringify({
             presentationId: liveBtn.dataset.presentationId,
             slideIndex: Number(liveBtn.dataset.slideIndex),
+            groupId: liveBtn.dataset.groupId || null,
+            groupOffset: liveBtn.dataset.groupOffset === "" ? null : Number(liveBtn.dataset.groupOffset),
+            slideText: liveBtn.dataset.slideText || "",
           }),
         });
         if (!res.ok) {

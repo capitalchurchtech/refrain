@@ -6,10 +6,16 @@
 import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { normalizeText } from "./propresenter-client.js";
+import { resolveArrangement, flattenGroups } from "./arrangements.js";
 
 const CACHE_DIR = "./cache";
 const CACHE_PATH = path.join(CACHE_DIR, "search-index.json");
 const REBUILD_TIME_GATE_MS = 24 * 60 * 60 * 1000;
+// Bumped whenever an index entry gains a field the app relies on, so an
+// older cache is treated as stale and rebuilt instead of silently serving
+// entries missing it. v2 added each slide's (groupId, groupOffset) anchor
+// and the arrangement each presentation was indexed under.
+const SCHEMA_VERSION = 2;
 const PRESENTATION_FETCH_CONCURRENCY = 1;
 
 let currentIndex = { builtAt: null, presentations: {} };
@@ -24,7 +30,11 @@ export function getRebuildProgress() {
   return rebuildProgress;
 }
 
-/** The ordered group-name sequence for a presentation — see extractGroupSequence. */
+/**
+ * The ordered group-name sequence for a presentation (the arrangement-drift
+ * module's "actual"), as recorded at index-build time from the arrangement
+ * that was resolved then.
+ */
 export function getGroupSequence(presentationId) {
   return currentIndex.presentations[presentationId]?.groupSequence ?? null;
 }
@@ -65,7 +75,7 @@ async function persistIndex(index) {
  *     by default. Search still covers every presentation in the synced
  *     folders either way.
  */
-export async function rebuildIndex(client, syncOptions = {}) {
+export async function rebuildIndex(client, syncOptions = {}, preferredArrangements = []) {
   if (rebuildInFlight) return rebuildInFlight;
   const { folders = null, crawlPlaylists = false } = syncOptions;
   const startedAt = Date.now();
@@ -140,8 +150,14 @@ export async function rebuildIndex(client, syncOptions = {}) {
     await runWithConcurrency(idsNeedingSlides, PRESENTATION_FETCH_CONCURRENCY, async (id) => {
       try {
         const doc = await client.getPresentation(id);
-        presentations[id].slides = extractSlides(doc);
-        presentations[id].groupSequence = extractGroupSequence(doc);
+        // Record which arrangement produced these indices, so the UI can show
+        // it and the trigger path can tell when the live one has since changed.
+        const resolved = resolveArrangement(doc, preferredArrangements);
+        presentations[id].slides = flattenGroups(resolved.groups);
+        presentations[id].groupSequence = resolved.groups.map((g) => g.name ?? "Untitled");
+        presentations[id].arrangementName = resolved.arrangementName;
+        presentations[id].arrangementId = resolved.arrangementId;
+        presentations[id].arrangementSource = resolved.source;
         const { createdDate, modifiedDate } = await client.getFileDates(doc?.presentation?.presentation_path);
         presentations[id].createdDate = createdDate;
         presentations[id].modifiedDate = modifiedDate;
@@ -158,6 +174,7 @@ export async function rebuildIndex(client, syncOptions = {}) {
     });
 
     const newIndex = {
+      schemaVersion: SCHEMA_VERSION,
       builtAt: new Date().toISOString(),
       buildDurationMs: Date.now() - startedAt,
       crawledPlaylists: crawlPlaylists,
@@ -210,52 +227,12 @@ function collectPlaylistIds(node, ids = []) {
 }
 
 /**
- * ProPresenter's flat trigger index is 0-based across every slide, walked
- * in the order of the presentation's *active arrangement* — not raw
- * document order. An arrangement's group list can reorder groups and
- * repeat the same group multiple times (verse/chorus/repeat structures),
- * and each repeat contributes its slides again to the flat index. Only
- * presentations with no arrangement selected (current_arrangement === "")
- * fall back to raw groups in document order. Verified empirically against
- * a real presentation on 2026-07-07 — a naive raw-document-order index
- * was off for any presentation with an arrangement selected.
+ * The flat slide list for a presentation, with each slide's durable anchor.
+ * Arrangement selection and flattening live in arrangements.js, since the
+ * trigger path needs the same resolution at click time.
  */
-function resolveOrderedGroups(presentationDoc) {
-  const presentation = presentationDoc?.presentation ?? {};
-  const rawGroups = presentation.groups ?? [];
-  const groupsByUuid = new Map(rawGroups.map((g) => [g.uuid, g]));
-
-  const activeArrangement = (presentation.arrangements ?? []).find(
-    (a) => a.id?.uuid === presentation.current_arrangement
-  );
-  return activeArrangement
-    ? activeArrangement.groups.map((uuid) => groupsByUuid.get(uuid)).filter(Boolean)
-    : rawGroups;
-}
-
-export function extractSlides(presentationDoc) {
-  const orderedGroups = resolveOrderedGroups(presentationDoc);
-  const slides = [];
-  let index = 0;
-  for (const group of orderedGroups) {
-    for (const slide of group.slides ?? []) {
-      slides.push({ index, text: normalizeText(slide.text) });
-      index += 1;
-    }
-  }
-  return slides;
-}
-
-/**
- * The "actual" arrangement for the arrangement-drift module (Section
- * 8.2): the ordered sequence of group *names* (e.g. "Verse 1", "Chorus")
- * ProPresenter would actually play through, per the active arrangement.
- * Same resolution as extractSlides, just at group granularity instead
- * of individual slides — a repeated group contributes its name again
- * each time it recurs.
- */
-function extractGroupSequence(presentationDoc) {
-  return resolveOrderedGroups(presentationDoc).map((g) => g.name ?? "Untitled");
+export function extractSlides(presentationDoc, preferredArrangements = []) {
+  return flattenGroups(resolveArrangement(presentationDoc, preferredArrangements).groups);
 }
 
 /** Distinct Library folder names actually present in the built index — always matches what's really searchable, even if config.json's sync scope changed since the last rebuild. */
@@ -267,8 +244,25 @@ export function getIndexedFolders() {
   return [...folders].sort();
 }
 
+/**
+ * Distinct arrangement names seen in the built index, so the Health screen can
+ * offer the church's real arrangement names ("FS", "T", ...) to choose from
+ * instead of asking an admin to type labels blind.
+ */
+export function getIndexedArrangementNames() {
+  const names = new Set();
+  for (const entry of Object.values(currentIndex.presentations)) {
+    if (entry.arrangementName) names.add(entry.arrangementName);
+  }
+  return [...names].sort((a, b) => a.localeCompare(b));
+}
+
 export function shouldAutoRebuild(index) {
   if (!index?.builtAt) return true;
+  // An older-schema cache still loads and still searches — slides just lack
+  // their anchor, so Go Live degrades to the old behavior — but rebuild it in
+  // the background so the anchors come back without blocking boot.
+  if (index.schemaVersion !== SCHEMA_VERSION) return true;
   const age = Date.now() - new Date(index.builtAt).getTime();
   return age > REBUILD_TIME_GATE_MS;
 }
@@ -311,18 +305,41 @@ export function search({ query, playlistId, dateField, dateFrom, dateTo, folders
       if (toTime && entryTime > toTime) continue;
     }
 
+    // An arrangement that repeats a group repeats its slides in the flat
+    // index too (one song's chorus can occupy eight positions), so collapse
+    // identical lyrics within a presentation to the earliest occurrence and
+    // report how many times it recurs, rather than listing the same line over
+    // and over. The anchor kept is the earliest one, so Go Live still lands on
+    // the first time that line is sung.
+    const seen = new Map();
     for (const slide of entry.slides) {
-      if (slide.text.toLowerCase().includes(q)) {
-        results.push({
-          presentationId,
-          presentationName: entry.name,
-          slideIndex: slide.index,
-          snippet: slide.text,
-          appearsIn: entry.appearsIn,
-          createdDate: entry.createdDate,
-          modifiedDate: entry.modifiedDate,
-        });
+      if (!slide.text.toLowerCase().includes(q)) continue;
+      const key = slide.text.toLowerCase();
+      const already = seen.get(key);
+      if (already) {
+        already.repeatCount += 1;
+        if (slide.index < already.slideIndex) {
+          already.slideIndex = slide.index;
+          already.groupId = slide.groupId ?? null;
+          already.groupOffset = slide.groupOffset ?? null;
+        }
+        continue;
       }
+      const result = {
+        presentationId,
+        presentationName: entry.name,
+        slideIndex: slide.index,
+        snippet: slide.text,
+        groupId: slide.groupId ?? null,
+        groupOffset: slide.groupOffset ?? null,
+        arrangementName: entry.arrangementName ?? null,
+        repeatCount: 1,
+        appearsIn: entry.appearsIn,
+        createdDate: entry.createdDate,
+        modifiedDate: entry.modifiedDate,
+      };
+      seen.set(key, result);
+      results.push(result);
     }
   }
   return results;

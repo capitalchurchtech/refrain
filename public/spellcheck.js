@@ -109,7 +109,7 @@ export function initSpellcheck() {
                   )
                   .join("")}
                 <span class="flex-1"></span>
-                <button class="btn btn-brand btn-xs spellcheck-live-btn" data-presentation-id="${escapeHtml(p.presentationId)}" data-slide-index="${s.slideIndex}">Go Live</button>
+                <button class="btn btn-brand btn-xs spellcheck-live-btn" data-presentation-id="${escapeHtml(p.presentationId)}" data-slide-index="${s.slideIndex}" data-group-id="${escapeHtml(s.groupId ?? "")}" data-group-offset="${s.groupOffset ?? ""}" data-slide-text="${escapeHtml(s.text ?? "")}">Go Live</button>
                 <button class="btn btn-outline btn-xs spellcheck-editor-btn" data-presentation-id="${escapeHtml(p.presentationId)}">Show in Editor</button>
               </div>
             </div>`
@@ -134,7 +134,15 @@ export function initSpellcheck() {
           const res = await fetch("/api/trigger", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ presentationId: btn.dataset.presentationId, slideIndex: Number(btn.dataset.slideIndex) }),
+            // Same anchor as Search sends: the operator may have switched
+            // arrangement between the scan and this click.
+            body: JSON.stringify({
+              presentationId: btn.dataset.presentationId,
+              slideIndex: Number(btn.dataset.slideIndex),
+              groupId: btn.dataset.groupId || null,
+              groupOffset: btn.dataset.groupOffset === "" ? null : Number(btn.dataset.groupOffset),
+              slideText: btn.dataset.slideText || "",
+            }),
           });
           if (!res.ok) alert(`Failed to go live: ${(await res.json()).error}`);
           else window.refreshReturnBar?.();

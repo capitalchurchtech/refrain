@@ -291,6 +291,17 @@ export function initHealth() {
       });
     }
 
+    document.querySelectorAll(".config-arrangement-suggestion").forEach((chip) => {
+      chip.addEventListener("click", () => {
+        const input = document.getElementById("config-preferred-arrangements");
+        const current = input.value.split(",").map((n) => n.trim()).filter(Boolean);
+        const name = chip.dataset.name;
+        // Appending (not inserting) keeps the admin's priority order intact.
+        if (!current.some((n) => n.toLowerCase() === name.toLowerCase())) current.push(name);
+        input.value = current.join(", ");
+      });
+    });
+
     const saveConfigBtn = document.getElementById("save-config-btn");
     if (saveConfigBtn) {
       saveConfigBtn.addEventListener("click", async () => {
@@ -301,6 +312,11 @@ export function initHealth() {
           crawlPlaylists: document.getElementById("config-crawl-playlists").checked,
           slideSplitter: document.getElementById("config-slide-splitter").value,
           lyricsSites: Array.from(document.querySelectorAll(".config-lyrics-site-checkbox:checked")).map((el) => el.value),
+      preferredArrangements: document
+        .getElementById("config-preferred-arrangements")
+        .value.split(",")
+        .map((n) => n.trim())
+        .filter(Boolean),
           qrDefaultBaseUrl: document.getElementById("config-qr-base-url").value,
           qrDefaultLogoUrl: document.getElementById("config-qr-logo-url").value,
           qrRecentLimit: Number(document.getElementById("config-qr-recent-limit").value),
@@ -673,6 +689,31 @@ function renderHealth(health, configOptions, versionInfo) {
             <div id="config-lyrics-sites-hint" class="text-xs text-warning mt-1 hidden" data-max="${configOptions.maxLyricsSites}">
               You can pick at most ${configOptions.maxLyricsSites}.
             </div>
+          </div>
+
+          <div>
+            <label class="form-control w-full max-w-xs">
+              <div class="label py-1 px-0">
+                <span class="label-text">Preferred arrangements ${infoIcon("A song can hold several arrangements, and the one the library happens to have selected is arbitrary. Name the ones you actually run, most important first, and search will index those. Order is the priority: \"FS, T\" means FS wins when a song has both. Leave empty to just follow whatever ProPresenter has selected.")}</span>
+              </div>
+              <input id="config-preferred-arrangements" type="text" placeholder="FS, T" class="input input-bordered input-sm"
+                value="${escapeHtml((config.preferredArrangements ?? []).join(", "))}" />
+            </label>
+            ${
+              (configOptions.arrangementNameCandidates ?? []).length
+                ? `<div class="text-xs opacity-60 mt-1">
+                     Found in your library (click to add):
+                     <span class="inline-flex flex-wrap gap-1 ml-1">
+                       ${configOptions.arrangementNameCandidates
+                         .map(
+                           (n) =>
+                             `<button type="button" class="badge badge-ghost badge-sm config-arrangement-suggestion" data-name="${escapeHtml(n)}">${escapeHtml(n)}</button>`
+                         )
+                         .join("")}
+                     </span>
+                   </div>`
+                : `<div class="text-xs opacity-60 mt-1">Build the search index to see the arrangement names your library uses.</div>`
+            }
           </div>
 
           <div class="divider my-0"></div>

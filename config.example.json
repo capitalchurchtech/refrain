@@ -15,6 +15,7 @@
     "youtube.com"
   ],
   "slideSplitter": "blank-line-delimited",
+  "preferredArrangements": ["FS", "T"],
   "librarySync": {
     "folders": null,
     "crawlPlaylists": false

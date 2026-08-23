@@ -50,6 +50,47 @@ has an arrangement selected (the trickiest indexing case).
 
 ---
 
+## 2b. Arrangements (the wrong-slide check)
+
+A song can hold several arrangements, and an arrangement reorders and repeats
+groups, so the same slide sits at a different flat number under each one. Since
+Go Live sends only that number, this is the check that matters most.
+
+Confirmed on a real library: 80 of 184 songs have more than one arrangement and
+75 of those have differing slide counts, so this is not a rare edge case.
+
+- [ ] Pick a song with two arrangements of different lengths (the Health
+      screen's preferred-arrangements hint lists the names your library uses).
+- [ ] Search for a lyric in it and note the arrangement badge shown on the
+      result. Click **Go Live** and confirm the exact slide you clicked is what
+      appears on the screens.
+- [ ] Now switch that song to its *other* arrangement in ProPresenter, without
+      re-indexing in Refrain. Search the same lyric and click **Go Live** again.
+      **The same slide should still go live**, because Refrain re-reads the
+      current arrangement and re-points the slide number before triggering.
+- [ ] Search a lyric from a chorus that repeats. It should appear once with a
+      "sung N times" note rather than once per repeat, and Go Live should land
+      on the first time it is sung.
+
+Relies on: `GET /v1/presentation/{uuid}` (read live at click time to resolve the
+current arrangement) plus the trigger endpoint from section 2.
+
+**Open question worth confirming here:** a few slides in a real library had
+`enabled: false`. Whether ProPresenter counts disabled slides in the flat
+trigger index is unverified, and Refrain currently counts them. If a song with a
+disabled slide fires one slide off, that is the cause. Capture the song and
+say which slide is disabled.
+
+**A note on speed.** On the machine this was tested against, ProPresenter took
+2 to 5 seconds to answer a trigger, focus, or status call, and appeared to
+serialize requests. Refrain allows 20 seconds for live-output calls and no
+longer waits on focusing the editor. If Go Live feels slow, it is very likely
+ProPresenter's own response time rather than Refrain. Timing a bare
+`curl -s -o /dev/null -w "%{time_total}" http://HOST:PORT/v1/presentation/slide_index`
+will show it.
+
+---
+
 ## 3. The Return bar
 
 This is the feature most worth confirming, because it depends on reading the

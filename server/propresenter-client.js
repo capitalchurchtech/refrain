@@ -37,14 +37,22 @@ function normalizeText(text) {
 
 const LOCAL_HOSTNAMES = ["localhost", "127.0.0.1", "::1"];
 
+const DEFAULT_TIMEOUT_MS = 8000;
+// Triggering, focusing and reading a presentation make ProPresenter do real
+// work (loading a document, pushing to outputs) and it appears to serialize
+// API requests, so on a busy machine these measured several seconds each —
+// enough for a few back-to-back calls to blow the default budget. Going live
+// must not fail on a slow-but-working ProPresenter, so give them more room.
+const LIVE_TIMEOUT_MS = 20000;
+
 export class ProPresenterClient {
   constructor({ host, port }) {
     this.baseUrl = `http://${host}:${port}`;
     this.isLocalHost = LOCAL_HOSTNAMES.includes(host);
   }
 
-  async #get(path) {
-    const res = await fetch(`${this.baseUrl}${path}`, { signal: AbortSignal.timeout(8000) });
+  async #get(path, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
+    const res = await fetch(`${this.baseUrl}${path}`, { signal: AbortSignal.timeout(timeoutMs) });
     if (!res.ok) {
       throw new Error(`ProPresenter API ${path} responded ${res.status}`);
     }
@@ -121,7 +129,7 @@ export class ProPresenterClient {
 
   /** Full presentation document, including slide text, for a given id. */
   async getPresentation(presentationId) {
-    return this.#get(`/v1/presentation/${presentationId}`);
+    return this.#get(`/v1/presentation/${presentationId}`, { timeoutMs: LIVE_TIMEOUT_MS });
   }
 
   /**
@@ -144,7 +152,7 @@ export class ProPresenterClient {
 
   /** Triggers a slide live by presentation id + 0-based flat slide index. */
   async triggerSlide(presentationId, slideIndex) {
-    await this.#get(`/v1/presentation/${presentationId}/${slideIndex}/trigger`);
+    await this.#get(`/v1/presentation/${presentationId}/${slideIndex}/trigger`, { timeoutMs: LIVE_TIMEOUT_MS });
   }
 
   /**
@@ -154,7 +162,7 @@ export class ProPresenterClient {
    * window sitting on whatever playlist item they had open.
    */
   async focusPresentation(presentationId) {
-    await this.#get(`/v1/presentation/${presentationId}/focus`);
+    await this.#get(`/v1/presentation/${presentationId}/focus`, { timeoutMs: LIVE_TIMEOUT_MS });
   }
 
   /**
