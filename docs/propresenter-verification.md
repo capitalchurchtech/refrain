@@ -13,6 +13,13 @@ and its Network API enabled (Preferences, then Network). Have a throwaway
 presentation and playlist handy so you are not experimenting on real service
 content.
 
+**Do not run any of this, and above all do not rebuild the index, anywhere near
+a service.** A rebuild crawls every presentation and can run for well over an
+hour, and while it does ProPresenter goes sluggish and may stop responding to
+Go Live, Clear, and macros altogether. Even this checklist puts slides on your
+real output. Give yourself a window where nothing crucial is happening for the
+next hour or two.
+
 Two endpoints are the least certain and are called out below with a
 **CAPTURE** note: the current-slide read behind the Return bar, and the
 message token shape behind the Live message poster. If either misbehaves,

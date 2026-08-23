@@ -66,6 +66,12 @@ Everything else (a church management integration, shared storage, image cropping
 
 ## Large libraries
 
+**Never rebuild the index near a service.** A rebuild reads every presentation in your library one at a time, and on a real library that means anything from several minutes to well over an hour. For the whole time it runs, ProPresenter itself gets sluggish and can stop answering at all, which means Go Live, Clear, and macros may not respond. Measured on a real setup: sermon-length presentations took ten to fifteen seconds each to read, and ProPresenter stopped reacting to slide triggers entirely while it was being crawled. Only start a rebuild when you are sure nothing crucial is happening for the next hour or two, and then let it finish rather than killing it partway.
+
+You need a rebuild only after changing your library scope or preferred arrangements, or when slides you have edited are not turning up in search. Day to day, you do not need to touch it.
+
+**One rebuild starts on its own, so know about it.** If the index is more than a day old (or was built by an older version of Refrain) when you start the app, it kicks off a rebuild in the background without asking. That is fine on a Tuesday afternoon and badly timed on a Sunday morning. If you are starting Refrain shortly before a service, open the Health screen first: if it says a rebuild is running, quit Refrain, and start it again once the service is over. The index you already have keeps working in the meantime.
+
 If your library runs to hundreds of presentations or playlists, a full index build can take a while, and on some setups hitting the API with lots of playlists at once can make ProPresenter itself sluggish. You can narrow what gets indexed in `config.json`:
 
 ```json

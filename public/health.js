@@ -432,7 +432,13 @@ function renderLibraryCard({ folders, selected, error }, arrangementFolders) {
             )
             .join("")}
         </div>
-        <button id="save-library-folders-btn" class="btn btn-sm btn-outline mt-2 w-fit">Save &amp; Rebuild</button>
+        <div class="alert alert-warning py-2 text-sm mt-2 items-start">
+          <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
+          <span><strong>Saving here starts a full rebuild.</strong> That makes ProPresenter sluggish or
+          unresponsive for as long as it runs, which can be an hour or more. Only save this when nothing
+          important is happening for the next hour or two.</span>
+        </div>
+        <button id="save-library-folders-btn" class="btn btn-sm btn-outline mt-1 w-fit">Save &amp; Rebuild</button>
 
         ${arrangementFolders ? renderArrangementFoldersSection(arrangementFolders) : ""}
       </div>
@@ -576,10 +582,26 @@ function renderHealth(health, configOptions, versionInfo) {
         }
         ${
           index.rebuild.inProgress
-            ? `<div class="text-sm mt-1">Rebuilding (${index.rebuild.stage}): ${index.rebuild.current}/${index.rebuild.total || "?"}</div>`
-            : `<div class="flex items-center gap-2 mt-2">
+            ? `<div class="text-sm mt-1">Rebuilding (${index.rebuild.stage}): ${index.rebuild.current}/${index.rebuild.total || "?"}</div>
+               <div class="alert alert-warning py-2 text-sm mt-2 items-start">
+                 <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
+                 <span><strong>A rebuild is running, so ProPresenter will be sluggish until it finishes.</strong>
+                 Go Live, Clear, and macros may be slow or not respond. It can take an hour or more on a large
+                 library. If a service is about to start, quit Refrain to stop it and rebuild later.</span>
+               </div>`
+            : `<div class="alert alert-warning py-2 text-sm mt-2 items-start">
+                 <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
+                 <span>
+                   <strong>Do not rebuild anywhere near a service.</strong>
+                   A rebuild reads every presentation in your library one at a time and can run for
+                   an hour or more. While it does, ProPresenter itself goes sluggish and can stop
+                   responding to Go Live, Clear, and macros. Only start one when you are certain
+                   nothing important is happening for the next hour or two, and let it finish.
+                 </span>
+               </div>
+               <div class="flex items-center gap-2 mt-1">
                 <button id="health-rebuild-btn" class="btn btn-sm btn-outline w-fit"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> <span id="health-rebuild-btn-label">Rebuild Now</span></button>
-                ${infoIcon("Expect this to take 10 minutes or more on a real library — ProPresenter may become slow or unresponsive while it's crawling. That's normal; just leave it running and avoid closing ProPresenter until it finishes.")}
+                ${infoIcon("Only needed after you change your library scope or preferred arrangements, or when slides you have edited are not showing up in search. Never run it before or during a service: it makes ProPresenter unresponsive for as long as it runs, which on a large library can be well over an hour.")}
               </div>`
         }
       </div>
@@ -694,7 +716,7 @@ function renderHealth(health, configOptions, versionInfo) {
           <div>
             <label class="form-control w-full max-w-xs">
               <div class="label py-1 px-0">
-                <span class="label-text">Preferred arrangements ${infoIcon("A song can hold several arrangements, and the one the library happens to have selected is arbitrary. Name the ones you actually run, most important first, and search will index those. Order is the priority: \"FS, T\" means FS wins when a song has both. Leave empty to just follow whatever ProPresenter has selected.")}</span>
+                <span class="label-text">Preferred arrangements ${infoIcon("A song can hold several arrangements, and the one the library happens to have selected is arbitrary. Name the ones you actually run, most important first, and search will index those. Order is the priority: \"FS, T\" means FS wins when a song has both. Leave empty to just follow whatever ProPresenter has selected. Changing this only takes effect on the next index rebuild, so save it well before a service, never during one.")}</span>
               </div>
               <input id="config-preferred-arrangements" type="text" placeholder="FS, T" class="input input-bordered input-sm"
                 value="${escapeHtml((config.preferredArrangements ?? []).join(", "))}" />
