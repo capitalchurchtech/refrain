@@ -26,6 +26,7 @@ const NAV_PRIORITY = {
   arrangement: 5,
   "image-crop": 6,
   "qr-code": 7,
+  "library-sync": 8,
 };
 const DEFAULT_PRIORITY = 99;
 
@@ -40,6 +41,7 @@ const NAV_GROUP = {
   arrangement: "prep",
   "image-crop": "prep",
   "qr-code": "prep",
+  "library-sync": "prep",
   health: "system",
 };
 const DEFAULT_GROUP = "prep";

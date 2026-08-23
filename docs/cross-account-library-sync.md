@@ -12,6 +12,28 @@ throwaway copy of a real 184 song library: the snapshots hard link as claimed
 count guard refuses a near empty source without touching the good copy, and an
 overwritten song really does land in the dated backup folder.
 
+## The built-in way (easiest)
+
+Refrain has an optional **Library Sync** screen that does all of this for you.
+It is off by default and hidden from the sidebar entirely, so a single machine
+church never sees it. Switch it on from that screen, then set:
+
+- **Library**: which library to sync, e.g. `Songs`.
+- **This machine**: *Sends* on the machine that owns the library, *Receives* on
+  the other one.
+- **Shared folder**: a path both sides can reach, e.g.
+  `/Users/Shared/ProPresenter-Songs-Sync-DO-NOT-DELETE`.
+- **Refuse below this many files**: the safety floor described below.
+- **Snapshots to keep**: how many restore points to hold.
+
+It shows what a sync *would* do before you run one, takes a snapshot first,
+never deletes anything, and keeps the previous version of any file it replaces.
+It finds the library on disk by asking ProPresenter where its presentations
+live, so there is no path to type and nothing to keep in step by hand.
+
+What it deliberately does not do is schedule itself. Use the LaunchAgent below
+for that, or just press the button when you have changed songs.
+
 ## Where a library actually lives
 
 ```

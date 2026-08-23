@@ -105,6 +105,21 @@ export function getImageCropModuleStatus(config) {
  * something. Mirrors getArrangementModuleStatus's own checks exactly;
  * update both together if the requirements ever change.
  */
+/**
+ * Off unless a church has actually opted in: a single machine (or single
+ * account) setup never needs this, so it must stay invisible and inert until
+ * someone fills it in.
+ * @returns {"off" | "misconfigured" | "active"}
+ */
+export function getLibrarySyncModuleStatus(config) {
+  const mod = config.librarySyncModule;
+  if (!mod?.enabled) return "off";
+  if (!mod.sharedFolder || !String(mod.sharedFolder).trim()) return "misconfigured";
+  if (!mod.libraryName || !String(mod.libraryName).trim()) return "misconfigured";
+  if (mod.direction !== "send" && mod.direction !== "receive") return "misconfigured";
+  return "active";
+}
+
 export function getEnvRequirements(config) {
   const reqs = [];
   const arrangement = config.arrangementModule ?? {};

@@ -8,6 +8,7 @@ import { initQrCode } from "./qr-code.js";
 import { initSpellcheck } from "./spellcheck.js";
 import { initLive } from "./live.js";
 import { initScripture } from "./scripture.js";
+import { initLibrarySync } from "./library-sync.js";
 import { initReturnBar } from "./return-bar.js";
 import { installGlobalErrorBoundary, safeRender } from "./error-boundary.js";
 import { initNav, applyTheme } from "./nav.js";
@@ -25,6 +26,7 @@ const views = {
   spellcheck: document.getElementById("view-spellcheck"),
   live: document.getElementById("view-live"),
   scripture: document.getElementById("view-scripture"),
+  "library-sync": document.getElementById("view-library-sync"),
 };
 
 async function boot() {
@@ -62,6 +64,7 @@ function startApp() {
   const spellcheck = initSpellcheck();
   const live = initLive();
   const scripture = initScripture();
+  const librarySync = initLibrarySync();
   initReturnBar();
 
   const renderers = {
@@ -73,10 +76,11 @@ function startApp() {
     spellcheck: spellcheck.render,
     live: live.render,
     scripture: scripture.render,
+    "library-sync": librarySync.render,
   };
 
   initNav({
-    viewIds: new Set(["search", "lyrics-assist", "arrangement", "image-crop", "qr-code", "spellcheck", "live", "scripture"]),
+    viewIds: new Set(["search", "lyrics-assist", "arrangement", "image-crop", "qr-code", "spellcheck", "live", "scripture", "library-sync"]),
     onNavigate: (id) => {
       for (const [viewId, el] of Object.entries(views)) {
         el.classList.toggle("hidden", viewId !== id);

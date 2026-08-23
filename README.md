@@ -47,6 +47,7 @@ Working today:
 - Image cropping, end to end.
 - QR codes, end to end.
 - Spell check across a playlist's slides, end to end.
+- Library Sync (optional, off by default): copies one library between two machines or accounts, add-and-update only, with snapshots.
 
 Wired up but not finished (the interface exists, the methods currently refuse to run):
 
@@ -181,7 +182,7 @@ Press **/** or **Cmd/Ctrl+K** from any screen to jump straight to Search with th
 
 ## Sharing one library between two macOS accounts
 
-If ProPresenter runs under two macOS accounts on the same Mac and you want just the Songs library kept in step between them, [docs/cross-account-library-sync.md](docs/cross-account-library-sync.md) has a tested recipe: what a library looks like on disk, why a symlink does not work, and copy-only sync scripts with dated snapshots and a guard that refuses to run against an empty source. It never deletes anything, on the grounds that a song library is years of work.
+Refrain has an optional **Library Sync** screen for this, off by default and hidden unless you switch it on. If ProPresenter runs under two macOS accounts (or on two machines) and you want just the Songs library kept in step, [docs/cross-account-library-sync.md](docs/cross-account-library-sync.md) has a tested recipe: what a library looks like on disk, why a symlink does not work, and copy-only sync scripts with dated snapshots and a guard that refuses to run against an empty source. It never deletes anything, on the grounds that a song library is years of work.
 
 ## Appearance
 

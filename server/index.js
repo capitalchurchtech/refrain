@@ -21,6 +21,7 @@ import {
   isConfigComplete,
   getArrangementModuleStatus,
   getImageCropModuleStatus,
+  getLibrarySyncModuleStatus,
   getEnvRequirements,
   ensureMachineId,
   readConfigFileRaw,
@@ -42,6 +43,18 @@ import {
   isServiceDay,
 } from "./search-index.js";
 import { resolveArrangement, flattenGroups, findLiveIndex } from "./arrangements.js";
+import {
+  syncLibrary,
+  takeSnapshot,
+  listSnapshots,
+  listLibraryFiles,
+  planSync,
+  libraryDirFromPresentationPath,
+  writeLastRun,
+  readLastRun,
+  DEFAULT_MINIMUM_FILES,
+  DEFAULT_SNAPSHOTS_TO_KEEP,
+} from "./library-sync.js";
 import { discoverModules, discoverSlideSplitters, discoverProviders, discoverStorageBackends } from "./plugin-loader.js";
 import { runComparison, suggestMapping, getPendingUploadCount, retryPendingUploads } from "./arrangement-diff.js";
 import { startWatcher as startImageCropWatcher, getImageCropStatus, foldersOverlap, websafeToken } from "./image-crop.js";
@@ -114,6 +127,13 @@ app.use(express.json());
 
 // --- Nav (Section 13) — driven by registered modules, not hardcoded ---
 
+/** Whether a module should appear in the nav at all. */
+function navEnabledFor(m) {
+  if (m.id === "arrangement") return getArrangementModuleStatus(config) !== "off";
+  if (m.id === "library-sync") return getLibrarySyncModuleStatus(config) !== "off";
+  return m.enabledByDefault;
+}
+
 app.get("/api/modules", async (_req, res) => {
   const modules = await discoverModules();
   res.json({
@@ -129,7 +149,11 @@ app.get("/api/modules", async (_req, res) => {
       // self-contained local utility with its own on/off toggle on its own
       // screen, so it's always navigable (you flip it on from inside),
       // matching how Search/Lyrics are always present.
-      enabled: m.id === "arrangement" ? getArrangementModuleStatus(config) !== "off" : m.enabledByDefault,
+      //
+      // Library Sync is gated the same way as arrangement: it only makes sense
+      // with a second machine or account, so a single-machine church never
+      // sees it until they deliberately switch it on in config.json.
+      enabled: navEnabledFor(m),
     })),
   });
 });
@@ -847,6 +871,192 @@ app.post("/api/live/message-clear", async (req, res) => {
   } catch (err) {
     res.status(502).json({ error: err.message });
   }
+});
+
+
+// --- Library Sync (optional): one library, one direction, through a shared folder ---
+//
+// Everything here is inert unless the module is switched on, so a single
+// machine setup is unaffected. The heavy lifting and all of the safety rules
+// live in library-sync.js; these routes only resolve paths and report.
+
+const LIBRARY_SYNC_STATE = "./cache/library-sync-last-run.json";
+
+// One sync at a time. Two overlapping runs would interleave their copies and
+// their snapshots, and this writes into a library nobody wants to gamble with.
+let librarySyncInFlight = false;
+
+function librarySyncSettings() {
+  const mod = config.librarySyncModule ?? {};
+  return {
+    enabled: Boolean(mod.enabled),
+    libraryName: mod.libraryName ?? "Songs",
+    direction: mod.direction === "receive" ? "receive" : "send",
+    sharedFolder: mod.sharedFolder ?? null,
+    minimumFiles: Number.isInteger(mod.minimumFiles) ? mod.minimumFiles : DEFAULT_MINIMUM_FILES,
+    snapshotsToKeep: Number.isInteger(mod.snapshotsToKeep) ? mod.snapshotsToKeep : DEFAULT_SNAPSHOTS_TO_KEEP,
+  };
+}
+
+/**
+ * Finds where a library actually lives on disk by asking ProPresenter for one
+ * of its presentations and taking that file's folder. Deliberately derived
+ * rather than hardcoded: no vendor install layout baked in, and it fails
+ * honestly when the library is missing or empty instead of guessing a path.
+ */
+async function resolveLibraryDir(libraryName) {
+  const items = await client.getLibrary([libraryName]);
+  if (!items?.length) {
+    return { dir: null, error: `ProPresenter has no presentations in a library called "${libraryName}".` };
+  }
+  const doc = await client.getPresentation(items[0].id);
+  const dir = libraryDirFromPresentationPath(doc?.presentation?.presentation_path);
+  if (!dir) {
+    return { dir: null, error: "ProPresenter did not report a file path for that library's presentations." };
+  }
+  return { dir, error: null };
+}
+
+/** The two ends of the copy, given the configured direction. */
+function syncEndpoints(settings, libraryDir) {
+  const shared = path.join(settings.sharedFolder, "library");
+  return settings.direction === "send"
+    ? { from: libraryDir, to: shared, label: "ProPresenter to shared folder" }
+    : { from: shared, to: libraryDir, label: "shared folder to ProPresenter" };
+}
+
+app.get("/api/library-sync/status", async (_req, res) => {
+  const settings = librarySyncSettings();
+  const status = getLibrarySyncModuleStatus(config);
+  const payload = {
+    status,
+    settings,
+    libraryDir: null,
+    from: null,
+    to: null,
+    preview: null,
+    snapshots: [],
+    lastRun: await readLastRun(LIBRARY_SYNC_STATE),
+    error: null,
+  };
+  if (status !== "active") return res.json(payload);
+
+  try {
+    const { dir, error } = await resolveLibraryDir(settings.libraryName);
+    if (error) {
+      payload.error = error;
+      return res.json(payload);
+    }
+    payload.libraryDir = dir;
+    const ends = syncEndpoints(settings, dir);
+    payload.from = ends.from;
+    payload.to = ends.to;
+    // A dry run, so the operator sees exactly what a sync would do first.
+    const [source, dest] = await Promise.all([listLibraryFiles(ends.from), listLibraryFiles(ends.to)]);
+    const plan = planSync(source, dest);
+    payload.preview = {
+      sourceCount: source.length,
+      destCount: dest.length,
+      toCopy: plan.toCopy.length,
+      toReplace: plan.toReplace.length,
+      unchanged: plan.unchanged.length,
+      extra: plan.extra.length,
+    };
+    payload.snapshots = (await listSnapshots(path.join(settings.sharedFolder, "snapshots"))).slice(-12).reverse();
+  } catch (err) {
+    payload.error = err.message;
+  }
+  res.json(payload);
+});
+
+app.post("/api/library-sync/run", async (_req, res) => {
+  if (getLibrarySyncModuleStatus(config) !== "active") {
+    return res.status(400).json({ error: "Library Sync is not switched on and configured yet." });
+  }
+  if (librarySyncInFlight) {
+    return res.status(409).json({ error: "A sync is already running. Wait for it to finish." });
+  }
+  const settings = librarySyncSettings();
+  librarySyncInFlight = true;
+  try {
+    const { dir, error } = await resolveLibraryDir(settings.libraryName);
+    if (error) return res.status(502).json({ error });
+
+    const ends = syncEndpoints(settings, dir);
+    const snapshotsDir = path.join(settings.sharedFolder, "snapshots");
+
+    // Snapshot the side we are about to read FROM, before anything is written.
+    // Cheap (unchanged files are hard-linked) and it is the restore point.
+    const snapshot = await takeSnapshot({
+      sourceDir: ends.from,
+      snapshotsDir,
+      keep: settings.snapshotsToKeep,
+    });
+
+    const result = await syncLibrary({
+      sourceDir: ends.from,
+      destDir: ends.to,
+      // Anything about to be replaced is preserved first, dated.
+      backupDir: path.join(settings.sharedFolder, "replaced", new Date().toISOString().slice(0, 10)),
+      minimumFiles: settings.minimumFiles,
+    });
+
+    const record = {
+      at: new Date().toISOString(),
+      direction: settings.direction,
+      label: ends.label,
+      from: ends.from,
+      to: ends.to,
+      snapshot: snapshot.name,
+      snapshotLinked: snapshot.linked,
+      ...result,
+    };
+    await writeLastRun(LIBRARY_SYNC_STATE, record);
+    res.status(result.ok ? 200 : 409).json(record);
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  } finally {
+    librarySyncInFlight = false;
+  }
+});
+
+app.post("/api/library-sync/config", async (req, res) => {
+  const body = req.body ?? {};
+  const current = config.librarySyncModule ?? {};
+  const next = { ...current };
+
+  if (body.enabled !== undefined) next.enabled = Boolean(body.enabled);
+  if (body.libraryName !== undefined) next.libraryName = String(body.libraryName).trim() || null;
+  if (body.direction !== undefined) {
+    if (body.direction !== "send" && body.direction !== "receive") {
+      return res.status(400).json({ error: 'direction must be "send" or "receive"' });
+    }
+    next.direction = body.direction;
+  }
+  if (body.sharedFolder !== undefined) next.sharedFolder = String(body.sharedFolder).trim() || null;
+  if (body.minimumFiles !== undefined) {
+    const n = Number(body.minimumFiles);
+    if (!Number.isInteger(n) || n < 1) {
+      return res.status(400).json({ error: "The safety floor must be a whole number of at least 1." });
+    }
+    next.minimumFiles = n;
+  }
+  if (body.snapshotsToKeep !== undefined) {
+    const n = Number(body.snapshotsToKeep);
+    if (!Number.isInteger(n) || n < 0) {
+      return res.status(400).json({ error: "Snapshots to keep must be 0 or more." });
+    }
+    next.snapshotsToKeep = n;
+  }
+
+  const newConfig = { ...config, librarySyncModule: next };
+  try {
+    await saveConfig(newConfig);
+  } catch (err) {
+    return res.status(500).json({ error: `Failed to save config.json: ${err.message}` });
+  }
+  config = newConfig;
+  res.json({ ok: true, settings: librarySyncSettings(), status: getLibrarySyncModuleStatus(config) });
 });
 
 // --- Spell check (typo-finding for a chosen playlist's slides) ---

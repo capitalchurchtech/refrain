@@ -48,6 +48,14 @@
   "spellcheckModule": {
     "allowlist": []
   },
+  "librarySyncModule": {
+    "enabled": false,
+    "libraryName": "Songs",
+    "direction": "send",
+    "sharedFolder": null,
+    "minimumFiles": 25,
+    "snapshotsToKeep": 30
+  },
   "scriptureModule": {
     "biblegatewayVersion": "NIV",
     "blueletterTranslation": "KJV"
