@@ -219,6 +219,53 @@ export function initHealth() {
         ?.addEventListener("click", (e) => runDetect(e.currentTarget, true));
     }
 
+    const reindexBtn = document.getElementById("health-reindex-btn");
+    if (reindexBtn) {
+      const label = document.getElementById("health-reindex-btn-label");
+      const statusEl = document.getElementById("health-reindex-status");
+      reindexBtn.addEventListener("click", async () => {
+        reindexBtn.disabled = true;
+        label.textContent = "Checking files...";
+        statusEl.textContent = "";
+        statusEl.className = "text-sm";
+        try {
+          const res = await fetch("/api/index/reindex-changed", { method: "POST" });
+          const data = await res.json();
+          if (!res.ok) {
+            statusEl.textContent = data.error;
+            statusEl.className = "text-sm text-error";
+            return;
+          }
+          // Say what happened rather than just "done". A reindex that quietly
+          // turned into a full rebuild is exactly the surprise the warning
+          // above is trying to prevent.
+          const c = data.counts;
+          const message =
+            data.buildMode === "incremental" && c
+              ? `Reindexed in ${formatDuration(data.buildDurationMs)}: ${c.changed} changed, ${c.added} new, ${c.carriedOver} unchanged.`
+              : `Full rebuild was needed, finished in ${formatDuration(data.buildDurationMs)}.`;
+          // Re-render so the status tiles and the last-run line stop showing
+          // pre-reindex figures, then put the result back on the fresh element
+          // the re-render just created.
+          await render();
+          const freshStatus = document.getElementById("health-reindex-status");
+          if (freshStatus) {
+            freshStatus.textContent = message;
+            freshStatus.className = "text-sm text-success";
+          }
+          return;
+        } catch (err) {
+          statusEl.textContent = `Reindex failed: ${err.message}`;
+          statusEl.className = "text-sm text-error";
+        } finally {
+          if (reindexBtn.isConnected) {
+            reindexBtn.disabled = false;
+            label.textContent = "Reindex changed only";
+          }
+        }
+      });
+    }
+
     const btn = document.getElementById("health-rebuild-btn");
     if (btn) {
       const btnLabel = document.getElementById("health-rebuild-btn-label");
@@ -231,7 +278,7 @@ export function initHealth() {
         } finally {
           if (btn.isConnected) {
             btn.disabled = false;
-            btnLabel.textContent = "Rebuild Now";
+            btnLabel.textContent = "Rebuild Everything";
           }
         }
       });
@@ -407,60 +454,76 @@ export function initHealth() {
       });
     });
 
-    const saveConfigBtn = document.getElementById("save-config-btn");
-    if (saveConfigBtn) {
-      saveConfigBtn.addEventListener("click", async () => {
-        const body = {
-          role: document.getElementById("config-role").value,
-          propresenterHost: document.getElementById("config-host").value,
-          propresenterPort: document.getElementById("config-port").value,
-          crawlPlaylists: document.getElementById("config-crawl-playlists").checked,
-          slideSplitter: document.getElementById("config-slide-splitter").value,
-          lyricsSites: Array.from(document.querySelectorAll(".config-lyrics-site-checkbox:checked")).map((el) => el.value),
-      preferredArrangements: document
-        .getElementById("config-preferred-arrangements")
-        .value.split(",")
-        .map((n) => n.trim())
-        .filter(Boolean),
-          qrDefaultBaseUrl: document.getElementById("config-qr-base-url").value,
-          qrDefaultLogoUrl: document.getElementById("config-qr-logo-url").value,
-          qrRecentLimit: Number(document.getElementById("config-qr-recent-limit").value),
-          qrDefaultSize: document.getElementById("config-qr-default-size").value,
-          arrangementEnabled: document.getElementById("config-arrangement-enabled").checked,
-          arrangementProvider: document.getElementById("config-arrangement-provider").value,
-          arrangementStorageBackend: document.getElementById("config-arrangement-storage").value,
-          arrangementLocalFolderPath: document.getElementById("config-storage-path").value,
-          planningCenterServiceTypeId: document.getElementById("config-planning-center-service-type").value,
-        };
+    // Each settings section saves only its own fields. POST /api/config treats
+    // an absent key as "leave alone", so a section can post its subset without
+    // resubmitting every setting on the page — which is what made one giant
+    // Save button feel risky to press.
+    const SCOPE_FIELDS = {
+      propresenter: () => ({
+        role: document.getElementById("config-role").value,
+        propresenterHost: document.getElementById("config-host").value,
+        propresenterPort: document.getElementById("config-port").value,
+      }),
+      indexing: () => ({
+        crawlPlaylists: document.getElementById("config-crawl-playlists").checked,
+        preferredArrangements: document
+          .getElementById("config-preferred-arrangements")
+          .value.split(",")
+          .map((n) => n.trim())
+          .filter(Boolean),
+      }),
+      lyrics: () => ({
+        slideSplitter: document.getElementById("config-slide-splitter").value,
+        lyricsSites: Array.from(document.querySelectorAll(".config-lyrics-site-checkbox:checked")).map((el) => el.value),
+      }),
+      qr: () => ({
+        qrDefaultBaseUrl: document.getElementById("config-qr-base-url").value,
+        qrDefaultLogoUrl: document.getElementById("config-qr-logo-url").value,
+        qrRecentLimit: Number(document.getElementById("config-qr-recent-limit").value),
+        qrDefaultSize: document.getElementById("config-qr-default-size").value,
+      }),
+      arrangement: () => ({
+        arrangementEnabled: document.getElementById("config-arrangement-enabled").checked,
+        arrangementProvider: document.getElementById("config-arrangement-provider").value,
+        arrangementStorageBackend: document.getElementById("config-arrangement-storage").value,
+        arrangementLocalFolderPath: document.getElementById("config-storage-path").value,
+        planningCenterServiceTypeId: document.getElementById("config-planning-center-service-type").value,
+      }),
+    };
 
-        const statusEl = document.getElementById("config-save-status");
-        saveConfigBtn.disabled = true;
-        saveConfigBtn.textContent = "Saving...";
+    document.querySelectorAll(".config-save").forEach((btn) => {
+      const scope = btn.dataset.scope;
+      const statusEl = document.querySelector(`.config-save-status[data-scope="${scope}"]`);
+      btn.addEventListener("click", async () => {
+        const collect = SCOPE_FIELDS[scope];
+        if (!collect) return;
+        btn.disabled = true;
+        btn.textContent = "Saving...";
         statusEl.textContent = "";
         let saved = false;
         try {
           const res = await fetch("/api/config", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
+            body: JSON.stringify(collect()),
           });
           const data = await res.json();
           if (!res.ok) {
             statusEl.textContent = data.error;
-            statusEl.className = "text-sm text-error";
+            statusEl.className = "text-sm config-save-status text-error";
             return;
           }
           saved = true;
         } finally {
-          if (saveConfigBtn.isConnected) {
-            saveConfigBtn.disabled = false;
-            saveConfigBtn.textContent = "Save Configuration";
+          if (btn.isConnected) {
+            btn.disabled = false;
+            btn.textContent = "Save";
           }
         }
         // Not awaited — see save-library-folders-btn's handler for why.
         if (saved) render();
       });
-    }
+    });
 
     const openEnvBtn = document.getElementById("open-env-btn");
     if (openEnvBtn) {
@@ -657,12 +720,12 @@ function renderHealth(health, configOptions, versionInfo) {
         </div>
         <div id="pp-diagnose-results" class="flex flex-col gap-2"></div>
         ${
+          // Connected state lives in the status strip above; repeating it here was
+          // the main thing that made this screen read as two copies of itself.
+          // What belongs here is only what the strip can't say: how to fix it.
           propresenter.connected
-            ? `<div class="badge badge-success gap-1"><i data-lucide="check-circle-2" class="w-3 h-3"></i> Connected</div>
-               <div class="text-sm opacity-70">${propresenter.host}:${propresenter.port} &middot; last checked ${new Date(propresenter.lastCheckIn ?? Date.now()).toLocaleTimeString()}</div>`
-            : `<div class="badge badge-error gap-1"><i data-lucide="x-circle" class="w-3 h-3"></i> Disconnected</div>
-               <div class="text-sm opacity-70">${propresenter.host}:${propresenter.port}</div>
-               <div class="text-sm mt-1">Check ProPresenter is running with its Network API enabled (Preferences &gt; Network), and that the host/port are correct.</div>`
+            ? `<div class="text-sm opacity-60">Last checked ${new Date(propresenter.lastCheckIn ?? Date.now()).toLocaleTimeString()}. Run Diagnose if ProPresenter is behaving oddly.</div>`
+            : `<div class="text-sm">Check ProPresenter is running with its Network API enabled (Preferences &gt; Network), and that the host and port under Settings are correct.</div>`
         }
       </div>
     </div>
@@ -672,21 +735,18 @@ function renderHealth(health, configOptions, versionInfo) {
     <div class="card bg-base-200">
       <div class="card-body p-3">
         <h2 class="card-title text-base"><i data-lucide="database" class="w-4 h-4 opacity-70"></i> Search Index</h2>
-        <div class="text-sm opacity-70">
-          ${
-            index.builtAt
-              ? `${index.presentationCount} presentations &middot; built ${new Date(index.builtAt).toLocaleString()}`
-              : "Not built yet"
-          }
-        </div>
         ${
           index.builtAt
             ? `<div class="text-sm opacity-70">
                 ${
                   index.buildDurationMs == null
                     ? "Duration unknown — built before this was tracked; rebuild once to see it."
-                    : `Last run took ${formatDuration(index.buildDurationMs)}${
-                        index.crawledPlaylists ? " (included a playlist crawl)" : " (playlist crawl was off)"
+                    : `Last ${index.buildMode === "incremental" ? "reindex" : "full rebuild"} took ${formatDuration(index.buildDurationMs)}${
+                        index.buildMode === "incremental" && index.reindexCounts
+                          ? ` — re-read ${index.reindexCounts.changed + index.reindexCounts.added + index.reindexCounts.unverifiable}, reused ${index.reindexCounts.carriedOver}`
+                          : index.crawledPlaylists
+                            ? " (included a playlist crawl)"
+                            : " (playlist crawl was off)"
                       }`
                 } ${infoIcon("How long the last index rebuild took, so you know whether it's safe to kick off another one — e.g. right before a service — without the risk of it still running when you need ProPresenter free.")}
               </div>`
@@ -698,7 +758,11 @@ function renderHealth(health, configOptions, versionInfo) {
                  <i data-lucide="pause-circle" class="w-4 h-4 shrink-0 mt-0.5"></i>
                  <span><strong>${index.builtAt ? "This index is out of date" : "No index has been built yet"}, and Refrain did not rebuild it automatically because it is a Saturday or Sunday.</strong>
                  ${index.builtAt ? "Search still works from the existing index." : "Search will stay empty until you build it."}
-                 Rebuild it below once you have a clear hour or two, or leave it until after the weekend.</span>
+                 ${
+                   index.builtAt
+                     ? "Reindexing changed presentations below is quick and safe to run now. A full rebuild is the one to leave until after the weekend."
+                     : "There is nothing to reindex against yet, so the first build has to be a full one — leave it until you have a clear hour or two."
+                 }</span>
                </div>`
             : ""
         }
@@ -711,20 +775,70 @@ function renderHealth(health, configOptions, versionInfo) {
                  Go Live, Clear, and macros may be slow or not respond. It can take an hour or more on a large
                  library. If a service is about to start, quit Refrain to stop it and rebuild later.</span>
                </div>`
-            : `<div class="alert alert-warning py-2 text-sm mt-2 items-start">
-                 <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
-                 <span>
-                   <strong>Do not rebuild anywhere near a service.</strong>
-                   A rebuild reads every presentation in your library one at a time and can run for
-                   an hour or more. While it does, ProPresenter itself goes sluggish and can stop
-                   responding to Go Live, Clear, and macros. Only start one when you are certain
-                   nothing important is happening for the next hour or two, and let it finish.
-                 </span>
-               </div>
-               <div class="flex items-center gap-2 mt-1">
-                <button id="health-rebuild-btn" class="btn btn-sm btn-outline w-fit"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> <span id="health-rebuild-btn-label">Rebuild Now</span></button>
-                ${infoIcon("Only needed after you change your library scope or preferred arrangements, or when slides you have edited are not showing up in search. Never run it before or during a service: it makes ProPresenter unresponsive for as long as it runs, which on a large library can be well over an hour.")}
-              </div>`
+            : (() => {
+                // The scary warning belongs to whichever button is actually
+                // going to run an hour-long crawl. With no index yet there is
+                // nothing to compare files against, so the only thing on offer
+                // IS the full crawl — offering a "quick and safe" reindex
+                // button that silently becomes one would be a trap.
+                const fullRebuildWarning = `
+                  <div class="alert alert-warning py-2 text-sm mt-2 items-start">
+                    <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
+                    <span>
+                      <strong>Do not rebuild anywhere near a service.</strong>
+                      A full rebuild reads every presentation in your library one at a time and can run for
+                      an hour or more. While it does, ProPresenter itself goes sluggish and can stop
+                      responding to Go Live, Clear, and macros. Only start one when you are certain
+                      nothing important is happening for the next hour or two, and let it finish.
+                    </span>
+                  </div>`;
+                const fullRebuildButton = `
+                  <div class="flex items-center gap-2 mt-1">
+                    <button id="health-rebuild-btn" class="btn btn-sm ${index.builtAt ? "btn-outline" : "btn-brand"} w-fit"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> <span id="health-rebuild-btn-label">${index.builtAt ? "Rebuild Everything" : "Build Index"}</span></button>
+                    ${infoIcon("Reads every presentation in your library from scratch. Needed for the first build, and after that only if the index looks wrong in a way reindexing does not fix. Never run it before or during a service.")}
+                  </div>`;
+
+                if (!index.builtAt) {
+                  return `<div class="flex flex-col gap-2 mt-2">
+                    <div class="text-sm opacity-70">
+                      The first build has to read everything once. After that, reindexing only
+                      re-reads the presentations whose file changed.
+                    </div>
+                    ${fullRebuildWarning}
+                    ${fullRebuildButton}
+                  </div>`;
+                }
+
+                return `<div class="flex flex-col gap-2 mt-2">
+                  <div class="flex items-center gap-2">
+                    <button id="health-reindex-btn" class="btn btn-sm btn-brand w-fit"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> <span id="health-reindex-btn-label">Reindex changed only</span></button>
+                    ${infoIcon("Checks every presentation file on this machine and re-reads only the ones that changed since the last build. Fingerprinting the whole library takes under a second, so a normal week's worth of edits reindexes in seconds instead of an hour.")}
+                  </div>
+                  <div id="health-reindex-status" class="text-sm"></div>
+                  ${
+                    index.crawledPlaylists
+                      ? `<div class="alert alert-warning py-2 text-sm items-start">
+                           <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
+                           <span><strong>Playlist crawling is on, so reindexing is not quick.</strong>
+                           Which playlists a presentation appears in isn't stored in the presentation's own
+                           file, so it can only be found by crawling every playlist again — that part runs
+                           in full every time and is the slowest, hardest part on ProPresenter. Turn playlist
+                           crawling off under Search &amp; indexing if you don't need it, and reindexing drops
+                           back to seconds.</span>
+                         </div>`
+                      : `<div class="text-sm opacity-60">
+                           Changing your preferred arrangements or turning on playlist crawling changes what
+                           every entry means, so those still need a full rebuild. Refrain switches to one
+                           automatically when that happens, and says so.
+                         </div>`
+                  }
+                  <details class="mt-1">
+                    <summary class="text-sm cursor-pointer opacity-70 w-fit">Rebuild everything instead</summary>
+                    ${fullRebuildWarning}
+                    ${fullRebuildButton}
+                  </details>
+                </div>`;
+              })()
         }
       </div>
     </div>
@@ -759,18 +873,25 @@ function renderHealth(health, configOptions, versionInfo) {
   `;
 
   const configCard = `
-    <div class="card bg-base-200">
-      <div class="card-body p-3">
-        <h2 class="card-title text-base"><i data-lucide="sliders-horizontal" class="w-4 h-4 opacity-70"></i> Configuration</h2>
-        <div class="text-sm opacity-70">
-          Everything below is saved straight to <code>config.json</code> — no secrets live here, so it's safe to
-          change freely. Each field is a dropdown, checkbox, or validated input so you can't save something
-          that would break the app; hover the <i data-lucide="info" class="w-3.5 h-3.5 inline align-text-top"></i>
-          next to a setting for what it does.
+      <div class="flex flex-col gap-2">
+        <div class="flex items-baseline justify-between gap-2">
+          <h2 class="text-base font-semibold">Settings</h2>
+          <button id="backup-config-btn" class="btn btn-ghost btn-xs">
+            <i data-lucide="download" class="w-3.5 h-3.5"></i> Back up config
+          </button>
         </div>
-
-        <div class="flex flex-col gap-3 mt-3">
-          <label class="form-control w-full max-w-xs">
+        <div class="text-xs opacity-60">
+          Saved straight to <code>config.json</code>. No secrets live here, and every field is validated,
+          so it is safe to change. Each section saves on its own.
+        </div>
+        <details class="collapse collapse-arrow bg-base-200 rounded" >
+          <summary class="collapse-title min-h-0 py-2">
+            <span class="flex items-center gap-2 text-sm font-medium">
+              <i data-lucide="cast" class="w-4 h-4 opacity-70 shrink-0"></i> ProPresenter
+              <span class="text-xs opacity-50 font-normal">host, port, role</span>
+            </span>
+          </summary>
+          <div class="collapse-content flex flex-col gap-3">
             <div class="label py-1">
               <span class="label-text">Role ${infoIcon('"Logger" runs comparisons and writes drift-tracking data; "reader" is read-only and just displays what the logger machine recorded. Most churches only need one logger, on whichever machine runs during service.')}</span>
             </div>
@@ -811,12 +932,61 @@ function renderHealth(health, configOptions, versionInfo) {
               <button type="button" id="config-network-scan-btn" class="btn btn-warning btn-xs mt-2 block">Search the network anyway</button>
             </span>
           </div>
-
+            <div class="flex items-center gap-2 pt-1">
+              <button type="button" class="btn btn-brand btn-sm config-save" data-scope="propresenter">Save</button>
+              <span class="text-sm config-save-status" data-scope="propresenter"></span>
+            </div>
+          </div>
+        </details>
+        <details class="collapse collapse-arrow bg-base-200 rounded" >
+          <summary class="collapse-title min-h-0 py-2">
+            <span class="flex items-center gap-2 text-sm font-medium">
+              <i data-lucide="database" class="w-4 h-4 opacity-70 shrink-0"></i> Search &amp; indexing
+              <span class="text-xs opacity-50 font-normal">scope, arrangements</span>
+            </span>
+          </summary>
+          <div class="collapse-content flex flex-col gap-3">
           <label class="label cursor-pointer justify-start gap-2 w-fit">
             <input type="checkbox" id="config-crawl-playlists" class="checkbox checkbox-sm" ${config.librarySync.crawlPlaylists ? "checked" : ""} />
             <span class="label-text">Crawl playlists (not recommended) ${infoIcon('Also scans every ProPresenter playlist to record "which playlist(s) is this in" for search results. Off by default because it\'s the slowest part of an index rebuild on large libraries.')}</span>
           </label>
-
+          <div>
+            <label class="form-control w-full max-w-xs">
+              <div class="label py-1 px-0">
+                <span class="label-text">Preferred arrangements ${infoIcon("A song can hold several arrangements, and the one the library happens to have selected is arbitrary. Name the ones you actually run, most important first, and search will index those. Order is the priority: \"FS, T\" means FS wins when a song has both. Leave empty to just follow whatever ProPresenter has selected. Changing this only takes effect on the next index rebuild, so save it well before a service, never during one.")}</span>
+              </div>
+              <input id="config-preferred-arrangements" type="text" placeholder="FS, T" class="input input-bordered input-sm"
+                value="${escapeHtml((config.preferredArrangements ?? []).join(", "))}" />
+            </label>
+            ${
+              (configOptions.arrangementNameCandidates ?? []).length
+                ? `<div class="text-xs opacity-60 mt-1">
+                     Found in your library (click to add):
+                     <span class="inline-flex flex-wrap gap-1 ml-1">
+                       ${configOptions.arrangementNameCandidates
+                         .map(
+                           (n) =>
+                             `<button type="button" class="badge badge-ghost badge-sm config-arrangement-suggestion" data-name="${escapeHtml(n)}">${escapeHtml(n)}</button>`
+                         )
+                         .join("")}
+                     </span>
+                   </div>`
+                : `<div class="text-xs opacity-60 mt-1">Build the search index to see the arrangement names your library uses.</div>`
+            }
+            <div class="flex items-center gap-2 pt-1">
+              <button type="button" class="btn btn-brand btn-sm config-save" data-scope="indexing">Save</button>
+              <span class="text-sm config-save-status" data-scope="indexing"></span>
+            </div>
+          </div>
+        </details>
+        <details class="collapse collapse-arrow bg-base-200 rounded" >
+          <summary class="collapse-title min-h-0 py-2">
+            <span class="flex items-center gap-2 text-sm font-medium">
+              <i data-lucide="music" class="w-4 h-4 opacity-70 shrink-0"></i> Lyrics
+              <span class="text-xs opacity-50 font-normal">splitter, search sites</span>
+            </span>
+          </summary>
+          <div class="collapse-content flex flex-col gap-3">
           <label class="form-control w-full max-w-xs">
             <div class="label py-1">
               <span class="label-text">Lyrics slide splitter ${infoIcon("How pasted lyrics get divided into individual slides on the Lyrics screen. Blank-line-delimited splits on empty lines; section-label-aware also recognizes labels like [Verse] or [Chorus].")}</span>
@@ -846,34 +1016,20 @@ function renderHealth(health, configOptions, versionInfo) {
               You can pick at most ${configOptions.maxLyricsSites}.
             </div>
           </div>
-
-          <div>
-            <label class="form-control w-full max-w-xs">
-              <div class="label py-1 px-0">
-                <span class="label-text">Preferred arrangements ${infoIcon("A song can hold several arrangements, and the one the library happens to have selected is arbitrary. Name the ones you actually run, most important first, and search will index those. Order is the priority: \"FS, T\" means FS wins when a song has both. Leave empty to just follow whatever ProPresenter has selected. Changing this only takes effect on the next index rebuild, so save it well before a service, never during one.")}</span>
-              </div>
-              <input id="config-preferred-arrangements" type="text" placeholder="FS, T" class="input input-bordered input-sm"
-                value="${escapeHtml((config.preferredArrangements ?? []).join(", "))}" />
-            </label>
-            ${
-              (configOptions.arrangementNameCandidates ?? []).length
-                ? `<div class="text-xs opacity-60 mt-1">
-                     Found in your library (click to add):
-                     <span class="inline-flex flex-wrap gap-1 ml-1">
-                       ${configOptions.arrangementNameCandidates
-                         .map(
-                           (n) =>
-                             `<button type="button" class="badge badge-ghost badge-sm config-arrangement-suggestion" data-name="${escapeHtml(n)}">${escapeHtml(n)}</button>`
-                         )
-                         .join("")}
-                     </span>
-                   </div>`
-                : `<div class="text-xs opacity-60 mt-1">Build the search index to see the arrangement names your library uses.</div>`
-            }
+            <div class="flex items-center gap-2 pt-1">
+              <button type="button" class="btn btn-brand btn-sm config-save" data-scope="lyrics">Save</button>
+              <span class="text-sm config-save-status" data-scope="lyrics"></span>
+            </div>
           </div>
-
-          <div class="divider my-0"></div>
-
+        </details>
+        <details class="collapse collapse-arrow bg-base-200 rounded" >
+          <summary class="collapse-title min-h-0 py-2">
+            <span class="flex items-center gap-2 text-sm font-medium">
+              <i data-lucide="qr-code" class="w-4 h-4 opacity-70 shrink-0"></i> QR codes
+              <span class="text-xs opacity-50 font-normal">defaults</span>
+            </span>
+          </summary>
+          <div class="collapse-content flex flex-col gap-3">
           <div class="text-sm font-semibold">QR Codes</div>
           <div class="flex flex-wrap gap-3">
             <label class="form-control w-full max-w-xs">
@@ -901,9 +1057,20 @@ function renderHealth(health, configOptions, versionInfo) {
               <input id="config-qr-default-size" type="number" min="64" max="2000" step="1" class="input input-bordered input-sm w-28" placeholder="512" value="${config.qrCodeModule?.defaultSize ?? ""}" />
             </label>
           </div>
-
-          <div class="divider my-0"></div>
-
+            <div class="flex items-center gap-2 pt-1">
+              <button type="button" class="btn btn-brand btn-sm config-save" data-scope="qr">Save</button>
+              <span class="text-sm config-save-status" data-scope="qr"></span>
+            </div>
+          </div>
+        </details>
+        <details class="collapse collapse-arrow bg-base-200 rounded" >
+          <summary class="collapse-title min-h-0 py-2">
+            <span class="flex items-center gap-2 text-sm font-medium">
+              <i data-lucide="git-compare" class="w-4 h-4 opacity-70 shrink-0"></i> Arrangement tracking
+              <span class="text-xs opacity-50 font-normal">provider, storage</span>
+            </span>
+          </summary>
+          <div class="collapse-content flex flex-col gap-3">
           <label class="label cursor-pointer justify-start gap-2 w-fit">
             <input type="checkbox" id="config-arrangement-enabled" class="checkbox checkbox-sm" ${arrangementModule.enabled ? "checked" : ""} />
             <span class="label-text">Enable arrangement drift tracking ${infoIcon("Turns on the Arrangement screen, which compares what a song's arrangement was planned to be against what ProPresenter actually played through during service.")}</span>
@@ -951,15 +1118,13 @@ function renderHealth(health, configOptions, versionInfo) {
           </div>
         </div>
 
-        <div class="flex items-center gap-3 mt-3">
-          <button id="backup-config-btn" class="btn btn-sm btn-outline w-fit">
-            <i data-lucide="download" class="w-4 h-4"></i> Backup Config
-          </button>
-          <button id="save-config-btn" class="btn btn-sm btn-brand w-fit">Save Configuration</button>
-          <span id="config-save-status" class="text-sm"></span>
-        </div>
+            <div class="flex items-center gap-2 pt-1">
+              <button type="button" class="btn btn-brand btn-sm config-save" data-scope="arrangement">Save</button>
+              <span class="text-sm config-save-status" data-scope="arrangement"></span>
+            </div>
+          </div>
+        </details>
       </div>
-    </div>
   `;
 
   const envCard = `
@@ -1029,13 +1194,44 @@ function renderHealth(health, configOptions, versionInfo) {
     </div>
   `;
 
+  // Status is scanned, not read: three tiles answer "is it working" at a glance,
+  // and the detail that used to fill three full cards now hangs off them.
+  const statusStrip = `
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+      <div class="bg-base-200 rounded p-3 flex flex-col gap-1">
+        <div class="text-xs uppercase tracking-wide opacity-50">ProPresenter</div>
+        <div class="text-sm font-medium flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full ${propresenter.connected ? "bg-success" : "bg-error"}"></span>
+          ${propresenter.connected ? "Connected" : "Not answering"}
+        </div>
+        <div class="text-xs opacity-60 break-all">${escapeHtml(propresenter.host ?? "")}:${propresenter.port ?? ""}</div>
+      </div>
+      <div class="bg-base-200 rounded p-3 flex flex-col gap-1">
+        <div class="text-xs uppercase tracking-wide opacity-50">Search index</div>
+        <div class="text-sm font-medium">${index.builtAt ? `${index.presentationCount} presentations` : "Not built yet"}</div>
+        <div class="text-xs opacity-60">${index.builtAt ? `built ${new Date(index.builtAt).toLocaleString()}` : "search is empty until this runs"}</div>
+      </div>
+      <div class="bg-base-200 rounded p-3 flex flex-col gap-1">
+        <div class="text-xs uppercase tracking-wide opacity-50">Version</div>
+        <div class="text-sm font-medium flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full ${versionInfo?.updateAvailable ? "bg-info" : "bg-success"}"></span>
+          v${version}
+        </div>
+        <div class="text-xs opacity-60">${
+          versionInfo?.updateAvailable ? `v${escapeHtml(versionInfo.latestVersion)} available` : "up to date"
+        }</div>
+      </div>
+    </div>
+  `;
+
   return `
     <div class="flex flex-col gap-4">
+      ${statusStrip}
       ${propresenterCard}
-      ${updatesCard}
       ${indexCard}
       ${arrangementCard}
       ${configCard}
+      ${updatesCard}
       ${envCard}
       <div class="text-xs opacity-50 text-center mt-2 flex flex-col items-center gap-1">
         <div>

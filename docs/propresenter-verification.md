@@ -98,6 +98,41 @@ will show it.
 
 ---
 
+## 2c. Reindex changed only
+
+The claim is that editing one presentation costs one API read, not hundreds.
+This is the check that proves the fingerprinting actually notices real edits —
+if it silently missed them, search would keep serving the old lyrics with no
+sign anything was wrong.
+
+Run this on a weekday, because step 1 is a full rebuild.
+
+1. On the Health screen, open **Rebuild everything instead** and press
+   **Rebuild Everything**. Let it finish. Note the duration it reports.
+2. Press **Reindex changed only** without touching anything in ProPresenter.
+   Expect it to finish in seconds and report `0 changed, 0 new` with everything
+   unchanged. If it reports a large number changed, the fingerprints are not
+   stable across runs — stop and report it, because it means every reindex is
+   really a full rebuild.
+3. In ProPresenter, edit the text of one slide in one song and save it.
+4. Press **Reindex changed only** again. Expect `1 changed` and a run of a few
+   seconds.
+5. Search for the words you just typed. They should be found, in that song.
+   Search for the words you replaced — they should be gone.
+6. Click **Go Live** on the edited slide and confirm the right slide fires.
+   (The slide anchors are re-read as part of the reindex, so this catches the
+   case where the entry was carried over when it should not have been.)
+7. Now change **Preferred arrangements** under Settings > Search & indexing and
+   press **Reindex changed only**. It should say a full rebuild was needed
+   rather than reindexing — the arrangement choice changes what every entry
+   means, so carrying entries over would leave the index a mix of two
+   arrangements. Expect it to take as long as step 1.
+
+If ProPresenter is configured on another machine (host is not localhost),
+reindexing has no files to check and should always report a full rebuild.
+
+---
+
 ## 3. The Return bar
 
 This is the feature most worth confirming, because it depends on reading the
