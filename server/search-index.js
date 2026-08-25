@@ -303,6 +303,12 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
       // that decide what an entry CONTAINS have changed since this build.
       buildOptions,
       buildMode: plan.mode,
+      // Only a full rebuild refreshes this. builtAt moves on every incremental
+      // run, so it cannot answer "when did we last read the whole library".
+      lastFullBuildAt:
+        plan.mode === "full"
+          ? new Date().toISOString()
+          : (currentIndex?.lastFullBuildAt ?? currentIndex?.builtAt ?? null),
       reindexCounts: plan.counts ?? null,
       presentations,
     };
@@ -318,6 +324,59 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
     rebuildInFlightMode = null;
     rebuildProgress = { inProgress: false, stage: null, current: 0, total: 0 };
   }
+}
+
+/**
+ * Works out what a reindex would have to re-read, without re-reading anything.
+ *
+ * The whole point of automatic reindexing is that deciding is cheap and acting
+ * is not: on a real library this costs three API calls plus 445 local file
+ * hashes, about 80ms, while acting costs ~135ms per changed presentation. The
+ * watcher checks first and only acts when the answer is small.
+ *
+ * Deliberately skips the playlist crawl even when it is enabled — this is a
+ * decision aid, and the crawl is the expensive part. That under-reports
+ * playlist-only presentations, which is the safe direction: it can only make
+ * the planner act on fewer presentations, never more.
+ */
+export async function planReindex(client, syncOptions = {}, preferredArrangements = []) {
+  const { folders = null, crawlPlaylists = false } = syncOptions;
+  if (!client.isLocalHost) {
+    return { mode: "full", reason: "ProPresenter is on another machine, so its files cannot be checked" };
+  }
+  const library = await client.getLibrary(folders);
+  const ids = [...new Set((library ?? []).map((item) => item.id).filter(Boolean))];
+  const targets = fingerprintTargets({ ids, previous: currentIndex });
+  const fingerprints = {};
+  await Promise.all(
+    targets.map(async ({ id, path: filePath }) => {
+      fingerprints[id] = await readFingerprint(filePath);
+    })
+  );
+  return planIncremental({
+    ids,
+    previous: currentIndex,
+    fingerprints,
+    buildOptions: { preferredArrangements, crawlPlaylists },
+    schemaVersion: SCHEMA_VERSION,
+  });
+}
+
+/** Every distinct folder the indexed presentations live in. */
+export function getIndexedLibraryDirs() {
+  const dirs = new Set();
+  for (const entry of Object.values(currentIndex?.presentations ?? {})) {
+    if (entry.presentationPath) dirs.add(path.dirname(entry.presentationPath));
+  }
+  return [...dirs];
+}
+
+/** Days since the whole library was last read, or null if never/unknown. */
+export function daysSinceFullBuild(index = currentIndex, now = Date.now()) {
+  const stamp = index?.lastFullBuildAt ?? index?.builtAt;
+  if (!stamp) return null;
+  const ms = now - new Date(stamp).getTime();
+  return Number.isFinite(ms) ? Math.floor(ms / 86_400_000) : null;
 }
 
 async function runWithConcurrency(items, limit, worker) {

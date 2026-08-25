@@ -49,7 +49,11 @@ import {
   extractSlides,
   getIndexedArrangementNames,
   isServiceDay,
+  planReindex,
+  getIndexedLibraryDirs,
+  daysSinceFullBuild,
 } from "./search-index.js";
+import { startLibraryWatch, fullRebuildSuggestion } from "./library-watch.js";
 import { resolveArrangement, flattenGroups, findLiveIndex } from "./arrangements.js";
 import {
   syncLibrary,
@@ -585,6 +589,48 @@ app.get("/api/arrangement/detect-storage-paths", async (_req, res) => {
 // stale index with no explanation.
 let autoRebuildDeferred = false;
 
+// How long ProPresenter has been answering without interruption. The watcher
+// uses this to hold off right after a launch, when reads fail en masse while
+// ProPresenter is still indexing its own media.
+let propresenterReadySince = null;
+async function propresenterReadyForMs() {
+  try {
+    await client.testConnection();
+    if (propresenterReadySince == null) propresenterReadySince = Date.now();
+    return Date.now() - propresenterReadySince;
+  } catch {
+    propresenterReadySince = null;
+    return null;
+  }
+}
+
+let libraryWatch = null;
+function autoReindexEnabled() {
+  return config?.autoReindex !== false;
+}
+
+/**
+ * Watches for presentations changing and reindexes just those. Started after
+ * the index exists, since there is nothing to compare against before that, and
+ * restarted whenever the library scope changes so it watches the right folders.
+ */
+function startWatching() {
+  libraryWatch?.stop();
+  libraryWatch = null;
+  if (!autoReindexEnabled()) return;
+  const dirs = getIndexedLibraryDirs();
+  if (dirs.length === 0) return;
+  libraryWatch = startLibraryWatch({
+    dirs: () => dirs,
+    plan: () => planReindex(client, config.librarySync, preferredArrangements()),
+    reindex: () => rebuildIndex(client, config.librarySync, preferredArrangements(), { incremental: true }),
+    rebuildInProgress: () => getRebuildProgress().inProgress,
+    readyForMs: propresenterReadyForMs,
+    crawlPlaylists: () => Boolean(config.librarySync?.crawlPlaylists),
+  });
+  console.log(`Watching ${dirs.length} library folder(s) for changes — edited presentations reindex on their own.`);
+}
+
 function indexStatusPayload() {
   const index = getIndex();
   return {
@@ -594,6 +640,11 @@ function indexStatusPayload() {
     crawledPlaylists: Boolean(index.crawledPlaylists),
     buildMode: index.buildMode ?? null,
     reindexCounts: index.reindexCounts ?? null,
+    lastFullBuildAt: index.lastFullBuildAt ?? null,
+    fullRebuildSuggestion: fullRebuildSuggestion(daysSinceFullBuild(index)),
+    autoReindex: autoReindexEnabled()
+      ? (libraryWatch?.status() ?? { watching: 0, outcome: "not started", pending: null })
+      : null,
     presentationCount: Object.keys(index.presentations).length,
     rebuild: getRebuildProgress(),
   };
@@ -653,9 +704,11 @@ app.post("/api/library-folders", async (req, res) => {
   // build (Section 5.3). The caller polls /api/index/status for
   // progress rather than this request staying open for what could be
   // a slow full-library crawl.
-  rebuildIndex(client, config.librarySync, preferredArrangements(), { incremental: true }).catch((err) => {
-    console.error("Library-scope rebuild failed:", err.message);
-  });
+  rebuildIndex(client, config.librarySync, preferredArrangements(), { incremental: true })
+    .then(startWatching)
+    .catch((err) => {
+      console.error("Library-scope rebuild failed:", err.message);
+    });
 });
 
 /**
@@ -680,6 +733,7 @@ app.post("/api/index/rebuild", async (_req, res) => {
   try {
     autoRebuildDeferred = false; // the operator has taken it in hand
     const index = await rebuildIndex(client, config.librarySync, preferredArrangements());
+    startWatching();
     res.json({ builtAt: index.builtAt, presentationCount: Object.keys(index.presentations).length });
   } catch (err) {
     res.status(502).json({ error: indexBuildError(err) });
@@ -2175,9 +2229,11 @@ app.post("/api/setup", async (req, res) => {
   // First-run always needs a full build (Section 5.3) — kick it off after
   // responding so the setup screen can poll /api/index/status for progress
   // rather than holding the request open.
-  rebuildIndex(client, config.librarySync, preferredArrangements()).catch((err) => {
-    console.error("Setup index build failed:", err.message);
-  });
+  rebuildIndex(client, config.librarySync, preferredArrangements())
+    .then(startWatching)
+    .catch((err) => {
+      console.error("Setup index build failed:", err.message);
+    });
 });
 
 // --- Health / status screen (Section 7) ---
@@ -2265,13 +2321,17 @@ app.listen(port, "127.0.0.1", async () => {
       console.log("The existing index still works; rebuild from the Health screen when you have a clear hour or two.");
     } else {
       console.log("Cached index is stale (older than a day, or built by a previous version) — reindexing changed presentations in background...");
-      rebuildIndex(client, config.librarySync, preferredArrangements(), { incremental: true }).catch((err) =>
-        console.error("Background rebuild failed:", err.message)
-      );
+      rebuildIndex(client, config.librarySync, preferredArrangements(), { incremental: true })
+        .then(startWatching)
+        .catch((err) => console.error("Background rebuild failed:", err.message));
     }
   } else {
     console.log(`Loaded cached index (built ${existing.builtAt}, ${Object.keys(existing.presentations).length} presentations).`);
   }
+
+  // Needs an index first: the folders to watch are derived from where the
+  // indexed presentations actually live, not from configuration.
+  startWatching();
 
   // Section 8.4: a write that failed last run (backend unreachable) is
   // staged locally rather than lost — retry it now that the app's back

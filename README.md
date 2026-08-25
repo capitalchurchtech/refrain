@@ -70,6 +70,19 @@ Everything else (a church management integration, shared storage, image cropping
 
 **Never rebuild the index near a service.** A rebuild reads every presentation in your library one at a time, and on a real library that means anything from several minutes to well over an hour. For the whole time it runs, ProPresenter itself gets sluggish and can stop answering at all, which means Go Live, Clear, and macros may not respond. Measured on a real setup: sermon-length presentations took ten to fifteen seconds each to read, and ProPresenter stopped reacting to slide triggers entirely while it was being crawled. Only start a rebuild when you are sure nothing crucial is happening for the next hour or two, and then let it finish rather than killing it partway.
 
+**Most of the time you should not have to touch the index at all.** Refrain watches your library folders, and a few seconds after you save an edited presentation it reindexes that one presentation on its own. A burst of saves collapses into a single reindex, and a slow background check every half hour covers anything the watch missed.
+
+It is deliberately cautious about what it will do unasked:
+
+- **It never starts a full rebuild.** If something changes that needs one — you edited your preferred arrangements, or upgraded Refrain — it stops and says so on the Health screen rather than beginning a job that makes ProPresenter sluggish for half an hour.
+- **It stops at 25 changed presentations.** A bulk import or a Library Sync run shows up as "38 presentations have changed" on the Health screen, waiting for you, instead of quietly starting a multi-minute crawl.
+- **It waits a few minutes after ProPresenter starts**, because reads fail en masse while ProPresenter is still indexing its own media.
+- **It stays out of the way when playlist crawling is on**, since that makes every reindex expensive.
+
+Set `"autoReindex": false` in `config.json` to turn it off and go back to reindexing by hand.
+
+**Consider a full rebuild once a quarter.** Reindexing keeps up with anything that changes a presentation file, which is nearly everything — but not playlist membership, which lives elsewhere, and not a presentation that failed to read and kept its previous slides. Refrain mentions it on the Health screen once the whole library has not been read in 90 days. It never starts one for you.
+
 **Let ProPresenter settle before you rebuild.** Measured on a real library: a full rebuild started right after launching ProPresenter lost 221 of 445 presentations to failed reads — 219 of them in the folder crawled first — because ProPresenter is still busy indexing its own media at that point and stops answering. The same presentations then fetched in 15-30ms once it had settled. Nothing was lost (failed reads keep whatever the previous index had, and a later reindex retries them), but it turned a 15-minute job into 27 minutes plus a second pass. Give ProPresenter a few minutes after launch before starting a rebuild.
 
 **Reindex changed only, not Rebuild Everything.** The Health screen's main button re-reads just the presentations whose file changed since the last build, which on a normal week is a handful rather than hundreds. It works out what changed by fingerprinting every presentation file on disk (size, modified time, and a content hash); measured on a real library that is 818 files and 70MB in under half a second, against fifteen minutes for a full crawl of 445 presentations. Everything unchanged keeps the slides the previous build already read.

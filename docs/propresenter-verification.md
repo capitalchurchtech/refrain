@@ -125,7 +125,12 @@ then succeeded in 15-30ms each once it had settled).
 6. Click **Go Live** on the edited slide and confirm the right slide fires.
    (The slide anchors are re-read as part of the reindex, so this catches the
    case where the entry was carried over when it should not have been.)
-7. Now change **Preferred arrangements** under Settings > Search & indexing and
+7. Without pressing anything, edit another slide in ProPresenter and save it,
+   then wait about fifteen seconds and look at the Health screen. The index
+   should have picked up the change on its own, and the watcher line should say
+   what it did. This is the automatic path; if it never fires, the manual button
+   still works, so report it rather than treating search as broken.
+8. Now change **Preferred arrangements** under Settings > Search & indexing and
    press **Reindex changed only**. It should say a full rebuild was needed
    rather than reindexing — the arrangement choice changes what every entry
    means, so carrying entries over would leave the index a mix of two

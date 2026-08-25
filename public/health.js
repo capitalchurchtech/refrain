@@ -823,12 +823,50 @@ function renderHealth(health, configOptions, versionInfo) {
                   </div>`;
                 }
 
+                const watch = index.autoReindex;
+                // Two things have to be visible here: that Refrain is keeping
+                // itself current without being asked, and — more importantly —
+                // any work it deliberately declined to do. A guard that quietly
+                // skips is indistinguishable from a watcher that is broken.
+                const watchLine = watch
+                  ? `<div class="text-sm opacity-60 flex items-center gap-1.5">
+                       <span class="w-2 h-2 rounded-full ${watch.watching > 0 ? "bg-success" : "bg-warning"}"></span>
+                       ${
+                         watch.watching > 0
+                           ? `Watching ${watch.watching} library folder${watch.watching === 1 ? "" : "s"} — edited presentations reindex on their own.`
+                           : "Not watching any folders yet."
+                       }
+                       ${watch.at ? `Last check ${new Date(watch.at).toLocaleTimeString()}: ${escapeHtml(watch.outcome)}.` : ""}
+                     </div>`
+                  : `<div class="text-sm opacity-60">Automatic reindexing is off (<code>autoReindex: false</code> in config.json).</div>`;
+
+                const pendingAlert = watch?.pending
+                  ? `<div class="alert alert-info py-2 text-sm items-start">
+                       <i data-lucide="inbox" class="w-4 h-4 shrink-0 mt-0.5"></i>
+                       <span>${
+                         watch.pending.needsFullRebuild
+                           ? `<strong>Waiting on a full rebuild.</strong> ${escapeHtml(watch.pending.reason)}. Refrain will not start one on its own — use Rebuild everything below when you have a clear hour.`
+                           : `<strong>${watch.pending.count} presentations have changed.</strong> That is more than Refrain reindexes without being asked, so it is waiting for you. Press Reindex changed only when ProPresenter is not needed.`
+                       }</span>
+                     </div>`
+                  : "";
+
+                const rebuildSuggestion = index.fullRebuildSuggestion
+                  ? `<div class="alert alert-info py-2 text-sm items-start">
+                       <i data-lucide="calendar-clock" class="w-4 h-4 shrink-0 mt-0.5"></i>
+                       <span>${escapeHtml(index.fullRebuildSuggestion.message)}</span>
+                     </div>`
+                  : "";
+
                 return `<div class="flex flex-col gap-2 mt-2">
+                  ${pendingAlert}
+                  ${rebuildSuggestion}
                   <div class="flex items-center gap-2">
                     <button id="health-reindex-btn" class="btn btn-sm btn-brand w-fit"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> <span id="health-reindex-btn-label">Reindex changed only</span></button>
                     ${infoIcon("Checks every presentation file on this machine and re-reads only the ones that changed since the last build. Fingerprinting the whole library takes under a second, so a normal week's worth of edits reindexes in seconds instead of an hour.")}
                   </div>
                   <div id="health-reindex-status" class="text-sm"></div>
+                  ${watchLine}
                   ${
                     index.crawledPlaylists
                       ? `<div class="alert alert-warning py-2 text-sm items-start">
