@@ -79,6 +79,15 @@ export class ProPresenterClient {
     return true;
   }
 
+  /**
+   * Which output layers are showing something right now.
+   * Performance mode uses this to tell whether a service is actually in
+   * progress, which beats guessing from the day of the week.
+   */
+  async getLayerStatus() {
+    return this.#get("/v1/status/layers");
+  }
+
   /** Just the list of Library folders ({uuid, name, index}) — cheap, always fetched. */
   async getLibraryFolders() {
     return this.#get("/v1/libraries");

@@ -11,12 +11,81 @@
 export function initLive() {
   const container = document.getElementById("view-live");
 
+  // Refreshed on a timer as well as on click, because it arms itself: a
+  // volunteer who never touches this should still see it turn on when the
+  // service starts, and be able to trust what the card says.
+  let perfTimer = null;
+  function wirePerformanceMode() {
+    const dot = document.getElementById("perf-mode-dot");
+    const state = document.getElementById("perf-mode-state");
+    const why = document.getElementById("perf-mode-why");
+    const toggle = document.getElementById("perf-mode-toggle");
+    if (!toggle) return;
+
+    const paint = (data) => {
+      if (!document.getElementById("perf-mode-dot")) return; // re-rendered underneath us
+      const on = Boolean(data?.armed);
+      dot.className = `w-2.5 h-2.5 rounded-full ${on ? "bg-warning" : "bg-success"}`;
+      state.textContent = on ? "On — Refrain is holding still" : "Off — Refrain may index in the background";
+      why.textContent = data?.description ?? "";
+      toggle.textContent = on ? "Turn off" : "Turn on";
+      toggle.className = `btn btn-sm ${on ? "btn-warning" : "btn-outline"}`;
+    };
+
+    const load = () =>
+      fetch("/api/performance-mode")
+        .then((r) => r.json())
+        .then(paint)
+        .catch(() => {});
+
+    toggle.addEventListener("click", async () => {
+      const turningOn = toggle.textContent === "Turn on";
+      toggle.disabled = true;
+      try {
+        const res = await fetch("/api/performance-mode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ armed: turningOn }),
+        });
+        paint(await res.json());
+      } finally {
+        toggle.disabled = false;
+      }
+    });
+
+    load();
+    clearInterval(perfTimer);
+    perfTimer = setInterval(load, 30_000);
+  }
+
   async function render() {
     container.innerHTML = `
       <div class="flex flex-col gap-6">
         <div>
           <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="monitor" class="w-5 h-5"></i> Live</h1>
           <p class="text-sm opacity-70">Get things off the screen, or switch what the screens are showing. Big buttons on purpose.</p>
+        </div>
+
+        <div id="perf-mode-wrap">
+          <div class="text-xs uppercase tracking-wide opacity-60 mb-2">Performance mode</div>
+          <div id="perf-mode-card" class="card bg-base-200">
+            <div class="card-body p-3 gap-2">
+              <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center gap-2">
+                  <span id="perf-mode-dot" class="w-2.5 h-2.5 rounded-full bg-base-content/30"></span>
+                  <span id="perf-mode-state" class="font-medium">Checking...</span>
+                </div>
+                <button id="perf-mode-toggle" class="btn btn-sm btn-outline">Turn on</button>
+              </div>
+              <div id="perf-mode-why" class="text-sm opacity-70"></div>
+              <div class="text-xs opacity-60">
+                While this is on, Refrain does nothing on its own &mdash; no indexing, no update checks,
+                no background calls to ProPresenter at all. Everything you press still works. It turns
+                itself on when something has been on the screens for a couple of minutes, and off again
+                once the screens have been clear for a while.
+              </div>
+            </div>
+          </div>
         </div>
 
         <div id="live-message-wrap" class="hidden">
@@ -60,6 +129,7 @@ export function initLive() {
     if (window.lucide) window.lucide.createIcons();
 
     wireClearButtons();
+    wirePerformanceMode();
 
     try {
       const { looks, macros, messages } = await fetch("/api/live/controls").then((r) => r.json());

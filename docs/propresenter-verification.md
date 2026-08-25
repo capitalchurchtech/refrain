@@ -141,6 +141,28 @@ reindexing has no files to check and should always report a full rebuild.
 
 ---
 
+## 2d. Performance mode
+
+The claim is that Refrain holds completely still while you are live.
+
+1. With nothing on the screens, open **Live**. Performance mode should read
+   *Off*, and say when it last checked.
+2. Put something on the screens and leave it there for three minutes. It should
+   turn itself **On** without you touching it, and say it is on because
+   ProPresenter is showing something.
+3. Open **Health**. The Search Index card should say plainly that it is not
+   indexing in the background, and search should still work normally.
+4. Clear the screens and wait. It should stand down on its own after about
+   twenty minutes.
+5. Press **Turn on** by hand with the screens clear, then wait a few minutes.
+   It must stay on — a manual choice is not undone by a timer. Press **Turn
+   off** to release it.
+6. Quit ProPresenter. Within a minute performance mode should go **On** by
+   itself, saying it cannot tell whether you are live. Start ProPresenter
+   again and it should stand down once it can see the screens are clear.
+
+---
+
 ## 3. The Return bar
 
 This is the feature most worth confirming, because it depends on reading the

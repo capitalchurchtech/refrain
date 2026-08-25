@@ -48,12 +48,18 @@ import {
   getIndexedFolders,
   extractSlides,
   getIndexedArrangementNames,
-  isServiceDay,
   planReindex,
   getIndexedLibraryDirs,
   daysSinceFullBuild,
 } from "./search-index.js";
 import { startLibraryWatch, fullRebuildSuggestion } from "./library-watch.js";
+import {
+  initialState as initialPerformanceState,
+  advance as advancePerformance,
+  armManually,
+  disarmManually,
+  describe as describePerformance,
+} from "./performance-mode.js";
 import { resolveArrangement, flattenGroups, findLiveIndex } from "./arrangements.js";
 import {
   syncLibrary,
@@ -587,7 +593,47 @@ app.get("/api/arrangement/detect-storage-paths", async (_req, res) => {
 // Set at boot when a rebuild was due but deliberately skipped because it's
 // a service day, so the Health screen can say so instead of just showing a
 // stale index with no explanation.
-let autoRebuildDeferred = false;
+// Why Refrain skipped index work it would otherwise have done, or null.
+let indexWorkDeferred = null;
+
+/**
+ * Performance mode: while it is armed, Refrain does nothing on its own.
+ *
+ * Replaces the old Saturday/Sunday deferral. The day of the week was a proxy
+ * for "a service is happening"; ProPresenter's own layer status is the actual
+ * answer, and it is right about Wednesday evenings and empty Saturdays alike.
+ */
+let performance = initialPerformanceState();
+let performancePollTimer = null;
+
+async function pollPerformance() {
+  let layers = null;
+  try {
+    layers = await client.getLayerStatus();
+  } catch {
+    layers = null; // treated as "cannot tell", which arms it
+  }
+  const was = performance.armed;
+  performance = advancePerformance({ state: performance, layers, now: Date.now() });
+  if (performance.armed !== was) {
+    console.log(`Performance mode ${performance.armed ? "ON" : "OFF"} — ${describePerformance(performance)}`);
+  }
+  return performance;
+}
+
+function startPerformancePolling() {
+  clearInterval(performancePollTimer);
+  // One cheap call. Frequent enough that arming lands well inside the two
+  // minutes of output it takes to trigger.
+  performancePollTimer = setInterval(pollPerformance, 30_000);
+  performancePollTimer.unref?.();
+  pollPerformance().catch(() => {});
+}
+
+/** True when Refrain should not be doing anything of its own accord. */
+function frozen() {
+  return performance.armed;
+}
 
 // How long ProPresenter has been answering without interruption. The watcher
 // uses this to hold off right after a launch, when reads fail en masse while
@@ -624,6 +670,9 @@ function startWatching() {
     dirs: () => dirs,
     plan: () => planReindex(client, config.librarySync, preferredArrangements()),
     reindex: () => rebuildIndex(client, config.librarySync, preferredArrangements(), { incremental: true }),
+    // Performance mode is a hard stop, not a preference: while it is on, the
+    // watcher does not even check, so Refrain makes no unsolicited API calls.
+    frozen,
     rebuildInProgress: () => getRebuildProgress().inProgress,
     readyForMs: propresenterReadyForMs,
     crawlPlaylists: () => Boolean(config.librarySync?.crawlPlaylists),
@@ -634,13 +683,20 @@ function startWatching() {
 function indexStatusPayload() {
   const index = getIndex();
   return {
-    autoRebuildDeferred,
+    indexWorkDeferred,
     builtAt: index.builtAt,
     buildDurationMs: index.buildDurationMs ?? null,
     crawledPlaylists: Boolean(index.crawledPlaylists),
     buildMode: index.buildMode ?? null,
     reindexCounts: index.reindexCounts ?? null,
     lastFullBuildAt: index.lastFullBuildAt ?? null,
+    performanceMode: {
+      armed: performance.armed,
+      source: performance.source,
+      since: performance.since ? new Date(performance.since).toISOString() : null,
+      description: describePerformance(performance),
+      lastError: performance.lastError,
+    },
     fullRebuildSuggestion: fullRebuildSuggestion(daysSinceFullBuild(index)),
     autoReindex: autoReindexEnabled()
       ? (libraryWatch?.status() ?? { watching: 0, outcome: "not started", pending: null })
@@ -731,7 +787,7 @@ function indexBuildError(err) {
 // point of the deferral is that the operator decides.
 app.post("/api/index/rebuild", async (_req, res) => {
   try {
-    autoRebuildDeferred = false; // the operator has taken it in hand
+    indexWorkDeferred = null; // the operator has taken it in hand
     const index = await rebuildIndex(client, config.librarySync, preferredArrangements());
     startWatching();
     res.json({ builtAt: index.builtAt, presentationCount: Object.keys(index.presentations).length });
@@ -747,7 +803,7 @@ app.post("/api/index/rebuild", async (_req, res) => {
 // hour-long crawl they didn't ask for.
 app.post("/api/index/reindex-changed", async (_req, res) => {
   try {
-    autoRebuildDeferred = false; // the operator has taken it in hand
+    indexWorkDeferred = null; // the operator has taken it in hand
     const index = await rebuildIndex(client, config.librarySync, preferredArrangements(), { incremental: true });
     res.json({
       builtAt: index.builtAt,
@@ -759,6 +815,35 @@ app.post("/api/index/reindex-changed", async (_req, res) => {
   } catch (err) {
     res.status(502).json({ error: indexBuildError(err) });
   }
+});
+
+// Performance mode is deliberately a manual switch as well as an automatic
+// one: the operator knows a service starts in ten minutes and no amount of
+// layer-watching does.
+app.get("/api/performance-mode", async (_req, res) => {
+  await pollPerformance();
+  res.json({
+    armed: performance.armed,
+    source: performance.source,
+    since: performance.since ? new Date(performance.since).toISOString() : null,
+    description: describePerformance(performance),
+    lastError: performance.lastError,
+  });
+});
+
+app.post("/api/performance-mode", (req, res) => {
+  const { armed } = req.body ?? {};
+  if (typeof armed !== "boolean") {
+    return res.status(400).json({ error: "armed must be true or false" });
+  }
+  performance = armed ? armManually(performance, Date.now()) : disarmManually(performance, Date.now());
+  console.log(`Performance mode ${armed ? "ON" : "OFF"} (by hand) — ${describePerformance(performance)}`);
+  res.json({
+    armed: performance.armed,
+    source: performance.source,
+    since: performance.since ? new Date(performance.since).toISOString() : null,
+    description: describePerformance(performance),
+  });
 });
 
 app.get("/api/search", (req, res) => {
@@ -2296,14 +2381,16 @@ app.listen(port, "127.0.0.1", async () => {
     return;
   }
 
+  // Establish whether anything is on the screens before deciding to do work.
+  await pollPerformance();
+  startPerformancePolling();
+
   const existing = await loadIndexFromDisk();
   if (!existing) {
-    if (isServiceDay()) {
-      // Never start an hour-long library crawl on a Saturday or Sunday
-      // unasked — that's exactly when ProPresenter needs to stay responsive.
-      autoRebuildDeferred = true;
-      console.log("No search index cache found, but it's a service day — not building automatically.");
-      console.log("Search will be empty until you press Rebuild Now on the Health screen.");
+    if (frozen()) {
+      indexWorkDeferred = "performance mode is on";
+      console.log(`No search index cache found, but performance mode is on — not building. ${describePerformance(performance)}`);
+      console.log("Search will be empty until you build it from the Health screen.");
     } else {
       console.log("No search index cache found — building initial index...");
       try {
@@ -2315,10 +2402,10 @@ app.listen(port, "127.0.0.1", async () => {
       }
     }
   } else if (shouldAutoRebuild(existing)) {
-    if (isServiceDay()) {
-      autoRebuildDeferred = true;
-      console.log("Cached index is stale, but it's a service day — not rebuilding automatically.");
-      console.log("The existing index still works; rebuild from the Health screen when you have a clear hour or two.");
+    if (frozen()) {
+      indexWorkDeferred = "performance mode is on";
+      console.log(`Cached index is stale, but performance mode is on — not reindexing. ${describePerformance(performance)}`);
+      console.log("The existing index still works; it will catch up once performance mode ends.");
     } else {
       console.log("Cached index is stale (older than a day, or built by a previous version) — reindexing changed presentations in background...");
       rebuildIndex(client, config.librarySync, preferredArrangements(), { incremental: true })

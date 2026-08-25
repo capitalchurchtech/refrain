@@ -285,3 +285,34 @@ test("a full rebuild is suggested once the library has not been fully read in a 
   assert.match(s.message, /playlist membership/);
   assert.match(s.message, /quiet hour/);
 });
+
+test("performance mode stops the watcher before it makes any call at all", async () => {
+  // The promise is that Refrain goes completely quiet, not that it looks
+  // around and then behaves. If plan() runs, that is an API call we said we
+  // would not make.
+  const { deps, calls } = harness({ frozen: () => true });
+  const w = startLibraryWatch(deps, { debounceMs: 1, safetyNetMs: 60_000 });
+  try {
+    await w.checkNow("test");
+    assert.equal(calls.plans, 0, "performance mode must prevent even the check");
+    assert.equal(calls.reindexes, 0);
+    assert.match(w.status().outcome, /performance mode is on/);
+  } finally {
+    w.stop();
+  }
+});
+
+test("the watcher resumes once performance mode ends", async () => {
+  let armed = true;
+  const { deps, calls } = harness({ frozen: () => armed });
+  const w = startLibraryWatch(deps, { debounceMs: 1, safetyNetMs: 60_000 });
+  try {
+    await w.checkNow("while armed");
+    assert.equal(calls.reindexes, 0);
+    armed = false;
+    await w.checkNow("after");
+    assert.equal(calls.reindexes, 1, "work deferred during a service must happen afterwards");
+  } finally {
+    w.stop();
+  }
+});

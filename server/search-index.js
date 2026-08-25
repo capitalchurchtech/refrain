@@ -35,7 +35,8 @@ const PRESENTATION_FETCH_CONCURRENCY = 1;
  * altogether. ProPresenter is a live production tool, and Refrain is a guest
  * on its API, so the crawl now paces itself rather than taking everything the
  * API will give. Rebuilds get slower; they are already a "do this when
- * nothing is happening" job (see isServiceDay), so that is the right trade.
+ * nothing is happening" job — see performance-mode.js, which stops Refrain
+ * starting one while anything is on the screens — so that is the right trade.
  */
 const FETCH_PACING_MS = 120;
 
@@ -441,18 +442,6 @@ export function getIndexedArrangementNames() {
     if (entry.arrangementName) names.add(entry.arrangementName);
   }
   return [...names].sort((a, b) => a.localeCompare(b));
-}
-
-/**
- * Saturday or Sunday, when a church is most likely to be setting up for or
- * running a service. A rebuild crawls the whole library and makes
- * ProPresenter sluggish for as long as it runs, so Refrain never starts one
- * by itself on these days: it waits to be asked. Local time on purpose,
- * since "is it the weekend" means the operator's weekend.
- */
-export function isServiceDay(now = new Date()) {
-  const day = now.getDay();
-  return day === 0 || day === 6;
 }
 
 export function shouldAutoRebuild(index) {

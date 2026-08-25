@@ -105,6 +105,7 @@ export function decideAutoReindex({
  *   rebuildInProgress()
  *   readyForMs()      -> ms ProPresenter has been answering, or null (may be async)
  *   crawlPlaylists()
+ *   frozen()          -> true when performance mode is on (optional)
  */
 export function startLibraryWatch(deps, options = {}) {
   const cfg = { ...WATCH_DEFAULTS, ...options };
@@ -117,6 +118,13 @@ export function startLibraryWatch(deps, options = {}) {
 
   async function check(trigger) {
     if (stopped || checking) return;
+    // Performance mode is checked before anything else, and before any API
+    // call: the promise is that Refrain goes completely quiet, not that it
+    // looks around and then decides to behave.
+    if (deps.frozen?.()) {
+      last = { at: new Date().toISOString(), outcome: "performance mode is on", count: 0, pending: null, trigger };
+      return;
+    }
     checking = true;
     try {
       let plan = null;

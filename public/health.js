@@ -767,18 +767,26 @@ function renderHealth(health, configOptions, versionInfo) {
             : ""
         }
         ${
-          index.autoRebuildDeferred
-            ? `<div class="alert alert-info py-2 text-sm mt-2 items-start">
+          // Performance mode is the loudest thing on this card while it is on:
+          // every "why hasn't it indexed" question has the same answer, and it
+          // should be answered before it is asked.
+          index.performanceMode?.armed
+            ? `<div class="alert alert-warning py-2 text-sm mt-2 items-start">
                  <i data-lucide="pause-circle" class="w-4 h-4 shrink-0 mt-0.5"></i>
-                 <span><strong>${index.builtAt ? "This index is out of date" : "No index has been built yet"}, and Refrain did not rebuild it automatically because it is a Saturday or Sunday.</strong>
-                 ${index.builtAt ? "Search still works from the existing index." : "Search will stay empty until you build it."}
-                 ${
-                   index.builtAt
-                     ? "Reindexing changed presentations below is quick and safe to run now. A full rebuild is the one to leave until after the weekend."
-                     : "There is nothing to reindex against yet, so the first build has to be a full one — leave it until you have a clear hour or two."
-                 }</span>
+                 <span><strong>Performance mode is on, so Refrain is not indexing in the background.</strong>
+                 ${escapeHtml(index.performanceMode.description)}
+                 Search works normally from the index you already have, and anything you press below still runs.
+                 Turn it off from the Live screen when the service is over${
+                   index.performanceMode.source === "manual" ? " — it was turned on by hand, so it will not clear on its own" : ""
+                 }.</span>
                </div>`
-            : ""
+            : index.indexWorkDeferred
+              ? `<div class="alert alert-info py-2 text-sm mt-2 items-start">
+                   <i data-lucide="pause-circle" class="w-4 h-4 shrink-0 mt-0.5"></i>
+                   <span><strong>${index.builtAt ? "This index is out of date" : "No index has been built yet"}, and Refrain skipped the work because ${escapeHtml(index.indexWorkDeferred)}.</strong>
+                   ${index.builtAt ? "Search still works from the existing index." : "Search will stay empty until you build it."}</span>
+                 </div>`
+              : ""
         }
         ${
           index.rebuild.inProgress
