@@ -240,9 +240,21 @@ export function initHealth() {
           // turned into a full rebuild is exactly the surprise the warning
           // above is trying to prevent.
           const c = data.counts;
+          // "unverifiable" has to be named, not folded into the others. On the
+          // first reindex after an upgrade it can be most of the library, and a
+          // message reading "0 changed, 0 new" for a run that re-read 221
+          // presentations over half a minute is just baffling.
+          const parts = c
+            ? [
+                `${c.changed} changed`,
+                `${c.added} new`,
+                ...(c.unverifiable ? [`${c.unverifiable} re-checked`] : []),
+                `${c.carriedOver} reused`,
+              ]
+            : [];
           const message =
             data.buildMode === "incremental" && c
-              ? `Reindexed in ${formatDuration(data.buildDurationMs)}: ${c.changed} changed, ${c.added} new, ${c.carriedOver} unchanged.`
+              ? `Reindexed in ${formatDuration(data.buildDurationMs)}: ${parts.join(", ")}.`
               : `Full rebuild was needed, finished in ${formatDuration(data.buildDurationMs)}.`;
           // Re-render so the status tiles and the last-run line stop showing
           // pre-reindex figures, then put the result back on the fresh element
@@ -743,7 +755,9 @@ function renderHealth(health, configOptions, versionInfo) {
                     ? "Duration unknown — built before this was tracked; rebuild once to see it."
                     : `Last ${index.buildMode === "incremental" ? "reindex" : "full rebuild"} took ${formatDuration(index.buildDurationMs)}${
                         index.buildMode === "incremental" && index.reindexCounts
-                          ? ` — re-read ${index.reindexCounts.changed + index.reindexCounts.added + index.reindexCounts.unverifiable}, reused ${index.reindexCounts.carriedOver}`
+                          ? ` — re-read ${
+                              index.reindexCounts.changed + index.reindexCounts.added + index.reindexCounts.unverifiable
+                            }, reused ${index.reindexCounts.carriedOver}`
                           : index.crawledPlaylists
                             ? " (included a playlist crawl)"
                             : " (playlist crawl was off)"

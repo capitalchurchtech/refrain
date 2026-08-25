@@ -105,7 +105,10 @@ This is the check that proves the fingerprinting actually notices real edits —
 if it silently missed them, search would keep serving the old lyrics with no
 sign anything was wrong.
 
-Run this on a weekday, because step 1 is a full rebuild.
+Run this on a weekday, because step 1 is a full rebuild. Give ProPresenter a
+few minutes after launching before you start: a rebuild begun while it is still
+indexing its own media loses most of its reads (measured: 221 of 445 failed,
+then succeeded in 15-30ms each once it had settled).
 
 1. On the Health screen, open **Rebuild everything instead** and press
    **Rebuild Everything**. Let it finish. Note the duration it reports.
