@@ -7,6 +7,13 @@ import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { normalizeText } from "./propresenter-client.js";
 import { resolveArrangement, flattenGroups } from "./arrangements.js";
+import {
+  readFingerprint,
+  readFingerprintUnchangedSince,
+  carriedEntryFields,
+  planIncremental,
+  fingerprintTargets,
+} from "./index-fingerprint.js";
 
 const CACHE_DIR = "./cache";
 const CACHE_PATH = path.join(CACHE_DIR, "search-index.json");
@@ -14,8 +21,10 @@ const REBUILD_TIME_GATE_MS = 24 * 60 * 60 * 1000;
 // Bumped whenever an index entry gains a field the app relies on, so an
 // older cache is treated as stale and rebuilt instead of silently serving
 // entries missing it. v2 added each slide's (groupId, groupOffset) anchor
-// and the arrangement each presentation was indexed under.
-const SCHEMA_VERSION = 2;
+// and the arrangement each presentation was indexed under. v3 added each
+// presentation's file path and fingerprint, which is what lets a later rebuild
+// re-read only the presentations whose file actually changed.
+const SCHEMA_VERSION = 3;
 const PRESENTATION_FETCH_CONCURRENCY = 1;
 /**
  * Pause between presentation fetches during a rebuild.
@@ -34,6 +43,9 @@ const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 let currentIndex = { builtAt: null, presentations: {} };
 let rebuildInFlight = null;
+// Which kind of run is in flight, so a later caller can tell whether joining it
+// would actually satisfy them. See the guard in rebuildIndex.
+let rebuildInFlightMode = null;
 let rebuildProgress = { inProgress: false, stage: null, current: 0, total: 0 };
 
 export function getIndex() {
@@ -89,10 +101,24 @@ async function persistIndex(index) {
  *     by default. Search still covers every presentation in the synced
  *     folders either way.
  */
-export async function rebuildIndex(client, syncOptions = {}, preferredArrangements = []) {
-  if (rebuildInFlight) return rebuildInFlight;
+export async function rebuildIndex(client, syncOptions = {}, preferredArrangements = [], options = {}) {
+  // Joining an in-flight run is only sound when it does at least as much work
+  // as the caller asked for. A full rebuild is a superset of an incremental
+  // one, so an incremental caller can wait on it. The reverse would report
+  // success for a full rebuild that never re-read anything.
+  if (rebuildInFlight) {
+    if (options.incremental || rebuildInFlightMode === "full") return rebuildInFlight;
+    throw new Error("A reindex is already running. Wait for it to finish, then start a full rebuild.");
+  }
   const { folders = null, crawlPlaylists = false } = syncOptions;
+  const { incremental = false } = options;
+  rebuildInFlightMode = incremental ? "incremental" : "full";
   const startedAt = Date.now();
+  // Captured before anything is fetched: currentIndex is only replaced at the
+  // very end, but read it once so the failure fallback below cannot be
+  // confused by a concurrent swap.
+  const previousPresentations = currentIndex?.presentations ?? {};
+  const buildOptions = { preferredArrangements, crawlPlaylists };
 
   rebuildProgress = { inProgress: true, stage: "library", current: 0, total: 0 };
 
@@ -157,12 +183,59 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
       }
     }
 
-    const idsNeedingSlides = Object.keys(presentations).filter(
-      (id) => presentations[id].slides.length === 0
-    );
+    // Work out what actually has to be re-read. Everything else keeps the
+    // slides the previous build already paid for.
+    const skeletonIds = Object.keys(presentations).filter((id) => presentations[id].slides.length === 0);
+    let plan = { mode: "full" };
+    let carriedFingerprints = {};
+    if (incremental) {
+      if (!client.isLocalHost) {
+        plan = { mode: "full", reason: "ProPresenter is on another machine, so its files cannot be checked" };
+      } else {
+        rebuildProgress = { inProgress: true, stage: "checking files", current: 0, total: skeletonIds.length };
+        const targets = fingerprintTargets({ ids: skeletonIds, previous: currentIndex });
+        const fingerprints = {};
+        // Local disk and ~88KB a file: the whole library fingerprints in well
+        // under a second, so this runs unpaced, unlike the API crawl below.
+        await Promise.all(
+          targets.map(async ({ id, path: filePath }) => {
+            fingerprints[id] = await readFingerprint(filePath);
+          })
+        );
+        carriedFingerprints = fingerprints;
+        plan = planIncremental({
+          ids: skeletonIds,
+          previous: currentIndex,
+          fingerprints,
+          buildOptions,
+          schemaVersion: SCHEMA_VERSION,
+        });
+      }
+    }
+
+    let idsNeedingSlides = skeletonIds;
+    if (plan.mode === "incremental") {
+      for (const [id, carried] of Object.entries(plan.carryOver)) {
+        Object.assign(presentations[id], carried);
+      }
+      idsNeedingSlides = plan.needFetch;
+      const { carriedOver, changed, added, unverifiable } = plan.counts;
+      console.log(
+        `Incremental reindex: ${carriedOver} unchanged, ${changed} changed, ${added} new, ` +
+          `${unverifiable} unverifiable. Re-reading ${idsNeedingSlides.length} of ${skeletonIds.length}.`
+      );
+    } else if (incremental) {
+      console.log(`Full rebuild instead of incremental: ${plan.reason}.`);
+    }
+
     let fetched = 0;
+    let failedButKept = 0;
+    let failedAndEmpty = 0;
     rebuildProgress = { inProgress: true, stage: "presentations", current: 0, total: idsNeedingSlides.length };
     await runWithConcurrency(idsNeedingSlides, PRESENTATION_FETCH_CONCURRENCY, async (id) => {
+      // Used to tell "the file is as we read it" from "the operator saved it
+      // while we were reading it" for presentations we had no prior path for.
+      const fetchStartedAt = Date.now();
       try {
         const doc = await client.getPresentation(id);
         // Record which arrangement produced these indices, so the UI can show
@@ -173,13 +246,36 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
         presentations[id].arrangementName = resolved.arrangementName;
         presentations[id].arrangementId = resolved.arrangementId;
         presentations[id].arrangementSource = resolved.source;
-        const { createdDate, modifiedDate } = await client.getFileDates(doc?.presentation?.presentation_path);
+        const presentationPath = doc?.presentation?.presentation_path ?? null;
+        const { createdDate, modifiedDate } = await client.getFileDates(presentationPath);
         presentations[id].createdDate = createdDate;
         presentations[id].modifiedDate = modifiedDate;
+        presentations[id].presentationPath = presentationPath;
+        // Prefer the fingerprint taken BEFORE this fetch, when we had one.
+        // If the operator saves this presentation while we are reading it,
+        // the pre-fetch fingerprint describes older content than the slides
+        // we just indexed, so the next reindex re-reads it. Fingerprinting
+        // afterwards would do the opposite and leave stale slides looking
+        // current.
+        presentations[id].fingerprint =
+          carriedFingerprints[id] ??
+          (client.isLocalHost ? await readFingerprintUnchangedSince(presentationPath, fetchStartedAt) : null);
       } catch {
-        // Presentation may have been deleted since the library listing
-        // was fetched, or the API call failed transiently — skip it
-        // rather than aborting the whole rebuild.
+        // The presentation may have been deleted since the library listing was
+        // fetched, or the call may have failed transiently.
+        //
+        // If we already had slides for it, keep them rather than leaving the
+        // entry empty: a timeout on one song during a reindex would otherwise
+        // drop that song out of search entirely, which looks exactly like the
+        // lyrics having been deleted. The previous entry's fingerprint comes
+        // back with it, so the next reindex sees the mismatch and retries.
+        const prev = previousPresentations[id];
+        if (prev?.slides?.length) {
+          Object.assign(presentations[id], carriedEntryFields(prev));
+          failedButKept += 1;
+        } else {
+          failedAndEmpty += 1;
+        }
       }
       fetched += 1;
       rebuildProgress.current = fetched;
@@ -191,11 +287,23 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
       }
     });
 
+    if (failedButKept > 0) {
+      console.log(`${failedButKept} presentation(s) could not be re-read — kept the slides from the previous index.`);
+    }
+    if (failedAndEmpty > 0) {
+      console.log(`${failedAndEmpty} presentation(s) could not be read and have no slides indexed.`);
+    }
+
     const newIndex = {
       schemaVersion: SCHEMA_VERSION,
       builtAt: new Date().toISOString(),
       buildDurationMs: Date.now() - startedAt,
       crawledPlaylists: crawlPlaylists,
+      // Recorded so the next incremental run can tell whether the settings
+      // that decide what an entry CONTAINS have changed since this build.
+      buildOptions,
+      buildMode: plan.mode,
+      reindexCounts: plan.counts ?? null,
       presentations,
     };
     currentIndex = newIndex;
@@ -207,6 +315,7 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
     return await rebuildInFlight;
   } finally {
     rebuildInFlight = null;
+    rebuildInFlightMode = null;
     rebuildProgress = { inProgress: false, stage: null, current: 0, total: 0 };
   }
 }

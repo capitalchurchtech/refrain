@@ -592,6 +592,8 @@ function indexStatusPayload() {
     builtAt: index.builtAt,
     buildDurationMs: index.buildDurationMs ?? null,
     crawledPlaylists: Boolean(index.crawledPlaylists),
+    buildMode: index.buildMode ?? null,
+    reindexCounts: index.reindexCounts ?? null,
     presentationCount: Object.keys(index.presentations).length,
     rebuild: getRebuildProgress(),
   };
@@ -651,10 +653,26 @@ app.post("/api/library-folders", async (req, res) => {
   // build (Section 5.3). The caller polls /api/index/status for
   // progress rather than this request staying open for what could be
   // a slow full-library crawl.
-  rebuildIndex(client, config.librarySync, preferredArrangements()).catch((err) => {
+  rebuildIndex(client, config.librarySync, preferredArrangements(), { incremental: true }).catch((err) => {
     console.error("Library-scope rebuild failed:", err.message);
   });
 });
+
+/**
+ * Turns a transport-level failure into something a volunteer can act on.
+ * undici says "fetch failed"; the operator needs to know ProPresenter is the
+ * thing that isn't answering, and where Refrain was looking.
+ */
+function indexBuildError(err) {
+  const raw = err?.message ?? "Unknown error";
+  if (/fetch failed|ECONNREFUSED|ETIMEDOUT|socket hang up|aborted|timeout/i.test(raw)) {
+    return (
+      `Could not reach ProPresenter at ${config.propresenter.host}:${config.propresenter.port}. ` +
+      "Check it is running with its Network API enabled (Preferences > Network), and that the host and port under Settings are correct."
+    );
+  }
+  return raw;
+}
 
 // An explicit rebuild is always honored, service day or not — the whole
 // point of the deferral is that the operator decides.
@@ -664,7 +682,28 @@ app.post("/api/index/rebuild", async (_req, res) => {
     const index = await rebuildIndex(client, config.librarySync, preferredArrangements());
     res.json({ builtAt: index.builtAt, presentationCount: Object.keys(index.presentations).length });
   } catch (err) {
-    res.status(502).json({ error: err.message });
+    res.status(502).json({ error: indexBuildError(err) });
+  }
+});
+
+// Reindex only the presentations whose .pro file changed since the last build.
+// Falls back to a full rebuild on its own when carrying entries over would be
+// unsafe (settings changed, schema changed, ProPresenter on another machine) —
+// the response says which happened so the operator isn't surprised by an
+// hour-long crawl they didn't ask for.
+app.post("/api/index/reindex-changed", async (_req, res) => {
+  try {
+    autoRebuildDeferred = false; // the operator has taken it in hand
+    const index = await rebuildIndex(client, config.librarySync, preferredArrangements(), { incremental: true });
+    res.json({
+      builtAt: index.builtAt,
+      presentationCount: Object.keys(index.presentations).length,
+      buildMode: index.buildMode,
+      buildDurationMs: index.buildDurationMs,
+      counts: index.reindexCounts,
+    });
+  } catch (err) {
+    res.status(502).json({ error: indexBuildError(err) });
   }
 });
 
@@ -2225,8 +2264,10 @@ app.listen(port, "127.0.0.1", async () => {
       console.log("Cached index is stale, but it's a service day — not rebuilding automatically.");
       console.log("The existing index still works; rebuild from the Health screen when you have a clear hour or two.");
     } else {
-      console.log("Cached index is stale (older than a day, or built by a previous version) — rebuilding in background...");
-      rebuildIndex(client, config.librarySync, preferredArrangements()).catch((err) => console.error("Background rebuild failed:", err.message));
+      console.log("Cached index is stale (older than a day, or built by a previous version) — reindexing changed presentations in background...");
+      rebuildIndex(client, config.librarySync, preferredArrangements(), { incremental: true }).catch((err) =>
+        console.error("Background rebuild failed:", err.message)
+      );
     }
   } else {
     console.log(`Loaded cached index (built ${existing.builtAt}, ${Object.keys(existing.presentations).length} presentations).`);
