@@ -10,10 +10,15 @@
  * anything is on the screens right now, for the cost of one call.
  *
  * The point of a mode rather than more heuristics is that it is a promise
- * rather than a guess: while it is armed, Refrain makes no API call it was not
- * asked to make. That is something an operator can verify and a README can
- * state. Anything the operator presses still works — they are in charge; it is
- * only Refrain's own initiative that stops.
+ * rather than a guess: while it is armed, Refrain does no indexing and no
+ * library crawling. Anything the operator presses still works — they are in
+ * charge; it is only Refrain's own initiative that stops.
+ *
+ * One thing deliberately keeps running: the few-second heartbeat that feeds the
+ * link indicator and the live readout. Freezing that would be exactly
+ * backwards, because knowing whether ProPresenter is still answering matters
+ * MORE during a service, not less. It is two trivial calls; the expensive thing
+ * this mode exists to stop is index work.
  */
 
 export const PERFORMANCE_DEFAULTS = {

@@ -363,6 +363,23 @@ export async function planReindex(client, syncOptions = {}, preferredArrangement
   });
 }
 
+/**
+ * What the index knows about one slide, for the live readout: the names an
+ * operator would recognise rather than the uuids the API deals in.
+ */
+export function getIndexedSlide(presentationId, slideIndex) {
+  const entry = currentIndex?.presentations?.[presentationId];
+  if (!entry) return null;
+  const slide = entry.slides?.find((s) => s.index === slideIndex) ?? null;
+  return {
+    presentationName: entry.name ?? null,
+    arrangementName: entry.arrangementName ?? null,
+    folder: entry.folder ?? null,
+    text: slide?.text ?? null,
+    slideCount: entry.slides?.length ?? null,
+  };
+}
+
 /** Every distinct folder the indexed presentations live in. */
 export function getIndexedLibraryDirs() {
   const dirs = new Set();

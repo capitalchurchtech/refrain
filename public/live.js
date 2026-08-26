@@ -79,10 +79,11 @@ export function initLive() {
               </div>
               <div id="perf-mode-why" class="text-sm opacity-70"></div>
               <div class="text-xs opacity-60">
-                While this is on, Refrain does nothing on its own &mdash; no indexing, no update checks,
-                no background calls to ProPresenter at all. Everything you press still works. It turns
-                itself on when something has been on the screens for a couple of minutes, and off again
-                once the screens have been clear for a while.
+                While this is on, Refrain does nothing on its own. No indexing, no reindexing, no
+                update checks. It keeps checking the link every few seconds, because that is what the
+                indicator in the rail is reading. Everything you press still works. It turns itself on
+                when something has been on the screens for a couple of minutes, and off again once the
+                screens have been clear for a while.
               </div>
             </div>
           </div>

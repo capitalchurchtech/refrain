@@ -51,9 +51,11 @@ import {
   planReindex,
   getIndexedLibraryDirs,
   daysSinceFullBuild,
+  getIndexedSlide,
 } from "./search-index.js";
 import { startLibraryWatch, fullRebuildSuggestion } from "./library-watch.js";
 import {
+  isLive,
   initialState as initialPerformanceState,
   advance as advancePerformance,
   armManually,
@@ -604,30 +606,106 @@ let indexWorkDeferred = null;
  * answer, and it is right about Wednesday evenings and empty Saturdays alike.
  */
 let performance = initialPerformanceState();
-let performancePollTimer = null;
+let heartbeatTimer = null;
 
-async function pollPerformance() {
+/**
+ * The heartbeat. Two trivial calls every few seconds, feeding three things a
+ * live operator needs: whether ProPresenter is answering, what is on the
+ * screens, and whether performance mode should be armed.
+ *
+ * This is the one thing that keeps running while performance mode is armed.
+ * Freezing it would be exactly backwards: the link indicator and the live
+ * readout matter MORE during a service, not less. What performance mode stops
+ * is index work, which is the expensive part.
+ */
+const HEARTBEAT_MS = 4_000;
+
+let liveState = {
+  connected: false,
+  live: false,
+  slide: null,
+  liveSince: null,
+  checkedAt: null,
+};
+
+function slideKey(slide) {
+  return slide ? `${slide.presentationId}:${slide.slideIndex}` : null;
+}
+
+async function heartbeat() {
   let layers = null;
+  let current = null;
   try {
-    layers = await client.getLayerStatus();
+    // Both are a few milliseconds. Fetched together so the readout and the
+    // link indicator can never disagree about the same moment.
+    [layers, current] = await Promise.all([
+      client.getLayerStatus(),
+      client.getCurrentSlide().catch(() => null),
+    ]);
   } catch {
-    layers = null; // treated as "cannot tell", which arms it
+    layers = null; // ProPresenter is not answering
   }
+
+  const now = Date.now();
+  const connected = layers !== null;
+  const enriched = current
+    ? { ...current, ...(getIndexedSlide(current.presentationId, current.slideIndex) ?? {}) }
+    : null;
+
+  // Elapsed time is measured from when THIS slide appeared, so it survives
+  // polling and does not restart on every check.
+  const sameSlide = slideKey(enriched) === slideKey(liveState.slide);
+  liveState = {
+    connected,
+    live: Boolean(layers) && isLive(layers),
+    layers: layers ?? null,
+    slide: enriched,
+    liveSince: enriched ? (sameSlide ? liveState.liveSince : now) : null,
+    checkedAt: now,
+  };
+
   const was = performance.armed;
-  performance = advancePerformance({ state: performance, layers, now: Date.now() });
+  performance = advancePerformance({ state: performance, layers, now });
   if (performance.armed !== was) {
     console.log(`Performance mode ${performance.armed ? "ON" : "OFF"} — ${describePerformance(performance)}`);
   }
   return performance;
 }
 
+// Kept as the old name so the boot path reads the same.
+const pollPerformance = heartbeat;
+
 function startPerformancePolling() {
-  clearInterval(performancePollTimer);
-  // One cheap call. Frequent enough that arming lands well inside the two
-  // minutes of output it takes to trigger.
-  performancePollTimer = setInterval(pollPerformance, 30_000);
-  performancePollTimer.unref?.();
-  pollPerformance().catch(() => {});
+  clearInterval(heartbeatTimer);
+  heartbeatTimer = setInterval(() => heartbeat().catch(() => {}), HEARTBEAT_MS);
+  heartbeatTimer.unref?.();
+  heartbeat().catch(() => {});
+}
+
+/**
+ * What is on the screens, and whether we can still see ProPresenter.
+ *
+ * Served from the heartbeat's cache, so a browser polling this costs nothing
+ * on ProPresenter's side no matter how many tabs are open.
+ */
+function liveStatePayload() {
+  return {
+    connected: liveState.connected,
+    live: liveState.live,
+    slide: liveState.slide
+      ? {
+          presentationId: liveState.slide.presentationId,
+          presentationName: liveState.slide.presentationName ?? liveState.slide.name ?? null,
+          arrangementName: liveState.slide.arrangementName ?? null,
+          slideIndex: liveState.slide.slideIndex,
+          slideCount: liveState.slide.slideCount ?? null,
+          text: liveState.slide.text ?? null,
+        }
+      : null,
+    liveSince: liveState.liveSince ? new Date(liveState.liveSince).toISOString() : null,
+    checkedAt: liveState.checkedAt ? new Date(liveState.checkedAt).toISOString() : null,
+    performanceMode: { armed: performance.armed, source: performance.source },
+  };
 }
 
 /** True when Refrain should not be doing anything of its own accord. */
@@ -820,6 +898,13 @@ app.post("/api/index/reindex-changed", async (_req, res) => {
 // Performance mode is deliberately a manual switch as well as an automatic
 // one: the operator knows a service starts in ten minutes and no amount of
 // layer-watching does.
+// Polled by the live readout and the link indicator. Deliberately reads the
+// heartbeat's cache rather than calling ProPresenter, so a browser left open on
+// this screen costs ProPresenter nothing.
+app.get("/api/live-state", (_req, res) => {
+  res.json(liveStatePayload());
+});
+
 app.get("/api/performance-mode", async (_req, res) => {
   await pollPerformance();
   res.json({

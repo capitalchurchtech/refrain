@@ -10,6 +10,7 @@ import { initLive } from "./live.js";
 import { initScripture } from "./scripture.js";
 import { initLibrarySync } from "./library-sync.js";
 import { initReturnBar } from "./return-bar.js";
+import { initLinkIndicator } from "./link-indicator.js";
 import { installGlobalErrorBoundary, safeRender } from "./error-boundary.js";
 import { initNav, applyTheme } from "./nav.js";
 
@@ -66,6 +67,7 @@ function startApp() {
   const scripture = initScripture();
   const librarySync = initLibrarySync();
   initReturnBar();
+  initLinkIndicator();
 
   const renderers = {
     health: health.render,

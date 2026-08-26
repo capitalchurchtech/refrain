@@ -1,8 +1,11 @@
+import { mountLiveReadout, paintGoing, clearGoing } from "./live-readout.js";
+
 export function initSearch() {
   const queryInput = document.getElementById("query");
   const resultsEl = document.getElementById("results");
   const statusEl = document.getElementById("index-status");
   const connectionBanner = document.getElementById("connection-banner");
+  mountLiveReadout(document.getElementById("search-readout"));
   const dateFilterToggle = document.getElementById("date-filter-toggle");
   const dateFilterPanel = document.getElementById("date-filter-panel");
   const dateFieldSelect = document.getElementById("date-field");
@@ -151,7 +154,7 @@ export function initSearch() {
               </div>
             </div>
             <div class="flex flex-col gap-1 shrink-0">
-              <button class="btn btn-brand btn-xs go-live-btn" data-presentation-id="${song.presentationId}" data-slide-index="0">
+              <button class="btn btn-brand btn-xs go-live-btn" data-presentation-id="${song.presentationId}" data-slide-index="0" data-presentation-name="${escapeHtml(song.presentationName ?? "")}" data-arrangement-name="${escapeHtml(song.arrangementName ?? "")}">
                 Go Live (Slide 1)
               </button>
               <button class="btn btn-outline btn-xs show-in-editor-btn" data-presentation-id="${song.presentationId}">
@@ -170,7 +173,7 @@ export function initSearch() {
                   </div>
                   <div class="text-sm">${highlightMatch(r.snippet, query)}</div>
                 </div>
-                <button class="btn btn-brand btn-xs go-live-btn shrink-0" data-presentation-id="${r.presentationId}" data-slide-index="${r.slideIndex}" data-group-id="${escapeHtml(r.groupId ?? "")}" data-group-offset="${r.groupOffset ?? ""}" data-slide-text="${escapeHtml(r.snippet ?? "")}">
+                <button class="btn btn-brand btn-xs go-live-btn shrink-0" data-presentation-id="${r.presentationId}" data-slide-index="${r.slideIndex}" data-group-id="${escapeHtml(r.groupId ?? "")}" data-group-offset="${r.groupOffset ?? ""}" data-slide-text="${escapeHtml(r.snippet ?? "")}" data-presentation-name="${escapeHtml(r.presentationName ?? "")}" data-arrangement-name="${escapeHtml(r.arrangementName ?? "")}">
                   Go Live
                 </button>
               </div>
@@ -236,6 +239,20 @@ export function initSearch() {
     return `${minutes}m ${seconds}s`;
   }
 
+  // Acknowledgement has to land inside 50ms, and a fetch round trip does not
+  // qualify. The readout paints from the button's own data on mousedown, then
+  // the next poll corrects it against what ProPresenter actually did.
+  resultsEl.addEventListener("mousedown", (e) => {
+    const btn = e.target.closest(".go-live-btn");
+    if (!btn) return;
+    paintGoing({
+      presentationName: btn.dataset.presentationName || null,
+      arrangementName: btn.dataset.arrangementName || null,
+      slideIndex: btn.dataset.slideIndex === "" ? null : Number(btn.dataset.slideIndex),
+      text: btn.dataset.slideText || "",
+    });
+  });
+
   resultsEl.addEventListener("click", async (e) => {
     const liveBtn = e.target.closest(".go-live-btn");
     if (liveBtn) {
@@ -257,6 +274,7 @@ export function initSearch() {
         });
         if (!res.ok) {
           const { error } = await res.json();
+          clearGoing();
           alert(`Failed to go live: ${error}`);
         } else {
           window.refreshReturnBar?.();

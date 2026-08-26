@@ -132,6 +132,123 @@
       --b3: 16% 0 0;
       --bc: 80% 0 0;
     }
+    /* ---------------------------------------------------------------
+       Live readout: bezel / glass / phosphor.
+
+       Hand-written rather than composed from utility classes, because
+       these are the creative direction's real values and none of them
+       have a Tailwind equivalent. Also why this works without the CDN
+       decision being settled: it depends on nothing but CSS.
+
+       Three materials, every junction articulated. The bezel gradient
+       runs dark at the top to lighter at the bottom - inverted from
+       every other panel, because the glass beneath throws light
+       upward, and that inversion is what sells it.
+       --------------------------------------------------------------- */
+    .rf-readout { --rf-emit: 169,111,232; --rf-ink: #CBB4F0; }
+    .rf-readout[data-mode="live"] { --rf-emit: 255,74,36; --rf-ink: #FFD3C2; }
+    .rf-readout[data-mode="lost"] { --rf-emit: 122,110,134; --rf-ink: #A295AC; }
+
+    .rf-bezel {
+      background: linear-gradient(180deg, #0F0C15 0%, #241E2E 100%);
+      border-radius: 7px;
+      padding: 5px;
+      box-shadow:
+        inset 0 1px 0 rgba(255,240,235,.14),
+        inset 0 -1px 0 rgba(0,0,0,.55),
+        0 1px 0 rgba(255,240,235,.04),
+        0 2px 4px rgba(0,0,0,.5);
+    }
+
+    .rf-glass {
+      position: relative;
+      overflow: hidden;
+      border-radius: 4px;
+      padding: 9px 11px 10px;
+      background: #0A0810;
+      /* Sunk behind the bezel: things that report are recessed. */
+      box-shadow:
+        inset 0 3px 8px rgba(0,0,0,.9),
+        inset 0 -1px 0 rgba(255,240,235,.07);
+    }
+    /* One diagonal sheen. Two reflections would mean two ceilings. */
+    .rf-glass::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: linear-gradient(118deg, rgba(255,255,255,.05) 0%, rgba(255,255,255,0) 42%);
+    }
+
+    .rf-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+
+    /* Small and uppercase is the sweet spot: 8-10px at 0.15em tracking
+       reads as silkscreen printing. */
+    .rf-status, .rf-arr, .rf-slide, .rf-time {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 9px;
+      letter-spacing: .15em;
+      text-transform: uppercase;
+    }
+    .rf-status {
+      color: var(--rf-ink);
+      text-shadow: 0 0 7px rgba(var(--rf-emit),.55), 0 0 18px rgba(var(--rf-emit),.22);
+    }
+    .rf-time, .rf-arr, .rf-slide { color: #A295AC; }
+    .rf-meta { margin-top: 3px; }
+
+    .rf-primary {
+      margin-top: 4px;
+      font-size: 14px;
+      line-height: 1.42;
+      font-weight: 600;
+      color: var(--rf-ink);
+      text-shadow: 0 0 7px rgba(var(--rf-emit),.55), 0 0 18px rgba(var(--rf-emit),.22);
+      overflow-wrap: anywhere;
+    }
+
+    .rf-detail {
+      margin-top: 5px;
+      font-size: 12px;
+      line-height: 1.42;
+      color: #A295AC;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    /* ---------------------------------------------------------------
+       Link indicator. Present on every screen, because a search tool
+       that quietly stops listening mid-service is worse than one that
+       never worked. Does not pulse.
+       --------------------------------------------------------------- */
+    #link-led {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: #2A2233;
+      box-shadow: inset 0 1px 1px rgba(0,0,0,.8);
+      transition: none;
+    }
+    #link-led[data-link="up"] {
+      background: #EDE0FF;
+      box-shadow: 0 0 6px #C79BFF, 0 0 15px rgba(199,155,255,.7);
+    }
+    #link-row {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 9px;
+      letter-spacing: .15em;
+      text-transform: uppercase;
+      color: #A295AC;
+    }
+    #link-row[data-link="down"] { color: #E8DCEF; }
+
+    @media (prefers-reduced-motion: reduce) {
+      /* Instant state change as the fallback, never removed feedback:
+         the operator still has to see that their press landed. */
+      .rf-bezel, .rf-glass, #link-led { transition: none !important; }
+    }
   </style>
 </head>
 <body class="min-h-screen bg-base-100">
@@ -219,6 +336,10 @@
       <nav id="nav-items" class="flex flex-col gap-1 flex-1"></nav>
 
       <div class="flex flex-col gap-1">
+        <div id="link-row" class="flex items-center gap-3 px-2 h-7" data-link="down" title="ProPresenter link">
+          <span id="link-led" class="shrink-0" data-link="down"></span>
+          <span class="nav-label whitespace-nowrap hidden" id="link-label">No link</span>
+        </div>
         <button id="nav-help-toggle" class="btn btn-ghost btn-sm justify-start gap-3 px-2" title="Keyboard shortcuts (?)">
           <span class="shrink-0"><i data-lucide="keyboard"></i></span>
           <span class="nav-label whitespace-nowrap hidden">Shortcuts</span>
@@ -253,6 +374,11 @@
         </div>
 
         <div class="alert alert-warning mb-4 hidden" id="connection-banner"></div>
+
+        <!-- What is on the screens. Recessed, because it reports rather than
+             being pressed. Sits above the search field so it is in the
+             operator's eyeline on the path to live. -->
+        <div id="search-readout" class="rf-readout mb-4" data-mode="standby"></div>
 
         <div class="flex gap-2 mb-3">
           <input id="query" type="text" placeholder="Search any slide..." class="input input-bordered w-full" autofocus />
