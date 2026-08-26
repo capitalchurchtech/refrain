@@ -324,8 +324,11 @@
         <button id="setup-save-btn" class="btn btn-brand" disabled>Save &amp; Continue</button>
 
         <div id="setup-progress" class="hidden">
-          <progress id="setup-progress-bar" class="progress progress-primary w-full"></progress>
-          <div id="setup-progress-text" class="text-sm opacity-70 mt-1"></div>
+          <div class="flex items-center gap-3">
+            <div id="setup-progress-meter" class="flex-1"></div>
+            <span id="setup-progress-count" class="rf-meter-count"></span>
+          </div>
+          <div id="setup-progress-text" class="text-sm mt-2"></div>
         </div>
       </div>
     </div>

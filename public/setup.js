@@ -1,4 +1,5 @@
 import { noProPresenterFound } from "./strings.js";
+import { createMeter, updateMeter, meterCount } from "./led-meter.js";
 import { injectSvg } from "./nav.js";
 
 /**
@@ -18,7 +19,8 @@ export function initSetup({ onComplete }) {
   const testResult = document.getElementById("setup-test-result");
   const saveBtn = document.getElementById("setup-save-btn");
   const progressWrap = document.getElementById("setup-progress");
-  const progressBar = document.getElementById("setup-progress-bar");
+  const progressMeter = document.getElementById("setup-progress-meter");
+  const progressCount = document.getElementById("setup-progress-count");
   const progressText = document.getElementById("setup-progress-text");
 
   let connectionVerified = false;
@@ -143,15 +145,17 @@ export function initSetup({ onComplete }) {
 
       if (rebuild.inProgress) {
         sawInProgress = true;
-        progressBar.value = rebuild.total ? rebuild.current : 0;
-        progressBar.max = rebuild.total || 1;
+        createMeter(progressMeter);
+        updateMeter(progressMeter, rebuild.current, rebuild.total);
+        progressCount.textContent = meterCount(rebuild.current, rebuild.total);
         // The longest wait in the product, and the one moment the operator is
         // curious rather than under pressure. Warm zone: it can have a pulse,
         // as long as the count underneath it stays honest.
-        progressText.textContent = `Reading every slide you own. Go coil something. ${rebuild.current}${
-          rebuild.total ? `/${rebuild.total}` : ""
-        }`;
+        progressText.textContent = "Reading every slide you own. Go coil something.";
       } else if (status.builtAt) {
+        createMeter(progressMeter);
+        updateMeter(progressMeter, 1, 1);
+        progressCount.textContent = meterCount(presentationCount, presentationCount);
         progressText.textContent = `Indexed ${presentationCount} presentations.`;
         return;
       } else if (sawInProgress) {

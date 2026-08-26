@@ -1,4 +1,5 @@
 import { COPY_FAILED, noProPresenterFound } from "./strings.js";
+import { createMeter, updateMeter, meterCount } from "./led-meter.js";
 const ARRANGEMENT_STATUS_LABEL = {
   off: null, // hidden entirely per Section 4.1
   misconfigured: "Misconfigured",
@@ -218,6 +219,16 @@ export function initHealth() {
       document
         .getElementById("config-network-scan-btn")
         ?.addEventListener("click", (e) => runDetect(e.currentTarget, true));
+    }
+
+    const rebuildMeter = document.getElementById("health-rebuild-meter");
+    if (rebuildMeter) {
+      createMeter(rebuildMeter);
+      updateMeter(rebuildMeter, health.index.rebuild.current, health.index.rebuild.total);
+      document.getElementById("health-rebuild-count").textContent = meterCount(
+        health.index.rebuild.current,
+        health.index.rebuild.total
+      );
     }
 
     const reindexBtn = document.getElementById("health-reindex-btn");
@@ -791,7 +802,11 @@ function renderHealth(health, configOptions, versionInfo) {
         }
         ${
           index.rebuild.inProgress
-            ? `<div class="text-sm mt-1">Rebuilding (${index.rebuild.stage}): ${index.rebuild.current}/${index.rebuild.total || "?"}</div>
+            ? `<div class="flex items-center gap-3 mt-1">
+                 <div id="health-rebuild-meter" class="flex-1"></div>
+                 <span id="health-rebuild-count" class="rf-meter-count"></span>
+               </div>
+               <div class="text-sm mt-2">Reading every slide you own. Go coil something.</div>
                <div class="alert alert-warning py-2 text-sm mt-2 items-start">
                  <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
                  <span><strong>A rebuild is running, so ProPresenter will be sluggish until it finishes.</strong>

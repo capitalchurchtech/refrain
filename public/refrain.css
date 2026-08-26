@@ -606,14 +606,20 @@ html.blackroom #results:has(.go-live-btn:focus-visible) .go-live-btn.rf-armed:no
    ============================================================ */
 
 /**
- * The rail's width lives here rather than in a Tailwind utility.
+ * Static homes for the four layout utilities that only ever exist as JS
+ * strings. DO NOT DELETE THESE AS REDUNDANT.
  *
- * The pinned width would not take effect through `w-32`: the class was on the
- * element, the browser JIT had generated `.w-32 { width: 8rem }`, it was the
- * only matching width rule, and the rail still computed to 64px. An inline
- * `width: 300px !important` computed to 64px too, while a control div with the
- * same declaration was fine. Whatever the JIT is doing there, layout should
- * not be hostage to it.
+ * Tailwind here is the browser build in vendor/tailwind-cdn.js, which
+ * generates utilities by scanning the DOM at runtime. `w-36` and `ml-36`
+ * appear nowhere in any HTML or vendored stylesheet -- only inside a
+ * `classList.toggle("w-36", pinned)` call, which the scanner cannot see. So no
+ * rule exists until its MutationObserver notices the class landing, and
+ * anything reading in the same tick gets the old value. That is what made the
+ * pinned width look like a cascade fight: an inline `width: 300px !important`
+ * also computed to 64px, which no specificity problem can do.
+ *
+ * The general rule, not just for these four: any Tailwind class applied from
+ * JS needs a static home here, or it is a race.
  *
  * These are `#id.class`, so they beat any utility by specificity and resolve
  * deterministically. Keyed off the classes nav.js already toggles so there is
@@ -625,8 +631,15 @@ html.blackroom #results:has(.go-live-btn:focus-visible) .go-live-btn.rf-armed:no
  * THEME: DARK were ellipsising at 128 and a truncated legend is not a legend.
  * Still 80px narrower than the 224px this replaced.
  */
+#nav-rail.w-16 { width: 4rem; }
 #nav-rail.w-36 { width: 9rem; }
+#main-content.ml-16 { margin-left: 4rem; }
 #main-content.ml-36 { margin-left: 9rem; }
+
+/* Same class of bug, smaller blast radius: image-crop.js toggles these from JS
+   to make the config fields inert while the module is off. Without a static
+   rule, a click can land on a field that is meant to be dead. */
+.pointer-events-none { pointer-events: none; }
 
 /* Labels are silkscreen, not navigation text: printed on the panel at
    the size a legend is printed, so they name the control without
@@ -937,4 +950,87 @@ html.blackroom #view-health .badge-error > svg {
 [data-theme="dark"] #view-health .border-error,
 html.blackroom #view-health .border-error {
   border-color: var(--rf-fault);
+}
+
+/* ============================================================
+   14. THE SEGMENTED METER
+
+   Index progress, and nothing else. A meter earns its place because
+   something is actually moving; on a binary state it becomes
+   decoration wearing an instrument's clothes.
+
+   A ladder rather than a continuous fill, because that is how a rack
+   meter is built. The cells are recessed when unlit so the empty
+   ladder reads as a real object before anything starts, rather than as
+   absence.
+   ============================================================ */
+.rf-meter {
+  display: flex;
+  gap: 2px; /* hairline gaps: discrete cells, not a bar with notches drawn on */
+  align-items: stretch;
+  height: 14px;
+  width: 100%;
+}
+
+.rf-meter-cell {
+  flex: 1 1 0;
+  min-width: 0;
+  border-radius: 1px;
+}
+
+[data-theme="dark"] .rf-meter-cell,
+html.blackroom .rf-meter-cell {
+  background-color: var(--rf-machined);
+  box-shadow: var(--rf-junction-recessed);
+}
+
+/* Lit. The standard two-stop LED glow, the same emitter as the status
+   indicators, because it is the same kind of signal. */
+[data-theme="dark"] .rf-meter-cell.lit,
+html.blackroom .rf-meter-cell.lit {
+  background-color: var(--rf-neon-plum);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    0 0 5px rgba(199, 155, 255, 0.75),
+    0 0 13px rgba(199, 155, 255, 0.45);
+}
+
+/* The count beside the ladder is genuinely data. Tabular figures so it does
+   not jitter as the numbers grow. */
+.rf-meter-count {
+  font-family: var(--rf-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--rf-muted);
+  white-space: nowrap;
+}
+
+/**
+ * Cells light as they fill and that is the whole motion. There is
+ * deliberately no transition here, no shimmer, no travelling highlight, and
+ * no pulse on the leading cell: emitters do not breathe, and a moving light
+ * in a live tool means something is wrong.
+ *
+ * Which also means prefers-reduced-motion has nothing to switch off. The fill
+ * updates are the information, so they stay either way.
+ */
+
+/* ============================================================
+   15. ALERTS IN A NARROW PANEL
+
+   DaisyUI's .alert switches its grid to a stacked, centre-aligned
+   layout below a breakpoint, which is reasonable for a page and wrong
+   for this surface: Refrain is always a docked side panel, so the
+   "narrow" case is the only case, and centred prose in a tall narrow
+   column is harder to read than left-aligned.
+
+   Keep the icon beside the text and the text ranged left, at every
+   width.
+   ============================================================ */
+.alert {
+  grid-auto-flow: column;
+  grid-template-columns: auto minmax(auto, 1fr);
+  justify-items: start;
+  text-align: start;
 }
