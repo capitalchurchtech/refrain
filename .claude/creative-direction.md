@@ -72,6 +72,30 @@ Warm graphite with violet in it. Tech rooms are warm: gear hums, amps run hot,
 the light is tungsten. Nothing in a booth is the cold blue-grey dark interfaces
 default to.
 
+### `dim` is not a text colour
+
+Decided 2026-08-26 after `--rf-dim` failed AA in three separate places. On the
+surfaces it actually sits on it measures 3.87:1 on `surface`, 3.44:1 on
+`raised` and 2.96:1 on `machined`. It cannot carry text anywhere in this
+palette, so it is a **non-text token**: hairlines, groove edges, unlit
+indicator dots, borders. Never a legend, never a label, never a value.
+
+**And there is no third text step.** The palette supports exactly two: `text`
+#F4EFF3 and `muted` #A295AC, which clears AA on every surface including
+`machined` at 5:1. Anything between `muted` and `dim` lands within 0.3:1 of
+`muted` on the worst surface — a distinction nobody can see, so it is
+complexity without communication. Do not invent one.
+
+Which means: **when something needs to read as quieter than `muted`, the answer
+is size and tracking, not a fainter colour.** An 8px uppercase legend at 0.15em
+is already quiet. Fading it further only makes it harder to read while looking
+no calmer.
+
+The same applies to occlusion. A latched key is already recessed, and depth is
+the cue — darkening its legend as well is belt-and-braces that costs
+legibility for a signal the shadow has already sent. Keep the legend at
+`muted`; let the junction and the accent edge carry the state.
+
 Warm hue is realism, saturated heat is signal. Neutrals lean warm because that
 is what metal looks like in a real room. But nothing is ever given a saturated
 warm colour except live. Not a warning, not a hover, not a chart. Neon values
@@ -170,6 +194,12 @@ panel never breaks a texture.
 - Source tiles stay under 12% luminance range, roughly 1–2% stdev. Measured on
   tiles that feel right: linen 5.5, noisy net 6.3, carbon 8.6, leather 11.0,
   denim 14.1 at the outer edge.
+- **Screen chroma as well as luminance.** A luminance-only test lets hue
+  through: `noisy_net` passes on range and still has mean chroma 9.7, so it
+  would tint the panel it sits on. Tiles must be near-neutral — mean chroma in
+  low single digits — because the palette owns hue and a tinted tile fights it
+  everywhere at once. This is the screen that caught six of eight candidates,
+  so run it before anything else.
 - Irregularity matters. A generated grid of identical dots repeats visibly and
   the eye finds the seam. Photographic variation makes repetition disappear.
 - Scale matters. If you can pick out one thread, dot or grain, it is a pattern,

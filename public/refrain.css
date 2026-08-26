@@ -33,6 +33,12 @@
 
   --rf-text: #F4EFF3;
   --rf-muted: #A295AC;
+  /* NOT a text colour. Measured on the surfaces text actually sits on it is
+     3.87:1 on surface, 3.44 on raised and 2.96 on machined, so it fails AA
+     everywhere. There is no third text step in this palette either: a value
+     that passes on all three lands about 0.3:1 from muted, which is a
+     distinction nobody can see. When something must read quieter than muted,
+     use size and tracking, not a fainter ink. */
   --rf-dim: #7A6E86;
 
   --rf-plum: #8446C9;
@@ -775,22 +781,22 @@ html.blackroom #nav-rail .nav-item.btn-active:hover {
 }
 
 /**
- * The latched key's legend and icon occlude rather than brighten -- but not
- * all the way to --rf-dim as first specified.
+ * The latched key's legend stays at --rf-muted, the same as an unlatched one.
  *
- * Measured on the latched gradient, which is darker than a resting key by
- * design, #7A6E86 is 3.47:1 and #8B7E97 is 4.36:1. Both fail AA for a 10px
- * uppercase legend, and the quality floor holds AA against the real
- * background. #9689A2 measures 5.04:1 there and is still darker than the
- * resting label's #A295AC, so the key still reads as pressed in without the
- * legend becoming unreadable to do it.
+ * An earlier version darkened it, on the reasoning that a pressed key occludes
+ * its own light. That is right about light and wrong here: the key is already
+ * recessed, so depth is carrying the state, and the plum edge is carrying it a
+ * second time. Darkening the legend as well is a third cue for something
+ * already said twice, and it spends legibility to say it -- on the one label
+ * naming the screen you are actually looking at.
+ *
+ * It also could not be done within the floor. --rf-dim measures 3.47:1 on the
+ * latched key, and #9689A2, the value that passes there, drops to 4.30:1 on
+ * the machined layer where the same token would land elsewhere. A value that
+ * passes everywhere sits about 0.3:1 from muted, which is a distinction nobody
+ * can see. There is no third text step available in this palette, so quieter
+ * is expressed by size and tracking rather than by fading the ink.
  */
-[data-theme="dark"] #nav-rail .nav-item.btn-active .nav-label,
-html.blackroom #nav-rail .nav-item.btn-active .nav-label,
-[data-theme="dark"] #nav-rail .nav-item.btn-active svg,
-html.blackroom #nav-rail .nav-item.btn-active svg {
-  color: #9689A2;
-}
 
 /**
  * Icons take the label's ink, never more.
@@ -852,13 +858,12 @@ html.blackroom .rf-group-break {
 #nav-items > .rf-group-label:first-child {
   padding-top: 0;
 }
-/* --rf-dim on the rail ground measures 3.87:1, which fails AA for 8px text.
-   #8B7E97 is 4.86:1 and still reads as a quieter tier than the key legends
-   above it at --rf-muted. Same trade as the latched legend: keep the
-   hierarchy, respect the floor. */
+/* Muted, like every other legend. At 8px and 0.15em it is already the quietest
+   thing in the rail; a fainter ink would only make it harder to read without
+   making it calmer. --rf-dim measures 3.87:1 here and fails AA outright. */
 [data-theme="dark"] .rf-group-label,
 html.blackroom .rf-group-label {
-  color: #8B7E97;
+  color: var(--rf-muted);
 }
 
 /**
@@ -885,7 +890,10 @@ html.blackroom #nav-rail .nav-key {
   background-color: var(--rf-ground);
   border: 0;
   box-shadow: var(--rf-junction-recessed);
-  color: var(--rf-dim);
+  /* Muted, not dim: dim measures 4.13:1 here and still fails AA. It stays
+     subordinate to the item legend by being 8px mono in a sunk chip rather
+     than by being fainter, which is the same rule as everywhere else. */
+  color: var(--rf-muted);
   font-family: var(--rf-mono);
   font-size: 8px;
   letter-spacing: 0.08em;
@@ -1263,4 +1271,28 @@ html.blackroom .card::before {
 html.blackroom .card > * {
   position: relative;
   z-index: 1;
+}
+
+
+/* ============================================================
+   17. THE DOCKED-WIDTH NUDGE
+
+   Warm-zone prose in the setup flow, so it is body text rather than a
+   silkscreen legend, and deliberately not an alert: it is a nudge, and
+   an alert treatment would overstate it into looking like something
+   went wrong.
+
+   The left rule is the only ornament, and it is the same score line the
+   nav rail's group breaks use, turned on its side -- a mark in the panel
+   rather than a box drawn around the text.
+   ============================================================ */
+#setup-width-nudge {
+  padding-left: 12px;
+  line-height: 1.42;
+}
+[data-theme="dark"] #setup-width-nudge,
+html.blackroom #setup-width-nudge {
+  border-left: 1px solid var(--rf-hairline);
+  box-shadow: inset 1px 0 0 rgba(255, 240, 235, 0.05);
+  color: var(--rf-muted);
 }

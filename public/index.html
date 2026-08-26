@@ -265,6 +265,15 @@
       <span id="setup-brand-logo" class="inline-block"></span>
     </h1>
 
+    <!-- Shown once, during first-run setup, if the window is wide enough to be
+         maximised rather than docked. Inline and non-focusable on purpose: it
+         cannot block or steal focus even if setup is somehow re-entered at a
+         bad moment. There is no runtime path and no dismissal flag, because it
+         fires once by construction. -->
+    <div id="setup-width-nudge" class="hidden mb-6 text-sm" role="note">
+      <span id="setup-width-nudge-text"></span>
+    </div>
+
     <div class="card bg-base-200">
       <div class="card-body p-3 gap-4">
         <div>
