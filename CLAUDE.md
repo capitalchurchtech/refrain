@@ -36,6 +36,32 @@ This was a real bug class here. Early on, the "push to church management system"
 - Secrets go in `.env` (gitignored). `.env.example` lists the names, blank.
 - Every optional module reports off, misconfigured, or active from a `getXModuleStatus(config)` function in `server/config.js`. A missing credential or unset folder should degrade to misconfigured with a clear Health screen message, never crash the server or take down an unrelated feature.
 
+## Tailwind is a runtime JIT here, not a compiled stylesheet
+
+`public/vendor/tailwind-cdn.js` is the browser JIT, vendored so the app works
+offline. It still generates utility rules at runtime by scanning the DOM, which
+has one consequence worth knowing before you debug a layout for an hour:
+
+**A Tailwind class that exists only as a JavaScript string has no rule until
+the MutationObserver notices it.** `element.classList.toggle("w-36")` applies a
+class the scanner never saw at boot, so the rule arrives a frame late or not at
+all, and anything measuring in the same tick reads the old value. An inline
+`width: … !important` appears not to work, which sends you chasing specificity
+when the problem is timing.
+
+So: **any class applied from JS needs a static home in `refrain.css`.** The rail
+width and the matching content margin already do —
+`#nav-rail.w-36 { width: 9rem }` and `#main-content.ml-36 { margin-left: 9rem }`.
+Those rules look redundant next to the utility class; they are not. Do not
+"clean them up".
+
+Prefer a semantic hook (`.pinned`) over a utility name for anything toggled
+from JS, so the next reader does not assume Tailwind is supplying the value.
+
+Still-outstanding exposure: `public/image-crop.js:113-114` toggles
+`opacity-50` and `pointer-events-none` from JS strings. The second one failing
+for a frame means a click can land on a field that is meant to be inert.
+
 ## Design work, and the handoff between sessions
 
 Design and copy on this project run through a standing brief and a single
