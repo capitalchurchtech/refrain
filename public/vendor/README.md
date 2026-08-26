@@ -10,46 +10,41 @@ hash below.
 | file | source | version | licence |
 |---|---|---|---|
 | `tailwind-cdn.js` | https://cdn.tailwindcss.com | Tailwind browser build | MIT |
-| `daisyui-4.12.24-styled.min.css` | https://cdn.jsdelivr.net/npm/daisyui@4.12.24/dist/styled.min.css | 4.12.24 | MIT |
+| `daisyui-4.12.24-full.min.css` | https://cdn.jsdelivr.net/npm/daisyui@4.12.24/dist/full.min.css | 4.12.24 | MIT |
 | `lucide-1.34.0.min.js` | https://unpkg.com/lucide@1.34.0/dist/umd/lucide.min.js | 1.34.0 | ISC |
-| `daisyui-themes-light-dark.css` | https://cdn.jsdelivr.net/npm/daisyui@4.12.24/dist/themes.css | 4.12.24 | MIT |
 | `fonts/archivo-latin.woff2` | Google Fonts, Archivo variable (wdth 62-125, wght 400-900), latin subset | v25 | OFL 1.1 |
 | `../img/textures/black_linen_v2.png` | Subtle Patterns, "Black Linen 2" by **Atle Mo** — https://www.toptal.com/designers/subtlepatterns/black-linen-2/ | — | **CC BY-SA 3.0** |
 | `../img/textures/dark_leather.png` | Subtle Patterns, "Dark Leather" by **Atle Mo** — https://www.toptal.com/designers/subtlepatterns/black-leather/ | — | **CC BY-SA 3.0** |
+| `../img/textures/noisy_net.png` | Subtle Patterns, "Noisy Net" by **Tom McArdle** — https://www.toptal.com/designers/subtlepatterns/noisy-net/ | — | **CC BY-SA 3.0** |
 | `fonts/martian-mono-latin.woff2` | Google Fonts, Martian Mono variable (wght 300-800), latin subset | v6 | OFL 1.1 |
 
 The icon library was previously loaded as `lucide@latest`, unpinned. Every icon
 in the app came from it, so offline meant no icons at all, and an upstream
 release could change them without any change here. Now pinned and vendored.
 
-## Two deliberate trims
+## The trim was reverted, and this is why
 
-**Themes.** `themes.css` ships 32 DaisyUI themes at 64KB. Refrain uses `light`
-and `dark`; Blackroom is a Refrain class defined in `index.html`, not a DaisyUI
-theme. `daisyui-themes-light-dark.css` is lines 1-194 of the original: the
-`:root` light defaults, the `prefers-color-scheme: dark` block, and the two
-themes. Verified brace-balanced, and cupcake onward is simply absent.
+An earlier version of this folder shipped DaisyUI as `styled.min.css` (139KB)
+plus a hand-written base layer plus a themes file trimmed to light and dark,
+against `full.min.css` at 2.9MB. It saved 2.7MB and cost two regressions.
 
-**Components.** `styled.min.css` (139KB) rather than `full.min.css` (2.9MB).
-The full build is the same components plus all 32 themes. Total vendored weight
-is 548KB instead of 3.3MB.
+**First**, `styled.min.css` omits the base layer, which is the single rule that
+paints the page. Light theme had no background at all; dark and Blackroom only
+looked right because `refrain.css` sets `body` explicitly.
 
-## A trap worth knowing about
+**Second, and worse because it was silent for longer:** it omits every component
+size modifier. `btn-xs`, `btn-sm`, `badge-sm`, `checkbox-sm`, `kbd-xs`,
+`select-xs`, `textarea-sm`, `toggle-xs`, `file-input-xs` and `.tooltip` were all
+absent. 35 classes the app actually uses did nothing. Every button in the app
+rendered at DaisyUI's default 48px, which read as a collapsed design system and
+was diagnosed as one before the real cause turned up.
 
-`styled.min.css` omits DaisyUI's base layer, which is the single rule that
-paints the page. Missing it, `:root` computed to transparent and light theme had
-no background at all; dark and Blackroom only looked right because
-`refrain.css` sets `body` explicitly. `daisyui-4.12.24-base.css` restores it.
-
-That file's `@supports not (color: oklch(...))` guard is load-bearing. The paint
-rule reads `--fallback-b1` FIRST and only then the theme's own `--b1`, so
-defining the fallbacks unconditionally pins every theme to the fallback colour
-and theming silently stops working. A first version did exactly that and painted
-light, dark and Blackroom all the same grey.
-
-Related, in `refrain.css`: `--b1`/`--b2`/`--b3`/`--bc` are raw oklch
-*components*, not colours. They get spliced into `oklch(var(--b1) / 1)`, so a
-hex value makes the function invalid and takes the whole declaration with it.
+Trimming themes out of `full.min.css` was measured as an alternative and saves
+only 48KB, because the bulk is the utility layer rather than the themes. So
+there is no worthwhile safe trim, and the full build is what ships. It is
+correct by construction, which matters more here than 2.7MB of a vendored
+asset: the alternative had already failed twice, and the next failure would
+have been just as quiet.
 
 ## Known limitation
 
@@ -70,8 +65,7 @@ that you can clone it and run it.
 ```
 176e894661aa9cdc9a5cba6c720044cbbf7b8bd80d1c9a142a7c24b1b6c50d15  tailwind-cdn.js
 381de5c07d1fa81c3430b04d66a3d710b622c1d702fadd0a0448470d9493b6f1  lucide-1.34.0.min.js
-97d6d0f71a13c613a37c80d34dc56256911fbab02b84e63d937fa29119f64135  daisyui-4.12.24-styled.min.css
-6588eaa966baf0b4ec3094447797de3f4f3d230b8241903ef2ec9bcc6f3cb4fb  daisyui-themes-light-dark.css
+85ab76db67c89f094af6170e05109bdcfc3642f2d7c4bd5a62e931d6aede4792  daisyui-4.12.24-full.min.css
 4c98b9d490d1698ec95f2ff17a6c7d0e72691864c0c5d7bc2a2c161b45afe5ad  fonts/archivo-latin.woff2
 29bf2691317290c0693d305d51abd52ddc027c93207f528f7efa8cf0f8b504ca  fonts/martian-mono-latin.woff2
 ```
@@ -79,7 +73,7 @@ that you can clone it and run it.
 
 ## Texture tiles: ShareAlike, not plain Attribution
 
-The two panel tiles are the only assets here that are not MIT or OFL. They are
+The three panel tiles are the only assets here that are not MIT or OFL. Note they are not all by the same designer: two are Atle Mo's and one is Tom McArdle's, which is why attribution names individuals rather than the collection. They are
 **CC BY-SA 3.0 Unported**, which is a share-alike licence.
 
 Where that version comes from matters, because the sources disagree. Toptal's
@@ -103,3 +97,12 @@ an MIT-licensed repository, is genuinely arguable. It is recorded here rather
 than resolved so that a later reader knows it was a decision and not an
 oversight. If it ever needs to go away, the two custom properties at the top of
 the texture section are the only place to change.
+
+## What consolidating the stylesheets did not fix
+
+Going from three stylesheets to one is about correctness, not weight or speed.
+`tailwind-cdn.js` is still 407KB of browser JIT that generates utilities by
+scanning the DOM at runtime, so the flash of unstyled content and the
+class-applied-from-JS race are both exactly as they were. Only a compiled
+stylesheet addresses those, and that is a build step, which CLAUDE.md excludes
+by choice. Do not read this consolidation as having improved either.

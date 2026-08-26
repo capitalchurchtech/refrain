@@ -10,9 +10,7 @@
        this page completely unstyled during a service. See vendor/README.md for
        sources, versions, licences and hashes. -->
   <script src="./vendor/tailwind-cdn.js"></script>
-  <link href="./vendor/daisyui-4.12.24-base.css" rel="stylesheet" type="text/css" />
-  <link href="./vendor/daisyui-4.12.24-styled.min.css" rel="stylesheet" type="text/css" />
-  <link href="./vendor/daisyui-themes-light-dark.css" rel="stylesheet" type="text/css" />
+  <link href="./vendor/daisyui-4.12.24-full.min.css" rel="stylesheet" type="text/css" />
   <link href="./refrain.css" rel="stylesheet" type="text/css" />
   <script src="./vendor/lucide-1.34.0.min.js"></script>
   <style>
@@ -186,7 +184,10 @@
       background: linear-gradient(118deg, rgba(255,255,255,.05) 0%, rgba(255,255,255,0) 42%);
     }
 
-    .rf-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    /* Renamed from .rf-row when refrain.css gained a .rf-row definition-list
+       pattern: the two collided and the readout started painting borders and a
+       two-column grid inside its own glass. */
+    .rf-readout-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 
     /* Small and uppercase is the sweet spot: 8-10px at 0.15em tracking
        reads as silkscreen printing. */
@@ -270,7 +271,8 @@
          cannot block or steal focus even if setup is somehow re-entered at a
          bad moment. There is no runtime path and no dismissal flag, because it
          fires once by construction. -->
-    <div id="setup-width-nudge" class="hidden mb-6 text-sm" role="note">
+    <div id="setup-width-nudge" class="hidden mb-6 text-sm rf-call" role="note">
+      <span class="rf-lede">Window</span>
       <span id="setup-width-nudge-text"></span>
     </div>
 
@@ -402,8 +404,8 @@
           <input id="query" type="text" placeholder="Search any slide..." class="input input-bordered w-full" autofocus />
         </div>
 
-        <div class="flex flex-wrap items-center gap-2 mb-6">
-          <button id="date-filter-toggle" class="btn btn-ghost btn-xs">
+        <div class="rf-chip-row mb-4" id="search-filter-chips">
+          <button id="date-filter-toggle" class="btn btn-chip">
             <i data-lucide="calendar"></i> Date filter
           </button>
           <div id="date-filter-panel" class="hidden flex flex-wrap items-center gap-2">
@@ -419,8 +421,8 @@
           </div>
         </div>
 
-        <div class="flex flex-wrap items-center gap-2 mb-6 hidden" id="library-filter-wrap">
-          <button id="library-filter-toggle" class="btn btn-ghost btn-xs">
+        <div class="rf-chip-row mb-4 hidden" id="library-filter-wrap" data-chip-row-follows="search-filter-chips">
+          <button id="library-filter-toggle" class="btn btn-chip">
             <i data-lucide="library"></i> Libraries
           </button>
           <div id="library-filter-panel" class="hidden flex flex-wrap items-center gap-2"></div>

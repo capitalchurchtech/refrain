@@ -228,10 +228,18 @@ html.blackroom hr {
   --rf-mono: "Martian Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-body {
+/**
+ * `html body` rather than `body`, because DaisyUI ships a later
+ * `body { line-height: inherit }` that was winning at equal specificity and
+ * leaving the computed leading at 1.5 from html. Measured 22.5px where the
+ * spec is 21.3.
+ *
+ * Leading is tight on purpose. Breathing room is recovered in padding, never
+ * in line height, and the app had that backwards: both were loose, which is
+ * where the airiness came from.
+ */
+html body {
   font-family: var(--rf-sans);
-  /* Leading is tight. Breathing room is recovered in padding, never in
-     line height. */
   font-size: 15px;
   line-height: 1.42;
 }
@@ -1191,10 +1199,17 @@ html.blackroom .rf-meter-cell.lit {
  *
  * Both tiles are by Atle Mo, from the Subtle Patterns collection.
  *
- *   Black Linen 2   Atle Mo   black_linen_v2.png
+ *   Black Linen 2   Atle Mo        black_linen_v2.png
  *                   https://www.toptal.com/designers/subtlepatterns/black-linen-2/
- *   Dark Leather    Atle Mo   dark_leather.png
+ *   Dark Leather    Atle Mo        dark_leather.png
  *                   https://www.toptal.com/designers/subtlepatterns/black-leather/
+ *   Noisy Net       Tom McArdle    noisy_net.png
+ *                   https://www.toptal.com/designers/subtlepatterns/noisy-net/
+ *
+ * Note the third is a different designer. Subtle Patterns aggregates many
+ * contributors, which is exactly why attribution names the individual rather
+ * than the collection -- assuming Atle Mo here would have credited the wrong
+ * person.
  *
  *   Licence: Creative Commons Attribution-ShareAlike 3.0 Unported (CC BY-SA 3.0)
  *            https://creativecommons.org/licenses/by-sa/3.0/
@@ -1213,6 +1228,7 @@ html.blackroom .rf-meter-cell.lit {
 :root {
   --t-chassis: url("./img/textures/black_linen_v2.png");
   --t-grip: url("./img/textures/dark_leather.png");
+  --t-framing: url("./img/textures/noisy_net.png");
 }
 
 [data-theme="dark"] .rf-tex,
@@ -1286,13 +1302,392 @@ html.blackroom .card > * {
    nav rail's group breaks use, turned on its side -- a mark in the panel
    rather than a box drawn around the text.
    ============================================================ */
-#setup-width-nudge {
-  padding-left: 12px;
-  line-height: 1.42;
-}
+/* Styling now comes from .rf-call, which is the reference's callout pattern
+   and exactly what this is. The bespoke left rule here predated it. */
 [data-theme="dark"] #setup-width-nudge,
 html.blackroom #setup-width-nudge {
-  border-left: 1px solid var(--rf-hairline);
-  box-shadow: inset 1px 0 0 rgba(255, 240, 235, 0.05);
   color: var(--rf-muted);
+}
+
+
+/* ============================================================
+   18. GLOBAL GRAIN
+
+   The chassis tile over the whole viewport, not just the panels.
+
+   Texture shipped on cards first, which left the field between them
+   bare and made the cards read as stickers on nothing. A machined
+   object does not have grain only where the parts are; the whole
+   surface is the same material. This is four declarations and it does
+   more than anything else in the surface layer.
+
+   Fixed rather than absolute so it does not scroll, and
+   pointer-events: none so it cannot intercept a press.
+   ============================================================ */
+[data-theme="dark"] body::after,
+html.blackroom body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background-image: var(--t-chassis);
+  background-size: 15%;
+  opacity: 0.32;
+  mix-blend-mode: soft-light;
+  filter: contrast(0.84);
+}
+
+/* ============================================================
+   19. FRAMING TEXTURE ON THE RAIL
+
+   Brick is the framing material and no brick tile survived screening,
+   so the framing role uses noisy_net: it failed on chroma, not on
+   grain, and it is coarser than linen, which is what framing wants.
+
+   saturate(0) is the whole trick. The tile carries mean chroma 9.7,
+   which would tint the rail and put hue in the hands of the texture
+   layer rather than the palette. Desaturating at render time keeps the
+   grain and drops the hue, so the rule holds: texture modulates light,
+   the palette owns hue.
+
+   Coarser and at a different opacity from the content chassis, so the
+   boundary between frame and content is felt rather than drawn -- and
+   the rail's empty lower half becomes blank panel instead of absence.
+   ============================================================ */
+[data-theme="dark"] #nav-rail,
+html.blackroom #nav-rail {
+  position: relative;
+  isolation: isolate;
+}
+[data-theme="dark"] #nav-rail::before,
+html.blackroom #nav-rail::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: var(--t-framing);
+  background-size: 17%;
+  opacity: 0.26;
+  mix-blend-mode: soft-light;
+  filter: saturate(0) contrast(0.72) brightness(1.03);
+}
+/* The keys and legends sit above the framing grain, not inside it. */
+[data-theme="dark"] #nav-rail > *,
+html.blackroom #nav-rail > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ============================================================
+   20. DISPLAY TYPE AND SECTION HEADINGS
+
+   The third layer of the type system was never built. Only Archivo and
+   Martian Mono were in use, and page titles computed 18px sentence case
+   -- the wordmark was the one element in the app with any face to it.
+   These two treatments are what make the product recognisable rather
+   than merely well made.
+
+   No new font file: Archivo carries the width axis, so pushing stretch
+   and weight gets most of the way to a badge face. Licensing something
+   like Druk Wide later would sharpen it, but the structure should exist
+   first.
+   ============================================================ */
+
+/* Page titles. Set wide, uppercase, tight-tracked and tight-leaded, with
+   the size clamped because the reference's 46px was drawn for a wider
+   canvas than a docked panel and ARRANGEMENT would not fit. */
+[data-theme="dark"] main h1,
+html.blackroom main h1 {
+  font-family: var(--rf-sans);
+  /* The reference's 46px was drawn for a wider canvas. Sized to the tightest
+     real layout instead: a 460px panel with the rail pinned at 144px and 12px
+     padding each side leaves ~292px, and ARRANGEMENT is the longest title at
+     11 characters. It measured 327px at 33px and was being clipped silently by
+     body's overflow-x: hidden. 6vw gives ~28px there, which fits with room,
+     and it still reaches the full 46px on a wider window. A single long word
+     cannot wrap, so the size has to be what adapts.
+
+     5.6vw rather than 6: ARRANGEMENT measures 9.87 character-widths, so its
+     width is about 0.55 x viewport while the content column is viewport minus
+     168px. At 6vw those cross around 412px, which would clip a pinned rail on
+     a small window. At 5.6vw they do not cross anywhere in the plausible
+     range. */
+  font-size: clamp(22px, 5.6vw, 46px);
+  font-weight: 900;
+  font-stretch: 118%;
+  letter-spacing: -0.018em;
+  line-height: 0.94;
+  text-transform: uppercase;
+  color: var(--rf-text);
+}
+/* The lucide glyph beside a page title is redundant now: the rail already
+   shows which screen you are on, and at display size the icon competes with
+   the face rather than supporting it. */
+[data-theme="dark"] main h1 > [data-lucide],
+html.blackroom main h1 > [data-lucide],
+[data-theme="dark"] main h1 > svg,
+html.blackroom main h1 > svg {
+  display: none;
+}
+
+/* Sub-headings keep the badge face a step down. */
+[data-theme="dark"] main h2:not(.card-title),
+html.blackroom main h2:not(.card-title),
+[data-theme="dark"] main h3,
+html.blackroom main h3 {
+  font-family: var(--rf-sans);
+  font-size: 17px;
+  font-weight: 800;
+  font-stretch: 110%;
+  text-transform: uppercase;
+  letter-spacing: -0.01em;
+}
+
+/**
+ * Section headings. After the keys, the most recognisable element in the
+ * reference, and the thing that finally settles the four-heading-systems
+ * problem from the first review: there is exactly one treatment.
+ *
+ * The reference's square marker glows. It is rendered unlit here, because
+ * the emitter budget is already spent on the lit collar, the phosphor
+ * readout, the LEDs and the link indicator, and a section heading is not
+ * reporting a state. An emitter that means nothing is the same lie as a
+ * raised element that does nothing.
+ */
+[data-theme="dark"] .card-title,
+html.blackroom .card-title {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding-left: 13px;
+  padding-bottom: 10px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--rf-hairline);
+  font-family: var(--rf-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--rf-plum-lit);
+}
+[data-theme="dark"] .card-title::before,
+html.blackroom .card-title::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 1px;
+  background: var(--rf-plum);
+}
+/* Same reasoning as the page title: the marker is the mark now. */
+[data-theme="dark"] .card-title > [data-lucide],
+html.blackroom .card-title > [data-lucide],
+[data-theme="dark"] .card-title > svg,
+html.blackroom .card-title > svg {
+  display: none;
+}
+
+/* ============================================================
+   21. CHIP ROW
+
+   Date filter and Libraries were two 48px controls with ~72px of dead
+   space between them and no container, which made the largest empty
+   region on the primary screen. They are filters, not actions: inert
+   until pressed, and secondary to everything around them.
+
+   A tight row of small chips, rowed with a gap rather than spaced
+   apart.
+   ============================================================ */
+.rf-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+/**
+ * The Date filter and Libraries toggles live in two separate wrappers, because
+ * the Libraries one is hidden until a library scope exists. As block-level
+ * siblings they stacked, which left the chips as two rows of one rather than
+ * the tight row they are meant to be.
+ *
+ * inline-flex makes each wrapper an inline-level box, so the two flow onto the
+ * same line while each keeps its own contents laid out as a flex row. The
+ * hidden toggle still hides with its wrapper, and no markup moves.
+ *
+ * display: contents would have been wrong here: it lifts the children into the
+ * grandparent, which is the section rather than a flex row.
+ */
+#search-filter-chips,
+#library-filter-wrap {
+  display: inline-flex;
+  vertical-align: top;
+  margin-right: 10px;
+}
+#library-filter-wrap.hidden {
+  display: none;
+}
+
+[data-theme="dark"] .btn-chip,
+html.blackroom .btn-chip {
+  min-height: 0;
+  height: auto;
+  padding: 8px 12px;
+  border-radius: 2px;
+  font-family: var(--rf-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--rf-muted);
+  background-color: #241E2C;
+  background-image: none;
+  border: 1px solid var(--rf-hairline);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 240, 235, 0.09),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.4);
+}
+[data-theme="dark"] .btn-chip:hover,
+html.blackroom .btn-chip:hover {
+  background-color: var(--rf-machined);
+  border-color: var(--rf-plum);
+}
+[data-theme="dark"] .btn-chip > svg,
+html.blackroom .btn-chip > svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* ============================================================
+   22. ROW — the field/value pattern
+
+   Health's field/value pairs and the Search stat strip were both
+   ad-hoc. A two-column grid with a monospace label reads like a panel
+   listing rather than like prose.
+   ============================================================ */
+.rf-row {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 12px;
+  padding: 10px 0;
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+[data-theme="dark"] .rf-row,
+html.blackroom .rf-row {
+  border-bottom: 1px solid rgba(61, 51, 72, 0.55);
+}
+.rf-row > dt,
+.rf-row > .rf-row-key {
+  font-family: var(--rf-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding-top: 3px;
+}
+/* The reference puts --dim on the key. dim is a non-text token here, and it
+   measures below AA on every surface, so the key is muted and stays quieter
+   than the value by size and tracking instead. */
+[data-theme="dark"] .rf-row > dt,
+html.blackroom .rf-row > dt,
+[data-theme="dark"] .rf-row > .rf-row-key,
+html.blackroom .rf-row > .rf-row-key {
+  color: var(--rf-muted);
+}
+
+/* ============================================================
+   23. CALL — the callout pattern
+
+   A plum edge with the light spilling right onto the panel. The
+   gradient is traceable to a source, which is the only test a gradient
+   has to pass here: it is the edge emitting, falling off across 72% of
+   the width.
+   ============================================================ */
+.rf-call {
+  padding: 14px 18px;
+  line-height: 1.42;
+}
+[data-theme="dark"] .rf-call,
+html.blackroom .rf-call {
+  border-left: 2px solid var(--rf-plum);
+  background-image: linear-gradient(
+    90deg,
+    rgba(132, 70, 201, 0.16),
+    rgba(132, 70, 201, 0.04) 44%,
+    transparent 72%
+  );
+  box-shadow: inset 1px 0 0 rgba(199, 155, 255, 0.3);
+}
+.rf-call .rf-lede {
+  display: block;
+  margin-bottom: 6px;
+  font-family: var(--rf-mono);
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+[data-theme="dark"] .rf-call .rf-lede,
+html.blackroom .rf-call .rf-lede {
+  color: var(--rf-neon-plum);
+}
+
+/* ============================================================
+   24. TIER HEIGHTS, SET RATHER THAN INHERITED
+
+   The three tiers are separated by size as well as by material and
+   emission. They were all inheriting one height, which turned out to be
+   a vendoring regression rather than a missing system: the trimmed
+   DaisyUI build was missing every size modifier, so btn-sm and btn-xs
+   did nothing and everything computed 48px. Restoring the full build
+   brought the sizes back.
+
+   Set explicitly here anyway, so the tiers are a decision rather than
+   whatever DaisyUI's defaults happen to be, and so the primary action
+   cannot drift under a touch target again. Reference: chip ~26,
+   machined key ~36, lit collar ~50.
+   ============================================================ */
+
+/* Tier 1. Also the accessibility floor: this is the action taken fifty
+   times a service, and it must stay above a 44px target. Restoring the
+   size modifiers had briefly dropped it to 36px. */
+[data-theme="dark"] .btn-brand,
+html.blackroom .btn-brand,
+[data-theme="dark"] .go-live-btn,
+html.blackroom .go-live-btn {
+  min-height: 48px;
+  height: auto;
+  padding: 12px 22px;
+  font-size: 14px;
+}
+
+/* Tier 2. Machined keys: ordinary controls and the nav rail. */
+[data-theme="dark"] .btn-outline,
+html.blackroom .btn-outline,
+[data-theme="dark"] #nav-rail .nav-item,
+html.blackroom #nav-rail .nav-item,
+[data-theme="dark"] #nav-rail #nav-help-toggle,
+html.blackroom #nav-rail #nav-help-toggle,
+[data-theme="dark"] #nav-rail #theme-toggle,
+html.blackroom #nav-rail #theme-toggle,
+[data-theme="dark"] #nav-rail #nav-pin-toggle,
+html.blackroom #nav-rail #nav-pin-toggle {
+  min-height: 36px;
+  height: auto;
+  padding: 8px 12px;
+}
+
+/* Tier 3. Chips are inert, so they are the smallest thing that can still
+   be hit. */
+[data-theme="dark"] .rf-chip,
+html.blackroom .rf-chip,
+[data-theme="dark"] .btn-chip,
+html.blackroom .btn-chip {
+  min-height: 26px;
+  height: auto;
+  padding: 6px 12px;
 }

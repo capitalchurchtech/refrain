@@ -339,9 +339,10 @@ MIT. See [LICENSE](LICENSE).
 you ship it. Everything in `public/vendor/` is listed there with its source and
 licence, but the two you cannot simply assume about are the panel textures:
 
-- `public/img/textures/black_linen_v2.png` and `dark_leather.png`, both
-  "Black Linen 2" and "Dark Leather" by **Atle Mo** from Subtle Patterns, under
-  **CC BY-SA 3.0**. That is a share-alike licence, not plain attribution. Attribution
+- `public/img/textures/` holds three panel tiles from Subtle Patterns, under
+  **CC BY-SA 3.0**. That is a share-alike licence, not plain attribution.
+  "Black Linen 2" and "Dark Leather" are by **Atle Mo**; "Noisy Net" is by
+  **Tom McArdle**. Attribution
   is given in `public/refrain.css`, in `public/vendor/README.md`, and visibly on
   the Health screen.
 

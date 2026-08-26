@@ -107,12 +107,12 @@ function render() {
     el.innerHTML = `
       <div class="rf-bezel">
         <div class="rf-glass">
-          <div class="rf-row">
+          <div class="rf-readout-row">
             <span class="rf-status">${escapeHtml(c.status)}</span>
             ${c.time ? `<span class="rf-time">${escapeHtml(c.time)}</span>` : ""}
           </div>
           <div class="rf-primary">${escapeHtml(c.primary)}</div>
-          <div class="rf-row rf-meta">
+          <div class="rf-readout-row rf-meta">
             ${c.secondary ? `<span class="rf-arr">${escapeHtml(c.secondary)}</span>` : ""}
             ${c.slide ? `<span class="rf-slide">${escapeHtml(c.slide)}</span>` : ""}
           </div>
