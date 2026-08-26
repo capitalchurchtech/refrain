@@ -620,27 +620,48 @@ html.blackroom #results:has(.go-live-btn:focus-visible) .go-live-btn.rf-armed:no
  * still one source of truth for the pinned state. Only the pinned width is
  * declared here: the collapsed 64px was working before this change and
  * redeclaring it only added a second thing that could go wrong.
+ *
+ * 144px rather than the 128px first tried, because ARRANGEMENT and
+ * THEME: DARK were ellipsising at 128 and a truncated legend is not a legend.
+ * Still 80px narrower than the 224px this replaced.
  */
-#nav-rail.w-32 { width: 8rem; }
-#main-content.ml-32 { margin-left: 8rem; }
+#nav-rail.w-36 { width: 9rem; }
+#main-content.ml-36 { margin-left: 9rem; }
 
 /* Labels are silkscreen, not navigation text: printed on the panel at
    the size a legend is printed, so they name the control without
    competing with it. */
 [data-theme="dark"] .nav-label,
 html.blackroom .nav-label {
-  font-family: var(--rf-mono);
-  /* 8px rather than 9px, and a tighter row gap, because at 9px the longest
-     legends (SPELL CHECK, ARRANGEMENT, IMAGE CROP, THEME: DARK) came to 84px
-     and wrapped under their icons in a 128px rail. Still inside the 8-10px
-     silkscreen band, and the 0.15em tracking that does the actual work is
-     untouched. */
-  font-size: 8px;
-  letter-spacing: 0.15em;
+  /* Sans, not mono. Silkscreen is about size and tracking, not monospace:
+     mono is for data -- numbers, timestamps, counts, slide indices -- and
+     SPELL CHECK is a legend. Martian Mono is also a wide face, so uppercase
+     at 0.15em was eating most of a 128px rail. */
+  font-family: var(--rf-sans);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--rf-muted);
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/**
+ * DaisyUI's .btn sets flex-wrap: wrap, so a legend that did not fit was
+ * pushed onto a second flex line under its own icon rather than being
+ * truncated. That is what made the longest labels look broken; the type size
+ * was a red herring. Hold the row on one line and let the label ellipsis if
+ * it ever has to.
+ */
+#nav-rail .nav-item,
+#nav-rail #theme-toggle,
+#nav-rail #nav-pin-toggle,
+#nav-rail #nav-help-toggle {
+  flex-wrap: nowrap;
+}
+#nav-rail .nav-label {
+  min-width: 0;
 }
 
 /* Reclaim the wrapping room from the gap rather than the type. */
@@ -652,16 +673,83 @@ html.blackroom .nav-label {
   gap: 0.5rem;
 }
 
-/* The active item is the one place the rail lifts. */
+/**
+ * Every item is a machined key at rest, not just the active one.
+ *
+ * A first version lifted only the active item and left the other eight as
+ * btn-ghost, which made the rail a void with one object floating in it. That
+ * was "a raised element that does nothing is a lie" applied where it does not
+ * bite: these navigate, so raised is honest. And "exactly one E2 per screen"
+ * governs the hero and the emitter, not whether objects exist. A console has
+ * nine physical keys whether or not one is pressed.
+ */
+[data-theme="dark"] #nav-rail .nav-item,
+html.blackroom #nav-rail .nav-item,
+[data-theme="dark"] #nav-rail #nav-help-toggle,
+html.blackroom #nav-rail #nav-help-toggle,
+[data-theme="dark"] #nav-rail #theme-toggle,
+html.blackroom #nav-rail #theme-toggle,
+[data-theme="dark"] #nav-rail #nav-pin-toggle,
+html.blackroom #nav-rail #nav-pin-toggle {
+  background-color: transparent;
+  background-image: linear-gradient(180deg, #2A2333 0%, #1F1A28 100%);
+  border: 0;
+  box-shadow: var(--rf-junction-raised);
+}
+
+[data-theme="dark"] #nav-rail .nav-item:hover,
+html.blackroom #nav-rail .nav-item:hover,
+[data-theme="dark"] #nav-rail #nav-help-toggle:hover,
+html.blackroom #nav-rail #nav-help-toggle:hover,
+[data-theme="dark"] #nav-rail #theme-toggle:hover,
+html.blackroom #nav-rail #theme-toggle:hover,
+[data-theme="dark"] #nav-rail #nav-pin-toggle:hover,
+html.blackroom #nav-rail #nav-pin-toggle:hover {
+  background-image: linear-gradient(180deg, #332B3D 0%, #251F2F 100%);
+}
+
+/* Press travels, and the light does not brighten. */
+[data-theme="dark"] #nav-rail .nav-item:active,
+html.blackroom #nav-rail .nav-item:active,
+[data-theme="dark"] #nav-rail #nav-help-toggle:active,
+html.blackroom #nav-rail #nav-help-toggle:active,
+[data-theme="dark"] #nav-rail #theme-toggle:active,
+html.blackroom #nav-rail #theme-toggle:active,
+[data-theme="dark"] #nav-rail #nav-pin-toggle:active,
+html.blackroom #nav-rail #nav-pin-toggle:active {
+  transform: translateY(2px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 240, 235, 0.08),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.6);
+}
+
+/* The active key is the one that is lit, and it sits a step higher. */
 [data-theme="dark"] #nav-rail .nav-item.btn-active,
 html.blackroom #nav-rail .nav-item.btn-active {
-  background-color: var(--rf-raised);
-  background-image: none;
-  box-shadow: var(--rf-junction-raised);
+  background-image: linear-gradient(180deg, #3A3145 0%, #272031 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 240, 235, 0.16),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.55),
+    inset 2px 0 0 var(--rf-plum),
+    0 1px 0 rgba(255, 240, 235, 0.04),
+    0 2px 4px rgba(0, 0, 0, 0.5);
 }
 [data-theme="dark"] #nav-rail .nav-item.btn-active .nav-label,
 html.blackroom #nav-rail .nav-item.btn-active .nav-label {
   color: var(--rf-text);
+}
+
+/**
+ * The junction where the rail meets the content. Two materials meeting, so
+ * the rail's edge catches light and the panel beyond it takes the shadow.
+ * Does a surprising amount on its own to stop the rail reading as absence.
+ */
+[data-theme="dark"] #nav-rail,
+html.blackroom #nav-rail {
+  background-color: var(--rf-surface);
+  box-shadow:
+    inset -1px 0 0 rgba(255, 240, 235, 0.10),
+    1px 0 0 rgba(0, 0, 0, 0.6);
 }
 
 /**
