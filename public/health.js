@@ -1311,6 +1311,11 @@ function renderHealth(health, configOptions, versionInfo) {
       ${envCard}
       <div class="text-xs opacity-50 text-center mt-2 flex flex-col items-center gap-1">
         <div>
+          Panel textures &ldquo;Black Linen 2&rdquo; and &ldquo;Dark Leather&rdquo; by
+          <a href="https://www.toptal.com/designers/subtlepatterns/" target="_blank" rel="noopener" class="link">Atle Mo</a>,
+          <a href="https://creativecommons.org/licenses/by-sa/3.0/" target="_blank" rel="noopener" class="link">CC BY-SA 3.0</a>.
+        </div>
+        <div>
           Refrain v${version} &middot; role: ${role ?? "unset"}
           ${
             versionInfo?.repoUrl

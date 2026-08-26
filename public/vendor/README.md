@@ -14,6 +14,8 @@ hash below.
 | `lucide-1.34.0.min.js` | https://unpkg.com/lucide@1.34.0/dist/umd/lucide.min.js | 1.34.0 | ISC |
 | `daisyui-themes-light-dark.css` | https://cdn.jsdelivr.net/npm/daisyui@4.12.24/dist/themes.css | 4.12.24 | MIT |
 | `fonts/archivo-latin.woff2` | Google Fonts, Archivo variable (wdth 62-125, wght 400-900), latin subset | v25 | OFL 1.1 |
+| `../img/textures/black_linen_v2.png` | Subtle Patterns, "Black Linen 2" by **Atle Mo** — https://www.toptal.com/designers/subtlepatterns/black-linen-2/ | — | **CC BY-SA 3.0** |
+| `../img/textures/dark_leather.png` | Subtle Patterns, "Dark Leather" by **Atle Mo** — https://www.toptal.com/designers/subtlepatterns/black-leather/ | — | **CC BY-SA 3.0** |
 | `fonts/martian-mono-latin.woff2` | Google Fonts, Martian Mono variable (wght 300-800), latin subset | v6 | OFL 1.1 |
 
 The icon library was previously loaded as `lucide@latest`, unpinned. Every icon
@@ -73,3 +75,31 @@ that you can clone it and run it.
 4c98b9d490d1698ec95f2ff17a6c7d0e72691864c0c5d7bc2a2c161b45afe5ad  fonts/archivo-latin.woff2
 29bf2691317290c0693d305d51abd52ddc027c93207f528f7efa8cf0f8b504ca  fonts/martian-mono-latin.woff2
 ```
+
+
+## Texture tiles: ShareAlike, not plain Attribution
+
+The two panel tiles are the only assets here that are not MIT or OFL. They are
+**CC BY-SA 3.0 Unported**, which is a share-alike licence.
+
+Where that version comes from matters, because the sources disagree. Toptal's
+current pattern pages say only "licensed under Creative Commons" with no version
+and no licence link. The collection's own repository,
+https://github.com/atlemo/SubtlePatterns, states "Creative Commons
+Attribution-ShareAlike 3.0 Unported License" and links
+https://creativecommons.org/licenses/by-sa/3.0/. The repository is the more
+specific statement, so it is the one recorded.
+
+Attribution is discharged in two places, because a source comment alone is not
+attribution "reasonable to the medium" for something a user only ever sees
+rendered: the comment at the top of the texture section in `public/refrain.css`,
+and a visible credit in the Health screen footer naming Atle Mo and linking the
+licence.
+
+**The share-alike obligation is separate from attribution and is not discharged
+by either of those.** Whether embedding a tile as a background image in a
+stylesheet creates a derivative work of the tile, and what that would mean for
+an MIT-licensed repository, is genuinely arguable. It is recorded here rather
+than resolved so that a later reader knows it was a decision and not an
+oversight. If it ever needs to go away, the two custom properties at the top of
+the texture section are the only place to change.

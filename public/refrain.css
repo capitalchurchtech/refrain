@@ -136,6 +136,9 @@ html.blackroom {
    junction rather than the fill, which is why a ~1.4:1 lift is enough. */
 [data-theme="dark"] .card,
 html.blackroom .card {
+  /* Panels are the chassis: the quietest material, doing all the work. */
+  position: relative;
+  isolation: isolate;
   background-image: linear-gradient(180deg, #26202F 0%, #1D1826 100%);
   box-shadow: var(--rf-junction-raised);
   border: 0;
@@ -840,6 +843,17 @@ html.blackroom .badge-info::before {
 
 /* Absent. An unlit dot with no glow, and the label recedes with it, so
    lit-versus-dark scans in one glance rather than reading two labels. */
+/**
+ * Absent. The direction says the label drops to --rf-dim (#7A6E86), and
+ * measured on the panel it actually sits on that is 3.31:1 -- below AA, and
+ * this is a 9px uppercase legend, so small text. The quality floor is
+ * explicit that AA holds against the real background, so the colour gives way.
+ *
+ * #8B7E97 measures 4.64:1 on the same panel and is still clearly darker than
+ * muted at 6.23:1, so the label still recedes with its dot. Worth noting the
+ * weave was not the cause: it took this from 3.31 to 3.69, slightly better,
+ * because soft-light with a pale linen lifts the panel.
+ */
 [data-theme="dark"] .badge-ghost,
 html.blackroom .badge-ghost {
   background-color: transparent;
@@ -853,7 +867,7 @@ html.blackroom .badge-ghost {
   font-size: 9px;
   letter-spacing: 0.15em;
   text-transform: uppercase;
-  color: var(--rf-dim);
+  color: #8B7E97;
 }
 [data-theme="dark"] .badge-ghost::before,
 html.blackroom .badge-ghost::before {
@@ -1033,4 +1047,114 @@ html.blackroom .rf-meter-cell.lit {
   grid-template-columns: auto minmax(auto, 1fr);
   justify-items: start;
   text-align: start;
+}
+
+/* ============================================================
+   16. TEXTURE
+
+   Texture modulates light; the palette owns hue. The two never fight,
+   so tiles are neutral grey and blended soft-light over the base
+   colour, which also means recolouring a panel never breaks its
+   texture.
+
+   Two rules from the direction govern where a tile may go, and both
+   are load-bearing rather than stylistic:
+
+   - Nothing shares a material with the thing it sits on. A control
+     carrying its panel's texture becomes a hole cut into the surface
+     rather than an object resting on it.
+   - Textured surfaces are the ones you do not press. Only a knob keeps
+     a weave, because knobs are gripped.
+
+   Which is why buttons, fields and the readout stay smooth: they are
+   pressed or they report, and the glass is meant to be glass.
+
+   Applied through ::before rather than on the element, so the blend
+   cannot reach the text and controls inside.
+   ============================================================ */
+/**
+ * TEXTURE TILES AND ATTRIBUTION
+ *
+ * Both tiles are by Atle Mo, from the Subtle Patterns collection.
+ *
+ *   Black Linen 2   Atle Mo   black_linen_v2.png
+ *                   https://www.toptal.com/designers/subtlepatterns/black-linen-2/
+ *   Dark Leather    Atle Mo   dark_leather.png
+ *                   https://www.toptal.com/designers/subtlepatterns/black-leather/
+ *
+ *   Licence: Creative Commons Attribution-ShareAlike 3.0 Unported (CC BY-SA 3.0)
+ *            https://creativecommons.org/licenses/by-sa/3.0/
+ *            Stated at https://github.com/atlemo/SubtlePatterns (the collection's
+ *            own repository). Toptal's current pattern pages say only "licensed
+ *            under Creative Commons" with no version, so the repository is the
+ *            more specific source and is the one recorded here.
+ *
+ * ShareAlike, not plain Attribution. Naming the author satisfies the BY half.
+ * The SA half is a separate obligation and a comment does not discharge it, so
+ * it is a decision on record rather than something this file resolves. See
+ * vendor/README.md, and the visible credit on the Health screen -- CC requires
+ * attribution reasonable to the medium, which for a web app means somewhere a
+ * user can actually see it, not source comments alone.
+ */
+:root {
+  --t-chassis: url("./img/textures/black_linen_v2.png");
+  --t-grip: url("./img/textures/dark_leather.png");
+}
+
+[data-theme="dark"] .rf-tex,
+html.blackroom .rf-tex {
+  position: relative;
+  isolation: isolate; /* keep the blend inside this element */
+}
+
+[data-theme="dark"] .rf-tex::before,
+html.blackroom .rf-tex::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  border-radius: inherit;
+  background-image: var(--t-chassis);
+  background-size: 15%; /* nothing legible at 1x or 2x: material, not pattern */
+  opacity: 0.5;
+  mix-blend-mode: soft-light;
+  filter: contrast(0.84) brightness(1.02);
+}
+
+/* Content sits above the blend rather than inside it. */
+[data-theme="dark"] .rf-tex > *,
+html.blackroom .rf-tex > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* The hero panel is moulded rather than woven, because it is the one you
+   reach for. */
+[data-theme="dark"] .rf-tex-grip::before,
+html.blackroom .rf-tex-grip::before {
+  background-image: var(--t-grip);
+  background-size: 22%;
+}
+
+/* Every card is a chassis panel. Declared here rather than by adding a class
+   to each card in nine screens' worth of markup, which would drift. */
+[data-theme="dark"] .card::before,
+html.blackroom .card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  border-radius: inherit;
+  background-image: var(--t-chassis);
+  background-size: 15%;
+  opacity: 0.5;
+  mix-blend-mode: soft-light;
+  filter: contrast(0.84) brightness(1.02);
+}
+[data-theme="dark"] .card > *,
+html.blackroom .card > * {
+  position: relative;
+  z-index: 1;
 }
