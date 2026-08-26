@@ -51,6 +51,9 @@ Working today:
 - Spell check across a playlist's slides, end to end.
 - Library Sync (optional, off by default): copies one library between two machines or accounts, add-and-update only, with snapshots.
 - ProPresenter first aid on the Health screen: when it won't start, Diagnose explains why and hands you a command plus a ready-made prompt.
+- A readout on Search showing what is on the screens, with an elapsed clock, and a link indicator in the rail that is present on every screen.
+- Reindexing only the presentations whose file changed, automatically a few seconds after you save one.
+- Performance mode, which stops Refrain doing anything of its own accord while something is on the screens.
 
 Wired up but not finished (the interface exists, the methods currently refuse to run):
 
@@ -61,6 +64,7 @@ Not independently checked:
 
 - Only tested against ProPresenter 7.x on the machines that built it. Other versions may need small path adjustments. See Compatibility below.
 - The live-output features (Return bar, the Live page's Looks, Macros, and message poster) were built to ProPresenter's documented API but confirmed only against fake servers during development. If you run a live rig, [docs/propresenter-verification.md](docs/propresenter-verification.md) is a twenty-minute checklist to confirm them, with the exact response to capture if any endpoint differs on your version.
+- Three paths added since have been tested against a real ProPresenter for everything except the final step, because the final step means putting something on the screens or editing a real presentation. Confirmed live: the library crawl, incremental reindexing, the layer-status heartbeat, and performance mode's manual switch. Not yet seen working on a live rig: performance mode arming itself from real screen output, the watcher picking up a presentation you have just saved, and Go Live firing the corrected slide after a reindex. Sections 2b to 2d of the verification checklist cover all three.
 
 ## What you need
 
