@@ -195,4 +195,5 @@ _(nothing yet)_
 2026-08-26 · CRAFT — Typography is the framework default · done · Archivo and Martian Mono self-hosted, latin subsets. 15px/1.42, silkscreen and display helpers.
 2026-08-26 · CRAFT — The hottest colour on screen is a search highlight · done · Highlights are a phosphor underline; warnings moved to plum; #FF4A24 now appears only for live.
 2026-08-26 · CRAFT — Contrast failures, including on the Go Live label · done · Lit collar retires the 3.01:1 failure: legend #EFE2FF on the cap measures 8.61:1 at its lightest point. opacity-* retired as a text-colour mechanism.
-2026-08-26 · CRAFT — Every screen has zero heroes or many · partial · Search has its hero (lit collar Go Live at 46px). Live's 34 buttons, Scripture's two primaries and Health's six saves are untouched.
+2026-08-26 · CRAFT — Every screen has zero heroes or many · done · One collar per screen across all nine. Live's 34 buttons are Tier 3 chips. Search's primary repeats per result, so the collar arms the top match and moves to whatever is hovered or tabbed to: 1315 lit collars measured before, exactly 1 after.
+2026-08-26 · CRAFT — There is no elevation model · done · Tier 3 chip added, completing the three button tiers. Live's 34 buttons were the outstanding piece.
