@@ -49,19 +49,12 @@
       }
     }
 
-    /* Touch devices have no hover and no keyboard, so tap targets need to be
-       comfortably large. Bump the nav items and bottom controls to a ~44px
-       minimum, and drop the icon-only tooltips' reliance on hover isn't an
-       issue since expanded labels are the primary affordance there. */
-    @media (hover: none) {
-      #nav-items .nav-item,
-      #nav-help-toggle,
-      #theme-toggle,
-      #nav-pin-toggle,
-      #brand-row {
-        min-height: 2.75rem;
-      }
-    }
+    /* The touch-target floor moved to refrain.css, directly beneath the tier
+       heights it has to outrank. It lived here and was silently defeated: the
+       tier rules are theme-scoped (`[data-theme="dark"] #nav-rail .nav-item`,
+       specificity 1,2,0) and beat the floor's `#nav-items .nav-item` (1,1,0),
+       so on a touch device the rail sat at 36px while this block claimed 44.
+       Co-located now so the next height change cannot quietly kill it. */
 
     /* Per-item number badges for keyboard nav. Hidden until the user holds
        Cmd/Ctrl (nav.js adds .reveal-keys to the rail), so the hint appears

@@ -1748,6 +1748,51 @@ html.blackroom .btn-chip {
   padding: 6px 12px;
 }
 
+/**
+ * The touch floor, and it lives here rather than in index.html because it has
+ * to outrank the three rules above it.
+ *
+ * It used to be an `@media (hover: none)` block in index.html's <style>
+ * selecting `#nav-items .nav-item` -- specificity 1,1,0 against the tier
+ * rules' theme-scoped 1,2,0. So the tier work silently killed it: on a touch
+ * device the rail claimed a 44px minimum and rendered 36px. A media query adds
+ * no specificity, which is what makes this class of override easy to get
+ * wrong. Same selectors, three lines below the heights they relax, so the next
+ * height change cannot quietly defeat it again.
+ *
+ * The sizes stay conditional on the input rather than on the design. Live's
+ * Look and Macro bank in particular remains Tier 3 by intent: 34 of them, and
+ * the 80px the code once asked for (through an `h-20` that never generated a
+ * rule) would be roughly 1400px of scroll in a docked column. Hunting for a
+ * Look mid-service is a worse failure than a small target, because it costs
+ * time under pressure rather than precision. A thumb still gets 44px.
+ */
+@media (hover: none) {
+  [data-theme="dark"] #nav-rail .nav-item,
+  html.blackroom #nav-rail .nav-item,
+  [data-theme="dark"] #nav-rail #nav-help-toggle,
+  html.blackroom #nav-rail #nav-help-toggle,
+  [data-theme="dark"] #nav-rail #theme-toggle,
+  html.blackroom #nav-rail #theme-toggle,
+  [data-theme="dark"] #nav-rail #nav-pin-toggle,
+  html.blackroom #nav-rail #nav-pin-toggle,
+  [data-theme="dark"] .rf-tile,
+  html.blackroom .rf-tile,
+  [data-theme="dark"] .btn-chip,
+  html.blackroom .btn-chip {
+    min-height: 2.75rem;
+  }
+  /* Not theme-scoped: these carry no tier height to outrank, and a thumb is a
+     thumb in every theme. */
+  #nav-items .nav-item,
+  #nav-help-toggle,
+  #theme-toggle,
+  #nav-pin-toggle,
+  #brand-row {
+    min-height: 2.75rem;
+  }
+}
+
 /* ============================================================
    25. THE WORDMARK, ENGRAVED
 

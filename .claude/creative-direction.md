@@ -322,6 +322,23 @@ content — the chrome out-punches the work.
   nothing while the field beside it clips. If a row needs air, the field takes
   it. This is the obvious thing to reach for and it is wrong every time.
 
+### Refrain never restyles a name its user wrote
+
+Silkscreen uppercase, tracking, monospace, truncation — all of that is for
+labels Refrain authors. A string the operator authored somewhere else is
+content, and it is shown as written.
+
+This is why the **tile** is a distinct object rather than a variant of the chip.
+It is the only surface in the app that displays a name from ProPresenter —
+"Christmas Countdown", "(FS) Worship", "Cycle of Grace" — so it is the only one
+whose `text-transform: none` is load-bearing. Uppercasing those would tell the
+operator their own naming was wrong.
+
+Anything that shows a name from ProPresenter, a provider, or a file the church
+made inherits this: no case transform, no clever abbreviation, and truncate only
+with the full string reachable. It pairs with the identifier rule below — Refrain
+authors its own labels properly, and leaves everyone else's alone.
+
 ### When text does not fit, check the text before the box
 
 Twice on one screen the width was the symptom rather than the fault. A control
