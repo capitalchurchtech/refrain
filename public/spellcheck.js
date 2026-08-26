@@ -11,36 +11,38 @@ export function initSpellcheck() {
   async function render() {
     container.innerHTML = `
       <div class="flex flex-col gap-4 max-w-3xl">
-        <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="spell-check" class="w-5 h-5"></i> Spell Check</h1>
-        <p class="text-sm opacity-70">
-          Checks the slides in a playlist for likely typos. It leans on the words already common across your
-          library, so worship vocabulary and names it has seen before aren't flagged. Refrain can't edit slides,
-          so fix anything real in ProPresenter (the buttons jump you there).
-        </p>
+        <h1>Spell Check</h1>
 
-        <div class="flex flex-wrap items-end gap-2">
-          <label class="form-control">
-            <div class="label py-1"><span class="label-text">Playlist</span></div>
-            <select id="spellcheck-playlist" class="select select-bordered select-sm min-w-[16rem]"><option value="">Loading playlists...</option></select>
-          </label>
-          <button id="spellcheck-scan-btn" class="btn btn-outline btn-sm" disabled>Check spelling</button>
+        <!-- E2, the hero: the scan is the whole screen. The three-sentence lede
+             it replaced explained how the check decides what to flag, which is
+             architecture the operator discovers by pressing the button, and it
+             pushed the one control below the fold. -->
+        <div class="card bg-base-200 rf-hero">
+          <div class="card-body p-3 gap-3">
+            <h2 class="card-title text-base">Check a playlist</h2>
+            <div class="rf-field">
+              <label for="spellcheck-playlist">Playlist</label>
+              <select id="spellcheck-playlist" class="select select-bordered"><option value="">Loading...</option></select>
+            </div>
+            <button id="spellcheck-scan-btn" class="btn btn-brand btn-sm w-fit" disabled>Check spelling</button>
+            <p class="text-xs opacity-60">Fix anything real in ProPresenter. The buttons on each result jump you there.</p>
+          </div>
         </div>
 
         <details id="spellcheck-allowlist-panel" class="collapse collapse-arrow bg-base-200 rounded">
           <summary class="collapse-title text-sm font-medium min-h-0 py-2">
-            Ignored words <span id="spellcheck-allowlist-count" class="opacity-60"></span>
+            <span class="flex items-center gap-2">Ignored words <span id="spellcheck-allowlist-count" class="opacity-60"></span></span>
           </summary>
-          <div class="collapse-content flex flex-col gap-2">
+          <div class="collapse-content flex flex-col gap-3">
             <p class="text-xs opacity-60">
-              Words here are never flagged. Add the names, archaic spellings and song titles your church
-              uses on purpose. Removing a word makes it checkable again on the next scan.
+              Never flagged. Add the names, archaic spellings and song titles your church uses on purpose.
             </p>
             <div id="spellcheck-allowlist-chips" class="flex flex-wrap gap-1"></div>
-            <div class="flex flex-wrap items-end gap-2">
-              <label class="form-control flex-1 min-w-[14rem]">
-                <div class="label py-0"><span class="label-text text-xs opacity-70">Add words (commas, spaces or one per line)</span></div>
-                <input id="spellcheck-allowlist-input" class="input input-bordered input-sm" placeholder="Yahweh, Hosanna, o'er" />
-              </label>
+            <div class="rf-control-row">
+              <div class="rf-field">
+                <label for="spellcheck-allowlist-input">Add words</label>
+                <input id="spellcheck-allowlist-input" class="input input-bordered" placeholder="Yahweh, Hosanna, o'er" />
+              </div>
               <button id="spellcheck-allowlist-add" class="btn btn-outline btn-sm">Add</button>
             </div>
             <span id="spellcheck-allowlist-status" class="text-xs"></span>
@@ -61,7 +63,7 @@ export function initSpellcheck() {
       if (!playlists?.length) {
         select.innerHTML = `<option value="">No playlists found</option>`;
       } else {
-        select.innerHTML = `<option value="">Choose a playlist...</option>` + playlists.map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`).join("");
+        select.innerHTML = `<option value="">Choose one...</option>` + playlists.map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`).join("");
       }
     } catch (err) {
       select.innerHTML = `<option value="">Couldn't load playlists</option>`;
@@ -135,7 +137,7 @@ export function initSpellcheck() {
                 ${s.words
                   .map(
                     (w) => `
-                  <span class="badge badge-warning gap-1 spellcheck-word" data-word="${escapeHtml(w.word)}" title="${w.suggestions.length ? "Suggestions: " + escapeHtml(w.suggestions.join(", ")) : "No suggestions"}">
+                  <span class="rf-tile rf-flagged gap-1 inline-flex items-center spellcheck-word" data-word="${escapeHtml(w.word)}" title="${w.suggestions.length ? "Suggestions: " + escapeHtml(w.suggestions.join(", ")) : "No suggestions"}">
                     ${escapeHtml(w.word)}${w.suggestions.length ? ` → ${escapeHtml(w.suggestions[0])}` : ""}
                     <button class="spellcheck-ignore-btn ml-1 underline decoration-dotted" data-word="${escapeHtml(w.word)}" title="Never flag this word again. You can undo it under Ignored words.">ignore</button>
                   </span>`
@@ -268,7 +270,7 @@ export function initSpellcheck() {
     chips.innerHTML = allowlist.length
       ? allowlist
           .map(
-            (w) => `<span class="badge badge-ghost gap-1">${escapeHtml(w)}
+            (w) => `<span class="rf-tile gap-1 inline-flex items-center">${escapeHtml(w)}
               <button class="spellcheck-unallow-btn" data-word="${escapeHtml(w)}" title="Stop ignoring &quot;${escapeHtml(w)}&quot;" aria-label="Stop ignoring ${escapeHtml(w)}">&times;</button>
             </span>`
           )
@@ -293,15 +295,15 @@ export function initSpellcheck() {
       const data = await res.json();
       if (!res.ok) {
         status.textContent = data.error;
-        status.className = "text-xs text-error";
+        status.className = "text-xs rf-flag";
         return;
       }
       status.textContent = "Saved.";
-      status.className = "text-xs text-success";
+      status.className = "text-xs rf-nominal";
       await loadAllowlist();
     } catch (err) {
       status.textContent = err.message;
-      status.className = "text-xs text-error";
+      status.className = "text-xs rf-flag";
     }
   }
 

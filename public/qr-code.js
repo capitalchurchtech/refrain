@@ -84,20 +84,23 @@ export function initQrCode() {
     }
     container.innerHTML = `
       <div class="flex flex-col gap-4 max-w-3xl">
-        <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="qr-code" class="w-5 h-5"></i> QR Codes</h1>
+        <h1>QR Codes</h1>
+
+        <!-- One line, and it is the one fact that changes a decision: no
+             shortener means the code cannot expire or start charging. -->
         <p class="text-sm opacity-70">
-          Generated entirely on this machine. The code encodes your content directly, with no third-party link shortener or
-          tracker in the middle that could expire it or start charging later.
+          Generated on this machine, encoding your content directly. No third-party shortener that could
+          expire the code or start charging later.
         </p>
 
         <div class="flex flex-col lg:flex-row gap-4">
           <div class="flex flex-col gap-3 flex-1 min-w-0">
-            <label class="form-control">
-              <div class="label py-1"><span class="label-text">Type</span></div>
-              <select id="qr-type" class="select select-bordered select-sm">
+            <div class="rf-field">
+              <label for="qr-type">Type</label>
+              <select id="qr-type" class="select select-bordered">
                 ${TYPES.map((t) => `<option value="${t.id}" ${state.type === t.id ? "selected" : ""}>${t.label}</option>`).join("")}
               </select>
-            </label>
+            </div>
 
             <div id="qr-fields" class="flex flex-col gap-2"></div>
 
@@ -105,47 +108,51 @@ export function initQrCode() {
               <summary class="cursor-pointer font-medium flex items-center gap-2"><i data-lucide="sliders-horizontal" class="w-3.5 h-3.5"></i> Appearance</summary>
               <div class="mt-2 flex flex-col gap-2">
                 <div class="flex flex-wrap gap-3">
-                  <label class="form-control">
-                    <div class="label py-1"><span class="label-text text-xs">Size (px)</span></div>
-                    <input type="number" id="qr-size" min="64" max="2000" step="1" class="input input-bordered input-xs w-24" value="${state.size}" />
-                  </label>
-                  <label class="form-control">
-                    <div class="label py-1"><span class="label-text text-xs">Quiet zone</span></div>
-                    <input type="number" id="qr-margin" min="0" max="20" step="1" class="input input-bordered input-xs w-20" value="${state.margin}" />
-                  </label>
-                  <label class="form-control">
-                    <div class="label py-1"><span class="label-text text-xs">Error correction ${infoIcon("Higher levels stay scannable when the code is dirty, printed small, or has a logo. H is highest.")}</span></div>
-                    <select id="qr-ec" class="select select-bordered select-xs w-20">
+                  <div class="rf-field" style="flex: 0 0 5.5rem">
+                    <label for="qr-size">Size (px)</label>
+                    <input type="number" id="qr-size" min="64" max="2000" step="1" class="input input-bordered" value="${state.size}" />
+                  </div>
+                  <div class="rf-field" style="flex: 0 0 5.5rem">
+                    <label for="qr-margin">Quiet zone</label>
+                    <input type="number" id="qr-margin" min="0" max="20" step="1" class="input input-bordered" value="${state.margin}" />
+                  </div>
+                  <div class="rf-field" style="flex: 0 0 6.5rem">
+                    <label for="qr-ec">Correction ${infoIcon("Higher levels stay scannable when the code is dirty, printed small, or has a logo. H is highest.")}</label>
+                    <select id="qr-ec" class="select select-bordered">
                       ${["L", "M", "Q", "H"].map((l) => `<option ${state.ecLevel === l ? "selected" : ""}>${l}</option>`).join("")}
                     </select>
-                  </label>
+                  </div>
                 </div>
                 <div class="flex flex-wrap gap-3 items-center">
                   <label class="flex items-center gap-2 text-xs">Foreground <input type="color" id="qr-dark" value="${state.dark}" class="w-8 h-6 rounded" /></label>
                   <label class="flex items-center gap-2 text-xs">Background <input type="color" id="qr-light" value="${state.light}" class="w-8 h-6 rounded" /></label>
                 </div>
-                <label class="form-control">
-                  <div class="label py-1"><span class="label-text text-xs">Center logo (PNG output only) ${infoIcon("Adds your logo to the middle. Error correction is bumped to H automatically so it still scans.")}</span></div>
+                <div class="rf-field">
+                  <label for="qr-logo">Center logo, PNG only ${infoIcon("Adds your logo to the middle. Error correction is bumped to H automatically so it still scans.")}</label>
                   <div class="flex items-center gap-2">
                     <input type="file" id="qr-logo" accept="image/*" class="file-input file-input-bordered file-input-xs flex-1" />
-                    <button type="button" id="qr-logo-clear" class="btn btn-ghost btn-xs ${state.logoDataUrl ? "" : "hidden"}">Clear</button>
+                    <button type="button" id="qr-logo-clear" class="btn btn-chip ${state.logoDataUrl ? "" : "hidden"}">Clear</button>
                   </div>
-                </label>
+                </div>
               </div>
             </details>
           </div>
 
-          <div class="flex flex-col items-center gap-3 w-full lg:w-72 shrink-0">
-            <div class="bg-base-200 rounded p-3 w-full flex items-center justify-center min-h-[16rem]">
+          <!-- E2, the hero: the code itself, and the download beneath it. The
+               fields on the left are the entry; this is the payoff. -->
+          <div class="card bg-base-200 rf-hero w-full lg:w-72 shrink-0">
+            <div class="card-body p-3 gap-3 items-center">
+            <div class="bg-base-300 rounded p-3 w-full flex items-center justify-center min-h-[16rem]">
               <img id="qr-preview" alt="QR preview" class="max-w-full h-auto hidden" />
               <div id="qr-preview-empty" class="text-sm opacity-50 text-center">Fill in the fields to see your code.</div>
             </div>
-            <div id="qr-error" class="text-sm text-warning text-center hidden"></div>
+            <div id="qr-error" class="text-sm rf-flag text-center hidden"></div>
             <div class="flex gap-2 w-full">
               <button id="qr-download-png" class="btn btn-brand btn-sm flex-1" disabled><i data-lucide="download" class="w-4 h-4"></i> PNG</button>
               <button id="qr-download-svg" class="btn btn-outline btn-sm flex-1" disabled><i data-lucide="download" class="w-4 h-4"></i> SVG</button>
             </div>
             <div class="text-xs opacity-50 text-center">SVG is best for print (scales with no blur). Logos apply to PNG only.</div>
+            </div>
           </div>
         </div>
 
@@ -239,21 +246,28 @@ export function initQrCode() {
       }
     });
 
+    // The per-type fields take the same silkscreen-label-over-recessed-field
+    // treatment as the static ones above them. They were 15px sentence case
+    // while Type two lines up was 9px silkscreen, which made the one field the
+    // operator actually types into look like it belonged to another screen.
+    // The id is derived from the key so the label's `for` reaches it.
     el.innerHTML = defs
       .map((f) => {
         const val = escapeHtml(state.fields[f.key] ?? "");
+        const id = `qr-field-${f.key}`;
+        const head = `<label for="${id}">${f.label}</label>`;
         if (f.type === "textarea") {
-          return `<label class="form-control"><div class="label py-1"><span class="label-text text-sm">${f.label}</span></div>
-            <textarea data-key="${f.key}" rows="2" class="textarea textarea-bordered textarea-sm qr-field" placeholder="${escapeHtml(f.placeholder ?? "")}">${val}</textarea></label>`;
+          return `<div class="rf-field">${head}
+            <textarea id="${id}" data-key="${f.key}" rows="2" class="textarea textarea-bordered qr-field" placeholder="${escapeHtml(f.placeholder ?? "")}">${val}</textarea></div>`;
         }
         if (f.type === "select") {
-          return `<label class="form-control"><div class="label py-1"><span class="label-text text-sm">${f.label}</span></div>
-            <select data-key="${f.key}" class="select select-bordered select-sm qr-field">
+          return `<div class="rf-field">${head}
+            <select id="${id}" data-key="${f.key}" class="select select-bordered qr-field">
               ${f.options.map(([v, lbl]) => `<option value="${v}" ${state.fields[f.key] === v ? "selected" : ""}>${lbl}</option>`).join("")}
-            </select></label>`;
+            </select></div>`;
         }
-        return `<label class="form-control"><div class="label py-1"><span class="label-text text-sm">${f.label}</span></div>
-          <input type="${f.type ?? "text"}" data-key="${f.key}" class="input input-bordered input-sm qr-field" placeholder="${escapeHtml(f.placeholder ?? "")}" value="${val}" /></label>`;
+        return `<div class="rf-field">${head}
+          <input id="${id}" type="${f.type ?? "text"}" data-key="${f.key}" class="input input-bordered qr-field" placeholder="${escapeHtml(f.placeholder ?? "")}" value="${val}" /></div>`;
       })
       .join("");
 
@@ -488,7 +502,7 @@ export function initQrCode() {
       <div class="divider my-1"></div>
       <div class="flex items-center justify-between mb-1">
         <div class="text-sm font-semibold">Recent codes</div>
-        <button id="qr-recent-clear" class="btn btn-ghost btn-xs">Clear</button>
+        <button id="qr-recent-clear" class="btn btn-chip">Clear</button>
       </div>
       <div class="text-xs opacity-60 mb-2">Your last ${entries.length} downloaded ${entries.length === 1 ? "code" : "codes"}. Click one to restore its settings.</div>
       <div class="flex flex-wrap gap-2">

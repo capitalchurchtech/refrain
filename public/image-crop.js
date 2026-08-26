@@ -23,34 +23,41 @@ export function initImageCrop() {
 
     container.innerHTML = `
       <div class="flex flex-col gap-4 max-w-3xl">
-        <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="crop" class="w-5 h-5"></i> Image Crop</h1>
+        <h1>Image Crop</h1>
+
+        <!-- One line. The paragraph this replaces had a sentence fragment that
+             had been shipping for a while: "...every preset below.
+             smart-cropped so the important part of the image stays in frame". -->
         <p class="text-sm opacity-70">
-          Drop an image into the input folder and it's automatically cropped and resized to every preset below.
-          smart-cropped so the important part of the image stays in frame, not just a blind center-crop.
+          Drop an image in the input folder and it is cropped to every preset below, smart-cropped so the
+          subject stays in frame rather than blind-centred.
         </p>
 
-        <label class="label cursor-pointer justify-start gap-2 w-fit">
-          <input type="checkbox" id="crop-enabled" class="checkbox checkbox-sm" ${cfg.enabled ? "checked" : ""} />
-          <span class="label-text">Enable watched-folder image cropping</span>
+        <label class="rf-check w-fit">
+          <input type="checkbox" id="crop-enabled" class="checkbox checkbox-xs" ${cfg.enabled ? "checked" : ""} />
+          Watch the input folder
         </label>
 
-        <div id="crop-config-fields" class="flex flex-col gap-4 ${cfg.enabled ? "" : "opacity-50 pointer-events-none"}">
-          <div class="flex flex-wrap gap-3">
-            <label class="form-control flex-1 min-w-[16rem]">
-              <div class="label py-1"><span class="label-text">Input folder</span></div>
-              <div class="flex gap-2">
-                <input id="crop-input-folder" type="text" class="input input-bordered input-sm flex-1" placeholder="${escapeHtml(defaults.inputFolder ?? "")}" value="${escapeHtml(inputFolderValue)}" />
-                <button type="button" class="btn btn-outline btn-sm crop-open-folder-btn" data-which="input">Open</button>
+        <!-- E2, the hero: the folders and the presets are what the Installer
+             came here to set, and Save is their commit. -->
+        <div id="crop-config-fields" class="card bg-base-200 rf-hero ${cfg.enabled ? "" : "opacity-50 pointer-events-none"}">
+          <div class="card-body p-3 gap-4">
+            <div class="flex flex-col gap-3">
+              <div class="rf-field">
+                <label for="crop-input-folder">Input folder</label>
+                <div class="flex gap-2">
+                  <input id="crop-input-folder" type="text" class="input input-bordered flex-1" placeholder="${escapeHtml(defaults.inputFolder ?? "")}" value="${escapeHtml(inputFolderValue)}" />
+                  <button type="button" class="btn btn-chip crop-open-folder-btn" data-which="input">Open</button>
+                </div>
               </div>
-            </label>
-            <label class="form-control flex-1 min-w-[16rem]">
-              <div class="label py-1"><span class="label-text">Output folder</span></div>
-              <div class="flex gap-2">
-                <input id="crop-output-folder" type="text" class="input input-bordered input-sm flex-1" placeholder="${escapeHtml(defaults.outputFolder ?? "")}" value="${escapeHtml(outputFolderValue)}" />
-                <button type="button" class="btn btn-outline btn-sm crop-open-folder-btn" data-which="output">Open</button>
+              <div class="rf-field">
+                <label for="crop-output-folder">Output folder</label>
+                <div class="flex gap-2">
+                  <input id="crop-output-folder" type="text" class="input input-bordered flex-1" placeholder="${escapeHtml(defaults.outputFolder ?? "")}" value="${escapeHtml(outputFolderValue)}" />
+                  <button type="button" class="btn btn-chip crop-open-folder-btn" data-which="output">Open</button>
+                </div>
               </div>
-            </label>
-          </div>
+            </div>
 
           <details class="text-sm bg-base-200 rounded p-2">
             <summary class="cursor-pointer font-medium flex items-center gap-2"><i data-lucide="mouse-pointer-click" class="w-3.5 h-3.5"></i> Make dropping images in one-drag easy</summary>
@@ -63,43 +70,45 @@ export function initImageCrop() {
           </details>
 
           <div>
-            <div class="text-sm font-semibold mb-1">Output presets</div>
-            <div class="text-xs opacity-60 mb-1">Every image dropped in the input folder is cropped to <em>each</em> of these. Delete any you don't need. Outputs are named the original plus the label in the last box, e.g. <span class="font-mono">photo_thirds-sq.jpg</span>. Edit that label to whatever you like; leave it blank to derive it from the name.</div>
+            <div class="rf-subhead">Output presets</div>
+            <div class="text-xs opacity-60 mb-1">Every dropped image is cropped to all of these, named like <span class="font-mono">photo_thirds-sq.jpg</span>.</div>
             <div class="flex flex-col gap-1" id="crop-presets-list"></div>
             <div class="flex flex-wrap items-center gap-2 mt-2">
               <select id="crop-catalog-select" class="select select-bordered select-xs"></select>
-              <button type="button" id="crop-add-catalog-btn" class="btn btn-ghost btn-xs">
+              <button type="button" id="crop-add-catalog-btn" class="btn btn-chip">
                 <i data-lucide="plus" class="w-3.5 h-3.5"></i> Add common size
               </button>
               <span class="opacity-40 text-xs">or</span>
-              <button type="button" id="crop-add-preset-btn" class="btn btn-ghost btn-xs">
+              <button type="button" id="crop-add-preset-btn" class="btn btn-chip">
                 <i data-lucide="plus" class="w-3.5 h-3.5"></i> Add custom
               </button>
             </div>
           </div>
-        </div>
 
-        <div class="flex items-center gap-2">
-          <button id="crop-save-btn" class="btn btn-brand btn-sm w-fit">Save</button>
-          <span id="crop-save-status" class="text-sm"></span>
+            <div class="flex items-center gap-2">
+              <button id="crop-save-btn" class="btn btn-brand btn-sm w-fit">Save</button>
+              <span id="crop-save-status" class="text-sm"></span>
+            </div>
+          </div>
         </div>
-
-        <div class="divider my-0"></div>
 
         ${
           data.watching
-            ? `<div class="alert alert-success py-2 text-sm">
-                 <i data-lucide="check-circle-2" class="w-4 h-4 shrink-0"></i>
+            ? `<div class="flex items-start gap-2 text-sm">
+                 <span class="rf-led lit mt-1.5"></span>
                  <div class="min-w-0">
                    <div class="font-medium">Ready. Drop images into the input folder.${data.processing ? " Processing…" : ""}</div>
                    <div class="text-xs opacity-80">${(cfg.presets ?? []).length} preset${(cfg.presets ?? []).length === 1 ? "" : "s"}, cropped into the output folder.</div>
                  </div>
                </div>`
-            : `<div class="text-sm opacity-60 flex items-center gap-2"><i data-lucide="eye-off" class="w-3.5 h-3.5"></i> Not watching. Tick <strong class="font-medium">Enable</strong> above and Save to start.</div>`
+            : `<div class="flex items-center gap-2 text-sm opacity-60">
+                 <span class="rf-led"></span>
+                 Not watching. Tick <strong class="font-medium">Watch the input folder</strong> above and Save to start.
+               </div>`
         }
 
         <div>
-          <div class="text-sm font-semibold mb-1">Recent activity</div>
+          <div class="rf-subhead">Recent activity</div>
           <div class="flex flex-col gap-1" id="crop-activity-list">
             ${renderActivity(data.recentActivity)}
           </div>
@@ -159,15 +168,24 @@ export function initImageCrop() {
     const listEl = document.getElementById("crop-presets-list");
     listEl.innerHTML = workingPresets
       .map(
+        // Two lines per preset, not one. Six controls in a single flex row
+        // needed roughly 340px before the name field even started, so at
+        // docked width the height and filename boxes were pushed off the
+        // right edge. Name and delete on top, dimensions and filename label
+        // beneath, grouped by a rule so the pair still reads as one item.
         (p, i) => `
-      <div class="flex items-center gap-2">
-        <input type="text" class="input input-bordered input-xs flex-1 crop-preset-name" placeholder="Name (e.g. 16:9 1080p)" value="${escapeHtml(p.name)}" data-index="${i}" />
-        <input type="number" min="1" class="input input-bordered input-xs w-20 crop-preset-width" placeholder="W" value="${p.width}" data-index="${i}" />
-        <span class="opacity-50 text-xs">x</span>
-        <input type="number" min="1" class="input input-bordered input-xs w-20 crop-preset-height" placeholder="H" value="${p.height}" data-index="${i}" />
-        <span class="opacity-40 text-xs font-mono">_</span>
-        <input type="text" class="input input-bordered input-xs w-28 font-mono crop-preset-abbr" placeholder="${escapeHtml(websafeToken(p.name))}" value="${escapeHtml(p.abbr ?? "")}" data-index="${i}" title="Filename label (leave blank to derive from the name)" />
-        <button type="button" class="btn btn-ghost btn-xs crop-remove-preset-btn" data-index="${i}"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+      <div class="rf-preset">
+        <div class="flex items-center gap-2">
+          <input type="text" class="input input-bordered input-xs flex-1 min-w-0 crop-preset-name" placeholder="Name (e.g. 16:9 1080p)" value="${escapeHtml(p.name)}" data-index="${i}" aria-label="Preset name" />
+          <button type="button" class="btn btn-chip crop-remove-preset-btn" data-index="${i}" aria-label="Remove the ${escapeHtml(p.name || "unnamed")} preset"><i data-lucide="x" class="w-3 h-3"></i></button>
+        </div>
+        <div class="flex items-center gap-2">
+          <input type="number" min="1" class="input input-bordered input-xs w-20 crop-preset-width" placeholder="W" value="${p.width}" data-index="${i}" aria-label="Width in pixels" />
+          <span class="opacity-50 text-xs">&times;</span>
+          <input type="number" min="1" class="input input-bordered input-xs w-20 crop-preset-height" placeholder="H" value="${p.height}" data-index="${i}" aria-label="Height in pixels" />
+          <span class="opacity-40 text-xs font-mono ml-1">_</span>
+          <input type="text" class="input input-bordered input-xs flex-1 min-w-0 font-mono crop-preset-abbr" placeholder="${escapeHtml(websafeToken(p.name))}" value="${escapeHtml(p.abbr ?? "")}" data-index="${i}" aria-label="Filename label" title="Filename label (leave blank to derive from the name)" />
+        </div>
       </div>
     `
       )
@@ -273,7 +291,7 @@ export function initImageCrop() {
       .map(
         (e) => `
       <div class="text-sm bg-base-100 rounded p-2 flex items-center gap-2">
-        <i data-lucide="${e.status === "ok" ? "check-circle-2" : "alert-triangle"}" class="w-3.5 h-3.5 shrink-0 ${e.status === "ok" ? "text-success" : "text-warning"}"></i>
+        <i data-lucide="${e.status === "ok" ? "check" : "alert-triangle"}" class="w-3.5 h-3.5 shrink-0 ${e.status === "ok" ? "rf-nominal" : "rf-flag"}"></i>
         <span class="flex-1 min-w-0 truncate">${escapeHtml(e.filename ?? "(watcher)")}</span>
         <span class="opacity-60 text-xs">${e.status === "ok" ? e.outputs.join(", ") : escapeHtml(e.error)}</span>
       </div>

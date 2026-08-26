@@ -2135,3 +2135,70 @@ html.blackroom .rf-hero {
 html.blackroom .rf-check {
   color: var(--rf-muted);
 }
+
+/* ============================================================
+   29. FAULT AND OK, OUTSIDE HEALTH
+
+   Section 13 built the fault vocabulary but bound it to `#view-health`
+   by selector, so every other screen reporting a per item result fell
+   back to raw DaisyUI: `text-success` green and `text-warning` amber.
+   Green is not in the palette, and that amber is the saturated warm
+   reserved for what is on the screens.
+
+   Same treatment, addressable anywhere. Two states, and the mapping is
+   the same one the LED uses: something worth attention is marked, and
+   something fine is simply not. There is no green counterpart on
+   purpose -- nominal is not a colour event, it is the absence of a
+   mark, which is how a panel says it and what stops a list of results
+   reading as a wall of colour.
+   ============================================================ */
+.rf-flag {
+  color: var(--rf-fault);
+}
+[data-theme="dark"] .rf-nominal,
+html.blackroom .rf-nominal {
+  color: var(--rf-muted);
+}
+
+/**
+ * A tile carrying a fault, for a per item result: the word that failed the
+ * check, the preset that could not be written. The rim marks it rather than a
+ * fill, for the same reason a status is never a lozenge -- and critically the
+ * text stays untransformed, because these strings are the operator's own
+ * content. A misspelled word has to be shown exactly as it was typed or the
+ * screen is lying about what is on the slide.
+ */
+[data-theme="dark"] .rf-tile.rf-flagged,
+html.blackroom .rf-tile.rf-flagged {
+  box-shadow: inset 0 0 0 1px var(--rf-fault);
+  color: var(--rf-text);
+}
+
+/* A subsection inside a card. Not a `.card-title`, which carries the lit edge
+   and is the card's own heading -- a second one inside the same card would
+   claim there are two cards. Silkscreen, quieter, no marker. */
+.rf-subhead {
+  margin-bottom: 4px;
+  font-family: var(--rf-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+[data-theme="dark"] .rf-subhead,
+html.blackroom .rf-subhead {
+  color: var(--rf-muted);
+}
+
+/* One preset, over two lines, grouped so the pair reads as a single item
+   rather than four loose boxes. */
+.rf-preset {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 0;
+  min-width: 0;
+}
+[data-theme="dark"] .rf-preset + .rf-preset,
+html.blackroom .rf-preset + .rf-preset {
+  border-top: 1px solid var(--rf-hairline);
+}
