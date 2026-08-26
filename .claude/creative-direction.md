@@ -264,6 +264,31 @@ On press the cap travels two pixels and the collar tightens. Light never
 brightens on press: a real key bottoming out occludes its own light rather than
 adding to it.
 
+### Latching keys
+
+A key representing a state you are already in is **latched down**, the way an
+old tape transport holds the engaged key. It takes the recessed junction and
+loses its outer contact shadow, because a bottomed-out key is not casting one.
+It also goes *dimmer*, not brighter, for the same occlusion reason as a press.
+
+So a set of nav keys reads as: all up, one down. No colour needed to carry it,
+and a single accent edge marks which. The mistake to avoid is lifting and
+brightening the active one — that says "press me" about the only place you
+cannot go.
+
+An icon is never brighter than the label beside it. On a panel the icon and the
+legend are the same silkscreen ink, printed in one pass; when an icon
+out-shouts its own legend the hierarchy is inverted and everything reads as
+noisy.
+
+### Group breaks
+
+Where a panel divides into groups, the break is a machined score line — a dark
+groove with a light catch below it — not a floating hairline at partial
+opacity. And it carries a silkscreen group label, because an unlabelled break
+tells the operator that a division exists without telling them what it is,
+which is worse than no break at all.
+
 ## The screen
 
 Three materials stacked, every junction articulated.

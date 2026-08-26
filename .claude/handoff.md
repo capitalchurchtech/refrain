@@ -91,9 +91,12 @@ properties of the ones you get. Target is under 12% luminance range.
 - `Carried forward from the retired UI-consistency pass`
 - `Copy — the warm zone is empty` (partially landed; check what remains)
 - `Copy — put the Health tooltips on a diet`
-- `Feature — Too-wide callout when Refrain is not docked` — still carries an
-  open question: runtime or setup-only. Runtime is funnier; setup-only cannot
-  possibly interrupt a service. **Do not pick unilaterally.**
+- `Feature — Too-wide callout when Refrain is not docked` — **settled
+  (Brandon, 2026-08-26): setup-only.** No runtime overlay. Fires once during
+  first-run setup, inline rather than modal, no dismissal state because setup
+  does not repeat. Accepted tradeoff: someone who set up months ago and now
+  runs it maximised never sees it, which is deliberate. Copy candidates and the
+  threshold reasoning are in a comment on the task.
 
 ---
 
@@ -112,6 +115,9 @@ properties of the ones you get. Target is under 12% luminance range.
 - **Tailwind class names stay utility-flavoured** rather than moving to
   semantic hooks. The static homes in `refrain.css` are what make them work,
   and the CLAUDE.md comment is what protects those from being tidied away.
+- **The too-wide callout is setup-only.** Never a runtime overlay. A runtime
+  callout can only be made *unlikely* to appear mid-service, never guaranteed
+  not to, and that is not a risk worth carrying for a joke.
 
 ---
 
@@ -151,3 +157,5 @@ Editing session appends here. One line per task, newest last. Format:
 - 2026-08-26 · Index progress meter · done · 5989346, own module led-meter.js
 - 2026-08-26 · Tailwind JIT trap documented · done · 433a058
 - 2026-08-26 · Texture · unblocked · Subtle Patterns, CC-BY; files need re-downloading, attribution per tile
+- 2026-08-26 · CRAFT — Latch the active nav key down, dim the icons, make the separators mean something · done · Active key inverted to the recessed junction with no outer contact shadow, keeping the plum inset as the latch marker. Icons take the label's ink rather than the button's content colour, which was the whole of "way too bright". Group breaks are a scored groove plus a silkscreen legend naming SERVICE / PREP / SYSTEM, including the first group; collapsed shows the groove only. base-content/25 retired.
+- 2026-08-26 · Contrast on the new rail states · done · Two specified values failed AA and were lifted rather than shipped: --rf-dim on the latched key is 3.47:1 and on the rail ground 3.87:1, both under 4.5 for 8-10px legends. Latched legend and icon are #9689A2 (5.04:1), group legends #8B7E97 (4.86:1). Both still read as quieter tiers, so the hierarchy the spec wanted survives.

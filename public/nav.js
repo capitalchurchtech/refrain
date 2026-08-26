@@ -46,6 +46,14 @@ const NAV_GROUP = {
 };
 const DEFAULT_GROUP = "prep";
 
+// Named so a group break can say what it separates. Cold zone, and short
+// enough to survive the rail at silkscreen size.
+const GROUP_LABEL = {
+  service: "Service",
+  prep: "Prep",
+  system: "System",
+};
+
 const svgCache = new Map();
 
 /**
@@ -126,10 +134,23 @@ export async function initNav({ onNavigate, viewIds }) {
     navItemsEl.innerHTML = items
       .map((item, i) => {
         const group = NAV_GROUP[item.id] ?? DEFAULT_GROUP;
-        // A thin divider where the group changes (service -> prep -> system).
-        const divider =
-          prevGroup && group !== prevGroup
-            ? `<div class="border-t border-base-content/25 my-2 mx-2" aria-hidden="true"></div>`
+        // A group break is a scored groove in the panel plus, when pinned, a
+        // silkscreen label naming what follows. The label is the half that
+        // makes the division mean something; collapsed shows the groove only,
+        // because a collapsed rail is for someone who already knows the
+        // layout.
+        // Rendered unconditionally and hidden by CSS when the rail is
+        // collapsed. Nav items are built once, before the pin state is
+        // applied, so a `pinned` check here renders nothing.
+        const isBreak = Boolean(prevGroup) && group !== prevGroup;
+        // The first group gets its legend too, with no groove above it -- there
+        // is nothing to separate it from. Naming two of three groups would be
+        // its own kind of confusing.
+        const label = `<div class="rf-group-label">${GROUP_LABEL[group] ?? group}</div>`;
+        const divider = isBreak
+          ? `<div class="rf-group-break" aria-hidden="true"></div>${label}`
+          : i === 0
+            ? label
             : "";
         prevGroup = group;
         // The number key that jumps here (first nine items), revealed while

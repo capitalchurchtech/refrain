@@ -739,20 +739,126 @@ html.blackroom #nav-rail #nav-pin-toggle:active {
     inset 0 -1px 0 rgba(0, 0, 0, 0.6);
 }
 
-/* The active key is the one that is lit, and it sits a step higher. */
+/**
+ * The active key is LATCHED DOWN, like the engaged key on a tape transport.
+ *
+ * It used to be raised, with the raised junction and an outer contact shadow,
+ * so the active screen sat higher than its neighbours. That was backwards
+ * twice over. Raised means a finger goes on, and the screen you are already
+ * looking at is the one place a finger cannot usefully go. And it brightened
+ * its label to --rf-text, the lightest value in the palette, when the rule is
+ * that light never brightens on press: a key bottoming out occludes its own
+ * light rather than adding to it.
+ *
+ * So it inverts. Recessed junction, no outer contact shadow because a
+ * bottomed-out key is not casting one, and the label and icon go darker rather
+ * than lighter. Eight keys up, one down, and no colour needed to carry it --
+ * the plum inset is a latch marker, not the signal itself.
+ */
 [data-theme="dark"] #nav-rail .nav-item.btn-active,
 html.blackroom #nav-rail .nav-item.btn-active {
-  background-image: linear-gradient(180deg, #3A3145 0%, #272031 100%);
+  background-image: linear-gradient(180deg, #1C1724 0%, #221C2B 100%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 240, 235, 0.16),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.55),
-    inset 2px 0 0 var(--rf-plum),
-    0 1px 0 rgba(255, 240, 235, 0.04),
-    0 2px 4px rgba(0, 0, 0, 0.5);
+    inset 0 2px 6px rgba(0, 0, 0, 0.8),
+    inset 0 -1px 0 rgba(255, 240, 235, 0.07),
+    inset 2px 0 0 var(--rf-plum);
+  transform: none;
 }
+/* Already bottomed out, so pressing it again has nowhere to travel. */
+[data-theme="dark"] #nav-rail .nav-item.btn-active:active,
+html.blackroom #nav-rail .nav-item.btn-active:active {
+  transform: none;
+}
+[data-theme="dark"] #nav-rail .nav-item.btn-active:hover,
+html.blackroom #nav-rail .nav-item.btn-active:hover {
+  background-image: linear-gradient(180deg, #1C1724 0%, #221C2B 100%);
+}
+
+/**
+ * The latched key's legend and icon occlude rather than brighten -- but not
+ * all the way to --rf-dim as first specified.
+ *
+ * Measured on the latched gradient, which is darker than a resting key by
+ * design, #7A6E86 is 3.47:1 and #8B7E97 is 4.36:1. Both fail AA for a 10px
+ * uppercase legend, and the quality floor holds AA against the real
+ * background. #9689A2 measures 5.04:1 there and is still darker than the
+ * resting label's #A295AC, so the key still reads as pressed in without the
+ * legend becoming unreadable to do it.
+ */
 [data-theme="dark"] #nav-rail .nav-item.btn-active .nav-label,
-html.blackroom #nav-rail .nav-item.btn-active .nav-label {
-  color: var(--rf-text);
+html.blackroom #nav-rail .nav-item.btn-active .nav-label,
+[data-theme="dark"] #nav-rail .nav-item.btn-active svg,
+html.blackroom #nav-rail .nav-item.btn-active svg {
+  color: #9689A2;
+}
+
+/**
+ * Icons take the label's ink, never more.
+ *
+ * There was no icon rule at all, so they inherited the button's content
+ * colour, near --rf-text, while the legend beside them was --rf-muted. An icon
+ * brighter than its own label is the whole of "the icons are way too bright":
+ * on a panel both are the same silkscreen ink, printed in one pass.
+ */
+[data-theme="dark"] #nav-rail .nav-item svg,
+html.blackroom #nav-rail .nav-item svg,
+[data-theme="dark"] #nav-rail #nav-help-toggle svg,
+html.blackroom #nav-rail #nav-help-toggle svg,
+[data-theme="dark"] #nav-rail #theme-toggle svg,
+html.blackroom #nav-rail #theme-toggle svg,
+[data-theme="dark"] #nav-rail #nav-pin-toggle svg,
+html.blackroom #nav-rail #nav-pin-toggle svg {
+  color: var(--rf-muted);
+}
+
+/**
+ * Group breaks: a scored groove, not a floating hairline.
+ *
+ * The grouping itself was right -- service, prep, system -- but the break was
+ * `border-base-content/25`, a partial-opacity stroke hanging in the panel. It
+ * taught the operator that a division existed without saying what it was,
+ * which is worse than no break at all. It was also an opacity-derived colour,
+ * the pattern already retired for text.
+ *
+ * A groove is two materials meeting: the cut takes the shadow, the lower lip
+ * catches light. The label is the half that answers the complaint.
+ */
+.rf-group-break {
+  height: 0;
+  margin: 10px 8px 0;
+}
+[data-theme="dark"] .rf-group-break,
+html.blackroom .rf-group-break {
+  border-top: 1px solid var(--rf-shadowline);
+  box-shadow: 0 1px 0 rgba(255, 240, 235, 0.06);
+}
+
+/* Collapsed shows the groove only. A collapsed rail is for someone who
+   already knows the layout, and there is no width for a legend anyway. */
+#nav-rail.w-16 .rf-group-label {
+  display: none;
+}
+
+.rf-group-label {
+  padding: 8px 8px 4px;
+  font-family: var(--rf-sans);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+/* The first legend sits at the top of the list, with nothing above it to
+   clear. */
+#nav-items > .rf-group-label:first-child {
+  padding-top: 0;
+}
+/* --rf-dim on the rail ground measures 3.87:1, which fails AA for 8px text.
+   #8B7E97 is 4.86:1 and still reads as a quieter tier than the key legends
+   above it at --rf-muted. Same trade as the latched legend: keep the
+   hierarchy, respect the floor. */
+[data-theme="dark"] .rf-group-label,
+html.blackroom .rf-group-label {
+  color: #8B7E97;
 }
 
 /**
