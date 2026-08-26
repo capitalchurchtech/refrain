@@ -77,6 +77,37 @@ is what metal looks like in a real room. But nothing is ever given a saturated
 warm colour except live. Not a warning, not a hover, not a chart. Neon values
 are emitters only and never appear as fills.
 
+### The one exception: fault, on Health only
+
+```
+fault      #C9922E    hue 39°, saturation 63%
+```
+
+Decided 2026-08-26. Reserving all warm for live left a hard fault state with no
+colour, so Health gets one desaturated amber and nowhere else does.
+
+It survives the rule because it is measurably not live: 29° of hue separation
+from `--go` (10°) and 37 points less saturated, so the two never read as the
+same signal. It clears AA on every Health surface, including `machined` at
+5.14:1 and both Blackroom grounds.
+
+Three conditions, all of them load-bearing:
+
+- **Health only, enforced by selector, not by convention.** Scope it under the
+  Health view or a dedicated class. A rule this narrow drifts if it depends on
+  people remembering it; as a selector it cannot leak onto the live path.
+- **It lights, it does not emit.** One tight stop —
+  `box-shadow: 0 0 4px rgba(201,146,46,.7)` — and no wide halo. The plum LED
+  gets two stops because it is an emitter; fault gets one because it is a lamp.
+  It does not count against the four-emitter ceiling and it never pulses.
+- **Never a fill.** It appears on an indicator dot and on the label beside it.
+  No lozenge, no pill, no filled badge. Same as every other status.
+
+Health is the only screen this is defensible on, because it is never on the
+path to screen and carries no live readout to be confused with. If a fault
+needs surfacing anywhere on the live path, it uses plum and the label does the
+work.
+
 ## Light, not decoration
 
 Neon and gradients are permitted, disciplined by one rule: light must come from

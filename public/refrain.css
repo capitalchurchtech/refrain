@@ -58,6 +58,19 @@
     inset 0 2px 6px rgba(0, 0, 0, 0.8),
     inset 0 -1px 0 rgba(255, 240, 235, 0.07),
     0 1px 0 rgba(255, 240, 235, 0.05);
+
+  /* ---- Corners ----
+     Machined edges, not app corners. DaisyUI ships 16px boxes, 8px buttons
+     and full-pill badges; on real hardware the only round things are the
+     knurled knob and the LEDs, because those are the only round things a
+     hand turns or a lamp shines through. Everything else is a milled edge
+     with a small break on it.
+
+     Applied to every theme rather than scoped to dark: a corner radius is
+     the product's form language, not a dark-mode skin. */
+  --rounded-box: 4px;
+  --rounded-btn: 3px;
+  --rounded-badge: 2px;
 }
 
 /**
@@ -577,4 +590,263 @@ html.blackroom #results:has(.go-live-btn:focus-visible) .go-live-btn.rf-armed:no
   color: var(--rf-text);
   box-shadow: var(--rf-junction-raised);
   text-shadow: none;
+}
+
+/* ============================================================
+   11. THE NAV RAIL
+
+   The rail had no rules at all, so it was raw DaisyUI: labels at
+   web-nav weight, and the keyboard number chips rendered as small
+   raised buttons.
+
+   Pinned width is 120px rather than 224px, per the settled decision.
+   On an always-docked side panel, 224px was a fifth of the whole
+   window given to navigation, on a tool whose job is one search box
+   and one Go key.
+   ============================================================ */
+
+/**
+ * The rail's width lives here rather than in a Tailwind utility.
+ *
+ * The pinned width would not take effect through `w-32`: the class was on the
+ * element, the browser JIT had generated `.w-32 { width: 8rem }`, it was the
+ * only matching width rule, and the rail still computed to 64px. An inline
+ * `width: 300px !important` computed to 64px too, while a control div with the
+ * same declaration was fine. Whatever the JIT is doing there, layout should
+ * not be hostage to it.
+ *
+ * These are `#id.class`, so they beat any utility by specificity and resolve
+ * deterministically. Keyed off the classes nav.js already toggles so there is
+ * still one source of truth for the pinned state. Only the pinned width is
+ * declared here: the collapsed 64px was working before this change and
+ * redeclaring it only added a second thing that could go wrong.
+ */
+#nav-rail.w-32 { width: 8rem; }
+#main-content.ml-32 { margin-left: 8rem; }
+
+/* Labels are silkscreen, not navigation text: printed on the panel at
+   the size a legend is printed, so they name the control without
+   competing with it. */
+[data-theme="dark"] .nav-label,
+html.blackroom .nav-label {
+  font-family: var(--rf-mono);
+  /* 8px rather than 9px, and a tighter row gap, because at 9px the longest
+     legends (SPELL CHECK, ARRANGEMENT, IMAGE CROP, THEME: DARK) came to 84px
+     and wrapped under their icons in a 128px rail. Still inside the 8-10px
+     silkscreen band, and the 0.15em tracking that does the actual work is
+     untouched. */
+  font-size: 8px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--rf-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Reclaim the wrapping room from the gap rather than the type. */
+#nav-rail .nav-item,
+#nav-rail #theme-toggle,
+#nav-rail #nav-pin-toggle,
+#nav-rail #nav-help-toggle,
+#nav-rail #link-row {
+  gap: 0.5rem;
+}
+
+/* The active item is the one place the rail lifts. */
+[data-theme="dark"] #nav-rail .nav-item.btn-active,
+html.blackroom #nav-rail .nav-item.btn-active {
+  background-color: var(--rf-raised);
+  background-image: none;
+  box-shadow: var(--rf-junction-raised);
+}
+[data-theme="dark"] #nav-rail .nav-item.btn-active .nav-label,
+html.blackroom #nav-rail .nav-item.btn-active .nav-label {
+  color: var(--rf-text);
+}
+
+/**
+ * The keyboard number chips take the RECESSED junction, not a raised
+ * fill. A printed key legend is stamped into the panel, not sitting on
+ * top of it, and these are legends: they tell you which key to press,
+ * they are not things to click.
+ */
+[data-theme="dark"] #nav-rail .nav-key,
+html.blackroom #nav-rail .nav-key {
+  background-color: var(--rf-ground);
+  border: 0;
+  box-shadow: var(--rf-junction-recessed);
+  color: var(--rf-dim);
+  font-family: var(--rf-mono);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+}
+
+/* ============================================================
+   12. STATUS INDICATORS
+
+   A status badge was a small green button with a rounder corner:
+   badge-success and btn-success had byte-identical fill and text.
+   Worse after the palette work, because green left the palette
+   entirely, so those pills became the only green in a violet product
+   and the loudest thing on the Health screen.
+
+   A rack unit does not put state in a filled shape. It puts a lit
+   indicator next to printed text: the emission carries the state, the
+   text names it. So there is no lozenge here at all.
+
+   The state mapping matters more than the treatment. Three unrelated
+   things used to share one green -- a module being on, a version check
+   passing, a credential existing -- so scanning Health gave you "green
+   things" rather than state. On real hardware nominal is not a colour
+   event; it is just lit. Present is a lit dot, absent is a dark one,
+   and absence reading as dark is how a panel says it.
+   ============================================================ */
+[data-theme="dark"] .badge-success,
+html.blackroom .badge-success,
+[data-theme="dark"] .badge-info,
+html.blackroom .badge-info {
+  background-color: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0 0 0 13px;
+  height: auto;
+  min-height: 0;
+  position: relative;
+  font-family: var(--rf-mono);
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--rf-muted);
+  gap: 0;
+}
+
+/* The LED itself. 7px, no fill behind it, no border, no padding box. */
+[data-theme="dark"] .badge-success::before,
+html.blackroom .badge-success::before,
+[data-theme="dark"] .badge-info::before,
+html.blackroom .badge-info::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #EDE0FF;
+  box-shadow: 0 0 5px #C79BFF, 0 0 13px rgba(199, 155, 255, 0.55);
+}
+
+/* Absent. An unlit dot with no glow, and the label recedes with it, so
+   lit-versus-dark scans in one glance rather than reading two labels. */
+[data-theme="dark"] .badge-ghost,
+html.blackroom .badge-ghost {
+  background-color: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0 0 0 13px;
+  height: auto;
+  min-height: 0;
+  position: relative;
+  font-family: var(--rf-mono);
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--rf-dim);
+}
+[data-theme="dark"] .badge-ghost::before,
+html.blackroom .badge-ghost::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--rf-machined);
+  box-shadow: none;
+}
+
+/* The badge classes carry an icon in some places. With an LED doing the
+   work, a tick inside the indicator is saying it twice. */
+[data-theme="dark"] .badge-success > svg,
+html.blackroom .badge-success > svg,
+[data-theme="dark"] .badge-info > svg,
+html.blackroom .badge-info > svg,
+[data-theme="dark"] .badge-ghost > svg,
+html.blackroom .badge-ghost > svg {
+  display: none;
+}
+
+
+/* ============================================================
+   13. FAULT
+
+   The one exception to "saturated warm is live and nothing else", and
+   it is an exception the direction now states explicitly: reserving all
+   warm for live left a hard fault state with no colour at all.
+
+   It survives the rule by being measurably not live. 29 degrees of hue
+   separation from --rf-go and 37 points less saturated, so the two
+   cannot read as the same signal.
+
+   Three conditions, all load-bearing:
+
+   1. Health only, enforced by the selector rather than by anyone
+      remembering. Scoped under #view-health, so it cannot leak onto the
+      live path even if someone reuses the class.
+   2. It lights, it does not emit. One shadow stop, no wide halo. The
+      plum LED gets two stops because it is an emitter; this is a lamp.
+      It does not count against the four-emitter ceiling, and it never
+      pulses.
+   3. Never a fill. Indicator dot plus label, same as every other
+      status. No lozenge.
+
+   A fault that ever needs surfacing on the live path uses plum, and the
+   label does the work.
+   ============================================================ */
+:root {
+  --rf-fault: #C9922E;
+}
+
+[data-theme="dark"] #view-health .badge-error,
+html.blackroom #view-health .badge-error {
+  background-color: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0 0 0 13px;
+  height: auto;
+  min-height: 0;
+  position: relative;
+  font-family: var(--rf-mono);
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--rf-fault);
+}
+[data-theme="dark"] #view-health .badge-error::before,
+html.blackroom #view-health .badge-error::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--rf-fault);
+  box-shadow: 0 0 4px rgba(201, 146, 46, 0.7);
+}
+[data-theme="dark"] #view-health .badge-error > svg,
+html.blackroom #view-health .badge-error > svg {
+  display: none;
+}
+
+/* The Diagnose findings use a border stripe plus a chip per severity. The
+   stripe is the one place a fault reads as a line rather than a dot, which
+   is what a fault stripe on a rack unit actually looks like. */
+[data-theme="dark"] #view-health .border-error,
+html.blackroom #view-health .border-error {
+  border-color: var(--rf-fault);
 }

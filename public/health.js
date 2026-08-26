@@ -817,7 +817,7 @@ function renderHealth(health, configOptions, versionInfo) {
                   </div>`;
                 const fullRebuildButton = `
                   <div class="flex items-center gap-2 mt-1">
-                    <button id="health-rebuild-btn" class="btn btn-sm ${index.builtAt ? "btn-outline" : "btn-brand"} w-fit"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> <span id="health-rebuild-btn-label">${index.builtAt ? "Rebuild Everything" : "Build Index"}</span></button>
+                    <button id="health-rebuild-btn" class="btn btn-sm btn-outline w-fit"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> <span id="health-rebuild-btn-label">${index.builtAt ? "Rebuild Everything" : "Build Index"}</span></button>
                     ${infoIcon("Reads every presentation in your library from scratch. Needed for the first build, and after that only if the index looks wrong in a way reindexing does not fix. Never run it before or during a service.")}
                   </div>`;
 
@@ -842,7 +842,7 @@ function renderHealth(health, configOptions, versionInfo) {
                        <span class="w-2 h-2 rounded-full ${watch.watching > 0 ? "bg-success" : "bg-warning"}"></span>
                        ${
                          watch.watching > 0
-                           ? `Watching ${watch.watching} library folder${watch.watching === 1 ? "" : "s"} . Edited presentations reindex on their own.`
+                           ? `Watching ${watch.watching} library folder${watch.watching === 1 ? "" : "s"}. Edited presentations reindex on their own.`
                            : "Not watching any folders yet."
                        }
                        ${watch.at ? `Last check ${new Date(watch.at).toLocaleTimeString()}: ${escapeHtml(watch.outcome)}.` : ""}
@@ -871,7 +871,7 @@ function renderHealth(health, configOptions, versionInfo) {
                   ${pendingAlert}
                   ${rebuildSuggestion}
                   <div class="flex items-center gap-2">
-                    <button id="health-reindex-btn" class="btn btn-sm btn-brand w-fit"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> <span id="health-reindex-btn-label">Reindex changed only</span></button>
+                    <button id="health-reindex-btn" class="btn btn-sm btn-outline w-fit"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> <span id="health-reindex-btn-label">Reindex changed only</span></button>
                     ${infoIcon("Checks every presentation file on this machine and re-reads only the ones that changed since the last build. Fingerprinting the whole library takes under a second, so a normal week's worth of edits reindexes in seconds instead of an hour.")}
                   </div>
                   <div id="health-reindex-status" class="text-sm"></div>
@@ -1027,7 +1027,7 @@ function renderHealth(health, configOptions, versionInfo) {
                        ${configOptions.arrangementNameCandidates
                          .map(
                            (n) =>
-                             `<button type="button" class="badge badge-ghost badge-sm config-arrangement-suggestion" data-name="${escapeHtml(n)}">${escapeHtml(n)}</button>`
+                             `<button type="button" class="btn btn-xs rf-chip config-arrangement-suggestion" data-name="${escapeHtml(n)}">${escapeHtml(n)}</button>`
                          )
                          .join("")}
                      </span>
@@ -1210,7 +1210,7 @@ function renderHealth(health, configOptions, versionInfo) {
                   .map(
                     (r) => `
                   <div class="flex items-start gap-2">
-                    <div class="badge badge-sm ${r.set ? "badge-success" : "badge-error"} mt-0.5 shrink-0">${r.set ? "Set" : "Missing"}</div>
+                    <div class="badge badge-sm ${r.set ? "badge-success" : "badge-ghost"} mt-0.5 shrink-0">${r.set ? "Set" : "Missing"}</div>
                     <div class="text-sm">
                       <span class="font-mono">${escapeHtml(r.name)}</span>
                       <div class="opacity-60">${escapeHtml(r.note)}</div>

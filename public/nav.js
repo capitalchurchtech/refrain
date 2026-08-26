@@ -221,7 +221,7 @@ export async function initNav({ onNavigate, viewIds }) {
 
   function applyPinnedState() {
     rail.classList.toggle("w-16", !pinned);
-    rail.classList.toggle("w-56", pinned);
+    rail.classList.toggle("w-32", pinned);
     rail.classList.toggle("collapsed", !pinned);
     // The rail is `fixed` (Section 13.1: `sticky` detached from the top
     // near the bottom of a tall page, since a sticky element can't stay
@@ -230,7 +230,7 @@ export async function initNav({ onNavigate, viewIds }) {
     // flex layout doing it automatically.
     const mainContent = document.getElementById("main-content");
     mainContent.classList.toggle("ml-16", !pinned);
-    mainContent.classList.toggle("ml-56", pinned);
+    mainContent.classList.toggle("ml-32", pinned);
     document.querySelectorAll(".nav-label").forEach((el) => el.classList.toggle("hidden", !pinned));
     // Collapsed: just the mark. Expanded: swap in the full wordmark
     // logo, same as expanding replaces every other icon-only nav item
