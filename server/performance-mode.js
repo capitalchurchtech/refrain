@@ -141,11 +141,11 @@ export function disarmManually(state, now) {
  * worse than no mode, so this always names the source and the last check.
  */
 export function describe(state, now = Date.now()) {
-  if (!state.armed) {
-    return state.lastCheckedAt
-      ? `Off. Nothing is on the screens as of ${new Date(state.lastCheckedAt).toLocaleTimeString()}.`
-      : "Off.";
-  }
+  // The off branch used to name what was on the screens. That is state the
+  // live readout owns and reports better, and repeating it here put two
+  // sentences opening with "Off." on adjacent lines of the same card saying
+  // different things. Off needs no explanation; on does.
+  if (!state.armed) return "";
   const forMin = state.since ? Math.max(0, Math.round((now - state.since) / 60_000)) : 0;
   const how =
     state.source === "manual"

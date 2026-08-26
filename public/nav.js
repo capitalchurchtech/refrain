@@ -184,7 +184,13 @@ export async function initNav({ onNavigate, viewIds }) {
     let dot = btn.querySelector(".watching-dot");
     if (imageCropWatching && !dot) {
       dot = document.createElement("span");
-      dot.className = "watching-dot absolute top-1 right-1 w-2 h-2 rounded-full bg-success";
+      // A lit plum LED, not a green circle: green is not in the palette, and
+      // this was the only other status light in the rail besides LINKED. It
+      // keeps appearing-when-active rather than becoming a permanent unlit
+      // dot, because an always-present light on a control is the one thing
+      // nothing else in the app does -- while it exists, it is lit, and its
+      // absence is the off state.
+      dot.className = "watching-dot rf-led lit absolute top-1 right-1";
       dot.title = "Watching for images";
       btn.appendChild(dot);
     } else if (!imageCropWatching && dot) {

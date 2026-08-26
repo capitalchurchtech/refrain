@@ -25,11 +25,23 @@ export function initLive() {
     const paint = (data) => {
       if (!document.getElementById("perf-mode-dot")) return; // re-rendered underneath us
       const on = Boolean(data?.armed);
-      dot.className = `w-2.5 h-2.5 rounded-full ${on ? "bg-warning" : "bg-success"}`;
-      state.textContent = on ? "On. Refrain is holding still." : "Off. Refrain may index in the background.";
+      /**
+       * The lit state is the engaged state. This read inverted before: on --
+       * the deliberate, holding-still, safe-during-service state -- rendered
+       * as bg-warning, and off, which permits background indexing, rendered
+       * as bg-success. Both colours are retired anyway; green is not in the
+       * palette, and --rf-fault's amber is scoped under #view-health, so on
+       * the Live screen an amber button fell through to raw DaisyUI warning:
+       * the saturated warm reserved for what is on the screens, in the worst
+       * possible place for it.
+       */
+      dot.className = `rf-led${on ? " lit" : ""}`;
+      state.textContent = on ? "Holding still. Nothing runs on its own." : "Background work allowed.";
       why.textContent = data?.description ?? "";
       toggle.textContent = on ? "Turn off" : "Turn on";
-      toggle.className = `btn btn-sm ${on ? "btn-warning" : "btn-outline"}`;
+      // Tier 2 machined in both states: the toggle is an ordinary control, and
+      // the dot beside it is what reports the state.
+      toggle.className = "btn btn-sm btn-outline";
     };
 
     const load = () =>
@@ -78,12 +90,14 @@ export function initLive() {
                 <button id="perf-mode-toggle" class="btn btn-sm btn-outline">Turn on</button>
               </div>
               <div id="perf-mode-why" class="text-sm opacity-70"></div>
+              <!-- One line, and it has to be true in the state you are reading it
+                   in. This paragraph used to describe the ON behaviour always, so
+                   reading it while off told the operator the opposite of the truth.
+                   The link-checking sentence is gone too: implementation detail on
+                   the live path, and it contradicted "nothing runs on its own" one
+                   sentence later. -->
               <div class="text-xs opacity-60">
-                While this is on, Refrain does nothing on its own. No indexing, no reindexing, no
-                update checks. It keeps checking the link every few seconds, because that is what the
-                indicator in the rail is reading. Everything you press still works. It turns itself on
-                when something has been on the screens for a couple of minutes, and off again once the
-                screens have been clear for a while.
+                Turns on by itself once something has been live for a couple of minutes.
               </div>
             </div>
           </div>

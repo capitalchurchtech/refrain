@@ -1355,9 +1355,25 @@ html.blackroom body::after {
    boundary between frame and content is felt rather than drawn -- and
    the rail's empty lower half becomes blank panel instead of absence.
    ============================================================ */
+/**
+ * `isolation` only, and deliberately NOT `position: relative`.
+ *
+ * This rule used to set it, to give the framing pseudo-element a positioned
+ * ancestor -- which it does not need, because the rail is already
+ * `position: fixed` from its Tailwind class and fixed is itself a containing
+ * block. What `position: relative` did instead was win on specificity (1,1,0
+ * against the utility's 0,1,0) and drop the rail back into normal flow, while
+ * `main` kept the `ml-36` that exists precisely because the rail is out of
+ * flow. So the rail's width was charged twice and the content column lost
+ * 144px of 350 -- a little over half of it -- at docked width.
+ *
+ * It was invisible in light theme, because this rule is dark-scoped, and
+ * invisible in dark because a too-narrow column reads as a design choice
+ * rather than as a bug. Found by measuring a control that had been pushed off
+ * the right edge of the Live screen.
+ */
 [data-theme="dark"] #nav-rail,
 html.blackroom #nav-rail {
-  position: relative;
   isolation: isolate;
 }
 [data-theme="dark"] #nav-rail::before,
@@ -1893,4 +1909,43 @@ html.blackroom .rf-value {
 html.blackroom .rf-meter-count {
   color: var(--rf-phosphor);
   text-shadow: 0 0 8px rgba(203, 180, 240, 0.28);
+}
+
+/* ============================================================
+   27. THE LED, AS A CONCEPT RATHER THAN A SCREEN
+
+   Section 12 gave Health a status vocabulary, but it did it by restyling
+   DaisyUI's badge classes -- so the vocabulary was reachable only from
+   markup that happened to use badges. Every other screen kept building
+   its own `rounded-full` dot with a retired semantic colour, which is how
+   the Live screen ended up reporting performance mode with a flat green
+   circle and no glow.
+
+   So the same treatment, addressable by name. Two states only, and the
+   mapping is the part that matters: **the lit state is the engaged
+   state.** A function that is doing something is lit; a function standing
+   down is dark. Absence reading as dark is how a panel says it, and it is
+   also what makes lit-versus-unlit scan in one glance rather than asking
+   the operator to read a label and remember which colour meant which.
+
+   Never a filled shape, never green, never amber. Green is not in the
+   palette and amber is the saturated warm reserved for live.
+   ============================================================ */
+.rf-led {
+  display: inline-block;
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #302838;
+}
+[data-theme="dark"] .rf-led.lit,
+html.blackroom .rf-led.lit {
+  background: #EDE0FF;
+  box-shadow: 0 0 5px #C79BFF, 0 0 13px rgba(199, 155, 255, 0.55);
+}
+/* Light theme has no emission to trade on, so the lit state is carried by
+   the plum itself against an unlit grey. */
+.rf-led.lit {
+  background: var(--rf-plum);
 }

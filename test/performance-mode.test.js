@@ -184,8 +184,12 @@ test("a manual arm survives ProPresenter going away", () => {
 // --- describe ---
 
 test("describe always says how it decided", () => {
-  const off = describeState(initialState());
-  assert.match(off, /Off/);
+  // Off says nothing, deliberately. The invariant is that a mode *claiming* to
+  // protect you must say how it decided; off makes no such claim, and the
+  // sentence it used to return named what was on the screens -- state the live
+  // readout owns, and which put two different "Off." sentences on adjacent
+  // lines of the same card. The screen still labels the off state itself.
+  assert.equal(describeState(initialState()), "");
 
   const manual = describeState(armManually(initialState(), 1_000_000), 1_000_000);
   assert.match(manual, /by hand/i);
@@ -198,6 +202,7 @@ test("describe always says how it decided", () => {
 });
 
 test("describe names when it last checked, so the banner is not just a claim", () => {
-  const s = run([[CLEAR, 0]]);
-  assert.match(describeState(s), /as of \d/);
+  // Pinned to an armed state, which is where the claim actually gets made.
+  const s = armManually(run([[CLEAR, 0]]), 1_000_000);
+  assert.match(describeState(s, 1_000_000), /last checked \d/);
 });
