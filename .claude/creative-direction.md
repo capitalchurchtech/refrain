@@ -543,6 +543,39 @@ actually defines, on the build you think you are on. A wrong instrument
 produces confident, specific, verified-looking findings, which are more
 expensive than vague ones because nobody re-checks a number.
 
+**Check the element, not the appearance.** Eighteen controls in this app had no
+accessible name while looking perfectly labelled, because the visible text sat
+in `<div class="label">` — DaisyUI markup that renders identically to a real
+`<label for>` and names nothing. A screen full of them reads as finished. Any
+audit of meaning has to query the semantics (`label[for]`, `aria-label`, an
+ancestor `<label>`) rather than trust that text positioned above a field is
+attached to it.
+
+**Narrow plus pointer: reachable, but not by resizing.** The preview pane forces
+touch emulation below 768px, so a narrow viewport is always a touch viewport.
+Since a docked desktop window is this product's *primary* surface, that would be
+a large blind spot — except the viewport is not the only way to get a narrow
+layout. Keep the viewport wide so pointer mode survives and constrain the
+*container* instead:
+
+    grid.style.setProperty("width", "316px", "important");
+    grid.style.setProperty("grid-template-columns", "1fr 1fr", "important");
+
+316px two-up is what a docked 460px window produces. Size the element that
+actually determines the geometry rather than an ancestor you assume controls it.
+
+Split the two cases before declaring anything blocked. A *layout* consequence of
+a narrow column is reachable this way, and most of what matters at docked width
+is layout. Anything keyed on a `hover` or `pointer` media query genuinely is not,
+because the query reads the viewport rather than the box.
+
+A measurement taken at a wide column is still not evidence about the docked one.
+
+**Genuinely out of reach: `:focus-visible`.** Not a media query but a heuristic
+about input modality, and no synthetic focus satisfies it. Keyboard focus
+visibility can only be checked by a person tabbing through the real thing, which
+matters because the quality floor asks for keyboard operability end to end.
+
 ### Audit meaning separately from material
 
 A material audit asks whether the surface is right: junctions, texture, type,
