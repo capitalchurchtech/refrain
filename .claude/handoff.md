@@ -1,4 +1,4 @@
-# Handoff — one thing blocked, the rest is tail
+# Handoff — texture, and the tail
 
 > **This file is the live handoff from the design/planning session to the
 > editing session.** It is always the current one. When a new handoff is
@@ -11,7 +11,7 @@
 
 Written 2026-08-26. Supersedes
 [2026-08-26-closing-the-gap.md](handoffs/2026-08-26-closing-the-gap.md), every
-item of which is now done except texture.
+item of which is now done. Texture is unblocked and is the last real gap.
 
 ---
 
@@ -37,7 +37,7 @@ gap is material, not structure.
 
 ---
 
-## 1. Texture — BLOCKED, and it is the only real gap left
+## 1. Texture — UNBLOCKED, and it is the only real gap left
 
 `mix-blend-mode`: 0 occurrences. `soft-light`: 0. No tile anywhere.
 
@@ -49,15 +49,31 @@ Four layers, per the direction: chassis woven at 15% soft-light on panels, grip
 on the hero, brick at ~26% on the framing including the nav rail, glass left
 smooth.
 
-**Blocked twice over.** The candidate tiles are gone — `~/Downloads` holds one
-file and no images. `black_linen_v2.png`, `noisy_net.png`, `real_cf.png`,
-`dark_leather.png`, `denim.webp`, `fake_brick.png` all missing. Confirmed
-independently by both sessions.
+**Provenance answered (Brandon, 2026-08-26): Subtle Patterns, all CC-BY.** The
+files still need re-downloading — `~/Downloads` holds no images — but they are
+recoverable from source rather than lost.
 
-Needs the files back **and** licence provenance per tile before anything is
-inlined. This ships open source; a CC-BY tile with no attribution is a real
-problem, not a footnote. Raised with Brandon by both sessions. Do not spec
-further texture work until he answers.
+CC-BY makes attribution a licence condition, not a courtesy, and there are
+three ways to get it wrong:
+
+- **Attribute the individual designer, not the site.** Subtle Patterns
+  aggregates work from many contributors, so "from Subtle Patterns" attributes
+  the wrong party. Record per tile: pattern name, author, source URL, licence
+  version, licence link.
+- **Check BY versus BY-SA per tile.** The collection has carried both. Plain
+  CC-BY sits fine alongside an MIT project; share-alike on an asset compiled
+  into a stylesheet raises questions nobody wants to answer later. If a tile is
+  BY-SA, replace it rather than reason about it.
+- **Keep them as files, not base64.** `public/vendor/textures/` with rows in
+  `public/vendor/README.md`, matching the existing table for fonts and
+  libraries. The reference HTML inlines its tiles only because it had to be one
+  portable document. A data URI separates the asset from its attribution, and
+  the comment is the half that gets deleted.
+
+Re-measure luminance after downloading. The figures in the direction (linen
+5.5, noisy net 6.3, carbon 8.6, leather 11.0, denim 14.1) were taken on files
+that no longer exist — treat them as which tiles to look for, not as verified
+properties of the ones you get. Target is under 12% luminance range.
 
 ---
 
@@ -134,4 +150,4 @@ Editing session appends here. One line per task, newest last. Format:
 - 2026-08-26 · Nav rail · done · 62bdcda, 144px pinned, nine keys at rest
 - 2026-08-26 · Index progress meter · done · 5989346, own module led-meter.js
 - 2026-08-26 · Tailwind JIT trap documented · done · 433a058
-- 2026-08-26 · Texture · blocked · tiles missing from ~/Downloads and no licences
+- 2026-08-26 · Texture · unblocked · Subtle Patterns, CC-BY; files need re-downloading, attribution per tile

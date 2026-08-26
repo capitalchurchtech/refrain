@@ -190,6 +190,49 @@ carrying its panel's texture becomes a hole cut into the surface), and textured
 surfaces are the ones you do not press. Only the knob keeps a weave, because
 knobs are gripped.
 
+### Tile sourcing and attribution
+
+The tiles come from Subtle Patterns under CC-BY. Attribution is a licence
+condition, not a courtesy, and there are three ways to get it wrong.
+
+**Attribute the individual designer, not the site.** Subtle Patterns aggregates
+work from many contributors, so "from Subtle Patterns, CC-BY" attributes the
+wrong party. Each pattern page names its own author. Record per tile: pattern
+name, author, source URL, licence version, licence link.
+
+**Check BY versus BY-SA per tile.** The collection has historically carried
+both. Plain CC-BY sits fine alongside an MIT project. Share-alike on an asset
+compiled into a stylesheet raises questions nobody wants to answer later, so if
+a tile turns out to be BY-SA, replace it rather than reason about it.
+
+**Stop condition.** Subtle Patterns was acquired and now lives under Toptal,
+and it is not certain the per-pattern author credits and licence versions
+survived that move intact. If a tile's page no longer names an individual
+author, or no longer states a licence version, that tile fails attribution and
+gets dropped. Do not fall back to crediting the site — that is the failure mode
+where something ships looking attributed without being attributed, which is
+worse than an obvious omission because nobody goes back to check it.
+
+**Keep the tiles as files, not base64.** The reference HTML inlines them
+because it had to be one portable document. Here they belong in
+`public/vendor/textures/` with rows in `public/vendor/README.md`, matching the
+existing table for fonts and libraries. Attribution then lives next to the
+asset and survives; a data URI in a stylesheet separates the two, and the one
+that gets deleted is the comment.
+
+Re-measure luminance after downloading. The figures quoted above were taken on
+files that no longer exist, so treat them as which tiles to look for rather
+than as verified properties of the ones you get.
+
+**Measure the composited result, not the tile.** A tile's own luminance range
+is a screening test; what matters is the panel after the tile is blended over
+it at 15% soft-light, with muted text on top. A file that measures fine in
+isolation can still take a point of contrast off `--rf-muted` once blended, and
+that is precisely the case the rule about texture losing exists for. So the
+check is: sample the real composited surface, run the contrast against the text
+that actually sits there, and if it fails, the texture gives way — not the text
+colour.
+
 ## Elevation
 
 - **Recessed.** Things that report. Glass, sunk behind a bezel.
@@ -316,7 +359,10 @@ Missing any of these is a finding, not a nitpick.
 - Exactly one E2 and one lit collar per screen.
 - Every gradient traceable to a light source.
 - Every texture tile licence-checked before release. This ships open source,
-  and a CC-BY tile with no attribution is a real problem, not a footnote.
+  and a CC-BY tile with no attribution is a real problem, not a footnote. The
+  tiles come from Subtle Patterns under CC-BY (confirmed 2026-08-26), which
+  makes attribution mandatory rather than courteous — see the texture section
+  above for what that requires per tile.
 - Copy is final copy, in the right zone, never placeholder.
 - First run and setup designed, not left to the README.
 
