@@ -1042,7 +1042,7 @@ function renderHealth(health, configOptions, versionInfo) {
                        ${configOptions.arrangementNameCandidates
                          .map(
                            (n) =>
-                             `<button type="button" class="btn btn-xs rf-chip config-arrangement-suggestion" data-name="${escapeHtml(n)}">${escapeHtml(n)}</button>`
+                             `<button type="button" class="btn btn-xs rf-tile config-arrangement-suggestion" data-name="${escapeHtml(n)}">${escapeHtml(n)}</button>`
                          )
                          .join("")}
                      </span>

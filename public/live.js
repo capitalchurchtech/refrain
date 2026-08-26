@@ -84,7 +84,7 @@ export function initLive() {
             <div class="card-body p-3 gap-2">
               <div class="flex items-center justify-between gap-3">
                 <div class="flex items-center gap-2">
-                  <span id="perf-mode-dot" class="w-2.5 h-2.5 rounded-full bg-base-content/30"></span>
+                  <span id="perf-mode-dot" class="rf-led"></span>
                   <span id="perf-mode-state" class="font-medium">Checking...</span>
                 </div>
                 <button id="perf-mode-toggle" class="btn btn-sm btn-outline">Turn on</button>
@@ -210,7 +210,15 @@ export function initLive() {
     const grid = document.getElementById(gridId);
     grid.innerHTML = items
       .map(
-        (it) => `<button class="btn rf-chip h-20" data-${kind}="${escapeHtml(it.id)}">${escapeHtml(it.name)}</button>`
+        // No size class here. `h-20` used to be, and it never did anything:
+        // it is applied from this template string only, so Tailwind's runtime
+        // scanner never saw it at boot and generated no rule (see CLAUDE.md on
+        // JS-applied classes needing a static home). The bank has therefore
+        // always rendered at the Tier 3 floor, which is what it should look
+        // like -- 34 tiles at 80px would be a very long screen. Removed rather
+        // than given a home, so the code stops implying an intent that is not
+        // happening.
+        (it) => `<button class="btn rf-tile" data-${kind}="${escapeHtml(it.id)}">${escapeHtml(it.name)}</button>`
       )
       .join("");
     document.getElementById(wrapId).classList.remove("hidden");

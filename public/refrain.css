@@ -510,8 +510,25 @@ html.blackroom .btn-brand.rf-live {
    Textured surfaces are the ones you do not press, so a chip stays
    flat: no gradient, no bevel, nothing that suggests travel.
    ============================================================ */
-[data-theme="dark"] .rf-chip,
-html.blackroom .rf-chip {
+/**
+ * Named a tile rather than a chip, because it is not the Tier 3 chip and the
+ * two are not interchangeable. `.btn-chip` is a control: 10px, uppercase,
+ * fixed at 25px. This is a flat inert surface that holds a *name* -- a look,
+ * a macro, an arrangement -- at whatever size the screen needs.
+ *
+ * The difference that matters is `text-transform: none`, and it is
+ * load-bearing: these strings are user-authored proper nouns read straight
+ * out of ProPresenter, like "Christmas Countdown" and "(FS) Worship".
+ * Uppercasing them would misrepresent what the operator named their own look.
+ *
+ * The two classes were previously both called chips, which is a footgun: they
+ * read as interchangeable, and reaching for the wrong one silently renders a
+ * control at Tier 2 height, so it is not a quieter button, it is a second
+ * primary. Renaming beats aliasing here, because aliasing would have forced
+ * uppercase and 10px onto every one of those names.
+ */
+[data-theme="dark"] .rf-tile,
+html.blackroom .rf-tile {
   background-color: var(--rf-raised);
   background-image: none;
   border: 0;
@@ -525,16 +542,16 @@ html.blackroom .rf-chip {
   text-shadow: none;
 }
 
-[data-theme="dark"] .rf-chip:hover,
-html.blackroom .rf-chip:hover {
+[data-theme="dark"] .rf-tile:hover,
+html.blackroom .rf-tile:hover {
   background-color: var(--rf-machined);
   box-shadow: inset 0 0 0 1px var(--rf-plum);
 }
 
 /* A chip is inert, so it does not travel. The rim tightens instead, which
    is enough to acknowledge the press without pretending to be a key. */
-[data-theme="dark"] .rf-chip:active,
-html.blackroom .rf-chip:active {
+[data-theme="dark"] .rf-tile:active,
+html.blackroom .rf-tile:active {
   background-color: var(--rf-surface);
   box-shadow: inset 0 0 0 1px var(--rf-plum-lit);
   transform: none;
@@ -1719,10 +1736,11 @@ html.blackroom #nav-rail #nav-pin-toggle {
   padding: 8px 12px;
 }
 
-/* Tier 3. Chips are inert, so they are the smallest thing that can still
-   be hit. */
-[data-theme="dark"] .rf-chip,
-html.blackroom .rf-chip,
+/* Tier 3. Both the chip and the tile are inert, so both get the same floor:
+   the smallest thing that can still be hit. A floor rather than a height,
+   which is what lets Live's tiles take h-20 without fighting this. */
+[data-theme="dark"] .rf-tile,
+html.blackroom .rf-tile,
 [data-theme="dark"] .btn-chip,
 html.blackroom .btn-chip {
   min-height: 26px;

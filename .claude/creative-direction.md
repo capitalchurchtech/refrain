@@ -318,6 +318,27 @@ content — the chrome out-punches the work.
 - **End on the action, not the limitation.** Where a constraint has to be
   stated, phrase it as the next step. "Copy each slide into a new presentation"
   rather than "ProPresenter can't create slides over its API."
+- **No spacers in a control row.** A flex spacer hands the row's slack to
+  nothing while the field beside it clips. If a row needs air, the field takes
+  it. This is the obvious thing to reach for and it is wrong every time.
+
+### When text does not fit, check the text before the box
+
+Twice on one screen the width was the symptom rather than the fault. A control
+row that collided turned out to be a positioning bug charging the rail's width
+twice; a truncated select turned out to be showing a title-cased plugin
+identifier, so the operator was reading a developer's variable name.
+
+So the order of questions is: **is this the right text, is it in the right
+place, and only then is the box too small.** Widening a box around wrong copy
+produces more room for the wrong copy.
+
+The identifier case has a general form worth naming. A label derived from a
+code identifier — title-cased, humanised, prettified — is placeholder copy that
+shipped. It reads as a real label, which is exactly why nobody catches it. If a
+name has to reach the operator, it is written by someone for the operator and
+it lives with the thing it names: a `static displayName` on the class, the way
+a provider's does, never generated from the id.
 
 ## Elevation
 
@@ -482,6 +503,25 @@ Missing any of these is a finding, not a nitpick.
 Read the code, then look at the rendered result. Screenshot it. Walk the flow
 as the Reluctant Operator mid-service, then the Fluent Regular, then the
 Installer on first run. Then write findings.
+
+### Check the instrument before trusting the reading
+
+Three times in one session a measurement was wrong while the reading looked
+entirely plausible: a `getComputedStyle` helper that silently dropped its
+pseudo-element argument and reported the element's own styles; a finding
+adjudicated against a tree where the fix had already landed; and a cached
+`index.html` listing superseded stylesheets while the JS modules loaded
+current, so every easy check said "current build."
+
+That last one is the nastiest and it has a fix. Cache-bust **the page**, not the
+stylesheet — `/?r=N#screen` — because the preview pane holds the document and
+the modules independently, and a current-looking app is not evidence of a
+current stylesheet.
+
+Before reporting a measurement: confirm you measured the element the system
+actually defines, on the build you think you are on. A wrong instrument
+produces confident, specific, verified-looking findings, which are more
+expensive than vague ones because nobody re-checks a number.
 
 ### Audit meaning separately from material
 
