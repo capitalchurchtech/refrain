@@ -462,3 +462,119 @@ html.blackroom .btn-brand.rf-live {
   padding-left: 14px;
   padding-right: 14px;
 }
+
+/* ============================================================
+   9. TIER 3, THE CHIP
+
+   Flat fill, one-pixel rim, monospace label, inert. This is the
+   palette-swatch treatment, which is exactly why it reads as
+   unimportant.
+
+   It exists because the Live screen had 34 identical primary buttons:
+   every Look and every Macro the same colour at the same size, so
+   nothing distinguished a routine look from a seasonal one, and 34
+   things all claimed to be the most important thing on screen. A
+   raised element that does nothing is a lie, and thirty-four of them
+   is a shout.
+
+   Textured surfaces are the ones you do not press, so a chip stays
+   flat: no gradient, no bevel, nothing that suggests travel.
+   ============================================================ */
+[data-theme="dark"] .rf-chip,
+html.blackroom .rf-chip {
+  background-color: var(--rf-raised);
+  background-image: none;
+  border: 0;
+  box-shadow: inset 0 0 0 1px var(--rf-hairline);
+  color: var(--rf-text);
+  font-family: var(--rf-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  text-shadow: none;
+}
+
+[data-theme="dark"] .rf-chip:hover,
+html.blackroom .rf-chip:hover {
+  background-color: var(--rf-machined);
+  box-shadow: inset 0 0 0 1px var(--rf-plum);
+}
+
+/* A chip is inert, so it does not travel. The rim tightens instead, which
+   is enough to acknowledge the press without pretending to be a key. */
+[data-theme="dark"] .rf-chip:active,
+html.blackroom .rf-chip:active {
+  background-color: var(--rf-surface);
+  box-shadow: inset 0 0 0 1px var(--rf-plum-lit);
+  transform: none;
+}
+
+/* ============================================================
+   10. THE MOVING HERO
+
+   Search is the one screen where the primary action legitimately
+   appears many times: one Go Live per candidate slide. Treating that
+   as "one action, so one hero" is true taxonomically and false
+   perceptually. Measured on a broad query it came to 1315 lit collars
+   on a single scrolling page, which is not a hero, it is a wall of
+   light. The emitter budget for the whole product is four.
+
+   So the collar goes where the intent is. The task's own phrasing is
+   "the hero is whatever the operator is about to send", and that is
+   literally what this does: the top match is armed on arrival, and the
+   collar moves to whichever Go Live the operator hovers or tabs to.
+   Exactly one is ever lit.
+   ============================================================ */
+
+/* Every Go Live is a Tier 2 machined key by default. */
+[data-theme="dark"] .go-live-btn,
+html.blackroom .go-live-btn,
+[data-theme="dark"] .spellcheck-live-btn,
+html.blackroom .spellcheck-live-btn {
+  background-image: linear-gradient(180deg, #322A3B 0%, #241E2D 100%);
+  box-shadow: var(--rf-junction-raised);
+  color: var(--rf-text);
+  text-shadow: none;
+}
+
+/* The collar, reusable by whichever one is armed. */
+[data-theme="dark"] .go-live-btn.rf-armed,
+html.blackroom .go-live-btn.rf-armed,
+[data-theme="dark"] .go-live-btn:hover,
+html.blackroom .go-live-btn:hover,
+[data-theme="dark"] .go-live-btn:focus-visible,
+html.blackroom .go-live-btn:focus-visible,
+[data-theme="dark"] .spellcheck-live-btn:hover,
+html.blackroom .spellcheck-live-btn:hover,
+[data-theme="dark"] .spellcheck-live-btn:focus-visible,
+html.blackroom .spellcheck-live-btn:focus-visible {
+  background-image: linear-gradient(180deg, #443A52 0%, #1E1928 100%);
+  color: #EFE2FF;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 240, 235, 0.18),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.6),
+    0 0 0 1px var(--rf-plum),
+    0 0 7px rgba(169, 111, 232, 0.55),
+    0 4px 14px rgba(132, 70, 201, 0.28),
+    0 2px 4px rgba(0, 0, 0, 0.5);
+  text-shadow: 0 0 6px rgba(203, 180, 240, 0.35);
+}
+
+/* The top match is armed on arrival, so the Reluctant Operator lands on a
+   screen that already shows where to press. Which button that is gets marked
+   in search.js rather than picked out with a structural selector: a result
+   card has several containers, so :first-of-type matched four buttons, not
+   one. */
+
+/* ...and it stands down the moment the operator points somewhere else, so two
+   are never lit at once. */
+[data-theme="dark"] #results:has(.go-live-btn:hover) .go-live-btn.rf-armed:not(:hover),
+html.blackroom #results:has(.go-live-btn:hover) .go-live-btn.rf-armed:not(:hover),
+[data-theme="dark"] #results:has(.go-live-btn:focus-visible) .go-live-btn.rf-armed:not(:focus-visible),
+html.blackroom #results:has(.go-live-btn:focus-visible) .go-live-btn.rf-armed:not(:focus-visible) {
+  background-image: linear-gradient(180deg, #322A3B 0%, #241E2D 100%);
+  color: var(--rf-text);
+  box-shadow: var(--rf-junction-raised);
+  text-shadow: none;
+}

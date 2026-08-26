@@ -93,7 +93,7 @@ export function initLibrarySync() {
             this, the sync refuses to run rather than copying an empty or half-moved folder over a good one.
           </p>
           <div class="flex items-center gap-2">
-            <button id="ls-save" class="btn btn-brand btn-sm">Save settings</button>
+            <button id="ls-save" class="btn btn-outline btn-sm">Save settings</button>
             <span id="ls-save-status" class="text-sm"></span>
           </div>
         </div>

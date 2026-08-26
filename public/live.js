@@ -96,7 +96,7 @@ export function initLive() {
               <select id="live-message-select" class="select select-bordered select-sm hidden"></select>
               <div id="live-message-fields" class="flex flex-col gap-2"></div>
               <div class="flex gap-2">
-                <button id="live-message-post" class="btn btn-brand h-16 flex-1 text-base"><span class="flex items-center gap-2"><i data-lucide="send" class="w-5 h-5"></i> Post to screen</span></button>
+                <button id="live-message-post" class="btn btn-outline h-16 flex-1 text-base"><span class="flex items-center gap-2"><i data-lucide="send" class="w-5 h-5"></i> Post to screen</span></button>
                 <button id="live-message-clear" class="btn btn-outline h-16"><span class="flex items-center gap-2"><i data-lucide="x" class="w-5 h-5"></i> Clear</span></button>
               </div>
               <p class="text-xs opacity-60">Fills a message you set up once in ProPresenter and shows it, so an urgent code is type-and-post. Clear takes it back down.</p>
@@ -107,7 +107,7 @@ export function initLive() {
         <div>
           <div class="text-xs uppercase tracking-wide opacity-60 mb-2">Clear</div>
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <button class="btn btn-error h-20 text-base" data-clear="all"><span class="flex flex-col items-center gap-1"><i data-lucide="x-octagon" class="w-6 h-6"></i> Clear All</span></button>
+            <button class="btn btn-brand h-20 text-base" data-clear="all"><span class="flex flex-col items-center gap-1"><i data-lucide="x-octagon" class="w-6 h-6"></i> Clear All</span></button>
             <button class="btn btn-outline h-20 text-base" data-clear="slide"><span class="flex flex-col items-center gap-1"><i data-lucide="type" class="w-6 h-6"></i> Slide</span></button>
             <button class="btn btn-outline h-20 text-base" data-clear="media"><span class="flex flex-col items-center gap-1"><i data-lucide="image" class="w-6 h-6"></i> Media</span></button>
             <button class="btn btn-outline h-20 text-base" data-clear="messages"><span class="flex flex-col items-center gap-1"><i data-lucide="message-square" class="w-6 h-6"></i> Messages</span></button>
@@ -196,7 +196,7 @@ export function initLive() {
     const grid = document.getElementById(gridId);
     grid.innerHTML = items
       .map(
-        (it) => `<button class="btn btn-brand h-20 text-base" data-${kind}="${escapeHtml(it.id)}">${escapeHtml(it.name)}</button>`
+        (it) => `<button class="btn rf-chip h-20" data-${kind}="${escapeHtml(it.id)}">${escapeHtml(it.name)}</button>`
       )
       .join("");
     document.getElementById(wrapId).classList.remove("hidden");

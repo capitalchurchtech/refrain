@@ -994,7 +994,7 @@ function renderHealth(health, configOptions, versionInfo) {
             </span>
           </div>
             <div class="flex items-center gap-2 pt-1">
-              <button type="button" class="btn btn-brand btn-sm config-save" data-scope="propresenter">Save</button>
+              <button type="button" class="btn btn-outline btn-sm config-save" data-scope="propresenter">Save</button>
               <span class="text-sm config-save-status" data-scope="propresenter"></span>
             </div>
           </div>
@@ -1035,7 +1035,7 @@ function renderHealth(health, configOptions, versionInfo) {
                 : `<div class="text-xs opacity-60 mt-1">Build the search index to see the arrangement names your library uses.</div>`
             }
             <div class="flex items-center gap-2 pt-1">
-              <button type="button" class="btn btn-brand btn-sm config-save" data-scope="indexing">Save</button>
+              <button type="button" class="btn btn-outline btn-sm config-save" data-scope="indexing">Save</button>
               <span class="text-sm config-save-status" data-scope="indexing"></span>
             </div>
           </div>
@@ -1078,7 +1078,7 @@ function renderHealth(health, configOptions, versionInfo) {
             </div>
           </div>
             <div class="flex items-center gap-2 pt-1">
-              <button type="button" class="btn btn-brand btn-sm config-save" data-scope="lyrics">Save</button>
+              <button type="button" class="btn btn-outline btn-sm config-save" data-scope="lyrics">Save</button>
               <span class="text-sm config-save-status" data-scope="lyrics"></span>
             </div>
           </div>
@@ -1119,7 +1119,7 @@ function renderHealth(health, configOptions, versionInfo) {
             </label>
           </div>
             <div class="flex items-center gap-2 pt-1">
-              <button type="button" class="btn btn-brand btn-sm config-save" data-scope="qr">Save</button>
+              <button type="button" class="btn btn-outline btn-sm config-save" data-scope="qr">Save</button>
               <span class="text-sm config-save-status" data-scope="qr"></span>
             </div>
           </div>
@@ -1180,7 +1180,7 @@ function renderHealth(health, configOptions, versionInfo) {
         </div>
 
             <div class="flex items-center gap-2 pt-1">
-              <button type="button" class="btn btn-brand btn-sm config-save" data-scope="arrangement">Save</button>
+              <button type="button" class="btn btn-outline btn-sm config-save" data-scope="arrangement">Save</button>
               <span class="text-sm config-save-status" data-scope="arrangement"></span>
             </div>
           </div>
@@ -1244,7 +1244,7 @@ function renderHealth(health, configOptions, versionInfo) {
         ${
           versionInfo?.gitInstall
             ? `<div class="flex flex-wrap items-center gap-2 mt-1">
-                 <button id="update-now-btn" class="btn btn-brand btn-sm">Update now</button>
+                 <button id="update-now-btn" class="btn btn-outline btn-sm">Update now</button>
                  <button id="update-recheck-btn" class="btn btn-ghost btn-sm">Check again</button>
                  <span id="update-status" class="text-sm"></span>
                </div>

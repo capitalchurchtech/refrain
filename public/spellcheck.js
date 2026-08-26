@@ -23,7 +23,7 @@ export function initSpellcheck() {
             <div class="label py-1"><span class="label-text">Playlist</span></div>
             <select id="spellcheck-playlist" class="select select-bordered select-sm min-w-[16rem]"><option value="">Loading playlists...</option></select>
           </label>
-          <button id="spellcheck-scan-btn" class="btn btn-brand btn-sm" disabled>Check spelling</button>
+          <button id="spellcheck-scan-btn" class="btn btn-outline btn-sm" disabled>Check spelling</button>
         </div>
 
         <details id="spellcheck-allowlist-panel" class="collapse collapse-arrow bg-base-200 rounded">
@@ -41,7 +41,7 @@ export function initSpellcheck() {
                 <div class="label py-0"><span class="label-text text-xs opacity-70">Add words (commas, spaces or one per line)</span></div>
                 <input id="spellcheck-allowlist-input" class="input input-bordered input-sm" placeholder="Yahweh, Hosanna, o'er" />
               </label>
-              <button id="spellcheck-allowlist-add" class="btn btn-brand btn-sm">Add</button>
+              <button id="spellcheck-allowlist-add" class="btn btn-outline btn-sm">Add</button>
             </div>
             <span id="spellcheck-allowlist-status" class="text-xs"></span>
           </div>

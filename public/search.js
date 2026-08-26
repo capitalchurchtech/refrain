@@ -186,6 +186,12 @@ export function initSearch() {
     `
       )
       .join("");
+
+    // Arm the top match. Exactly one Go Live carries the lit collar at rest,
+    // and the collar moves to whatever the operator hovers or tabs to from
+    // there, so a broad query does not light 1315 buttons at once. See the
+    // moving-hero block in refrain.css.
+    resultsEl.querySelector(".go-live-btn")?.classList.add("rf-armed");
   }
 
   // String-based (not DOM textContent->innerHTML) so quote characters are

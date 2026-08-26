@@ -72,7 +72,7 @@ export function initScripture() {
               <button id="scripture-bg-btn" class="btn btn-brand"><i data-lucide="external-link"></i> Bible Gateway</button>
               <button id="scripture-bg-copy" class="btn btn-outline btn-sm" title="Copy the Bible Gateway link"><span class="copy-icon" data-for="bg"><i data-lucide="copy"></i></span> Copy link</button>
               <span class="opacity-30">|</span>
-              <button id="scripture-blb-btn" class="btn btn-brand"><i data-lucide="external-link"></i> Blue Letter Bible</button>
+              <button id="scripture-blb-btn" class="btn btn-outline"><i data-lucide="external-link"></i> Blue Letter Bible</button>
               <button id="scripture-blb-copy" class="btn btn-outline btn-sm" title="Copy the Blue Letter Bible link"><span class="copy-icon" data-for="blb"><i data-lucide="copy"></i></span> Copy link</button>
             </div>
 

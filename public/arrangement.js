@@ -188,7 +188,7 @@ export function initArrangement() {
                 <div class="flex items-center gap-2 mt-1">
                   ${
                     canPush
-                      ? `<button class="btn btn-brand btn-xs push-arrangement-btn" data-external-song-id="${escapeHtml(r.externalSongId)}" data-external-arrangement-id="${escapeHtml(r.externalArrangementId)}" data-sequence="${escapeHtml(JSON.stringify(r.actual))}">
+                      ? `<button class="btn btn-outline btn-xs push-arrangement-btn" data-external-song-id="${escapeHtml(r.externalSongId)}" data-external-arrangement-id="${escapeHtml(r.externalArrangementId)}" data-sequence="${escapeHtml(JSON.stringify(r.actual))}">
                           <i data-lucide="upload" class="w-3 h-3"></i> Push to ${escapeHtml(providerDisplayName)}
                         </button>`
                       : ""
@@ -419,7 +419,7 @@ export function initArrangement() {
               ? `
           <div class="flex flex-wrap items-center gap-2">
             <input type="date" id="service-date" class="input input-bordered input-sm" value="${new Date().toISOString().slice(0, 10)}" />
-            <button id="run-comparison-btn" class="btn btn-brand btn-sm">Run Comparison Now</button>
+            <button id="run-comparison-btn" class="btn btn-outline btn-sm">Run Comparison Now</button>
             <span id="comparison-result" class="text-sm"></span>
           </div>`
               : ""
