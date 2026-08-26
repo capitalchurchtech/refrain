@@ -55,12 +55,13 @@ width and the matching content margin already do —
 Those rules look redundant next to the utility class; they are not. Do not
 "clean them up".
 
-Prefer a semantic hook (`.pinned`) over a utility name for anything toggled
-from JS, so the next reader does not assume Tailwind is supplying the value.
+All six JS-applied utilities have static homes as of `5989346`: `w-16`, `w-36`,
+`ml-16`, `ml-36`, `opacity-50` and `pointer-events-none`. Keep it that way. When
+you add a class from JS, add its rule here in the same change.
 
-Still-outstanding exposure: `public/image-crop.js:113-114` toggles
-`opacity-50` and `pointer-events-none` from JS strings. The second one failing
-for a frame means a click can land on a field that is meant to be inert.
+The utility names are the convention rather than semantic hooks like `.pinned`.
+That is deliberate: the static homes work, and renaming would churn markup for
+readability alone. The comment above is what protects them.
 
 ## Design work, and the handoff between sessions
 
