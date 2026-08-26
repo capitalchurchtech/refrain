@@ -54,6 +54,7 @@ Working today:
 - A readout on Search showing what is on the screens, with an elapsed clock, and a link indicator in the rail that is present on every screen.
 - Reindexing only the presentations whose file changed, automatically a few seconds after you save one.
 - Performance mode, which stops Refrain doing anything of its own accord while something is on the screens.
+- A segmented meter for index progress, in first-run setup and on the Health screen.
 
 Wired up but not finished (the interface exists, the methods currently refuse to run):
 
@@ -333,3 +334,18 @@ Refrain is an independent, community built tool. It is not affiliated with, endo
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+**Two bundled assets are not MIT**, and if you fork this you should know before
+you ship it. Everything in `public/vendor/` is listed there with its source and
+licence, but the two you cannot simply assume about are the panel textures:
+
+- `public/img/textures/black_linen_v2.png` and `dark_leather.png`, both
+  "Black Linen 2" and "Dark Leather" by **Atle Mo** from Subtle Patterns, under
+  **CC BY-SA 3.0**. That is a share-alike licence, not plain attribution. Attribution
+  is given in `public/refrain.css`, in `public/vendor/README.md`, and visibly on
+  the Health screen.
+
+The rest is MIT (Tailwind, DaisyUI, Lucide) or OFL 1.1 (Archivo, Martian Mono).
+If share-alike assets are a problem for your situation, the two custom
+properties at the top of the texture section in `public/refrain.css` are the
+only place you need to change: unset them and no texture loads.
