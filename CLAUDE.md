@@ -36,6 +36,31 @@ This was a real bug class here. Early on, the "push to church management system"
 - Secrets go in `.env` (gitignored). `.env.example` lists the names, blank.
 - Every optional module reports off, misconfigured, or active from a `getXModuleStatus(config)` function in `server/config.js`. A missing credential or unset folder should degrade to misconfigured with a clear Health screen message, never crash the server or take down an unrelated feature.
 
+## Design work, and the handoff between sessions
+
+Design and copy on this project run through a standing brief and a single
+handoff file, because the planning and the editing usually happen in two
+different sessions.
+
+- **`.claude/creative-direction.md`** is the standing brief: palette, materials,
+  elevation, buttons, type, the voice zones, the quality floor, and the three
+  questions every review has to answer yes to. Read it before changing anything
+  a person looks at. It is not a style suggestion; a change that contradicts it
+  is wrong the same way a change that breaks core search is wrong.
+- **`.claude/handoff.md`** is always the current work order. It carries the
+  phases, the sequencing, and any decision that is still open. If you are the
+  editing session, this is your brief and anything outside it is not in scope
+  yet. Append to its Status log as tasks land, so the planning session can see
+  what happened without asking.
+- Superseded handoffs move to `.claude/handoffs/`. Never work from one that has
+  been moved there, and never work from a Todoist task that is already marked
+  complete — retired findings get retired for a reason, usually that a later
+  decision made them the wrong work.
+- Findings live in Todoist, project **IT › Refrain Feature Request**, tagged in
+  the title by severity: BLOCKER (unusable or unsafe to run live), CRAFT (works,
+  but below the bar), POLISH (batch these), NOTE (no action). No priorities, no
+  labels — the severity is in the title on purpose.
+
 ## Before you commit
 
 - `npm run lint` has to be clean. If your change broke it, fix the change. Don't paper over it with an eslint disable unless you can say why the rule is genuinely wrong for that line.

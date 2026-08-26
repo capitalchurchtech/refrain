@@ -1,3 +1,13 @@
+> **This file is the live handoff from the design/planning session to the
+> editing session.** It is always the current one. When a new handoff is
+> written it replaces this file wholesale, and the superseded version moves to
+> `.claude/handoffs/`. Anything not in here is not part of the brief.
+>
+> **Editing session:** read [creative-direction.md](creative-direction.md)
+> first, then work the phases below in order. Do not start Phase 3 until the
+> blocking decisions are settled. Append to the Status log at the bottom as you
+> go, so the planning session can see what landed without asking.
+
 # Handoff — design rebuild work order
 
 Written by the creative-direction session on 2026-08-26. Read
@@ -162,3 +172,27 @@ Two additions from the direction, for this work specifically:
 The review touched the running app's persisted preferences (theme, nav pin) and
 restored both. Theme is back on System, rail back to collapsed. If either looks
 wrong, that is why.
+
+---
+
+## Status log
+
+Editing session appends here. One line per task, newest last. Format:
+
+`YYYY-MM-DD · <task title> · done | partial | blocked · <one line>`
+
+_(nothing yet)_
+
+2026-08-26 · BLOCKER — Go Live produces no result, and nothing ever shows what is live · partial · Readout on Search with the bezel/glass/phosphor stack, optimistic paint at 0.6ms. Lit collar landed later in Phase 3; readout still Search-only.
+2026-08-26 · BLOCKER — Connection state is a page-load snapshot · done · LED in the rail on every screen, 4s, fed by one server heartbeat shared with the readout.
+2026-08-26 · Copy — remove the 125 em dashes and the LLM constructions · done · Real split was 59 copy lines vs 75 developer comments; all user-facing copy clean. README opens with the direction's line.
+2026-08-26 · Copy — dedupe strings and drop the cold-zone hedges · done · New public/strings.js for the four twice-written facts. "Connected!" and the Looks/Macros hedge fixed.
+2026-08-26 · Copy — put the Health tooltips on a diet · partial · Both worked examples done; storage-backend, preferred-arrangements, lyrics-splitter and default-size still long.
+2026-08-26 · Copy — the warm zone is empty · partial · Welcome modal, first index and a new 404 have copy. Health/settings/about still bare.
+2026-08-26 · NOTE — Tailwind and DaisyUI load from CDN · done · Vendored to public/vendor with provenance and hashes. Also found Lucide on unpkg@latest, unpinned, which the review missed: every icon vanished offline. 1.1MB vendored vs 3.7MB fetched.
+2026-08-26 · CRAFT — Surfaces do not separate, and the palette is cold · done · Warm ladder as oklch components so DaisyUI components inherit it. Cards were darker than the page at 1.06:1; now raised with the junction block.
+2026-08-26 · CRAFT — There is no elevation model · done · Recessed fields, E1 cards, Tier 2 machined keys with a 2px press. Tier 3 chips not yet applied to Live's 34 buttons.
+2026-08-26 · CRAFT — Typography is the framework default · done · Archivo and Martian Mono self-hosted, latin subsets. 15px/1.42, silkscreen and display helpers.
+2026-08-26 · CRAFT — The hottest colour on screen is a search highlight · done · Highlights are a phosphor underline; warnings moved to plum; #FF4A24 now appears only for live.
+2026-08-26 · CRAFT — Contrast failures, including on the Go Live label · done · Lit collar retires the 3.01:1 failure: legend #EFE2FF on the cap measures 8.61:1 at its lightest point. opacity-* retired as a text-colour mechanism.
+2026-08-26 · CRAFT — Every screen has zero heroes or many · partial · Search has its hero (lit collar Go Live at 46px). Live's 34 buttons, Scripture's two primaries and Health's six saves are untouched.
