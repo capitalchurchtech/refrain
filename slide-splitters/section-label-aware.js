@@ -27,6 +27,7 @@ function isSectionLabel(line) {
  */
 export class SectionLabelAwareSplitter extends SlideSplitter {
   static splitterId = "section-label-aware";
+  static displayName = "Section labels";
 
   split(pastedText) {
     const lines = pastedText.split("\n");

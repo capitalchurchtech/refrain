@@ -1478,7 +1478,7 @@ app.get("/api/scripture/config", (_req, res) => {
 
 app.get("/api/slide-splitters", async (_req, res) => {
   const splitters = await discoverSlideSplitters();
-  res.json({ splitters: splitters.map((S) => ({ id: S.splitterId })) });
+  res.json({ splitters: splitters.map((S) => ({ id: S.splitterId, displayName: S.displayName ?? null })) });
 });
 
 // Generic text -> slides splitter, shared by the lyrics helper and the

@@ -51,3 +51,23 @@ test("groupRepeats treats one-word-different blocks as distinct", () => {
 test("splitterLabel humanizes a kebab-case id", () => {
   assert.equal(splitterLabel("blank-line-delimited"), "Blank Line Delimited");
 });
+
+test("splitterLabel prefers the splitter's own display name", () => {
+  // The name belongs to the splitter, not to the screen showing it, so a
+  // declared name wins over anything derived from the id.
+  assert.equal(splitterLabel({ id: "blank-line-delimited", displayName: "Blank lines" }), "Blank lines");
+});
+
+test("splitterLabel falls back for a splitter that declares no name", () => {
+  // Auto-discovery has to keep working for a third-party splitter dropped into
+  // slide-splitters/ with nothing but an id, so this must never return empty
+  // for a real splitter.
+  assert.equal(splitterLabel({ id: "four-line-chunks", displayName: null }), "Four Line Chunks");
+  assert.equal(splitterLabel({ id: "four-line-chunks" }), "Four Line Chunks");
+});
+
+test("splitterLabel returns empty rather than throwing on nothing", () => {
+  // The select renders before the splitter list resolves on a slow first load.
+  assert.equal(splitterLabel(undefined), "");
+  assert.equal(splitterLabel({}), "");
+});

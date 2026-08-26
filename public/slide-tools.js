@@ -93,7 +93,22 @@ export function groupRepeats(slides) {
   return { unique, order };
 }
 
-export function splitterLabel(id) {
+/**
+ * What to show in the "Split by" field.
+ *
+ * Prefers the splitter's own `displayName`, since the name belongs to the
+ * splitter rather than to this screen, and title-cases the id when there
+ * isn't one -- so a third-party splitter dropped into `slide-splitters/`
+ * still gets a readable label with no registry to edit here.
+ *
+ * Accepts either the object from /api/slide-splitters or a bare id, because
+ * both call sites existed before the name did.
+ */
+export function splitterLabel(splitter) {
+  const id = typeof splitter === "string" ? splitter : splitter?.id;
+  const declared = typeof splitter === "object" ? splitter?.displayName : null;
+  if (declared) return declared;
+  if (!id) return "";
   return id
     .split("-")
     .map((w) => w[0].toUpperCase() + w.slice(1))

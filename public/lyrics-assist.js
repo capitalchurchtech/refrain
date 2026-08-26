@@ -26,61 +26,81 @@ export function initLyricsAssist() {
 
     container.innerHTML = `
       <div class="flex flex-col gap-4 max-w-3xl">
-        <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="music" class="w-5 h-5"></i> Lyrics</h1>
+        <h1>Lyrics</h1>
+        <!-- Step one, and E1: finding the words is the errand, not the work.
+             The Tier 1 collar used to sit on Search Lyrics, which opens
+             genius.com in a new tab -- the screen's single emitter spent on
+             leaving the app. -->
         <div class="card bg-base-200">
           <div class="card-body p-3 gap-3">
             <h2 class="card-title text-base">Find lyrics</h2>
-            <p class="text-xs opacity-60">
-              Opens a scoped search in a new tab (${escapeHtml(lyricsSites.join(", "))}).
-              Refrain never fetches or reads lyrics pages itself. Copy what you need from the page that opens.
-            </p>
-            <div class="flex flex-wrap gap-2">
-              <input id="lyrics-song" type="text" placeholder="Song title" class="input input-bordered w-full" />
-              <input id="lyrics-artist" type="text" placeholder="Artist (optional)" class="input input-bordered w-full" />
+            <div class="rf-control-row">
+              <div class="rf-field">
+                <label for="lyrics-song">Song title</label>
+                <input id="lyrics-song" type="text" class="input input-bordered w-full" />
+              </div>
+              <div class="rf-field">
+                <label for="lyrics-artist">Artist</label>
+                <input id="lyrics-artist" type="text" class="input input-bordered w-full" />
+              </div>
             </div>
-            <div class="flex flex-wrap items-center gap-2">
-              <button id="lyrics-search-btn" class="btn btn-brand w-fit">
-                <i data-lucide="search"></i> Search Lyrics
+            <div class="flex items-center gap-2">
+              <button id="lyrics-search-btn" class="btn btn-outline btn-sm w-fit"
+                      title="Opens a scoped search across ${escapeHtml(lyricsSites.join(", "))} in a new tab">
+                <i data-lucide="search" class="w-3.5 h-3.5"></i> Search Lyrics
               </button>
-              <button id="lyrics-copy-search-btn" class="btn btn-outline btn-sm w-fit" title="Copy the search link so you can paste it into a full browser window">
-                <span class="copy-search-icon"><i data-lucide="copy"></i></span> Copy search link
+              <button id="lyrics-copy-search-btn" class="btn btn-chip" title="Copy the search link so you can paste it into a full browser window">
+                <span class="copy-search-icon"><i data-lucide="copy" class="w-3 h-3"></i></span> Copy link
               </button>
             </div>
+            <!-- One line, and the only one that is about the next action. The
+                 site list moved into the button's own tooltip, and "Refrain
+                 never fetches or reads lyrics pages itself" is an architecture
+                 fact rather than a step, so it lives in the README. -->
+            <p class="text-xs opacity-60">Copy what you need from the page that opens.</p>
           </div>
         </div>
 
-        <div class="card bg-base-200">
+        <!-- E2, the hero: splitting is the payoff and the reason the screen
+             exists. Exactly one per screen, so nothing above competes. -->
+        <div class="card bg-base-200 rf-hero">
           <div class="card-body p-3 gap-3">
-            <h2 class="card-title text-base">Paste &amp; split into slides</h2>
-            <textarea id="lyrics-paste" rows="5" placeholder="Paste lyrics here..." class="textarea textarea-bordered w-full"></textarea>
-            <div class="flex flex-wrap items-center gap-2">
-              <button id="lyrics-clean-btn" class="btn btn-outline btn-xs" title="${CLEAN_PASTE_HINT}">
-                <i data-lucide="eraser" class="w-3.5 h-3.5"></i> Clean up text
+            <h2 class="card-title text-base">Paste and split into slides</h2>
+            <div class="rf-field">
+              <label for="lyrics-paste">Lyrics</label>
+              <textarea id="lyrics-paste" rows="6" class="textarea textarea-bordered w-full"></textarea>
+            </div>
+            <div class="rf-control-row">
+              <div class="rf-field">
+                <label for="lyrics-splitter">Split by</label>
+                <select id="lyrics-splitter" class="select select-bordered">
+                  ${splitters
+                    .map((s) => `<option value="${s.id}" ${s.id === defaultSplitterId ? "selected" : ""}>${escapeHtml(splitterLabel(s))}</option>`)
+                    .join("")}
+                </select>
+              </div>
+              <button id="lyrics-preview-btn" class="btn btn-brand btn-sm">Preview Slides</button>
+            </div>
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <button id="lyrics-clean-btn" class="btn btn-chip" title="${CLEAN_PASTE_HINT}">
+                <i data-lucide="eraser" class="w-3 h-3"></i> Clean up
               </button>
-              <label class="label cursor-pointer gap-1 py-0">
+              <label class="rf-check">
                 <input type="checkbox" id="lyrics-straighten" class="checkbox checkbox-xs" checked />
-                <span class="label-text text-xs">Straighten quotes &amp; dashes</span>
+                Straighten quotes
               </label>
-            </div>
-            <div class="flex flex-wrap items-center gap-2">
-              <span class="text-sm opacity-70">Split by:</span>
-              <select id="lyrics-splitter" class="select select-bordered select-sm">
-                ${splitters
-                  .map((s) => `<option value="${s.id}" ${s.id === defaultSplitterId ? "selected" : ""}>${splitterLabel(s.id)}</option>`)
-                  .join("")}
-              </select>
-              <label class="label cursor-pointer gap-1 py-0" title="Collapse blocks that repeat word for word (a chorus written out every time) into one slide each, and show the play order so you can build the arrangement.">
+              <label class="rf-check" title="Collapse blocks that repeat word for word (a chorus written out every time) into one slide each, and show the play order so you can build the arrangement.">
                 <input type="checkbox" id="lyrics-group-repeats" class="checkbox checkbox-xs" />
-                <span class="label-text text-xs">Group repeats</span>
+                Group repeats
               </label>
-              <button id="lyrics-preview-btn" class="btn btn-outline btn-sm">Preview Slides</button>
             </div>
-            <p class="text-xs opacity-60">
-              ${NO_SLIDE_CREATION}
-            </p>
           </div>
         </div>
 
+        <!-- The constraint appears with the output it applies to, phrased as
+             the next step, rather than closing the input card before there is
+             anything to copy. -->
+        <p id="lyrics-slides-note" class="text-xs opacity-60 hidden">${NO_SLIDE_CREATION}</p>
         <div id="lyrics-slides" class="flex flex-col gap-2"></div>
       </div>
     `;
@@ -145,6 +165,7 @@ export function initLyricsAssist() {
 
       const slides = await splitText(text, splitterId);
       renderSlidePreview(document.getElementById("lyrics-slides"), slides, document.getElementById("lyrics-group-repeats").checked);
+      document.getElementById("lyrics-slides-note").classList.toggle("hidden", slides.length === 0);
     });
   }
 

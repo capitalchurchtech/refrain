@@ -45,71 +45,75 @@ export function initScripture() {
 
     container.innerHTML = `
       <div class="flex flex-col gap-4 max-w-3xl">
-        <div>
-          <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="book-open" class="w-5 h-5"></i> Scripture</h1>
-          <p class="text-sm opacity-70">
-            Type a reference and open it in Bible Gateway or Blue Letter Bible. Refrain never fetches or
-            stores scripture, it just opens the passage in a new tab, so read or copy from the page that opens.
-          </p>
-        </div>
+        <h1>Scripture</h1>
 
+        <!-- E1. Looking the passage up is the errand; the collar used to sit on
+             Bible Gateway, which leaves the app. The two-sentence lede went
+             with it: "Refrain never fetches or stores scripture" is an
+             architecture fact, already in the README, not a next action. -->
         <div class="card bg-base-200">
           <div class="card-body p-3 gap-3">
-            <div class="flex flex-wrap items-end gap-2">
-              <label class="form-control flex-1 min-w-[14rem]">
-                <div class="label py-1"><span class="label-text">Reference</span></div>
-                <input id="scripture-ref" type="text" placeholder="John 3:16, Romans 8, Psalm 23:1-6" class="input input-bordered w-full" autofocus />
-              </label>
-              <label class="form-control">
-                <div class="label py-1"><span class="label-text">Version</span></div>
-                <select id="scripture-version" class="select select-bordered min-w-[9rem]">
+            <h2 class="card-title text-base">Look up a passage</h2>
+            <div class="rf-control-row">
+              <div class="rf-field">
+                <label for="scripture-ref">Reference</label>
+                <input id="scripture-ref" type="text" placeholder="John 3:16" class="input input-bordered w-full" autofocus />
+              </div>
+              <div class="rf-field" style="flex: 0 1 8rem">
+                <label for="scripture-version">Version</label>
+                <select id="scripture-version" class="select select-bordered">
                   ${VERSIONS.map((v) => `<option value="${v.code}" ${v.code === defaultVersion ? "selected" : ""}>${escapeHtml(v.label)}</option>`).join("")}
                 </select>
-              </label>
+              </div>
             </div>
 
-            <div class="flex flex-wrap items-center gap-2">
-              <button id="scripture-bg-btn" class="btn btn-brand"><i data-lucide="external-link"></i> Bible Gateway</button>
-              <button id="scripture-bg-copy" class="btn btn-outline btn-sm" title="Copy the Bible Gateway link"><span class="copy-icon" data-for="bg"><i data-lucide="copy"></i></span> Copy link</button>
-              <span class="opacity-30">|</span>
-              <button id="scripture-blb-btn" class="btn btn-outline"><i data-lucide="external-link"></i> Blue Letter Bible</button>
-              <button id="scripture-blb-copy" class="btn btn-outline btn-sm" title="Copy the Blue Letter Bible link"><span class="copy-icon" data-for="blb"><i data-lucide="copy"></i></span> Copy link</button>
+            <!-- One Tier 2 primary per row, each with its own chip, rather than
+                 four equal-weight controls and an "|" glyph doing the work a
+                 row break should do. -->
+            <div class="flex items-center gap-2">
+              <button id="scripture-bg-btn" class="btn btn-outline btn-sm"><i data-lucide="external-link" class="w-3.5 h-3.5"></i> Bible Gateway</button>
+              <button id="scripture-bg-copy" class="btn btn-chip" title="Copy the Bible Gateway link"><span class="copy-icon" data-for="bg"><i data-lucide="copy" class="w-3 h-3"></i></span> Copy</button>
+            </div>
+            <div class="flex items-center gap-2">
+              <button id="scripture-blb-btn" class="btn btn-outline btn-sm"><i data-lucide="external-link" class="w-3.5 h-3.5"></i> Blue Letter Bible</button>
+              <button id="scripture-blb-copy" class="btn btn-chip" title="Copy the Blue Letter Bible link"><span class="copy-icon" data-for="blb"><i data-lucide="copy" class="w-3 h-3"></i></span> Copy</button>
             </div>
 
             <p id="scripture-blb-note" class="text-xs opacity-60"></p>
+            <p class="text-xs opacity-60">Read or copy from the page that opens.</p>
           </div>
         </div>
 
-        <div class="card bg-base-200">
+        <!-- E2, the hero. Same as Lyrics: the split is the payoff. -->
+        <div class="card bg-base-200 rf-hero">
           <div class="card-body p-3 gap-3">
-            <h2 class="card-title text-base">Paste &amp; split into slides</h2>
-            <p class="text-xs opacity-60">
-              Copied the passage from the site? Paste it here to tidy it up and split it into slide-sized
-              blocks. Refrain never fetches scripture itself, it only formats what you paste.
-            </p>
-            <textarea id="scripture-paste" rows="5" placeholder="Paste the passage here..." class="textarea textarea-bordered w-full"></textarea>
-            <div class="flex flex-wrap items-center gap-2">
-              <button id="scripture-clean-btn" class="btn btn-outline btn-xs" title="${CLEAN_PASTE_HINT}">
-                <i data-lucide="eraser" class="w-3.5 h-3.5"></i> Clean up text
+            <h2 class="card-title text-base">Paste and split into slides</h2>
+            <div class="rf-field">
+              <label for="scripture-paste">Passage</label>
+              <textarea id="scripture-paste" rows="6" class="textarea textarea-bordered w-full"></textarea>
+            </div>
+            <div class="rf-control-row">
+              <div class="rf-field">
+                <label for="scripture-splitter">Split by</label>
+                <select id="scripture-splitter" class="select select-bordered">
+                  ${splitters.map((s) => `<option value="${escapeHtml(s.id)}" ${s.id === defaultSplitterId ? "selected" : ""}>${escapeHtml(splitterLabel(s))}</option>`).join("")}
+                </select>
+              </div>
+              <button id="scripture-preview-btn" class="btn btn-brand btn-sm">Preview Slides</button>
+            </div>
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <button id="scripture-clean-btn" class="btn btn-chip" title="${CLEAN_PASTE_HINT}">
+                <i data-lucide="eraser" class="w-3 h-3"></i> Clean up
               </button>
-              <label class="label cursor-pointer gap-1 py-0">
+              <label class="rf-check">
                 <input type="checkbox" id="scripture-straighten" class="checkbox checkbox-xs" checked />
-                <span class="label-text text-xs">Straighten quotes &amp; dashes</span>
+                Straighten quotes
               </label>
             </div>
-            <div class="flex flex-wrap items-center gap-2">
-              <span class="text-sm opacity-70">Split by:</span>
-              <select id="scripture-splitter" class="select select-bordered select-sm">
-                ${splitters.map((s) => `<option value="${escapeHtml(s.id)}" ${s.id === defaultSplitterId ? "selected" : ""}>${escapeHtml(splitterLabel(s.id))}</option>`).join("")}
-              </select>
-              <button id="scripture-preview-btn" class="btn btn-outline btn-sm">Preview Slides</button>
-            </div>
-            <p class="text-xs opacity-60">
-              ${NO_SLIDE_CREATION}
-            </p>
           </div>
         </div>
 
+        <p id="scripture-slides-note" class="text-xs opacity-60 hidden">${NO_SLIDE_CREATION}</p>
         <div id="scripture-slides" class="flex flex-col gap-2"></div>
       </div>
     `;
@@ -172,6 +176,7 @@ export function initScripture() {
       if (!text.trim()) return;
       const slides = await splitText(text, document.getElementById("scripture-splitter").value);
       renderSlidePreview(document.getElementById("scripture-slides"), slides, false);
+      document.getElementById("scripture-slides-note").classList.toggle("hidden", slides.length === 0);
     });
   }
 

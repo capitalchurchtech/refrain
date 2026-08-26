@@ -67,12 +67,15 @@ Splitters live in `slide-splitters/`. A splitter turns pasted lyrics into an arr
 ```js
 // slide-splitters/base.js
 class SlideSplitter {
+  static displayName = null;  // optional; what the operator sees in "Split by"
   split(pastedText) { throw new Error("Not implemented"); }
   // returns: string[], one entry per slide
 }
 ```
 
 Make `slide-splitters/your-splitter.js`, extend `SlideSplitter`, implement `split()`. See `slide-splitters/blank-line-delimited.js` for the reference.
+
+Set `static displayName` to whatever a volunteer should read in the **Split by** field, phrased for them rather than for a developer: "Blank lines", not "Blank Line Delimited". Leave it off and the label falls back to a title-cased `splitterId`, so your splitter still works with nothing else to register.
 
 ## Adding a whole new feature
 

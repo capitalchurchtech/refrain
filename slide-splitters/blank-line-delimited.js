@@ -3,6 +3,7 @@ import { SlideSplitter } from "./base.js";
 /** Default splitter: each blank-line-separated block becomes one slide. */
 export class BlankLineDelimitedSplitter extends SlideSplitter {
   static splitterId = "blank-line-delimited";
+  static displayName = "Blank lines";
 
   split(pastedText) {
     return pastedText

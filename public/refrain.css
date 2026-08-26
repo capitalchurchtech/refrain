@@ -1949,3 +1949,126 @@ html.blackroom .rf-led.lit {
 .rf-led.lit {
   background: var(--rf-plum);
 }
+
+/* ============================================================
+   28. FORMS
+
+   Five of the nine screens are the same shape underneath -- input,
+   action, output -- and the direction had no pattern for that shape, so
+   they fell back on DaisyUI's default: a stack of equal-weight cards
+   full of equal-weight boxes. The chrome got designed and the content
+   did not, which is why the rail visibly out-punched the work beside it.
+
+   Two of these are accessibility fixes rather than styling. The fields
+   they replace identified themselves with placeholders only -- so the
+   field lost its name the moment the operator typed into it, and a screen
+   reader had nothing to announce at all.
+   ============================================================ */
+
+/**
+ * Silkscreen label over a recessed field. This one move creates most of the
+ * missing density, because it stops everything being the same size box: the
+ * label goes quiet and small, the field goes sunk, and the pair reads as one
+ * object instead of two.
+ */
+.rf-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.rf-field > label {
+  font-family: var(--rf-mono);
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+[data-theme="dark"] .rf-field > label,
+html.blackroom .rf-field > label {
+  color: var(--rf-muted);
+}
+/**
+ * And the field itself comes down. The label now carries identity, so the box
+ * does not have to be big enough to hold explanatory placeholder text -- which
+ * is what had every input at the same 48px as the primary action. Tier 2's 34px
+ * puts a field at the height of an ordinary control rather than a hero.
+ */
+.rf-field > .input,
+.rf-field > .select {
+  height: 34px;
+  min-height: 34px;
+  font-size: 13px;
+}
+/* DaisyUI reserves 1rem left and 2.5rem right on a select for its arrow, which
+   is 56px of a 198px field -- enough that "Blank Line Delimited" clipped with
+   the arrow sitting in open space. The label above already names the control,
+   so the generous padding buys nothing here. */
+.rf-field > .select {
+  padding-left: 10px;
+  padding-right: 28px;
+}
+.rf-field > .input {
+  padding-left: 10px;
+  padding-right: 10px;
+}
+.rf-field > .textarea {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/**
+ * The hero, E2. Exactly one per screen, on the work rather than the entry:
+ * the payoff, not the first step. Raised off the chassis and carrying the
+ * underglow of the lit control inside it, so the eye lands on the thing the
+ * screen exists for without being told.
+ */
+[data-theme="dark"] .rf-hero,
+html.blackroom .rf-hero {
+  background-color: var(--rf-raised);
+  box-shadow:
+    var(--rf-junction-raised),
+    0 10px 28px rgba(0, 0, 0, 0.45),
+    0 0 22px rgba(132, 70, 201, 0.10);
+}
+
+/**
+ * A control row that must not wrap. The failure it replaces was four
+ * equal-weight controls in one flex row, which at docked width wrapped and
+ * left a checkbox butting against a button with no gap surviving the wrap.
+ * One Tier 2 primary, everything else a chip, is what makes the row short
+ * enough to hold -- and `nowrap` makes a regression visible immediately
+ * rather than quietly re-flowing.
+ */
+.rf-control-row {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: nowrap;
+  gap: 12px;
+  min-width: 0;
+}
+/* Fields take the spare width. Deliberately no spacer element in this
+   pattern: the first thing it did was hand the row's slack to nothing while
+   a select clipped "Blank Line Delimited" down to "Blank Lir". If a row needs
+   air, the field wants it. */
+.rf-control-row > .rf-field {
+  flex: 1 1 auto;
+}
+
+/* A checkbox and its legend, sized to sit in a control row without becoming
+   the tallest thing in it. */
+.rf-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: var(--rf-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+[data-theme="dark"] .rf-check,
+html.blackroom .rf-check {
+  color: var(--rf-muted);
+}

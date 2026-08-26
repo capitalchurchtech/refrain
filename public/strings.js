@@ -31,6 +31,9 @@ export const CLEAN_PASTE_HINT =
 /**
  * ProPresenter's API cannot create slides, so Scripture and Lyrics both have to
  * ask the operator to paste. Said once, cold, rather than twice in two voices.
+ *
+ * The limitation is subordinate to the instruction on purpose: cold zone states
+ * the next action, and this used to lead with what the product cannot do.
  */
 export const NO_SLIDE_CREATION =
-  "ProPresenter can't create slides over its API. Copy each slide below into a new presentation yourself.";
+  "ProPresenter's API can't create slides, so copy each one below into a new presentation.";
