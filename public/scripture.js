@@ -1,3 +1,4 @@
+import { CLEAN_PASTE_HINT, NO_SLIDE_CREATION } from "./strings.js";
 /**
  * Scripture lookup — same shape as the lyrics helper: type a reference,
  * open it (or copy the link) in Bible Gateway or Blue Letter Bible.
@@ -88,7 +89,7 @@ export function initScripture() {
             </p>
             <textarea id="scripture-paste" rows="5" placeholder="Paste the passage here..." class="textarea textarea-bordered w-full"></textarea>
             <div class="flex flex-wrap items-center gap-2">
-              <button id="scripture-clean-btn" class="btn btn-outline btn-xs" title="Remove hidden characters copied from the web, tidy spacing, and optionally straighten curly quotes and dashes">
+              <button id="scripture-clean-btn" class="btn btn-outline btn-xs" title="${CLEAN_PASTE_HINT}">
                 <i data-lucide="eraser" class="w-3.5 h-3.5"></i> Clean up text
               </button>
               <label class="label cursor-pointer gap-1 py-0">
@@ -104,7 +105,7 @@ export function initScripture() {
               <button id="scripture-preview-btn" class="btn btn-outline btn-sm">Preview Slides</button>
             </div>
             <p class="text-xs opacity-60">
-              Copy each slide below into a new presentation in ProPresenter (its API can't create slides for you).
+              ${NO_SLIDE_CREATION}
             </p>
           </div>
         </div>

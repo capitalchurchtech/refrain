@@ -1,3 +1,4 @@
+import { COPY_FAILED } from "./strings.js";
 /**
  * Shared "paste text, split into slides" helpers, used by both the lyrics
  * helper and the Scripture page. Neither feature fetches copyrighted text
@@ -103,7 +104,7 @@ export function splitterLabel(id) {
 // collapses word-for-word repeats into one card each and shows a play order.
 export function renderSlidePreview(slidesEl, slides, grouped) {
   if (slides.length === 0) {
-    slidesEl.innerHTML = `<div class="opacity-60 text-center py-4">No slides — try a different splitter or check your paste.</div>`;
+    slidesEl.innerHTML = `<div class="opacity-60 text-center py-4">No slides. Try a different splitter, or check your paste.</div>`;
     return;
   }
 
@@ -176,7 +177,7 @@ function wireCopy(btn, getText) {
     }
     iconWrap.innerHTML = `<i data-lucide="${copied ? "check" : "x"}"></i>`;
     if (window.lucide) window.lucide.createIcons();
-    if (!copied) btn.title = "Couldn't copy — select and copy the text manually";
+    if (!copied) btn.title = COPY_FAILED;
     setTimeout(() => {
       iconWrap.innerHTML = `<i data-lucide="copy"></i>`;
       if (window.lucide) window.lucide.createIcons();

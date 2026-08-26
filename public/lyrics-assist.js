@@ -1,3 +1,4 @@
+import { CLEAN_PASTE_HINT, NO_SLIDE_CREATION } from "./strings.js";
 /**
  * Lyrics search-assist (Section 14). Two independent steps:
  * 1. Build a scoped search URL and open it in a new tab — never fetch
@@ -31,7 +32,7 @@ export function initLyricsAssist() {
             <h2 class="card-title text-base">Find lyrics</h2>
             <p class="text-xs opacity-60">
               Opens a scoped search in a new tab (${escapeHtml(lyricsSites.join(", "))}).
-              Refrain never fetches or reads lyrics pages itself — copy what you need from the page that opens.
+              Refrain never fetches or reads lyrics pages itself. Copy what you need from the page that opens.
             </p>
             <div class="flex flex-wrap gap-2">
               <input id="lyrics-song" type="text" placeholder="Song title" class="input input-bordered w-full" />
@@ -53,7 +54,7 @@ export function initLyricsAssist() {
             <h2 class="card-title text-base">Paste &amp; split into slides</h2>
             <textarea id="lyrics-paste" rows="5" placeholder="Paste lyrics here..." class="textarea textarea-bordered w-full"></textarea>
             <div class="flex flex-wrap items-center gap-2">
-              <button id="lyrics-clean-btn" class="btn btn-outline btn-xs" title="Remove hidden characters copied from the web, tidy up spacing and blank lines, and optionally straighten curly quotes and dashes">
+              <button id="lyrics-clean-btn" class="btn btn-outline btn-xs" title="${CLEAN_PASTE_HINT}">
                 <i data-lucide="eraser" class="w-3.5 h-3.5"></i> Clean up text
               </button>
               <label class="label cursor-pointer gap-1 py-0">
@@ -75,8 +76,7 @@ export function initLyricsAssist() {
               <button id="lyrics-preview-btn" class="btn btn-outline btn-sm">Preview Slides</button>
             </div>
             <p class="text-xs opacity-60">
-              ProPresenter's API doesn't support creating presentations programmatically on this
-              version — copy each slide below into a new presentation yourself.
+              ${NO_SLIDE_CREATION}
             </p>
           </div>
         </div>

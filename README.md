@@ -3,7 +3,9 @@
 [![CI](https://github.com/capitalchurchtech/refrain/actions/workflows/ci.yml/badge.svg)](https://github.com/capitalchurchtech/refrain/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Refrain is a small web app you run on the same machine as ProPresenter. Its headline feature is instant search across every slide in your library (the actual slide text, not just playlist and file names) with a one click "Go Live". Around that it collects the other small tools a church production team ends up needing, and it's built so your team can add the next one without rewriting anything.
+Find the slide. Send it. Sit back down.
+
+Refrain is a small web app you run on the same machine as ProPresenter. It searches the words inside your slides, not just playlist and file names, and puts what you find on screen with one click. Around that it collects the other small tools a church production team ends up needing, and it's built so your team can add the next one without rewriting anything.
 
 It runs entirely on your own machine. Nothing is hosted for you, there is no subscription, and no data leaves your network unless you connect something to it yourself.
 
@@ -11,9 +13,9 @@ It runs entirely on your own machine. Nothing is hosted for you, there is no sub
 
 ## If you're about to build your own, read this first
 
-Every so often a church tech lead sits down to build "a little ProPresenter tool", or hands the idea to a volunteer, or asks a chatbot to do it. The feature you actually want is usually the easy part. The slow part is everything underneath it: working out ProPresenter's local API, deciding how an outside integration should plug in, building a setup screen a non technical volunteer can use, and getting the unglamorous things right (keeping secrets out of version control, writing files without losing data, coping with two machines running at once).
+Every so often a church tech lead sits down to build "a little ProPresenter tool", or hands the idea to a volunteer, or asks a chatbot to do it. The feature you actually want is usually the easy part. The slow part is everything underneath it: working out ProPresenter's local API, deciding how an outside integration should plug in, and building a setup screen a non technical volunteer can use, and getting the unglamorous things right (keeping secrets out of version control, writing files without losing data, coping with two machines running at once).
 
-Refrain already did that groundwork, and it did it as a plugin system rather than one big tangle you'd have to unpick. If what you want is one more capability (a different church management integration, a new report, whatever your team keeps asking for), the fast path is usually to fork this and add a module. You don't start from a blank file and rediscover all of the above. The developer section near the bottom has the details.
+Refrain already did that groundwork, and it did it as a plugin system rather than one big tangle you'd have to unpick. If what you want is one more capability (a different church management integration, a new report, a screen only your team needs), the fast path is usually to fork this and add a module. You don't start from a blank file and rediscover all of the above. The developer section near the bottom has the details.
 
 ## What it does
 
@@ -21,9 +23,9 @@ Refrain already did that groundwork, and it did it as a plugin system rather tha
 
 **Lyrics helper.** For a song your library doesn't have yet, Refrain runs a scoped web search across lyrics sites (or copies the search link so you can run it in a full browser window), then helps you paste the words in, clean up the junk that comes with a web copy (hidden characters, odd spacing, curly quotes), and split them into slides in one step instead of breaking them up by hand. It can also spot blocks that repeat word for word (a chorus written out every time) and collapse them into one slide each, with the play order laid out so you can build the arrangement.
 
-**Arrangement tracking (optional).** Compares the arrangement your church management system planned for a song against what actually got run in ProPresenter, and can push the correction back so you stop making the same edit every week. Skippable, and it needs no setup if you don't want it.
+**Arrangement tracking (optional).** Compares the arrangement your church management system planned for a song against what actually got run in ProPresenter, and can push the correction back so you stop making the same edit every week. Skip it and nothing else changes.
 
-**Image cropping.** Drop a photo in a folder and get it back cropped to every size you need at once (a slide background, a YouTube thumbnail, a square social post, whatever you set up), with smart cropping that keeps the important part of the picture in frame.
+**Image cropping.** Drop a photo in a folder and get it back cropped to every size you need at once (a slide background, a YouTube thumbnail, a square social post), with smart cropping that keeps the important part of the picture in frame.
 
 **QR codes.** Generate a scannable code for a link, a WiFi network, a contact card and more, all on your own machine, with no third party generator that could expire your printed code or start charging later.
 
@@ -70,24 +72,24 @@ Everything else (a church management integration, shared storage, image cropping
 
 **Never rebuild the index near a service.** A rebuild reads every presentation in your library one at a time, and on a real library that means anything from several minutes to well over an hour. For the whole time it runs, ProPresenter itself gets sluggish and can stop answering at all, which means Go Live, Clear, and macros may not respond. Measured on a real setup: sermon-length presentations took ten to fifteen seconds each to read, and ProPresenter stopped reacting to slide triggers entirely while it was being crawled. Only start a rebuild when you are sure nothing crucial is happening for the next hour or two, and then let it finish rather than killing it partway.
 
-**Performance mode.** While it is on, Refrain does nothing of its own accord: no indexing, no reindexing, no update checks. It keeps one small heartbeat running, every few seconds, so the link indicator and the live readout stay honest — knowing whether ProPresenter is still answering matters more during a service, not less. Everything you press still works — you are in charge, it just stops acting on its own. There is a switch on the Live screen, and it also turns itself on once something has been on the screens for a couple of minutes, and off again about twenty minutes after they go clear. Turning it on by hand keeps it on until you turn it off by hand; a timer should not overrule a person who knows a service starts in ten minutes.
+**Performance mode.** While it is on, Refrain does nothing of its own accord: no indexing, no reindexing, no update checks. It keeps one small heartbeat running, every few seconds, so the link indicator and the live readout stay honest. Knowing whether ProPresenter is still answering matters more during a service, not less. Everything you press still works You are in charge; it just stops acting on its own. There is a switch on the Live screen, and it also turns itself on once something has been on the screens for a couple of minutes, and off again about twenty minutes after they go clear. Turning it on by hand keeps it on until you turn it off by hand; a timer should not overrule a person who knows a service starts in ten minutes.
 
-It replaces an older rule that simply refused to index on Saturdays and Sundays. That was a guess at "a service is happening" and it was wrong in both directions — it blocked indexing on an empty Saturday afternoon and allowed it during a Wednesday evening service. ProPresenter reports what is actually on the screens, so Refrain asks instead of guessing. If ProPresenter cannot be reached, performance mode stays on, because not knowing is not a good enough reason to start crawling.
+It replaces an older rule that simply refused to index on Saturdays and Sundays. That was a guess at "a service is happening" and it was wrong in both directions. It blocked indexing on an empty Saturday afternoon and allowed it during a Wednesday evening service. ProPresenter reports what is actually on the screens, so Refrain asks instead of guessing. If ProPresenter cannot be reached, performance mode stays on, because not knowing is not a good enough reason to start crawling.
 
 **Most of the time you should not have to touch the index at all.** Refrain watches your library folders, and a few seconds after you save an edited presentation it reindexes that one presentation on its own. A burst of saves collapses into a single reindex, and a slow background check every half hour covers anything the watch missed.
 
 It is deliberately cautious about what it will do unasked:
 
-- **It never starts a full rebuild.** If something changes that needs one — you edited your preferred arrangements, or upgraded Refrain — it stops and says so on the Health screen rather than beginning a job that makes ProPresenter sluggish for half an hour.
+- **It never starts a full rebuild.** If something changes that needs one, such as editing your preferred arrangements or upgrading Refrain, it stops and says so on the Health screen rather than beginning a job that makes ProPresenter sluggish for half an hour.
 - **It stops at 25 changed presentations.** A bulk import or a Library Sync run shows up as "38 presentations have changed" on the Health screen, waiting for you, instead of quietly starting a multi-minute crawl.
 - **It waits a few minutes after ProPresenter starts**, because reads fail en masse while ProPresenter is still indexing its own media.
 - **It stays out of the way when playlist crawling is on**, since that makes every reindex expensive.
 
 Set `"autoReindex": false` in `config.json` to turn it off and go back to reindexing by hand.
 
-**Consider a full rebuild once a quarter.** Reindexing keeps up with anything that changes a presentation file, which is nearly everything — but not playlist membership, which lives elsewhere, and not a presentation that failed to read and kept its previous slides. Refrain mentions it on the Health screen once the whole library has not been read in 90 days. It never starts one for you.
+**Consider a full rebuild once a quarter.** Reindexing keeps up with anything that changes a presentation file, which is nearly everything. It does not catch playlist membership, which lives elsewhere, and not a presentation that failed to read and kept its previous slides. Refrain mentions it on the Health screen once the whole library has not been read in 90 days. It never starts one for you.
 
-**Let ProPresenter settle before you rebuild.** Measured on a real library: a full rebuild started right after launching ProPresenter lost 221 of 445 presentations to failed reads — 219 of them in the folder crawled first — because ProPresenter is still busy indexing its own media at that point and stops answering. The same presentations then fetched in 15-30ms once it had settled. Nothing was lost (failed reads keep whatever the previous index had, and a later reindex retries them), but it turned a 15-minute job into 27 minutes plus a second pass. Give ProPresenter a few minutes after launch before starting a rebuild.
+**Let ProPresenter settle before you rebuild.** Measured on a real library: a full rebuild started right after launching ProPresenter lost 221 of 445 presentations to failed reads, 219 of them in the folder crawled first, because ProPresenter is still busy indexing its own media at that point and stops answering. The same presentations then fetched in 15-30ms once it had settled. Nothing was lost (failed reads keep whatever the previous index had, and a later reindex retries them), but it turned a 15-minute job into 27 minutes plus a second pass. Give ProPresenter a few minutes after launch before starting a rebuild.
 
 **Reindex changed only, not Rebuild Everything.** The Health screen's main button re-reads just the presentations whose file changed since the last build, which on a normal week is a handful rather than hundreds. It works out what changed by fingerprinting every presentation file on disk (size, modified time, and a content hash); measured on a real library that is 818 files and 70MB in under half a second, against fifteen minutes for a full crawl of 445 presentations. Everything unchanged keeps the slides the previous build already read.
 

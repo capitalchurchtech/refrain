@@ -86,7 +86,7 @@ export function initQrCode() {
       <div class="flex flex-col gap-4 max-w-3xl">
         <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="qr-code" class="w-5 h-5"></i> QR Codes</h1>
         <p class="text-sm opacity-70">
-          Generated entirely on this machine — the code encodes your content directly, with no third-party link shortener or
+          Generated entirely on this machine. The code encodes your content directly, with no third-party link shortener or
           tracker in the middle that could expire it or start charging later.
         </p>
 

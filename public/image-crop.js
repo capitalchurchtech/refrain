@@ -25,7 +25,7 @@ export function initImageCrop() {
       <div class="flex flex-col gap-4 max-w-3xl">
         <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="crop" class="w-5 h-5"></i> Image Crop</h1>
         <p class="text-sm opacity-70">
-          Drop an image into the input folder and it's automatically cropped and resized to every preset below —
+          Drop an image into the input folder and it's automatically cropped and resized to every preset below.
           smart-cropped so the important part of the image stays in frame, not just a blind center-crop.
         </p>
 
@@ -56,9 +56,9 @@ export function initImageCrop() {
             <summary class="cursor-pointer font-medium flex items-center gap-2"><i data-lucide="mouse-pointer-click" class="w-3.5 h-3.5"></i> Make dropping images in one-drag easy</summary>
             <div class="mt-2 opacity-80 flex flex-col gap-2">
               <p>Click <strong>Open</strong> next to the input folder, then create a shortcut to it so you never have to dig for it again:</p>
-              <p><strong>macOS</strong> — drag the input folder into the Finder sidebar (under Favorites) for a permanent drop target; or right-click it → <em>Make Alias</em> and move the alias to your Desktop. Drop images onto either and they're processed automatically.</p>
-              <p><strong>Windows</strong> — drag the input folder into <em>Quick access</em> in File Explorer's sidebar; or right-click it → <em>Send to → Desktop (create shortcut)</em>. Drop images onto the shortcut.</p>
-              <p class="opacity-70">Leave Refrain running (minimized is fine) and the moment an image lands in that folder, the cropped versions appear in the output folder — no need to open this screen.</p>
+              <p><strong>macOS.</strong> Drag the input folder into the Finder sidebar (under Favorites) for a permanent drop target; or right-click it → <em>Make Alias</em> and move the alias to your Desktop. Drop images onto either and they're processed automatically.</p>
+              <p><strong>Windows.</strong> Drag the input folder into <em>Quick access</em> in File Explorer's sidebar; or right-click it → <em>Send to → Desktop (create shortcut)</em>. Drop images onto the shortcut.</p>
+              <p class="opacity-70">Leave Refrain running (minimized is fine) and the moment an image lands in that folder, the cropped versions appear in the output folder. No need to open this screen.</p>
             </div>
           </details>
 
@@ -91,11 +91,11 @@ export function initImageCrop() {
             ? `<div class="alert alert-success py-2 text-sm">
                  <i data-lucide="check-circle-2" class="w-4 h-4 shrink-0"></i>
                  <div class="min-w-0">
-                   <div class="font-medium">Ready — drop images into the input folder.${data.processing ? " Processing…" : ""}</div>
+                   <div class="font-medium">Ready. Drop images into the input folder.${data.processing ? " Processing…" : ""}</div>
                    <div class="text-xs opacity-80">${(cfg.presets ?? []).length} preset${(cfg.presets ?? []).length === 1 ? "" : "s"}, cropped into the output folder.</div>
                  </div>
                </div>`
-            : `<div class="text-sm opacity-60 flex items-center gap-2"><i data-lucide="eye-off" class="w-3.5 h-3.5"></i> Not watching — tick <strong class="font-medium">Enable</strong> above and Save to start.</div>`
+            : `<div class="text-sm opacity-60 flex items-center gap-2"><i data-lucide="eye-off" class="w-3.5 h-3.5"></i> Not watching. Tick <strong class="font-medium">Enable</strong> above and Save to start.</div>`
         }
 
         <div>
@@ -224,7 +224,7 @@ export function initImageCrop() {
     sel.disabled = false;
     if (addBtn) addBtn.disabled = false;
     sel.innerHTML = available
-      .map((c) => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)} — ${c.width}×${c.height}</option>`)
+      .map((c) => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)} (${c.width}×${c.height})</option>`)
       .join("");
   }
 
@@ -268,7 +268,7 @@ export function initImageCrop() {
   }
 
   function renderActivity(entries) {
-    if (!entries?.length) return `<div class="text-sm opacity-60">Nothing processed yet — drop an image into the input folder.</div>`;
+    if (!entries?.length) return `<div class="text-sm opacity-60">Nothing processed yet. Drop an image into the input folder.</div>`;
     return entries
       .map(
         (e) => `

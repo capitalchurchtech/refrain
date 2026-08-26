@@ -2458,6 +2458,59 @@ app.get("/api/health", async (_req, res) => {
 });
 
 const port = process.env.PORT || 3000;
+/**
+ * Anything that reached here matched no static file and no route.
+ *
+ * API callers get JSON, since something in the app is asking and needs a
+ * machine-readable answer. A browser gets a page: warm zone, one joke, no
+ * setup, and the useful thing (a way back) sitting right next to it.
+ */
+app.use((req, res) => {
+  if (req.path.startsWith("/api/")) {
+    return res.status(404).json({ error: `No such endpoint: ${req.method} ${req.path}` });
+  }
+  res
+    .status(404)
+    .type("html")
+    .send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Not in this arrangement</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0; min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      background: #16121C; color: #F4EFF3;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      line-height: 1.42;
+      padding: 24px;
+    }
+    .card { max-width: 26rem; }
+    h1 {
+      font-size: 15px; margin: 0 0 10px;
+      letter-spacing: .15em; text-transform: uppercase;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: #CBB4F0;
+      text-shadow: 0 0 7px rgba(169,111,232,.55), 0 0 18px rgba(169,111,232,.22);
+    }
+    p { margin: 0 0 14px; color: #A295AC; font-size: 14px; }
+    a { color: #F4EFF3; text-decoration: none; border-bottom: 1px solid #3D3348; }
+    a:hover { border-bottom-color: #A96FE8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Not in this arrangement</h1>
+    <p>That page isn't here. Search is, though.</p>
+    <p><a href="/">Back to Refrain</a></p>
+  </div>
+</body>
+</html>`);
+});
+
 app.listen(port, "127.0.0.1", async () => {
   console.log(`Refrain running at http://localhost:${port}`);
 

@@ -1,3 +1,4 @@
+import { noProPresenterFound } from "./strings.js";
 import { injectSvg } from "./nav.js";
 
 /**
@@ -61,7 +62,7 @@ export function initSetup({ onComplete }) {
         detectResult.textContent = "Nothing found on the network either. Enter the host and port by hand below.";
         detectResult.className = "text-sm ml-2 text-warning";
       } else {
-        detectResult.textContent = "No ProPresenter on this machine. Check its Network API is on, or enter the host and port below.";
+        detectResult.textContent = noProPresenterFound("below");
         detectResult.className = "text-sm ml-2 text-warning";
         // Only now offer the wider search, with its warning.
         networkOffer?.classList.remove("hidden");
@@ -93,7 +94,7 @@ export function initSetup({ onComplete }) {
       });
       const data = await res.json();
       connectionVerified = data.connected;
-      testResult.textContent = data.connected ? "Connected!" : data.error;
+      testResult.textContent = data.connected ? "Connected." : data.error;
       testResult.className = `text-sm ${data.connected ? "text-success" : "text-error"}`;
     } finally {
       testBtn.disabled = false;
@@ -144,7 +145,12 @@ export function initSetup({ onComplete }) {
         sawInProgress = true;
         progressBar.value = rebuild.total ? rebuild.current : 0;
         progressBar.max = rebuild.total || 1;
-        progressText.textContent = `Indexing (${rebuild.stage})... ${rebuild.current}${rebuild.total ? `/${rebuild.total}` : ""}`;
+        // The longest wait in the product, and the one moment the operator is
+        // curious rather than under pressure. Warm zone: it can have a pulse,
+        // as long as the count underneath it stays honest.
+        progressText.textContent = `Reading every slide you own. Go coil something. ${rebuild.current}${
+          rebuild.total ? `/${rebuild.total}` : ""
+        }`;
       } else if (status.builtAt) {
         progressText.textContent = `Indexed ${presentationCount} presentations.`;
         return;
@@ -152,7 +158,7 @@ export function initSetup({ onComplete }) {
         // Build started and finished, but never produced an index —
         // it failed. Don't loop forever; let the user into the app,
         // where the health screen explains what's wrong.
-        progressText.textContent = "Index build failed — check the server logs. You can retry from the Health screen.";
+        progressText.textContent = "Index build failed. Check the server logs, then retry from the Health screen.";
         return;
       }
 

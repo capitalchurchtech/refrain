@@ -26,7 +26,7 @@ export function initLive() {
       if (!document.getElementById("perf-mode-dot")) return; // re-rendered underneath us
       const on = Boolean(data?.armed);
       dot.className = `w-2.5 h-2.5 rounded-full ${on ? "bg-warning" : "bg-success"}`;
-      state.textContent = on ? "On — Refrain is holding still" : "Off — Refrain may index in the background";
+      state.textContent = on ? "On. Refrain is holding still." : "Off. Refrain may index in the background.";
       why.textContent = data?.description ?? "";
       toggle.textContent = on ? "Turn off" : "Turn on";
       toggle.className = `btn btn-sm ${on ? "btn-warning" : "btn-outline"}`;
@@ -138,7 +138,7 @@ export function initLive() {
       renderButtons("live-looks", "live-looks-wrap", looks, "look");
       renderButtons("live-macros", "live-macros-wrap", macros, "macro");
       if (!looks.length && !macros.length) {
-        setStatus("No Looks or Macros found in ProPresenter (or it's unreachable). The Clear buttons still work.");
+        setStatus("No Looks or Macros found. Clear still works.");
       }
     } catch {
       setStatus("Couldn't reach ProPresenter to load its controls. The Clear buttons still work.");

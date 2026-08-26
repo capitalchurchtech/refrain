@@ -29,7 +29,7 @@ export function initArrangement() {
     if (status.status !== "active") {
       container.innerHTML = `
         <div class="alert alert-warning max-w-xl">
-          Arrangement module is ${status.status === "misconfigured" ? "misconfigured" : "not enabled"} —
+          Arrangement module is ${status.status === "misconfigured" ? "misconfigured" : "not enabled"}.
           see the Health screen for details.
         </div>
       `;
@@ -48,7 +48,7 @@ export function initArrangement() {
         <div id="arrangement-list-view" class="flex flex-col gap-4">
           ${
             status.role !== "logger"
-              ? `<div class="alert alert-info py-2 text-sm">Read-only — this machine's role is "reader." Comparisons run on the logger machine.</div>`
+              ? `<div class="alert alert-info py-2 text-sm">Read-only. This machine's role is "reader," so comparisons run on the logger machine.</div>`
               : ""
           }
           ${showWeekendPlan ? `<div id="weekend-plan-card" class="card bg-base-200"><div class="card-body p-3 gap-2"></div></div>` : ""}
@@ -180,9 +180,9 @@ export function initArrangement() {
                 ${renderSequenceComparison(r.planned, r.actual)}
                 ${
                   r.ignored
-                    ? `<div class="text-xs opacity-60 mt-1 flex items-center gap-1"><i data-lucide="eye-off" class="w-3 h-3"></i> Ignored — marked as an atypical, non-representative performance.</div>`
+                    ? `<div class="text-xs opacity-60 mt-1 flex items-center gap-1"><i data-lucide="eye-off" class="w-3 h-3"></i> Ignored. Marked as an atypical, non-representative performance.</div>`
                     : suggestUpdate
-                      ? `<div class="text-warning text-xs mt-1">${r.alwaysDiffers && matches ? "Flagged as always different — review and update the plan." : "Consider updating the plan to match what was actually played."}</div>`
+                      ? `<div class="text-warning text-xs mt-1">${r.alwaysDiffers && matches ? "Flagged as always different. Review and update the plan." : "Consider updating the plan to match what was actually played."}</div>`
                       : ""
                 }
                 <div class="flex items-center gap-2 mt-1">
@@ -265,7 +265,7 @@ export function initArrangement() {
         const resultEl = btn.closest("[data-presentation-id]").querySelector(".push-result");
         const confirmed = window.confirm(
           `Overwrite this song's arrangement in ${providerDisplayName} with:\n\n${parsedSequence.join(", ")}\n\n` +
-            "This updates the shared arrangement — it will affect every future plan that reuses it, not just this one. You can undo immediately after."
+            "This updates the shared arrangement. Every future plan that reuses it changes too. You can undo right after."
         );
         if (!confirmed) return;
 
@@ -453,7 +453,7 @@ export function initArrangement() {
                   </div>
                   ${
                     h.ignored
-                      ? `<div class="text-xs opacity-60 mt-1 flex items-center gap-1"><i data-lucide="eye-off" class="w-3 h-3"></i> Ignored — atypical performance, excluded from suggestions.</div>`
+                      ? `<div class="text-xs opacity-60 mt-1 flex items-center gap-1"><i data-lucide="eye-off" class="w-3 h-3"></i> Ignored. Atypical performance, excluded from suggestions.</div>`
                       : ""
                   }
                   ${renderSequenceComparison(h.planned, h.actual)}
