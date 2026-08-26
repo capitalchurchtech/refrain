@@ -523,12 +523,15 @@ Installer on first run. Then write findings.
 
 ### Check the instrument before trusting the reading
 
-Three times in one session a measurement was wrong while the reading looked
+Repeatedly in one session a measurement was wrong while the reading looked
 entirely plausible: a `getComputedStyle` helper that silently dropped its
-pseudo-element argument and reported the element's own styles; a finding
-adjudicated against a tree where the fix had already landed; and a cached
+pseudo-element argument and reported the element's own styles, twice; a finding
+adjudicated against a tree where the fix had already landed; a cached
 `index.html` listing superseded stylesheets while the JS modules loaded
-current, so every easy check said "current build."
+current, so every easy check said "current build"; and
+`getBoundingClientRect()` reporting 41.8px for a box that was 44px in layout,
+because it is post-transform and the preview pane scales the page. Use
+`offsetHeight` for heights.
 
 That last one is the nastiest and it has a fix. Cache-bust **the page**, not the
 stylesheet — `/?r=N#screen` — because the preview pane holds the document and

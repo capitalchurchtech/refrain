@@ -63,6 +63,42 @@ The utility names are the convention rather than semantic hooks like `.pinned`.
 That is deliberate: the static homes work, and renaming would churn markup for
 readability alone. The comment above is what protects them.
 
+## A rule that exists can still lose
+
+The JIT trap above is about a rule that was never generated. This is the
+opposite failure and it has bitten harder: a rule that exists, reads correctly,
+and silently loses the cascade.
+
+Both instances came from `refrain.css` using an ID or attribute selector that
+outranked something elsewhere:
+
+- `#nav-rail { position: relative }` at 1,1,0 beat Tailwind's `.fixed` at
+  0,1,0, dropping the rail into normal flow while `main` kept the margin that
+  exists *because* it is out of flow. The rail's width was charged twice and
+  every screen rendered into under half its column.
+- A touch-target floor selecting `#nav-items .nav-item` at 1,1,0 lost to tier
+  heights selecting `[data-theme="dark"] #nav-rail .nav-item` at 1,2,0.
+  **A media query contributes no specificity**, so `@media (hover: none)` does
+  not help a weaker selector win.
+
+Neither is visible by reading the file that contains the rule. Both read as
+though they work.
+
+Two habits that prevent it:
+
+- **Co-locate a rule with the rule it modifies.** The touch floor now sits
+  directly beneath the tier heights it relaxes, same selectors, equal
+  specificity plus later position. The next person changing a height sees the
+  floor three lines down. A comment in another file is a footgun with a warning
+  label on it.
+- **For anything set in two places, assert the computed value, not the
+  stylesheet.** Reading the sheet tells you what was declared. Only the
+  computed value tells you what won.
+
+Measuring heights: use `offsetHeight`. `getBoundingClientRect()` is
+post-transform, and a scaled preview pane will report 41.8px for a box that is
+44px in layout.
+
 ## Design work, and the handoff between sessions
 
 Design and copy on this project run through a standing brief and a single
