@@ -349,6 +349,9 @@ export function initQrCode() {
       errEl.classList.add("hidden");
       pngBtn.disabled = true;
       svgBtn.disabled = true;
+      // A disabled control that gives no reason is a dead button.
+      pngBtn.title = "Fill in the fields above first";
+      svgBtn.title = "Fill in the fields above first";
       lastPngDataUrl = null;
       return;
     }
@@ -361,8 +364,12 @@ export function initQrCode() {
       empty.classList.add("hidden");
       errEl.classList.add("hidden");
       pngBtn.disabled = false;
+      pngBtn.title = "";
       // SVG can't carry a raster logo, so only offer it when no logo is set.
+      // That reason used to live only in this comment: the operator added a
+      // logo, watched SVG grey out, and was told nothing.
       svgBtn.disabled = Boolean(state.logoDataUrl);
+      svgBtn.title = svgBtn.disabled ? "SVG can't include a logo. Clear the logo to download SVG." : "";
     } catch (err) {
       errEl.textContent = err.message;
       errEl.classList.remove("hidden");

@@ -2202,3 +2202,74 @@ html.blackroom .rf-subhead {
 html.blackroom .rf-preset + .rf-preset {
   border-top: 1px solid var(--rf-hairline);
 }
+
+/* ============================================================
+   30. THE ICON DEFAULT
+
+   Lucide renders at 24px unless told otherwise, and this app's
+   convention is 16. Nine nav items carry `w-4 h-4` and render 16 in
+   36px rows; the three controls at the bottom of the rail carry no size
+   class at all and rendered 24 -- 50% larger, in the same column, and
+   the keyboard glyph is the densest of the three, which is why it read
+   as the broken one.
+
+   Fixing the sites rather than the default only works until the next
+   icon is added, because the next one starts wrong too. So the default
+   moves to 16 and explicit sizes still win.
+
+   `:where()` is what makes that safe: it contributes zero specificity,
+   so every existing rule beats it rather than the other way round. Two
+   cases depend on that and both are deliberate -- the Search empty
+   state is `w-8` because an empty screen's one glyph should be large,
+   and chip icons are 12px from `.btn-chip > svg`. A flat
+   `[data-lucide]` rule would have flattened both.
+
+   Covers the rendered `<svg>` and the `<i>` placeholder alike: lucide
+   keeps the `data-lucide` attribute when it swaps the element, so the
+   icon is sized correctly for the frame before createIcons() runs as
+   well as after.
+   ============================================================ */
+:where(svg.lucide, [data-lucide]) {
+  width: 1rem;
+  height: 1rem;
+}
+
+/**
+ * The Live key bank is a grid, so it is a uniform grid.
+ *
+ * It was ragged: names wrap to one, two or three lines and nothing fixed the
+ * height, so 34 tiles rendered at four different heights depending on how long
+ * someone's Look happened to be named. That is the primary touch surface
+ * during a service, and a console's keys are a uniform grid precisely so the
+ * operator's hand goes to a position instead of hunting -- ragged rows defeat
+ * that under exactly the conditions this is built for: dark room, seconds of
+ * attention, someone talking to them.
+ *
+ * The height is picked from the two-line case so the common tiles fill it
+ * rather than float in it, and it is the same 44px as the touch floor, so the
+ * bank is now identical whether it is being tapped or clicked.
+ *
+ * Clamped, never shortened: the label is cut visually at two lines and the
+ * full name is in the tile's `title`. No abbreviation and no case transform --
+ * these are names the operator wrote in ProPresenter.
+ */
+#view-live .rf-tile {
+  height: 44px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.rf-tile-label {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.25;
+  text-align: center;
+  /* line-clamp only handles vertical overflow. A single token longer than the
+     tile -- "Screen/Standard" at 11px mono with tracking -- still ran off the
+     side and was cut mid-letter with no ellipsis. Breaking anywhere is right
+     for a name the operator wrote: it stays legible and complete-looking, and
+     the full string is in `title` regardless. */
+  overflow-wrap: anywhere;
+}

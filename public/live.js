@@ -218,7 +218,12 @@ export function initLive() {
         // like -- 34 tiles at 80px would be a very long screen. Removed rather
         // than given a home, so the code stops implying an intent that is not
         // happening.
-        (it) => `<button class="btn rf-tile" data-${kind}="${escapeHtml(it.id)}">${escapeHtml(it.name)}</button>`
+        // The name goes in a span so it can be clamped to two lines, and the
+        // full name goes in `title` so nothing is ever lost -- no abbreviating
+        // and no case transform, because the operator named these in
+        // ProPresenter and Refrain does not restyle a name its user wrote.
+        (it) =>
+          `<button class="btn rf-tile" data-${kind}="${escapeHtml(it.id)}" title="${escapeHtml(it.name)}"><span class="rf-tile-label">${escapeHtml(it.name)}</span></button>`
       )
       .join("");
     document.getElementById(wrapId).classList.remove("hidden");

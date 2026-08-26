@@ -302,11 +302,11 @@
         </div>
 
         <div>
-          <label class="label"><span class="label-text">ProPresenter host</span></label>
+          <label class="label" for="setup-host"><span class="label-text">ProPresenter host</span></label>
           <input id="setup-host" type="text" value="localhost" class="input input-bordered w-full" />
         </div>
         <div>
-          <label class="label"><span class="label-text">ProPresenter port</span></label>
+          <label class="label" for="setup-port"><span class="label-text">ProPresenter port</span></label>
           <input id="setup-port" type="number" placeholder="e.g. 1025" class="input input-bordered w-full" />
         </div>
 
@@ -412,7 +412,7 @@
         <div id="search-readout" class="rf-readout mb-4" data-mode="standby"></div>
 
         <div class="flex gap-2 mb-3">
-          <input id="query" type="text" placeholder="Search any slide..." class="input input-bordered w-full" autofocus />
+          <input id="query" type="text" placeholder="Search any slide..." aria-label="Search all slides" class="input input-bordered w-full" autofocus />
         </div>
 
         <div class="rf-chip-row mb-4" id="search-filter-chips">
@@ -420,15 +420,15 @@
             <i data-lucide="calendar"></i> Date filter
           </button>
           <div id="date-filter-panel" class="hidden flex flex-wrap items-center gap-2">
-            <select id="date-field" class="select select-bordered select-xs">
+            <select id="date-field" class="select select-bordered select-xs" aria-label="Which date to filter on">
               <option value="modified">Last modified</option>
               <option value="created">Created</option>
             </select>
             <span class="text-xs opacity-60">from</span>
-            <input id="date-from" type="date" class="input input-bordered input-xs" />
+            <input id="date-from" type="date" class="input input-bordered input-xs" aria-label="From date" />
             <span class="text-xs opacity-60">to</span>
-            <input id="date-to" type="date" class="input input-bordered input-xs" />
-            <button id="date-filter-clear" class="btn btn-ghost btn-xs">Clear</button>
+            <input id="date-to" type="date" class="input input-bordered input-xs" aria-label="To date" />
+            <button id="date-filter-clear" class="btn btn-chip">Clear</button>
           </div>
         </div>
 

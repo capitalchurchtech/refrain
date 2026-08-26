@@ -136,7 +136,7 @@ export function renderSlidePreview(slidesEl, slides, grouped) {
          <div class="card-body p-3 gap-1">
            <div class="flex items-center justify-between gap-2">
              <span class="text-sm font-semibold">Play order</span>
-             <button class="btn btn-ghost btn-xs shrink-0 copy-order-btn" title="Copy the play order">
+             <button class="btn btn-chip shrink-0 copy-order-btn" title="Copy the play order">
                <span class="copy-icon"><i data-lucide="copy"></i></span>
              </button>
            </div>
@@ -161,7 +161,7 @@ export function renderSlidePreview(slidesEl, slides, grouped) {
         ${card.heading ? `<div class="text-xs font-semibold opacity-70">${escapeHtml(card.heading)}</div>` : ""}
         <div class="flex items-start justify-between gap-4">
           <div class="text-sm whitespace-pre-line">${escapeHtml(card.text)}</div>
-          <button class="btn btn-ghost btn-xs shrink-0 copy-slide-btn" data-index="${i}" title="Copy this slide">
+          <button class="btn btn-chip shrink-0 copy-slide-btn" data-index="${i}" title="Copy this slide">
             <span class="copy-icon"><i data-lucide="copy"></i></span>
           </button>
         </div>

@@ -24,7 +24,7 @@ export function initSpellcheck() {
               <label for="spellcheck-playlist">Playlist</label>
               <select id="spellcheck-playlist" class="select select-bordered"><option value="">Loading...</option></select>
             </div>
-            <button id="spellcheck-scan-btn" class="btn btn-brand btn-sm w-fit" disabled>Check spelling</button>
+            <button id="spellcheck-scan-btn" class="btn btn-brand btn-sm w-fit" title="Choose a playlist first" disabled>Check spelling</button>
             <p class="text-xs opacity-60">Fix anything real in ProPresenter. The buttons on each result jump you there.</p>
           </div>
         </div>
@@ -82,7 +82,10 @@ export function initSpellcheck() {
       if (e.key === "Enter") document.getElementById("spellcheck-allowlist-add").click();
     });
 
-    select.addEventListener("change", () => (scanBtn.disabled = !select.value));
+    select.addEventListener("change", () => {
+      scanBtn.disabled = !select.value;
+      scanBtn.title = scanBtn.disabled ? "Choose a playlist first" : "";
+    });
     scanBtn.addEventListener("click", () => runScan(select.value, scanBtn));
   }
 

@@ -52,7 +52,7 @@ export function initArrangement() {
               : ""
           }
           ${showWeekendPlan ? `<div id="weekend-plan-card" class="card bg-base-200"><div class="card-body p-3 gap-2"></div></div>` : ""}
-          <input type="text" id="arrangement-song-filter" class="input input-bordered w-full" placeholder="Filter..." />
+          <input type="text" id="arrangement-song-filter" class="input input-bordered w-full" placeholder="Filter..." aria-label="Filter songs by name" />
           <div class="flex flex-col divide-y divide-base-300" id="arrangement-song-list"></div>
         </div>
         <div id="arrangement-detail" class="hidden"></div>

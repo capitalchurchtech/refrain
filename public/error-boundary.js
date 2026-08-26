@@ -44,7 +44,7 @@ export function installGlobalErrorBoundary() {
       <span class="text-sm">Something went wrong. If a screen looks broken, reload.</span>
       <span class="flex gap-1 shrink-0">
         <button class="btn btn-xs" data-reload>Reload</button>
-        <button class="btn btn-ghost btn-xs btn-square" data-dismiss aria-label="Dismiss">✕</button>
+        <button class="btn btn-chip" data-dismiss aria-label="Dismiss">✕</button>
       </span>`;
     document.body.appendChild(banner);
     banner.querySelector("[data-reload]").addEventListener("click", () => location.reload());
