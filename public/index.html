@@ -6,9 +6,15 @@
   <title>Refrain</title>
   <link rel="icon" type="image/svg+xml" href="img/favicon.svg" />
   <link rel="alternate icon" type="image/png" href="img/favicon.png" />
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://cdn.jsdelivr.net/npm/daisyui@4/dist/full.min.css" rel="stylesheet" type="text/css" />
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Vendored, not fetched: a booth machine with no internet used to render
+       this page completely unstyled during a service. See vendor/README.md for
+       sources, versions, licences and hashes. -->
+  <script src="./vendor/tailwind-cdn.js"></script>
+  <link href="./vendor/daisyui-4.12.24-base.css" rel="stylesheet" type="text/css" />
+  <link href="./vendor/daisyui-4.12.24-styled.min.css" rel="stylesheet" type="text/css" />
+  <link href="./vendor/daisyui-themes-light-dark.css" rel="stylesheet" type="text/css" />
+  <link href="./refrain.css" rel="stylesheet" type="text/css" />
+  <script src="./vendor/lucide-1.34.0.min.js"></script>
   <style>
     /* Collapsed nav rail (Section 13): icon-only buttons default to
        px-2's 8px left padding, which visually left-aligns a 24px icon
@@ -185,7 +191,7 @@
     /* Small and uppercase is the sweet spot: 8-10px at 0.15em tracking
        reads as silkscreen printing. */
     .rf-status, .rf-arr, .rf-slide, .rf-time {
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-family: var(--rf-mono);
       font-size: 9px;
       letter-spacing: .15em;
       text-transform: uppercase;
@@ -236,7 +242,7 @@
       box-shadow: 0 0 6px #C79BFF, 0 0 15px rgba(199,155,255,.7);
     }
     #link-row {
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-family: var(--rf-mono);
       font-size: 9px;
       letter-spacing: .15em;
       text-transform: uppercase;

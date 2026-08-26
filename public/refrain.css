@@ -1,0 +1,464 @@
+/**
+ * Refrain's own layer, loaded after DaisyUI so it wins.
+ *
+ * Three things live here, in dependency order: the palette, the elevation
+ * model, and the type. Everything else in the visual backlog sits on top of
+ * these, which is why they are first.
+ *
+ * The reason this is hand-written CSS rather than Tailwind config: the whole
+ * point of the material work is junction shadows, gradients traceable to a
+ * light source, and a warm neutral ladder. None of that has a utility-class
+ * equivalent, and expressing it as one would make it harder to read, not
+ * easier.
+ */
+
+/* ============================================================
+   1. PALETTE
+
+   Warm graphite with violet in it. Tech rooms are warm: gear hums,
+   amps run hot, the light is tungsten. Nothing in a booth is the
+   cold blue-grey dark interfaces default to.
+
+   Warm hue is realism, saturated heat is signal. Neutrals lean warm
+   because that is what metal looks like in a real room, but nothing
+   is ever given a saturated warm colour except live.
+   ============================================================ */
+:root {
+  --rf-ground: #0C0A11;
+  --rf-surface: #16121C;
+  --rf-raised: #221D2B;
+  --rf-machined: #302838;
+  --rf-hairline: #3D3348;
+  --rf-shadowline: #060409;
+
+  --rf-text: #F4EFF3;
+  --rf-muted: #A295AC;
+  --rf-dim: #7A6E86;
+
+  --rf-plum: #8446C9;
+  --rf-plum-lit: #A96FE8;
+  --rf-phosphor: #CBB4F0;
+  --rf-go: #FF4A24;
+
+  /* Emitters only. Never a fill. */
+  --rf-neon-plum: #C79BFF;
+  --rf-neon-go: #FF7A4D;
+
+  /* ---- Junction blocks ----
+     The detail that does more than any other. Wherever two materials
+     meet, the upper edge catches light and the lower material receives
+     a shadow. Never a plain one-pixel border. */
+  --rf-junction-raised:
+    inset 0 1px 0 rgba(255, 240, 235, 0.14),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.55),
+    0 1px 0 rgba(255, 240, 235, 0.04),
+    0 2px 4px rgba(0, 0, 0, 0.5);
+
+  --rf-junction-recessed:
+    inset 0 2px 6px rgba(0, 0, 0, 0.8),
+    inset 0 -1px 0 rgba(255, 240, 235, 0.07),
+    0 1px 0 rgba(255, 240, 235, 0.05);
+}
+
+/**
+ * The palette applies in dark and Blackroom. Light theme is left to DaisyUI:
+ * a warm-graphite machined object does not have a light mode, and inventing
+ * one would be two products.
+ */
+/**
+ * DaisyUI's --b1/--b2/--b3/--bc are raw oklch COMPONENTS, not colours: they get
+ * spliced into oklch(var(--b1) / 1). Feeding them a hex makes that function
+ * invalid, which takes the whole declaration with it, and :root computes to
+ * transparent. A first version of this file did exactly that; dark theme only
+ * looked correct because the body rule below sets a background of its own.
+ *
+ * Expressed properly, every DaisyUI component picks up the warm ladder without
+ * needing to be overridden one at a time. Values converted from the hex ladder
+ * above by the browser, not by hand.
+ */
+[data-theme="dark"] {
+  --b1: 19.1951% 0.020745 302.806; /* #16121C surface  */
+  --b2: 24.2966% 0.027154 300.786; /* #221D2B raised   */
+  --b3: 29.2623% 0.0305658 307.324; /* #302838 machined */
+  --bc: 95.7121% 0.00753247 332.407; /* #F4EFF3 text    */
+}
+
+html.blackroom {
+  --b1: 15.0945% 0.0151389 297.676; /* #0C0A11 */
+  --b2: 19.1951% 0.020745 302.806; /* #16121C */
+  --b3: 24.2966% 0.027154 300.786; /* #221D2B */
+  --bc: 95.7121% 0.00753247 332.407; /* #F4EFF3 */
+}
+
+[data-theme="dark"] body,
+html.blackroom body {
+  background-color: var(--rf-ground);
+  color: var(--rf-text);
+}
+
+/* Blackroom goes a step darker without going neutral: still violet, just
+   further down the ladder, for a room where any lift is a glare. */
+html.blackroom {
+  --rf-ground: #060409;
+  --rf-surface: #0C0A11;
+  --rf-raised: #16121C;
+  --rf-machined: #221D2B;
+}
+
+/* ============================================================
+   2. ELEVATION
+
+   Recessed means information comes out. Raised means a finger goes
+   on. A raised element that does nothing is a lie, and people feel
+   it even when they cannot name it.
+
+   Applied by role, never for decoration. Which is also why there is
+   no fake hardware detailing here: no screw heads, no vents, no
+   fasteners.
+   ============================================================ */
+
+/* E1 — supporting panels and ordinary controls. Cards were previously
+   DARKER than the page they sat on, at 1.06:1, with box-shadow computing
+   to none, so nothing read as raised at all. The reading comes from the
+   junction rather than the fill, which is why a ~1.4:1 lift is enough. */
+[data-theme="dark"] .card,
+html.blackroom .card {
+  background-image: linear-gradient(180deg, #26202F 0%, #1D1826 100%);
+  box-shadow: var(--rf-junction-raised);
+  border: 0;
+}
+html.blackroom .card {
+  background-image: linear-gradient(180deg, #1A1622 0%, #120F18 100%);
+}
+
+/* Recessed — things that report. Fields and readouts sink behind their
+   bezel so the operator can tell at a glance what talks back and what
+   gets pressed. */
+[data-theme="dark"] .input-bordered,
+[data-theme="dark"] .select-bordered,
+[data-theme="dark"] .textarea-bordered,
+html.blackroom .input-bordered,
+html.blackroom .select-bordered,
+html.blackroom .textarea-bordered {
+  background-color: var(--rf-ground);
+  border: 0;
+  box-shadow: var(--rf-junction-recessed);
+}
+
+/* Tier 2, machined key. Smooth metal, top bevel, no emission: it
+   reflects light rather than making it. This is most buttons. */
+[data-theme="dark"] .btn-outline,
+html.blackroom .btn-outline {
+  background-image: linear-gradient(180deg, #322A3B 0%, #241E2D 100%);
+  border: 0;
+  color: var(--rf-text);
+  box-shadow: var(--rf-junction-raised);
+}
+[data-theme="dark"] .btn-outline:hover,
+html.blackroom .btn-outline:hover {
+  background-image: linear-gradient(180deg, #3A3145 0%, #2A2334 100%);
+}
+/* A real key bottoming out occludes its own light rather than adding to
+   it, so the press travels and the shadow tightens. Light never brightens. */
+[data-theme="dark"] .btn-outline:active,
+html.blackroom .btn-outline:active {
+  transform: translateY(2px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 240, 235, 0.08),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.6),
+    0 0 0 rgba(0, 0, 0, 0);
+}
+
+/* Hairlines, where a divider genuinely is the right answer. The review
+   found these hard to see; they are a light edge plus a shadow rather
+   than a single grey line. */
+[data-theme="dark"] hr,
+html.blackroom hr {
+  border: 0;
+  height: 1px;
+  background: var(--rf-hairline);
+  box-shadow: 0 1px 0 rgba(255, 240, 235, 0.04);
+}
+
+/* ============================================================
+   3. TYPE
+
+   The framework default was ui-sans-serif at 16px/1.5 with no webfont
+   anywhere, and monospace in exactly three places. Much of the
+   instrument feeling is supposed to live in the monospace.
+   ============================================================ */
+@font-face {
+  font-family: "Archivo";
+  src: url("./vendor/fonts/archivo-latin.woff2") format("woff2-variations");
+  font-weight: 400 900;
+  font-stretch: 62% 125%;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Martian Mono";
+  src: url("./vendor/fonts/martian-mono-latin.woff2") format("woff2-variations");
+  font-weight: 300 800;
+  font-display: swap;
+}
+
+:root {
+  --rf-sans: "Archivo", ui-sans-serif, system-ui, sans-serif;
+  --rf-mono: "Martian Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+body {
+  font-family: var(--rf-sans);
+  /* Leading is tight. Breathing room is recovered in padding, never in
+     line height. */
+  font-size: 15px;
+  line-height: 1.42;
+}
+
+/* Data gets the technical monospace: every number, timestamp, slide
+   index, count and unit. */
+.rf-data,
+.kbd,
+kbd,
+code,
+.font-mono,
+.rf-silkscreen {
+  font-family: var(--rf-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/**
+ * Silkscreen. Small and uppercase is the sweet spot: 8-10px at 0.15em
+ * tracking reads as printing on a panel rather than as text. Every label,
+ * status and unit.
+ */
+.rf-silkscreen {
+  font-family: var(--rf-mono);
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--rf-muted);
+}
+
+/* Display and badge: heavy grotesque with a width axis, set wide and
+   uppercase. Archivo at the top of both axes stands in until something
+   like Druk Wide is licensed. */
+.rf-display {
+  font-family: var(--rf-sans);
+  font-weight: 900;
+  font-stretch: 118%;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+/* ============================================================
+   4. CONTRAST
+
+   opacity-* is not a token system: an opacity-derived grey drifts with
+   whatever it lands on, which is why the same class measured 4.32:1 in
+   dark and 3.31:1 in Blackroom. Named steps, each checked against the
+   surface it actually sits on.
+   ============================================================ */
+[data-theme="dark"] .opacity-50,
+html.blackroom .opacity-50,
+[data-theme="dark"] .opacity-60,
+html.blackroom .opacity-60,
+[data-theme="dark"] .opacity-70,
+html.blackroom .opacity-70 {
+  opacity: 1;
+  color: var(--rf-muted);
+}
+
+/* ============================================================
+   5. FOCUS
+
+   Visible against warm dark metal specifically, never the framework
+   default inherited from currentColor.
+   ============================================================ */
+:where(a, button, [tabindex], input, select, textarea, summary):focus-visible {
+  outline: 2px solid var(--rf-neon-plum);
+  outline-offset: 3px;
+}
+
+/* ============================================================
+   6. MOTION
+
+   110-160ms, ease-out. No bounce, no spring. And nothing on the path
+   to live animates at all.
+   ============================================================ */
+[data-theme="dark"] .btn,
+html.blackroom .btn {
+  transition-duration: 130ms;
+  transition-timing-function: cubic-bezier(0, 0, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Instant state change as the fallback, never removed feedback: the
+     operator still has to see that their press landed. */
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+  .btn-outline:active {
+    transform: none;
+  }
+}
+
+
+/* ============================================================
+   7. HEAT IS FOR LIVE
+
+   Nothing is ever given a saturated warm colour except live. Not a
+   warning, not a hover, not a chart. --rf-go and --rf-neon-go appear
+   nowhere else in the product.
+   ============================================================ */
+
+/* A match reads as illuminated, not alarming. Phosphor underline rather
+   than a fill, so the slide text stays the thing you are reading. */
+[data-theme="dark"] mark.bg-warning,
+html.blackroom mark.bg-warning {
+  background-color: transparent;
+  color: var(--rf-phosphor);
+  box-shadow: inset 0 -0.35em 0 rgba(132, 70, 201, 0.32);
+  border-radius: 2px;
+}
+
+/* Warnings move to plum territory. They still need to be noticed; they do
+   not need to outrank what is on the screens. */
+[data-theme="dark"] .alert-warning,
+html.blackroom .alert-warning {
+  background-color: #251B33;
+  color: var(--rf-text);
+  border: 0;
+  box-shadow:
+    inset 0 0 0 1px rgba(169, 111, 232, 0.35),
+    var(--rf-junction-raised);
+}
+[data-theme="dark"] .alert-warning svg,
+html.blackroom .alert-warning svg,
+[data-theme="dark"] .alert-warning [data-lucide],
+html.blackroom .alert-warning [data-lucide] {
+  color: var(--rf-plum-lit);
+}
+
+/* Same for the informational variant, so the two do not fight. */
+[data-theme="dark"] .alert-info,
+html.blackroom .alert-info {
+  background-color: #1C1726;
+  color: var(--rf-text);
+  border: 0;
+  box-shadow:
+    inset 0 0 0 1px rgba(169, 111, 232, 0.22),
+    var(--rf-junction-raised);
+}
+[data-theme="dark"] .alert-info svg,
+html.blackroom .alert-info svg,
+[data-theme="dark"] .alert-info [data-lucide],
+html.blackroom .alert-info [data-lucide] {
+  color: var(--rf-phosphor);
+}
+
+/* text-warning was the same amber, used for arrangement drift notes. */
+[data-theme="dark"] .text-warning,
+html.blackroom .text-warning {
+  color: var(--rf-phosphor);
+}
+
+/* ============================================================
+   8. TIER 1, THE LIT COLLAR
+
+   An opaque anodized cap inside an illuminated bezel. The collar
+   carries the light pipe, the light spills onto the panel beneath as
+   underglow, and the legend picks up a faint bloom from the surround.
+   The cap itself never glows: a real key is a piece of plastic sitting
+   in a lit ring, not a lamp.
+
+   This also retires the contrast failure on the most important text in
+   the product. #FFF on #00AA6E measured 3.01:1 and failed AA; the
+   legend below is #EFE2FF on a #443A52 cap, which passes comfortably.
+   Armed is plum. Live is the only place --rf-go appears.
+   ============================================================ */
+[data-theme="dark"] .btn-brand,
+html.blackroom .btn-brand {
+  position: relative;
+  background-color: transparent;
+  background-image: linear-gradient(180deg, #443A52 0%, #1E1928 100%);
+  border: 0;
+  color: #EFE2FF;
+  font-weight: 600;
+  /* The collar: a bright inner ring, then the halo it throws, then the
+     spill onto the panel below it. */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 240, 235, 0.18),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.6),
+    0 0 0 1px var(--rf-plum),
+    0 0 7px rgba(169, 111, 232, 0.55),
+    0 4px 14px rgba(132, 70, 201, 0.28),
+    0 2px 4px rgba(0, 0, 0, 0.5);
+  text-shadow: 0 0 6px rgba(203, 180, 240, 0.35);
+  transition: box-shadow 130ms cubic-bezier(0, 0, 0.2, 1),
+              transform 130ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+[data-theme="dark"] .btn-brand:hover,
+html.blackroom .btn-brand:hover {
+  background-image: linear-gradient(180deg, #4C4159 0%, #241E2F 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 240, 235, 0.2),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.6),
+    0 0 0 1px var(--rf-plum-lit),
+    0 0 9px rgba(169, 111, 232, 0.65),
+    0 4px 16px rgba(132, 70, 201, 0.34),
+    0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+/* On press the cap travels two pixels and the collar tightens. Light
+   never brightens: a real key bottoming out occludes its own light
+   rather than adding to it. */
+[data-theme="dark"] .btn-brand:active,
+html.blackroom .btn-brand:active {
+  transform: translateY(2px);
+  background-image: linear-gradient(180deg, #3A3147 0%, #191420 100%);
+  box-shadow:
+    inset 0 2px 5px rgba(0, 0, 0, 0.7),
+    0 0 0 1px var(--rf-plum),
+    0 0 4px rgba(169, 111, 232, 0.4);
+}
+
+[data-theme="dark"] .btn-brand:disabled,
+html.blackroom .btn-brand:disabled {
+  background-image: linear-gradient(180deg, #2A2433 0%, #1A1622 100%);
+  color: var(--rf-dim);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 240, 235, 0.05),
+    0 0 0 1px var(--rf-hairline);
+  text-shadow: none;
+}
+
+/**
+ * Live. The only saturated warm in the product, and the only thing
+ * allowed to be hotter than the plum.
+ */
+[data-theme="dark"] .btn-brand.rf-live,
+html.blackroom .btn-brand.rf-live {
+  color: #FFD3C2;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 240, 235, 0.18),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.6),
+    0 0 0 1px var(--rf-go),
+    0 0 8px rgba(255, 74, 36, 0.6),
+    0 4px 16px rgba(255, 74, 36, 0.3),
+    0 2px 4px rgba(0, 0, 0, 0.5);
+  text-shadow: 0 0 6px rgba(255, 122, 77, 0.4);
+}
+
+/* A real touch target. Go Live was btn-xs at 24px, well under 44px,
+   for the action the operator takes fifty times a service. */
+.go-live-btn {
+  min-height: 38px;
+  padding-left: 14px;
+  padding-right: 14px;
+}

@@ -1,0 +1,45 @@
+/**
+ * The bit of DaisyUI's base layer that styled.min.css leaves out.
+ *
+ * full.min.css paints the page with one rule; styled.min.css is components
+ * only. Without this nothing sets the page background: it came out transparent,
+ * and only looked right in dark and Blackroom because refrain.css sets body
+ * explicitly there.
+ *
+ * Hand-written rather than extracted from the minified bundle so every line
+ * can be read and checked. Values match daisyui@4.12.24.
+ */
+:root,
+[data-theme] {
+  background-color: var(--fallback-b1, oklch(var(--b1) / 1));
+  color: var(--fallback-bc, oklch(var(--bc) / 1));
+}
+
+/**
+ * The @supports guard is load-bearing, not decoration.
+ *
+ * The rule above reads --fallback-b1 FIRST and only falls back to the theme's
+ * own --b1. So if these are ever defined in a browser that understands oklch,
+ * every theme is pinned to the fallback colour and theming silently stops
+ * working. A first version of this file defined them unconditionally and did
+ * exactly that: light, dark and Blackroom all painted #1d232a.
+ *
+ * They exist only for browsers without oklch, which is why DaisyUI guards them
+ * the same way.
+ */
+@supports not (color: oklch(0% 0 0)) {
+  :root {
+    --fallback-b1: #ffffff;
+    --fallback-b2: #e5e6e6;
+    --fallback-b3: #e5e6e6;
+    --fallback-bc: #1f2937;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fallback-b1: #1d232a;
+      --fallback-b2: #191e24;
+      --fallback-b3: #15191e;
+      --fallback-bc: #a6adbb;
+    }
+  }
+}

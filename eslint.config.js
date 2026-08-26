@@ -4,6 +4,12 @@ import globals from "globals";
 // Minimal, intentionally light-touch (Section 17.5 — CI's job is
 // catching obviously broken PRs, not enforcing a style guide).
 export default [
+  {
+    // Third-party bundles, committed so a booth machine with no internet
+    // still renders. Not ours to lint: they are minified, they are UMD
+    // rather than ESM, and their own style is not our problem.
+    ignores: ["public/vendor/**"],
+  },
   js.configs.recommended,
   {
     // args: "none" — base/interface files (providers/base.js,
