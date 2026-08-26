@@ -1276,7 +1276,7 @@ function renderHealth(health, configOptions, versionInfo) {
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
       <div class="bg-base-200 rounded p-3 flex flex-col gap-1">
         <div class="text-xs uppercase tracking-wide opacity-50">ProPresenter</div>
-        <div class="text-sm font-medium flex items-center gap-1.5">
+        <div class="text-sm font-medium flex items-center gap-1.5 rf-value">
           <span class="w-2 h-2 rounded-full ${propresenter.connected ? "bg-success" : "bg-error"}"></span>
           ${propresenter.connected ? "Connected" : "Not answering"}
         </div>
@@ -1284,12 +1284,12 @@ function renderHealth(health, configOptions, versionInfo) {
       </div>
       <div class="bg-base-200 rounded p-3 flex flex-col gap-1">
         <div class="text-xs uppercase tracking-wide opacity-50">Search index</div>
-        <div class="text-sm font-medium">${index.builtAt ? `${index.presentationCount} presentations` : "Not built yet"}</div>
+        <div class="text-sm font-medium rf-value">${index.builtAt ? `${index.presentationCount} presentations` : "Not built yet"}</div>
         <div class="text-xs opacity-60">${index.builtAt ? `built ${new Date(index.builtAt).toLocaleString()}` : "search is empty until this runs"}</div>
       </div>
       <div class="bg-base-200 rounded p-3 flex flex-col gap-1">
         <div class="text-xs uppercase tracking-wide opacity-50">Version</div>
-        <div class="text-sm font-medium flex items-center gap-1.5">
+        <div class="text-sm font-medium flex items-center gap-1.5 rf-value">
           <span class="w-2 h-2 rounded-full ${versionInfo?.updateAvailable ? "bg-info" : "bg-success"}"></span>
           v${version}
         </div>

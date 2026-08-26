@@ -201,7 +201,15 @@
       color: var(--rf-ink);
       text-shadow: 0 0 7px rgba(var(--rf-emit),.55), 0 0 18px rgba(var(--rf-emit),.22);
     }
-    .rf-time, .rf-arr, .rf-slide { color: #A295AC; }
+    /* The arrangement name and slide number stay muted: they label what is on
+       screen. The elapsed clock is a value, and it is on the same lit face as
+       the status beside it, so it takes the face's emitter rather than a fixed
+       phosphor -- it tracks standby/live with everything else in the glass. */
+    .rf-arr, .rf-slide { color: #A295AC; }
+    .rf-time {
+      color: var(--rf-ink);
+      text-shadow: 0 0 7px rgba(var(--rf-emit),.55), 0 0 18px rgba(var(--rf-emit),.22);
+    }
     .rf-meta { margin-top: 3px; }
 
     .rf-primary {
@@ -263,7 +271,11 @@
   <!-- First-run setup (Section 6) — shown instead of everything else until config.json is complete -->
   <div id="view-setup" class="max-w-lg mx-auto p-6 hidden">
     <h1 class="mb-6">
-      <span id="setup-brand-logo" class="inline-block"></span>
+      <span id="setup-brand-logo" class="inline-block leading-none">
+        <span class="rf-wordmark">Refrain</span>
+        <span class="rf-wordmark-stripe"></span>
+        <span id="setup-brand-tagline">Open source</span>
+      </span>
     </h1>
 
     <!-- Shown once, during first-run setup, if the window is wide enough to be
@@ -349,8 +361,14 @@
   <div id="view-app" class="hidden flex min-h-screen">
     <aside id="nav-rail" class="fixed top-0 left-0 z-20 h-screen overflow-y-auto bg-base-200 flex flex-col items-stretch py-3 transition-all duration-150 w-16">
       <button id="brand-row" class="flex items-center px-2 mb-4 overflow-hidden h-9 btn btn-ghost btn-sm justify-start" title="Go to Search" aria-label="Go to Search">
-        <span id="brand-mark" class="shrink-0"></span>
-        <span id="brand-logo" class="shrink-0 hidden"></span>
+        <span id="brand-mark" class="shrink-0 inline-block leading-none">
+          <span class="rf-wordmark">R</span>
+          <span class="rf-wordmark-stripe"></span>
+        </span>
+        <span id="brand-logo" class="shrink-0 hidden inline-block leading-none">
+          <span class="rf-wordmark">Refrain</span>
+          <span class="rf-wordmark-stripe"></span>
+        </span>
       </button>
 
       <nav id="nav-items" class="flex flex-col gap-1 flex-1"></nav>

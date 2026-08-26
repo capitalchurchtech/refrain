@@ -1458,11 +1458,9 @@ html.blackroom main h3 {
  */
 [data-theme="dark"] .card-title,
 html.blackroom .card-title {
-  position: relative;
   display: flex;
-  align-items: center;
-  gap: 0;
-  padding-left: 13px;
+  align-items: stretch;
+  gap: 10px;
   padding-bottom: 10px;
   margin-bottom: 2px;
   border-bottom: 1px solid var(--rf-hairline);
@@ -1473,16 +1471,40 @@ html.blackroom .card-title {
   text-transform: uppercase;
   color: var(--rf-plum-lit);
 }
+/**
+ * A lit edge rather than a dot.
+ *
+ * The dot was absolutely positioned at `top: 3px`, a number eyeballed against
+ * Martian Mono's metrics -- so it sat above the cap height and would drift
+ * again with any change to size or leading. Fixed by construction instead of
+ * re-tuned: a flex item taking its height from the text line cannot be
+ * vertically misaligned, so `position`, `top` and `height` are gone rather
+ * than adjusted.
+ *
+ * `align-self: stretch` fills the flex line's cross size, which excludes the
+ * heading's padding-bottom, so the edge matches the text instead of running
+ * down into the hairline underline. No gradient fade at the ends either: at
+ * ~14px there is no room for a fade to register and it reads as a fuzzy dash.
+ *
+ * On the glow, versus the wordmark stripe two sections down, which is
+ * deliberately unlit: an emitter has a hot near-white core plus a saturated
+ * halo, reads as an LED, and reports a state, so it counts against the ceiling
+ * of four. A lit edge has no core -- just a soft low-alpha bleed -- and is
+ * structural and free. The test is the core. This is the same object at the
+ * same scale as the latched nav key's plum left edge, so the bleed is
+ * consistent; add a near-white centre and it becomes an indicator that has to
+ * mean something.
+ */
 [data-theme="dark"] .card-title::before,
 html.blackroom .card-title::before {
   content: "";
-  position: absolute;
-  left: 0;
-  top: 3px;
-  width: 5px;
-  height: 5px;
+  position: static;
+  flex: none;
+  width: 2px;
+  align-self: stretch;
   border-radius: 1px;
-  background: var(--rf-plum);
+  background: var(--rf-plum-lit);
+  box-shadow: 0 0 6px rgba(169, 111, 232, 0.3);
 }
 /* Same reasoning as the page title: the marker is the mark now. */
 [data-theme="dark"] .card-title > [data-lucide],
@@ -1690,4 +1712,185 @@ html.blackroom .btn-chip {
   min-height: 26px;
   height: auto;
   padding: 6px 12px;
+}
+
+/* ============================================================
+   25. THE WORDMARK, ENGRAVED
+
+   Type rather than an SVG, and cut into the panel rather than sitting
+   on it. This deliberately inverts the reference, whose wordmark is a
+   raised nameplate, because the app's own system says recessed means
+   information comes out and raised means a finger goes on. A product
+   name is information, not a control, and a rack unit's nameplate is
+   engraved into the chassis.
+
+   That inversion flips the light ramp. With light from above, a
+   groove's top wall faces away and falls into shadow while its bottom
+   wall faces up and catches the room: dark at the top, bright at the
+   bottom. A raised nameplate is the opposite.
+
+   Legibility sets the stops rather than the physics -- see each ramp below
+   for the measurements. A real engrave looks that way anyway: the
+   low-contrast wall is a thin line, not half the letter. (WCAG exempts
+   logotypes from contrast minimums, but there is no reason to lean on
+   that when the ramp can simply be tuned.)
+
+   One technique only. No text-shadow on top: with a transparent glyph
+   and background-clip, a shadow prints through the letter interior and
+   muddies exactly the gradient doing the work.
+   ============================================================ */
+.rf-wordmark {
+  display: inline-block;
+  font-family: var(--rf-sans);
+  font-weight: 900;
+  font-stretch: 118%;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  line-height: 1;
+  white-space: nowrap;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  /**
+   * Light theme, and the file's convention: bare rule is light, dark is
+   * scoped below. The physics do not change between themes -- top wall
+   * shadowed, bottom wall lit -- but which wall has contrast does. On a
+   * near-white rail (base-200 is oklch(0.961), so #F5F5F5) the lit wall is
+   * the one that disappears, so it gets the thin band and the shadowed wall
+   * carries the mass.
+   *
+   * Two attempts at mirroring the dark ramp's bright highlight both ghosted:
+   * the bottom half of the letters went to near-white on a near-white rail.
+   * The honest conclusion is that a bright specular highlight cannot exist on
+   * a light panel, so this is a near-flat dark engrave with a hint of a lit
+   * lower wall -- roughly 10:1 throughout. It reads as clean type with a
+   * bevel rather than as a wordmark dissolving into the rail.
+   */
+  background-image: linear-gradient(
+    180deg,
+    #3E3548 0%,
+    #443B4E 70%,
+    #4E4459 88%,
+    #6A5F76 97%,
+    #4A4055 100%
+  );
+}
+
+/**
+ * Dark, and the ramp this treatment was actually tuned for. The stops are
+ * measured against the rail's #16121C: #4A4055 is 1.9:1 and invisible,
+ * #6B5F78 is 3.11, #9E92AA is 6.28, #EFE8F2 is 15.38 -- so the shadowed wall
+ * gets only the top 22% and the bulk of the glyph sits above 6:1.
+ */
+[data-theme="dark"] .rf-wordmark,
+html.blackroom .rf-wordmark {
+  background-image: linear-gradient(
+    180deg,
+    #6B5F78 0%,
+    #9E92AA 22%,
+    #D8CDE0 58%,
+    #F4EFF3 82%,
+    #C9BDD2 100%
+  );
+}
+
+/* If background-clip: text is ever unavailable, a transparent colour would
+   make the name vanish entirely. Fall back to flat ink. */
+@supports not ((background-clip: text) or (-webkit-background-clip: text)) {
+  .rf-wordmark {
+    color: var(--rf-text);
+    background-image: none;
+  }
+}
+
+/**
+ * The stripe. A printed rule under the nameplate, so it keeps its bar and
+ * loses the glow the reference gives it: at four emitters already, a brand
+ * accent is not reporting a state and does not get to spend one.
+ */
+.rf-wordmark-stripe {
+  display: block;
+  height: 2px;
+  margin-top: 5px;
+  border-radius: 1px;
+  background: var(--rf-plum);
+}
+
+/* Rail, pinned. */
+#brand-row .rf-wordmark {
+  font-size: 22px;
+}
+
+/**
+ * Rail, collapsed. REFRAIN at this stretch needs about 110px and the rail is
+ * 64px, and shrinking it to 11px would just be a 900-weight smudge. So a
+ * single R in the identical treatment: still type, still the same object as
+ * the expanded state rather than a different mark.
+ */
+#brand-mark .rf-wordmark {
+  font-size: 20px;
+}
+#brand-mark .rf-wordmark-stripe {
+  width: 18px;
+  height: 3px;
+  margin-top: 3px;
+}
+
+/* First run is the one place with room for the full display size. */
+#setup-brand-logo .rf-wordmark {
+  font-size: clamp(30px, 8vw, 46px);
+  letter-spacing: 0.01em;
+}
+#setup-brand-logo .rf-wordmark-stripe {
+  height: 3px;
+  margin-top: 8px;
+}
+/* Warm zone, and the one audience who needs it: an Installer deciding whether
+   to trust this. It used to sit in the rail spending vertical space on
+   something the operator never reads. */
+#setup-brand-tagline {
+  display: block;
+  margin-top: 10px;
+  font-family: var(--rf-mono);
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+[data-theme="dark"] #setup-brand-tagline,
+html.blackroom #setup-brand-tagline {
+  color: var(--rf-muted);
+}
+
+/* ============================================================
+   26. PHOSPHOR, ON A LEASH
+
+   The readout's glow is the most-liked thing in the app, which is exactly
+   why it needs a rule before it spreads. Phosphor readout is *one* of the
+   four emitters, so every instance has to be the same kind of thing --
+   spread wider and it stops being one emitter and becomes four different
+   glowing things.
+
+   The rule: phosphor is for values read off a surface, never for labels or
+   actions. The number glows, the word beside it does not.
+
+   So it goes on the index meter's count (a value changing in real time), the
+   Health strip's values with their labels left muted (that panel is literally
+   a diagnostics readout), and the Search strip's indexed count. Not on slide
+   numbers in search results -- dozens of instances would make it wallpaper --
+   and not on section headings, nav legends, body copy, or any button that is
+   not the lit collar.
+
+   Contrast is carried by the colour, not the glow: #CBB4F0 with the shadow
+   removed measures 10.87:1 on glass, 9.96 on surface and 7.62 on machined, so
+   the bleed is decoration on top of type that already passes.
+   ============================================================ */
+[data-theme="dark"] .rf-value,
+html.blackroom .rf-value {
+  color: var(--rf-phosphor);
+  text-shadow: 0 0 8px rgba(203, 180, 240, 0.28);
+}
+[data-theme="dark"] .rf-meter-count,
+html.blackroom .rf-meter-count {
+  color: var(--rf-phosphor);
+  text-shadow: 0 0 8px rgba(203, 180, 240, 0.28);
 }

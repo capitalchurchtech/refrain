@@ -65,7 +65,7 @@ export function initSearch() {
 
     statusEl.innerHTML = indexRes.builtAt
       ? `
-        <span class="inline-flex items-center gap-1" title="${indexRes.presentationCount} presentations indexed"><i data-lucide="database" class="w-3.5 h-3.5"></i>${indexRes.presentationCount}</span>
+        <span class="inline-flex items-center gap-1" title="${indexRes.presentationCount} presentations indexed"><i data-lucide="database" class="w-3.5 h-3.5"></i><span class="rf-value">${indexRes.presentationCount}</span></span>
         <span class="inline-flex items-center gap-1 ml-3" title="Index last built"><i data-lucide="clock" class="w-3.5 h-3.5"></i>${new Date(indexRes.builtAt).toLocaleString(undefined, { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
         ${
           indexRes.buildDurationMs == null

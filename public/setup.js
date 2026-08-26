@@ -1,6 +1,5 @@
 import { noProPresenterFound } from "./strings.js";
 import { createMeter, updateMeter, meterCount } from "./led-meter.js";
-import { injectSvg } from "./nav.js";
 
 /**
  * First-run setup screen (Section 6). Shown instead of the rest of the
@@ -9,8 +8,6 @@ import { injectSvg } from "./nav.js";
  * progress inline until it completes, then hands off to the caller.
  */
 export function initSetup({ onComplete }) {
-  injectSvg(document.getElementById("setup-brand-logo"), "img/logo.svg", ["h-10", "w-auto"]);
-
   const hostInput = document.getElementById("setup-host");
   const portInput = document.getElementById("setup-port");
   const detectBtn = document.getElementById("setup-detect-btn");

@@ -54,24 +54,6 @@ const GROUP_LABEL = {
   system: "System",
 };
 
-const svgCache = new Map();
-
-/**
- * Fetches an SVG file and inlines its markup into `el`, so its paths'
- * `fill="currentColor"` (see public/img/*.svg) picks up the ambient
- * text color and stays in sync with the light/dark toggle — a plain
- * <img> can't do that, since an external image's internal styling is
- * opaque to the page's CSS.
- */
-export async function injectSvg(el, path, sizeClasses = []) {
-  if (!svgCache.has(path)) {
-    svgCache.set(path, fetch(path).then((r) => r.text()));
-  }
-  el.innerHTML = await svgCache.get(path);
-  const svg = el.querySelector("svg");
-  if (svg) svg.classList.add(...sizeClasses);
-}
-
 export function applyTheme(theme) {
   const blackroom = theme === "blackroom";
   // Blackroom rides on top of the dark theme (see index.html) via a
@@ -101,11 +83,6 @@ export async function initNav({ onNavigate, viewIds }) {
   const brandMark = document.getElementById("brand-mark");
   const brandLogo = document.getElementById("brand-logo");
 
-  await Promise.all([
-    injectSvg(brandMark, "img/icon.svg", ["h-5", "w-auto"]),
-    injectSvg(brandLogo, "img/logo.svg", ["h-9", "w-auto"]),
-  ]);
-
   const [{ modules }, prefs] = await Promise.all([
     fetch("/api/modules").then((r) => r.json()),
     fetch("/api/preferences").then((r) => r.json()),
@@ -121,7 +98,26 @@ export async function initNav({ onNavigate, viewIds }) {
     .sort((a, b) => (NAV_PRIORITY[a.id] ?? DEFAULT_PRIORITY) - (NAV_PRIORITY[b.id] ?? DEFAULT_PRIORITY));
   const items = [...moduleItems, ...coreItems];
 
-  let activeId = items[0]?.id ?? "search";
+  /**
+   * The current screen lives in the URL fragment, so a refresh comes back to
+   * where you were instead of dumping you on Search. It went unnoticed for a
+   * long time because `npm run dev` runs `node --watch`, which restarts on
+   * every server edit -- so everyone working on this was bounced to Search
+   * constantly and read it as dev behaviour rather than a defect.
+   *
+   * The hash is validated on the way in. An unknown id reaching setActive
+   * would hide every view and render an empty main, which reads as a crash
+   * rather than as a bad URL, so anything unrecognised falls back to Search.
+   *
+   * This cannot bypass first-run setup: initNav is only ever called from
+   * startApp(), which runs after the setup gate.
+   *
+   * The bonus is that screens become linkable. "Open /#health" is something
+   * one church's tech admin can say to another remotely, which matters for a
+   * tool with no support channel.
+   */
+  const hashId = location.hash.slice(1);
+  let activeId = items.some((i) => i.id === hashId) ? hashId : (items[0]?.id ?? "search");
   let currentTheme = prefs.theme ?? "system";
   // Expanded by default until the user chooses: on a fresh install navPinned
   // is unset (null), so a first-time user sees labels rather than a wall of
@@ -207,6 +203,15 @@ export async function initNav({ onNavigate, viewIds }) {
 
   function setActive(id) {
     activeId = id;
+    /**
+     * replaceState, not pushState. pushState would give back-button navigation
+     * between screens, which sounds like a free bonus but adds a second
+     * back-affordance competing with the Return bar. Return is a live-path
+     * concept with a specific meaning, and a browser Back that walks through
+     * screens muddies it. The bug was "do not lose your place on refresh", so
+     * that is what this fixes.
+     */
+    history.replaceState(null, "", `#${id}`);
     renderItems();
     onNavigate(id);
     // Opening Search puts the cursor in the box, so it's ready to type from
@@ -455,9 +460,19 @@ export async function initNav({ onNavigate, viewIds }) {
     }
   });
 
+  // Someone editing the fragment by hand, or following a /#health link while
+  // the app is already open. Same validation as on boot.
+  window.addEventListener("hashchange", () => {
+    const id = location.hash.slice(1);
+    if (id !== activeId && items.some((i) => i.id === id)) setActive(id);
+  });
+
   renderItems();
   applyPinnedState();
   applyThemeUI();
+  // Stamps the fragment on first paint too, so the URL is shareable without
+  // having to click a nav key first.
+  history.replaceState(null, "", `#${activeId}`);
   onNavigate(activeId);
   if (!welcomeDismissed) openWelcome();
 

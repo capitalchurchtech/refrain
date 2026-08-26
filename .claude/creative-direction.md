@@ -153,6 +153,38 @@ somewhere and land on something.
   readout, the LEDs, the link indicator. A fifth means something else goes dark
   first.
 
+### An emitter and a lit edge are different things
+
+The ceiling of four counts emitters, not everything that glows.
+
+- **An emitter** has a hot near-white core with a saturated halo around it. It
+  reads as an LED. It reports a state, it counts against the four, and it never
+  pulses.
+- **A lit edge** has no core — only a soft, low-alpha bleed, like a surface
+  catching light from something out of frame. It is structural rather than
+  informational, and it is free.
+
+The test is the core. `box-shadow: 0 0 6px rgba(169,111,232,.30)` on a 2px plum
+rule is a lit edge. Add a near-white centre and it becomes an indicator that
+now has to mean something.
+
+Existing lit edges: the latched nav key's plum left edge, and the section
+heading's vertical rule. Neither reports anything, both are allowed.
+
+### Phosphor is for values, not labels
+
+Phosphor readout is *one* of the four emitters, so every instance must be the
+same kind of thing: a value read off a surface. The number glows; the word
+beside it does not. Labels, section headings, nav legends, body copy and every
+button that is not the collar stay unlit.
+
+Spread it further than that and it stops being one emitter reading as "this is
+a readout" and becomes four different glowing things.
+
+Phosphor `#CBB4F0` clears AA with the glow removed on every surface in the
+palette — 9.96:1 on `surface`, 7.62:1 on `machined` at worst — so the
+constraint here is meaning, not contrast.
+
 ## Material junctions
 
 The detail that does more than any other. Wherever two materials meet, the
@@ -262,6 +294,30 @@ that is precisely the case the rule about texture losing exists for. So the
 check is: sample the real composited surface, run the contrast against the text
 that actually sits there, and if it fails, the texture gives way — not the text
 colour.
+
+## Forms
+
+Five of the nine screens are the same shape underneath: input, action, output.
+Without a pattern for that shape they default to a stack of equal-weight cards
+with large inputs, and the result is a designed frame around undesigned
+content — the chrome out-punches the work.
+
+- **One E2 per screen, on the work rather than the entry.** The payoff, not the
+  first step. A lit collar on a button that leaves the app spends the screen's
+  only emitter on departure.
+- **Small labels, deep fields.** Silkscreen label above a recessed input. This
+  one move creates most of the density, because it stops everything being the
+  same size box: the label goes quiet and small, the field goes sunk.
+- **Explanation is one line or a tooltip, never three sentences above the
+  fold.** A screen that opens with a disclaimer has told the operator to wait
+  before it has told them what to do. If a fact is about privacy or
+  architecture rather than the next action, it belongs in Health or the README.
+- **One Tier 2 primary per row; everything else is a Tier 3 chip.** Rows of
+  equal-weight controls read as a toolbar nobody ordered, and they are what
+  wrap and collide in a narrow panel.
+- **End on the action, not the limitation.** Where a constraint has to be
+  stated, phrase it as the next step. "Copy each slide into a new presentation"
+  rather than "ProPresenter can't create slides over its API."
 
 ## Elevation
 
@@ -426,6 +482,35 @@ Missing any of these is a finding, not a nitpick.
 Read the code, then look at the rendered result. Screenshot it. Walk the flow
 as the Reluctant Operator mid-service, then the Fluent Regular, then the
 Installer on first run. Then write findings.
+
+### Audit meaning separately from material
+
+A material audit asks whether the surface is right: junctions, texture, type,
+tiers, contrast, radius. It will not catch an indicator that is the wrong
+colour for the state it reports, because the colour is applied correctly and
+the *meaning* is inverted.
+
+So run a second pass that only asks semantic questions:
+
+- **Every indicator: what state does it report, and does its colour say that?**
+  A green dot beside the word "Off" is a coherent material and an incoherent
+  message.
+- **Is the lit state the engaged state?** Engaged functions light. A quiet mode
+  that is deliberately switched on is lit, not dark.
+- **Grep the whole app for semantic colour classes**, not just the screen you
+  are looking at. A palette migration done screen by screen leaves every other
+  screen speaking the retired vocabulary, and the retired colours will not look
+  wrong in the file — only in the room.
+- **Is any state reported in two places?** Two sources for one fact is worse
+  than one, because they drift and the operator learns to trust neither.
+- **Does the explanatory copy describe the current state or a different one?**
+  Static text describing the "on" behaviour, shown while off, tells the
+  operator the opposite of the truth.
+
+This pass is cheap and it caught, in one sweep: an inverted performance-mode
+dot, 49 uses of retired semantic colours across ten files, a second indicator
+vocabulary in the nav rail, a duplicated screen-state line, and a paragraph
+describing the wrong state. None of it was visible from a material audit.
 
 ```
 BLOCKER  unusable, or unsafe to run live. Cannot merge.
