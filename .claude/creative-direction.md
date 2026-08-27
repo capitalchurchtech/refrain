@@ -101,6 +101,34 @@ is what metal looks like in a real room. But nothing is ever given a saturated
 warm colour except live. Not a warning, not a hover, not a chart. Neon values
 are emitters only and never appear as fills.
 
+### The design system is dark-scoped, so check the theme you do not design in
+
+Most of the system lives under `[data-theme="dark"]` and `html.blackroom`. That
+is deliberate — a warm-graphite machined object does not really have a light
+mode, and inventing its materials twice would be two products. But it means
+light theme silently inherits DaisyUI for anything the dark rules cover, and
+three separate defects have hidden there:
+
+- `btn-brand` kept `#00aa6e` in light theme, a **known AA failure** the dark
+  theme had been rebuilt around. The finding was recorded in the stylesheet the
+  whole time; only one side was fixed.
+- Tier 1 computes 32px in light theme, **below the 44px touch floor**, because
+  the tier heights are dark-scoped.
+- Neutralising DaisyUI's spring removed light theme's *only* press feedback,
+  because `scale(var(--btn-focus-scale,.97))` was its sole active-state rule.
+  Dark was unaffected since its tiers declare their own travel.
+
+So the concession has a boundary, and it is not "surfaces versus everything
+else":
+
+**Material may be dark-only. Signal and accessibility may not.** Colour that
+carries meaning, contrast, touch-target size and press feedback cross the theme
+boundary, because they are what the operator needs rather than what the product
+looks like. Anodized gradients, collars and texture do not have to.
+
+Every fix to a dark-scoped rule gets checked in light theme before it is called
+done. All three of the above were invisible from the theme we work in.
+
 ### The one exception: fault, on Health only
 
 ```
@@ -180,6 +208,21 @@ button that is not the collar stay unlit.
 
 Spread it further than that and it stops being one emitter reading as "this is
 a readout" and becomes four different glowing things.
+
+**And only values the system reports about itself.** The first clause was not
+enough: a filter count is a value read off a surface and would have qualified,
+which meant the answer depended on who was judging. The line is provenance, not
+importance.
+
+Phosphor marks what the machine tells you: what is live, elapsed time, index
+count and age, rebuild progress, link state, version. It does not mark feedback
+on the operator's own action — a filter count, a result count, a character
+count, a validation echo. Those are the app repeating you back, and a readout
+that glows when it is only reflecting your own typing stops meaning "this is the
+state of the system."
+
+So a filter count is mono `--rf-muted`, and the reason is that it is an echo
+rather than a report.
 
 Phosphor `#CBB4F0` clears AA with the glow removed on every surface in the
 palette — 9.96:1 on `surface`, 7.62:1 on `machined` at worst — so the

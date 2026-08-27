@@ -102,6 +102,27 @@ button fill has no such constraint.
 
 Do this first: small, and on the live path.
 
+## 1b. CRAFT — Tier heights into light theme (heights only)
+
+Found while fixing item 1. In light theme `.btn-brand` computes
+`min-height: 32px`, because the tier heights are dark-scoped — so light theme's
+primary action, Go Live included, sits **below the 44px touch floor**.
+
+**Ruled: extend the tier heights into light theme. Heights only, not the tier
+system.** The parallel with item 1 is exact — a touch target is accessibility,
+not surfaces-and-neutrals, so the "light is left to DaisyUI" concession does not
+cover it, for the same reason it did not cover a failing contrast ratio.
+
+But the concession does still cover **material**. Light theme does not need the
+anodized cap gradient, the collar, the junction blocks or the texture; a light
+panel is not a machined one and pretending otherwise would be two products.
+
+So the split, now recorded in the direction: **material may be dark-only, signal
+and accessibility may not.** Take the three tier heights and the touch floor
+across. Leave the gradients, collars and junctions where they are.
+
+Smaller than item 1 and the same shape, so it should be quick.
+
 ## 2. CRAFT — Finish the semantic colour sweep
 
 Raw DaisyUI semantic colours remaining, by file: `health.js` 44,

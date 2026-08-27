@@ -1806,30 +1806,47 @@ html.blackroom .rf-call .rf-lede {
    machined key ~36, lit collar ~50.
    ============================================================ */
 
+/**
+ * Size crosses themes; material does not.
+ *
+ * Every rule in this section used to be dark-scoped, along with the rest of the
+ * design system, on the reasoning that a warm-graphite machined object has no
+ * real light mode. That holds for gradients, collars, junctions and texture --
+ * a light panel is not a machined one and pretending otherwise is two
+ * products. It does not hold for a tier *height*, because a touch target is an
+ * accessibility floor rather than a finish, and light theme's primary action
+ * was computing 32px against a 44px requirement.
+ *
+ * It is the same boundary the green fill crossed one commit earlier: the
+ * "light theme is left to DaisyUI" concession covers surfaces and neutrals,
+ * and cannot cover contrast or hit area. So the heights are unscoped below and
+ * the material stays scoped, in the same rule pairs, so the split is visible
+ * rather than inferred.
+ */
+
 /* Tier 1. Also the accessibility floor: this is the action taken fifty
    times a service, and it must stay above a 44px target. Restoring the
    size modifiers had briefly dropped it to 36px. */
+.btn-brand,
+.go-live-btn {
+  min-height: 48px;
+  height: auto;
+  padding: 12px 22px;
+}
+/* Type size is a dark-theme legend decision, not a hit-area one. */
 [data-theme="dark"] .btn-brand,
 html.blackroom .btn-brand,
 [data-theme="dark"] .go-live-btn,
 html.blackroom .go-live-btn {
-  min-height: 48px;
-  height: auto;
-  padding: 12px 22px;
   font-size: 14px;
 }
 
 /* Tier 2. Machined keys: ordinary controls and the nav rail. */
-[data-theme="dark"] .btn-outline,
-html.blackroom .btn-outline,
-[data-theme="dark"] #nav-rail .nav-item,
-html.blackroom #nav-rail .nav-item,
-[data-theme="dark"] #nav-rail #nav-help-toggle,
-html.blackroom #nav-rail #nav-help-toggle,
-[data-theme="dark"] #nav-rail #theme-toggle,
-html.blackroom #nav-rail #theme-toggle,
-[data-theme="dark"] #nav-rail #nav-pin-toggle,
-html.blackroom #nav-rail #nav-pin-toggle {
+.btn-outline,
+#nav-rail .nav-item,
+#nav-rail #nav-help-toggle,
+#nav-rail #theme-toggle,
+#nav-rail #nav-pin-toggle {
   min-height: 36px;
   height: auto;
   padding: 8px 12px;
@@ -1838,10 +1855,8 @@ html.blackroom #nav-rail #nav-pin-toggle {
 /* Tier 3. Both the chip and the tile are inert, so both get the same floor:
    the smallest thing that can still be hit. A floor rather than a height,
    which is what lets Live's tiles take h-20 without fighting this. */
-[data-theme="dark"] .rf-tile,
-html.blackroom .rf-tile,
-[data-theme="dark"] .btn-chip,
-html.blackroom .btn-chip {
+.rf-tile,
+.btn-chip {
   min-height: 26px;
   height: auto;
   padding: 6px 12px;
@@ -1867,22 +1882,15 @@ html.blackroom .btn-chip {
  * time under pressure rather than precision. A thumb still gets 44px.
  */
 @media (hover: none) {
-  [data-theme="dark"] #nav-rail .nav-item,
-  html.blackroom #nav-rail .nav-item,
-  [data-theme="dark"] #nav-rail #nav-help-toggle,
-  html.blackroom #nav-rail #nav-help-toggle,
-  [data-theme="dark"] #nav-rail #theme-toggle,
-  html.blackroom #nav-rail #theme-toggle,
-  [data-theme="dark"] #nav-rail #nav-pin-toggle,
-  html.blackroom #nav-rail #nav-pin-toggle,
-  [data-theme="dark"] .rf-tile,
-  html.blackroom .rf-tile,
-  [data-theme="dark"] .btn-chip,
-  html.blackroom .btn-chip {
-    min-height: 2.75rem;
-  }
-  /* Not theme-scoped: these carry no tier height to outrank, and a thumb is a
-     thumb in every theme. */
+  /* A thumb is a thumb in every theme, so none of this is scoped either. The
+     selectors still mirror the tier rules above rather than being simpler,
+     because they have to outrank them on document order. */
+  #nav-rail .nav-item,
+  #nav-rail #nav-help-toggle,
+  #nav-rail #theme-toggle,
+  #nav-rail #nav-pin-toggle,
+  .rf-tile,
+  .btn-chip,
   #nav-items .nav-item,
   #nav-help-toggle,
   #theme-toggle,
