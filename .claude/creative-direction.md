@@ -129,6 +129,23 @@ looks like. Anodized gradients, collars and texture do not have to.
 Every fix to a dark-scoped rule gets checked in light theme before it is called
 done. All three of the above were invisible from the theme we work in.
 
+**Where a rule carries both size and material, write it as two rules in the same
+pair rather than one.** Then the boundary is visible in the file instead of
+inferred, and the next person cannot merge them back without noticing. A comment
+explaining which half crosses is not enough — it is the same footgun-with-a-
+warning-label as a rule co-located in the wrong file.
+
+**And where a theme cannot support emission, a signal converts to fill. It does
+not simply lose its glow.** A lamp whose lit state is a near-white core reads as
+an emitter on a dark panel and as nothing at all on a light one: measured, the
+lit core is 1.12:1 against the light rail while the unlit dot is 12.62:1. Drop
+the glow and keep the core and you have inverted the indicator — the state that
+must be unmistakable becomes the only visible one.
+
+So on a light panel a status lamp is *printed*: lit is a solid saturated fill,
+unlit is a hollow ring or a pale dot. Ink where the dark theme has light. The
+signal survives the theme change even though the material cannot.
+
 ### The one exception: fault, on Health only
 
 ```

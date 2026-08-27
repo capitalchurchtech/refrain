@@ -123,6 +123,43 @@ across. Leave the gradients, collars and junctions where they are.
 
 Smaller than item 1 and the same shape, so it should be quick.
 
+## 1c. CRAFT — The link lamp reads backwards in light theme
+
+Flagged by the editing session as material and therefore out of scope for 6b53a37.
+I measured it and it is not material — it is an inverted signal, which by the
+boundary in item 1b crosses into light theme.
+
+The LED rules were never theme-scoped, so light theme keeps the dark treatment.
+Against the light rail at `#F2F2F2`:
+
+| | contrast |
+|---|---|
+| lit core `#EDE0FF` | **1.12:1** — effectively invisible |
+| unlit `#302838` | **12.62:1** — bold |
+| plum `#8446C9` | 5.07:1 |
+
+So in light theme **`LINKED` is a near-invisible pale dot with a soft plum halo
+around nothing, and lost link is a strong dark dot.** The operator reads the
+loud state as the problem state by instinct, and here the loud state is normal.
+
+The quality floor says disconnected is unmistakable and always visible. This is
+that requirement inverted: connected is invisible and disconnected is the only
+legible state.
+
+**Fix: on a light panel a status lamp is printed, not lit.** Lit becomes a solid
+`--rf-plum` fill at 5.07:1; unlit becomes a hollow ring or a pale dot. Ink where
+the dark theme has light. Keep the 16px column and the `::before` lamp from
+item 0 — only the fill and the shadow change.
+
+Not filed higher than CRAFT because light theme is not the booth condition, and
+the direction says a warm-graphite object does not really have a light mode. But
+it is the link indicator, which is the one thing the quality floor singles out,
+so it should not sit behind the semantic sweep.
+
+**Also left deliberately and genuinely material, so not an item:** light theme's
+section headings stay sentence-case bold rather than mono silkscreen. That one is
+appearance, and the concession covers it.
+
 ## 2. CRAFT — Finish the semantic colour sweep
 
 Raw DaisyUI semantic colours remaining, by file: `health.js` 44,

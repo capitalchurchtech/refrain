@@ -2423,3 +2423,91 @@ html.blackroom .rf-preset + .rf-preset {
   padding-right: 0;
   gap: 0;
 }
+
+/* ============================================================
+   31. THE LINK INDICATOR
+
+   The specific instance of section 27's LED, and the one control the
+   quality floor singles out by name: disconnected has to be
+   unmistakable and always visible. It lived in index.html as raw hexes
+   until it needed a light theme, at which point it belonged with the
+   palette.
+
+   Two things are settled here. The column geometry, from the axis fix:
+   #link-led is the same 16px column an icon occupies and the 8px lamp
+   is drawn inside it by ::before, so the row sits on the rail's axis
+   and neither state can collapse the column by setting a background on
+   the element that defines it.
+
+   And the theme split. Emission is material and stays dark-only -- but
+   a signal is not material, so it cannot simply lose its glow and keep
+   its colour. Measured against the light rail (oklch(0.961), so about
+   #F3F3F3), the dark theme's lit core #EDE0FF is **1.12:1**: the
+   LINKED state was invisible, while no-link at #302838 was 12.62:1 and
+   bold. An operator could not see the normal state at all, and an
+   invisible lamp is indistinguishable from a lamp that failed to
+   render.
+
+   So: where a theme cannot support emission, a signal converts to fill
+   rather than losing its glow. On a light panel a status lamp is
+   printed, not lit -- ink where the dark theme has light. Lit is solid
+   --rf-plum at 5.07:1, unlit is a hollow ring at 2.74:1, which keeps
+   present louder than absent the way the dark theme does.
+   ============================================================ */
+#link-led {
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+/* Unlit, light: a hollow ring. Quieter than the lit state, and still an
+   object rather than nothing, so absence reads as a lamp that is off. */
+#link-led::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px #9A8FA6;
+  transition: none;
+}
+/* Lit, light: solid ink. */
+#link-led[data-link="up"]::before {
+  background: var(--rf-plum);
+  box-shadow: none;
+}
+
+/* Unlit, dark: a recessed dead lamp. */
+[data-theme="dark"] #link-led::before,
+html.blackroom #link-led::before {
+  background: #2A2233;
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.8);
+}
+/* Lit, dark: the emitter. Higher specificity than the dark unlit rule above,
+   which is what keeps it winning at equal position. Does not pulse. */
+[data-theme="dark"] #link-led[data-link="up"]::before,
+html.blackroom #link-led[data-link="up"]::before {
+  background: #EDE0FF;
+  box-shadow:
+    0 0 6px #C79BFF,
+    0 0 15px rgba(199, 155, 255, 0.7);
+}
+
+/* The row takes the icon rows' 12px rather than px-2's 8px, so the lamp lands
+   on the rail's axis and the legend lines up with every other label. Lower
+   specificity than `#nav-rail.collapsed #link-row`, so collapsed still
+   centres. */
+#link-row {
+  padding-left: 12px;
+  padding-right: 12px;
+  font-family: var(--rf-mono);
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: #A295AC;
+}
+[data-theme="dark"] #link-row[data-link="down"],
+html.blackroom #link-row[data-link="down"] {
+  color: #E8DCEF;
+}
