@@ -322,6 +322,29 @@ html.blackroom .btn {
   transition-timing-function: cubic-bezier(0, 0, 0.2, 1);
 }
 
+/**
+ * "No bounce, no spring" was stated here from the start and never enforced.
+ *
+ * DaisyUI puts `animation: button-pop .25s ease-out` on every `.btn`, and its
+ * keyframes run scale(.98) -> **scale(1.02)** -> 1. That overshoot past full
+ * size is a spring, and it fired on every button in the app on release,
+ * including the nav rail icons. It also squeezes the cap to .97 while held,
+ * through `--btn-focus-scale` on `.btn:active:focus, .btn:active:hover`.
+ *
+ * Both are DaisyUI's vocabulary rather than a decision made here, and both
+ * contradict the section they were sitting under. A machined key does not
+ * rebound past its own face -- it bottoms out and stops.
+ *
+ * Neutralised rather than out-specified: setting the variable to 1 makes
+ * DaisyUI's own `scale(var(--btn-focus-scale, .97))` resolve to `scale(1)`, so
+ * there is no specificity fight with a 0,3,0 selector and no `!important`.
+ * Unscoped, because a spring is wrong in every theme.
+ */
+.btn {
+  animation: none;
+  --btn-focus-scale: 1;
+}
+
 @media (prefers-reduced-motion: reduce) {
   /* Instant state change as the fallback, never removed feedback: the
      operator still has to see that their press landed. */
@@ -755,7 +778,21 @@ html.blackroom #nav-rail #nav-pin-toggle:hover {
   background-image: linear-gradient(180deg, #332B3D 0%, #251F2F 100%);
 }
 
-/* Press travels, and the light does not brighten. */
+/**
+ * The rail presses without moving.
+ *
+ * Everything else here bottoms out with two pixels of travel, and on an action
+ * key that is right -- you are firing something and the key should feel like it
+ * fired. A nav key is not that. It selects where you are, it is pressed
+ * constantly, and its icon shifting down two pixels on every navigation reads
+ * as jitter rather than as travel. The nine of them stacked in a column make it
+ * worse, because the movement is against a fixed grid of neighbours that stay
+ * put.
+ *
+ * So the shadow does all the work: the raised bevel flattens and the cap
+ * occludes its own light, which is what a key sinking actually looks like,
+ * while the icon holds position. Feedback is not removed, only the motion.
+ */
 [data-theme="dark"] #nav-rail .nav-item:active,
 html.blackroom #nav-rail .nav-item:active,
 [data-theme="dark"] #nav-rail #nav-help-toggle:active,
@@ -764,7 +801,7 @@ html.blackroom #nav-rail #nav-help-toggle:active,
 html.blackroom #nav-rail #theme-toggle:active,
 [data-theme="dark"] #nav-rail #nav-pin-toggle:active,
 html.blackroom #nav-rail #nav-pin-toggle:active {
-  transform: translateY(2px);
+  transform: none;
   box-shadow:
     inset 0 1px 0 rgba(255, 240, 235, 0.08),
     inset 0 -1px 0 rgba(0, 0, 0, 0.6);
