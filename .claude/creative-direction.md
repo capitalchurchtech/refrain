@@ -548,6 +548,13 @@ including ones in earlier handoffs. On a product whose surface is defined by
 being narrow, these are the two measurements that matter most, and they were the
 two most affected.
 
+**Make every transitioned measurement satisfy an independent sum.** A frozen
+clock was caught once by noticing that 144 + 316 = 460 — rail plus column
+equalling the viewport. That was luck the first time and it should be method
+from now on: a single number from a transitioned property proves nothing, but two
+numbers that have to add to a third will disagree the moment one of them is
+stale. Reach for the cross-check before reaching for a longer wait.
+
 ### Check the instrument before trusting the reading
 
 Repeatedly in one session a measurement was wrong while the reading looked

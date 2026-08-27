@@ -43,6 +43,9 @@
 
   --rf-plum: #8446C9;
   --rf-plum-lit: #A96FE8;
+  /* Light theme only: hover and press darken rather than brighten, the same
+     direction the dark theme's keys travel. 7.39:1 against white. */
+  --rf-plum-deep: #6F39AA;
   --rf-phosphor: #CBB4F0;
   --rf-go: #FF4A24;
 
@@ -345,6 +348,25 @@ html.blackroom .btn {
   --btn-focus-scale: 1;
 }
 
+/**
+ * And the travel that replaces it, stated for every theme.
+ *
+ * Neutralising the spring above removed the *only* press feedback light theme
+ * had: DaisyUI's `scale(var(--btn-focus-scale, .97))` was the sole
+ * active-state rule, and setting the variable to 1 turned it into `scale(1)`.
+ * Dark theme was unaffected because its tiers each declare their own 2px
+ * travel, so the regression was invisible from the theme this project is
+ * designed in -- including on Go Live.
+ *
+ * A key bottoming out is the right vocabulary in both themes, so it moves here
+ * rather than being duplicated per tier. The nav rail opts out below: a key you
+ * press to fire something should travel, a key that selects where you are
+ * should not.
+ */
+.btn:active {
+  transform: translateY(2px);
+}
+
 @media (prefers-reduced-motion: reduce) {
   /* Instant state change as the fallback, never removed feedback: the
      operator still has to see that their press landed. */
@@ -434,6 +456,37 @@ html.blackroom .text-warning {
    legend below is #EFE2FF on a #443A52 cap, which passes comfortably.
    Armed is plum. Live is the only place --rf-go appears.
    ============================================================ */
+/**
+ * Light theme, and this is the same contrast failure the section comment
+ * above describes -- it was only ever fixed on the dark side.
+ *
+ * `.btn-brand` was declared in index.html as `#00aa6e`, described in its own
+ * comment as "one shared brand green". White on it measures **3.01:1**, so
+ * every primary action in the app failed AA for anyone running light theme,
+ * including Go Live. Green was also retired from the palette entirely, which
+ * made this the retired colour surviving in the one place it matters most.
+ *
+ * The "light theme is left to DaisyUI" concession covers surfaces and
+ * neutrals -- a warm-graphite machined object has no real light mode, so its
+ * ground and hairlines are not worth inventing twice. It was never a
+ * concession on the palette's signal colours, and this class is the project's
+ * own, not DaisyUI's, so it is ours in every theme.
+ *
+ * Plum in both themes. Unlike the engraved wordmark, which genuinely needed a
+ * light-specific ramp because a specular highlight cannot exist on a light
+ * panel, a button fill has no such constraint. White on --rf-plum is 5.67:1
+ * and on --rf-plum-deep 7.39:1.
+ */
+.btn-brand {
+  background-color: var(--rf-plum);
+  border-color: var(--rf-plum);
+  color: #fff;
+}
+.btn-brand:hover {
+  background-color: var(--rf-plum-deep);
+  border-color: var(--rf-plum-deep);
+}
+
 [data-theme="dark"] .btn-brand,
 html.blackroom .btn-brand {
   position: relative;
@@ -793,6 +846,16 @@ html.blackroom #nav-rail #nav-pin-toggle:hover {
  * occludes its own light, which is what a key sinking actually looks like,
  * while the icon holds position. Feedback is not removed, only the motion.
  */
+/* Unscoped, because the press travel it opts out of is now unscoped too.
+   Scoped to dark, this let light-theme nav keys travel again the moment the
+   general rule existed. The shadow half stays dark-only, below. */
+#nav-rail .nav-item:active,
+#nav-rail #nav-help-toggle:active,
+#nav-rail #theme-toggle:active,
+#nav-rail #nav-pin-toggle:active,
+#nav-rail #brand-row:active {
+  transform: none;
+}
 [data-theme="dark"] #nav-rail .nav-item:active,
 html.blackroom #nav-rail .nav-item:active,
 [data-theme="dark"] #nav-rail #nav-help-toggle:active,
@@ -801,7 +864,6 @@ html.blackroom #nav-rail #nav-help-toggle:active,
 html.blackroom #nav-rail #theme-toggle:active,
 [data-theme="dark"] #nav-rail #nav-pin-toggle:active,
 html.blackroom #nav-rail #nav-pin-toggle:active {
-  transform: none;
   box-shadow:
     inset 0 1px 0 rgba(255, 240, 235, 0.08),
     inset 0 -1px 0 rgba(0, 0, 0, 0.6);

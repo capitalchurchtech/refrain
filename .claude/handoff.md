@@ -116,20 +116,143 @@ Sweep **by concept, not by screen**: find every place the app reports a state,
 decide what the state is, apply the one vocabulary. Doing it screen by screen is
 what left the inverted dot in place while Health looked finished.
 
-## 3. CRAFT — Arrangement needs its own pattern, spec first
+## 3. CRAFT — Arrangement: the list-and-compare pattern
 
-The least-finished screen. 184 buttons, 183 at exactly 77px — one height, no
-tier variation, roughly 14,000px of scroll. Unlabelled `Filter...` input. No
-heading on the lower list, so nothing says what it is or how it relates to the
-plan above.
+The least-finished screen, and the fourth shape in the product after the
+readout, the key bank and the form. Spec follows; it is meant to be buildable
+without further questions. Off the live path and an optional module, so it does
+not jump the queue.
 
-**Do not force it into the Forms pattern.** It is a fourth shape after the
-readout, the key bank and the form: a **list-and-compare** screen. Rows are
-interactive but scanned, so they want something closer to `.row` density than a
-button stack, while still reading as pressable.
+### What the screen is for
 
-Off the live path and an optional module, so it should not jump the queue. The
-planning session owes a spec here rather than leaving it to inference.
+Reconciliation. It answers "was this song played the way the plan said" and lets
+you correct the record. Three views, two of which are never on screen together:
+
+- **Plan card** — a plan selector, a match summary, the plan's songs.
+- **List view** — a filter and every tracked song, with status and history.
+- **Detail view** — one song: actual arrangement, section mapping, planned
+  arrangement, comparison, history.
+
+### One E2 per view, not per screen
+
+List and detail are never both visible, so each gets its own hero. That is
+consistent with the rule rather than an exception to it.
+
+- **List view hero: the plan card.** It is the answer to why the operator opened
+  the screen. The lit collar goes on `Compare All Songs`.
+- **Detail view hero: the comparison.** See below — this is the substantive
+  design change.
+
+### Rows are not keys
+
+184 raised keys would be absurd, and the current 77px `btn-ghost` stack is the
+result of treating a list like a button bank. A list row is a line on a panel
+you can touch, not a key you press.
+
+So rows sit **flush** at chassis level, separated by hairline grooves, with
+hover as the affordance rather than a raised fill. `.row` density is the
+ancestor, not Tier 2.
+
+**Two lines, not one.** The current row crams status, name, history count and
+date onto one line, which in a 316px column truncates the name to roughly
+150px — the one thing the operator is scanning by.
+
+```
+● Great Is Thy Faithfulness
+  4 SERVICES · 2026-07-08
+```
+
+Line 1: lamp plus name at 15px. Line 2: mono metadata at 9-10px, `--rf-muted`,
+indented to the name's axis — not floating right. Target 36px on pointer, 44px
+on touch via the existing `@media (hover: none)` floor. Full name in `title`
+since it is the operator's own.
+
+### The status icon becomes a lamp, and loses its colour
+
+Currently `check-circle-2` in `text-success` versus `alert-circle` in
+`text-warning` — both retired colours, and part of item 2's sweep.
+
+This is binary: a planned arrangement is on record, or it is not. Absent is not
+a fault. So **lit plum LED when a planned arrangement exists, unlit `#302838`
+dot when it does not.** No green, no amber. Same vocabulary as the rail's link
+lamp, and it gives the list a scannable left column of lit-versus-dark.
+
+Give it the icon column treatment from item 0 — 16px column, 8px lamp centred,
+lamp drawn by `::before` so neither state can collapse the column.
+
+### The filter needs a label and a count
+
+`Filter...` is placeholder-only (item in the labels sweep). Silkscreen label
+above a recessed input, per the Forms pattern. Add the count beside it in mono
+`--rf-muted`: `184 TRACKED`, dropping to the filtered count as they type.
+
+Not phosphor. Phosphor is reserved for the live readout, the meter, Health's
+status strip and the Search stats; a filter count is a fourth-tier value and
+spreading the emitter further dilutes what it means.
+
+### The list needs a heading
+
+There is none, so nothing says what the list is or how it relates to the plan
+above it. Use the standard section heading — mono 10px, 0.16em, uppercase,
+`--rf-plum-lit`, hairline underline, 2px lit edge. `TRACKED SONGS` names it;
+avoid anything that reads as a duplicate of the plan card.
+
+### The detail view: make the comparison the hero
+
+This is the most substantive change and the reason the screen currently feels
+like a form rather than a reconciliation tool.
+
+Right now **actual** renders as a prose line of arrow-joined names while
+**planned** is a textarea. One is prose, the other is an edit field, so the two
+things the screen exists to compare cannot be compared at a glance.
+
+Put them adjacent in the **same** treatment, stacked in a narrow column, with
+the difference marked:
+
+```
+ACTUAL · FROM PROPRESENTER
+V1 → C → V2 → C → BRIDGE → C
+
+PLANNED
+V1 → C → V2 → C
+```
+
+Same type, same alignment, same axis, so a divergence is visible as a shape
+rather than read as a sentence. The E2 carries both. Editing stays possible —
+the planned side can become an input on focus, or keep a Tier 2 edit control —
+but the resting state is a comparison, not a form field.
+
+`Run Comparison` takes the detail view's lit collar. Drop "Now" — it is filler.
+
+### The four sub-headings are a fifth heading style
+
+"Actual arrangement (from ProPresenter)", "Section mapping", "Planned
+arrangement (one section per line)", "History" are all `text-sm font-semibold`.
+Move them to the silkscreen label treatment at 9-10px uppercase, which gives the
+detail view the instrument rhythm the rest of the app has.
+
+Both parentheticals are doing different jobs and neither belongs in a label:
+"from ProPresenter" is provenance and becomes part of the silkscreen line;
+"one section per line" is an input hint and becomes helper text under the field.
+
+### Buttons and copy
+
+Three Tier 2 outline buttons at mixed `btn-xs`/`btn-sm` (`Save Mapping`,
+`Save Planned Arrangement`, `Run Comparison Now`). Apply the Forms rule: one
+Tier 2 primary per row, everything else a chip. Casing is Title Case here and
+sentence case elsewhere in the app — pick sentence case, matching the majority.
+
+Errors on this screen use `text-warning` in five places (`arrangement.js` 157,
+282, 303, 307, 311) — retired amber outside Health, and part of item 2.
+
+### Two things to preserve
+
+- The **stale-response guard** at `renderDetail` (`latestRequestedSongId`) is
+  load-bearing. Fast clicking through the list would otherwise paint an older
+  song's record over a newer one. Do not lose it in a refactor.
+- The **reader/logger split** hides the save and comparison controls for readers.
+  Keep it; a reader seeing disabled write controls would be worse than not
+  seeing them.
 
 ## 4. POLISH — Disabled controls still give no reason
 

@@ -74,21 +74,15 @@
       display: inline-flex;
     }
 
-    /* Every primary-action button (Go Live, Search Lyrics, Save
-       Configuration, Run Comparison, first-run Setup, ...) uses this
-       one shared brand green instead of DaisyUI's default purple/indigo
-       btn-primary — add this class (alongside btn-primary is fine, this
-       overrides it) to any new primary button rather than introducing
-       another one-off purple button or another ID added here. */
-    .btn-brand {
-      background-color: #00aa6e;
-      border-color: #00aa6e;
-      color: #fff;
-    }
-    .btn-brand:hover {
-      background-color: #00925f;
-      border-color: #00925f;
-    }
+    /* .btn-brand moved to refrain.css, in the Tier 1 section beside the dark
+       treatment, because its colour belongs with the palette rather than as a
+       hex in this file. It is still the class to add to any new primary action
+       (Go Live, Save, Preview Slides, first-run Setup) rather than inventing
+       another one-off.
+
+       What was here was `#00aa6e`, called "one shared brand green". White on
+       it is 3.01:1, which failed AA on every primary action in light theme --
+       the dark side had been fixed and this had not. */
 
     /* DaisyUI's default tooltip renders data-tip as one unbroken
        nowrap line — fine for a short label, but the Configuration
