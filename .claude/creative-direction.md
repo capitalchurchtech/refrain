@@ -137,14 +137,27 @@ warning-label as a rule co-located in the wrong file.
 
 **And where a theme cannot support emission, a signal converts to fill. It does
 not simply lose its glow.** A lamp whose lit state is a near-white core reads as
-an emitter on a dark panel and as nothing at all on a light one: measured, the
-lit core is 1.12:1 against the light rail while the unlit dot is 12.62:1. Drop
-the glow and keep the core and you have inverted the indicator — the state that
-must be unmistakable becomes the only visible one.
+an emitter on a dark panel and as *nothing* on a light one: measured, the lit
+core is 1.12:1 against the light rail while the unlit dot is 12.62:1.
+
+Be precise about the failure, because the obvious reading is wrong. This is not
+a polarity bug — it is not that the loud state came to mean "normal." At 1.12:1
+the lit state is not a quiet dot, it is **no dot at all**, so the operator sees
+an empty space and cannot tell whether it means linked or means the indicator is
+broken. An invisible lamp fails *silently*, which for the one control the
+quality floor names by name is the worse mode. A mis-polarised lamp at least
+reports something.
+
+The same absence appears when a fill is dark-scoped with no light fallback: the
+index meter's cells declare geometry unscoped and both fills under
+`[data-theme="dark"]`, so in light theme lit and unlit are identically
+transparent and the meter does not exist. Worse than the lamp, which had one
+visible state.
 
 So on a light panel a status lamp is *printed*: lit is a solid saturated fill,
-unlit is a hollow ring or a pale dot. Ink where the dark theme has light. The
-signal survives the theme change even though the material cannot.
+unlit is a hollow ring or a pale dot. Ink where the dark theme has light. And
+every two-state indicator has to be checked for whether **both** states are
+visible in **both** themes — a signal with one legible state is not a signal.
 
 ### The one exception: fault, on Health only
 
@@ -607,6 +620,29 @@ Treat any rail-width or content-column number taken without this as unverified,
 including ones in earlier handoffs. On a product whose surface is defined by
 being narrow, these are the two measurements that matter most, and they were the
 two most affected.
+
+**Colour is a transitioned property too.** The frozen clock is not only a
+geometry problem. `#nav-rail`'s `background-color` sits under `transition-all`,
+so across a theme change it reports the previous theme's value — it will tell you
+a dark rail is near-white. Anything with `transition: none` reads true, which is
+why the lamp's `::before` was trustworthy where the rail was not. Apply the
+workaround before reading a colour, not just a width.
+
+**Ask the browser what applied; ask arithmetic what it means.** Two ways a
+contrast check goes wrong on its own terms:
+
+- **Colour maths on a computed string breaks the moment the value is not
+  `rgb()`.** Everything in this app resolves to `oklch()`, and a numeric regex
+  that treats those three components as RGB returns a confident wrong number —
+  3.70 for a ratio that is 5.07. Either convert through a canvas or compute
+  offline against the token values.
+- **A glow is a non-inset shadow, and a test has to say so.** A matcher that
+  accepts any `box-shadow` will match a recessed state's own inset offsets and
+  report emission on the state that has none.
+
+So split the job: the browser answers which colour or rule actually applied,
+arithmetic answers what that means. Doing both in one query is where the
+plausible wrong number comes from.
 
 **Make every transitioned measurement satisfy an independent sum.** A frozen
 clock was caught once by noticing that 144 + 316 = 460 — rail plus column

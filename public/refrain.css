@@ -1224,10 +1224,38 @@ html.blackroom #view-health .border-error {
   width: 100%;
 }
 
+/**
+ * Light theme, and this one was not a wrong colour -- it was no colour.
+ *
+ * Both fills used to live under `[data-theme="dark"]` while this rule declared
+ * only flex, min-width and border-radius. So in light theme lit and unlit were
+ * *identically transparent* and the meter did not render at all: during the
+ * longest wait in the product, an operator saw a 14px empty strip and a count
+ * with no progress beside it.
+ *
+ * The mechanism is worth distinguishing from the link lamp's, because they look
+ * like one bug and are two. The lamp had a light-theme value that was wrong for
+ * a light panel -- a near-white core at 1.12:1. This had no light-theme value
+ * at all, so the failure is absence of a rule rather than emission on the wrong
+ * ground, and absence is the quieter of the two because there is no bad colour
+ * to notice.
+ *
+ * Printed rather than lit, same as the lamp: lit is solid --rf-plum at 5.07:1
+ * against the card, unlit is #C9C0D2 at 1.57:1 -- faint enough to stay quiet,
+ * present enough that the empty ladder still reads as a real object before
+ * anything starts, which is the whole reason this is a ladder of cells and not
+ * a bar. 3.23:1 separates the two states, plus the full hue difference.
+ *
+ * No junction shadow here: recession is material, and material stays dark-only.
+ */
 .rf-meter-cell {
   flex: 1 1 0;
   min-width: 0;
   border-radius: 1px;
+  background-color: #C9C0D2;
+}
+.rf-meter-cell.lit {
+  background-color: var(--rf-plum);
 }
 
 [data-theme="dark"] .rf-meter-cell,

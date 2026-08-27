@@ -138,13 +138,17 @@ Against the light rail at `#F2F2F2`:
 | unlit `#302838` | **12.62:1** — bold |
 | plum `#8446C9` | 5.07:1 |
 
-So in light theme **`LINKED` is a near-invisible pale dot with a soft plum halo
-around nothing, and lost link is a strong dark dot.** The operator reads the
-loud state as the problem state by instinct, and here the loud state is normal.
+So in light theme **`LINKED` is not a quiet dot, it is no dot at all** — an
+empty space with a soft plum halo around nothing — while lost link is a strong
+dark dot.
 
-The quality floor says disconnected is unmistakable and always visible. This is
-that requirement inverted: connected is invisible and disconnected is the only
-legible state.
+**Corrected diagnosis** (the editing session caught this and was right): it is
+not a polarity bug. I first wrote that the loud state had come to mean normal,
+which contradicts itself — if lost link is the loud one, the instinct is working.
+The real failure is that at 1.12:1 the operator sees nothing and cannot tell
+whether that means linked or means the indicator is broken. An invisible lamp
+fails **silently**, which for the one control the quality floor names is the
+worse mode. A mis-polarised lamp at least reports something.
 
 **Fix: on a light panel a status lamp is printed, not lit.** Lit becomes a solid
 `--rf-plum` fill at 5.07:1; unlit becomes a hollow ring or a pale dot. Ink where
@@ -159,6 +163,36 @@ so it should not sit behind the semantic sweep.
 **Also left deliberately and genuinely material, so not an item:** light theme's
 section headings stay sentence-case bold rather than mono silkscreen. That one is
 appearance, and the concession covers it.
+
+## 1d. CRAFT — The index meter is entirely invisible in light theme
+
+Flagged by the editing session as the same trap as item 1c. It is, and it is
+worse. Verified in `refrain.css`:
+
+- `.rf-meter-cell` (1227) is unscoped and declares only `flex`, `min-width` and
+  `border-radius` — **no background.**
+- `[data-theme="dark"] .rf-meter-cell` (1233) carries the unlit fill.
+- `[data-theme="dark"] .rf-meter-cell.lit` (1241) carries the lit fill
+  (`--rf-neon-plum`) and the two-stop glow.
+
+So in light theme **both** states fall through to a rule with no background.
+Lit and unlit are identically transparent: the meter does not render at all.
+During the longest wait in the product, a light-theme operator sees a 14px empty
+strip and a count, with no progress indication whatsoever.
+
+Worse than the lamp, which at least had one visible state. Same root cause —
+fills scoped to dark with no light fallback — and the same fix shape: on a light
+panel the lit cell is a solid `--rf-plum` fill and the unlit cell is a pale
+recessed grey. Ink where the dark theme has light.
+
+Note the editing session's detail was slightly off (they had the lit cell as
+`#EDE0FF`-family; it is `#C79BFF`) but the instinct was right and the real
+finding is more severe than the one reported. Worth doing 1c and 1d together
+since they are one mistake in two places.
+
+**Then sweep for the general case:** any two-state indicator where both fills
+are dark-scoped. A signal with one legible state is not a signal, and one with
+none is furniture.
 
 ## 2. CRAFT — Finish the semantic colour sweep
 
