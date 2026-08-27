@@ -14,16 +14,22 @@
   <link href="./refrain.css" rel="stylesheet" type="text/css" />
   <script src="./vendor/lucide-1.34.0.min.js"></script>
   <style>
-    /* Collapsed nav rail (Section 13): icon-only buttons default to
-       px-2's 8px left padding, which visually left-aligns a 24px icon
-       in the 64px-wide rail rather than centering it. Extra left
-       padding compensates so the icon lands centered. */
-    #nav-rail.collapsed .nav-item,
-    #nav-rail.collapsed #theme-toggle,
-    #nav-rail.collapsed #nav-pin-toggle,
-    #nav-rail.collapsed #brand-row {
-      padding-left: 1.25rem;
-    }
+    /* The collapsed rail's icon centring moved to refrain.css section 30,
+       which centres by construction instead of by arithmetic.
+
+       What was here was `padding-left: 1.25rem`, and the comment explained it
+       as compensating so "a 24px icon in the 64px-wide rail" lands centred --
+       20px being exactly (64 - 24) / 2. Correct when written, and then wrong
+       twice over: icons became 16px when they got a default size, which put
+       every glyph 4px left of centre, and the rail is 3.5rem now, which moves
+       it again. It also never listed #nav-help-toggle, so the Shortcuts key
+       sat on a different axis from its neighbours the whole time.
+
+       A centring constant computed from two values that both changed later is
+       the same trap as the section marker's eyeballed `top: 3px`. Left here as
+       a note because this file loads after refrain.css: a rule added here wins
+       against the stylesheet on equal specificity, so the next person adding
+       collapsed-rail styling should add it there, not here. */
 
     /* Narrow screens (<450px): every pixel counts, so a *collapsed* rail
        shrinks to a thin edge handle instead of reserving its usual 64px —
@@ -39,12 +45,12 @@
         width: 0.75rem;
         overflow-x: hidden;
       }
-      #main-content.ml-16 {
+      #main-content.ml-14 {
         margin-left: 0.75rem;
       }
       #nav-rail.collapsed:hover,
       #nav-rail.collapsed:focus-within {
-        width: 4rem;
+        width: 3.5rem;
         overflow-x: visible;
       }
     }
@@ -352,7 +358,7 @@
 
   <!-- Main app shell — nav rail + content, once setup is complete (Section 13) -->
   <div id="view-app" class="hidden flex min-h-screen">
-    <aside id="nav-rail" class="fixed top-0 left-0 z-20 h-screen overflow-y-auto bg-base-200 flex flex-col items-stretch py-3 transition-all duration-150 w-16">
+    <aside id="nav-rail" class="fixed top-0 left-0 z-20 h-screen overflow-y-auto bg-base-200 flex flex-col items-stretch py-3 transition-all duration-150 w-14">
       <button id="brand-row" class="flex items-center px-2 mb-4 overflow-hidden h-9 btn btn-ghost btn-sm justify-start" title="Go to Search" aria-label="Go to Search">
         <span id="brand-mark" class="shrink-0 inline-block leading-none">
           <span class="rf-wordmark">R</span>
@@ -386,7 +392,7 @@
       </div>
     </aside>
 
-    <main id="main-content" class="flex-1 min-w-0 p-3 max-w-3xl ml-16 transition-all duration-150">
+    <main id="main-content" class="flex-1 min-w-0 p-3 max-w-3xl ml-14 transition-all duration-150">
       <!-- App-wide "Return" bar (Section: snap-back). Hidden until an
            app-initiated Go Live arms a return pin server-side; then it
            shows on every screen so the operator can snap back to where the

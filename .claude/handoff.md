@@ -1,134 +1,160 @@
-# Handoff — full audit against the reference HTML
+# Handoff — the tail
 
-> **This file is the live handoff from the design/planning session to the
-> editing session.** It is always the current one. When a new handoff is
-> written it replaces this file wholesale, and the superseded version moves to
+> **This file is the live handoff, and now the only record of findings.**
+> Findings are written here rather than in a tracker, with severity in the
+> heading. When a new handoff replaces this one the old version moves to
 > `.claude/handoffs/`. Anything not in here is not part of the brief.
 >
 > **Editing session:** read [creative-direction.md](creative-direction.md)
-> first, then work the items below in order. Append to the Status log at the
-> bottom as you go.
+> first, then work the items below in order. Append to the Status log as you go.
 
-Written 2026-08-26 after a full audit of the running build at a docked 460px
-against the reference HTML, measuring computed values rather than reading
-screenshots. Supersedes
-[2026-08-26-texture-and-tail.md](handoffs/2026-08-26-texture-and-tail.md).
+Written 2026-08-26. Supersedes
+[2026-08-26-reference-audit.md](handoffs/2026-08-26-reference-audit.md), every
+item of which is done.
 
----
-
-## What is right, so nobody re-does it
-
-Palette and both junction blocks. The recessed treatment. The latched nav key
-with its plum edge. LED-plus-silkscreen status. `--rf-fault` scoped under
-`#view-health`. The live readout in glass and phosphor. The lit collar on
-`.go-live-btn` only. Plum search highlights. 15px Archivo body, 10px/0.12em nav
-legends, 8px group legends. Scored grooves with SERVICE / PREP / SYSTEM. Linen
-at 15% / 0.5 / soft-light with the exact spec filter. The segmented meter. The
-docked-width nudge.
-
-That is most of the system, and it is correct.
+The older Todoist project is **archive**. Do not add to it and do not assume a
+task there is still live — several are stale or were superseded by decisions
+recorded below.
 
 ---
 
-## Work, in order
+## Where this stands
 
-### 1. Global grain — four lines, highest payoff on the list
+`v0.10.0` shipped. Since the last handoff: the rail specificity bug that was
+charging the rail's width twice and leaving every screen under half its column;
+the inverted performance-mode indicator; hash routing; the touch-target floor
+that had been dead since the tier heights outranked it; the Forms pattern across
+all five sub-pages; the engraved wordmark; the lit-edge section markers;
+phosphor on values; the icon-size default; a uniform 44px key bank; and an
+accessible name on all 100 inputs.
 
-`body::after` has no background image. The reference lays the chassis tile over
-the whole viewport at `opacity: .32`, `mix-blend-mode: soft-light`,
-`filter: contrast(.84)`, `background-size: 15%`.
+The three questions, honestly:
 
-Only cards carry texture today, so the field between them is bare. That is
-exactly why the app still reads flat despite texture having shipped — the cards
-look like stickers on nothing. Do this first.
+- **Would someone who runs a real console respect this?** Yes, now.
+- **Could a nervous volunteer succeed on their second Sunday?** Yes. The
+  strongest of the three.
+- **Does it have a pulse?** Yes. The wordmark, the display titles and the
+  section markers carry it.
 
-Todoist: `CRAFT — No global grain, and three of four materials are unused`
+What remains is tail, plus one thing only a person can do.
 
-### 2. Framing texture on the rail — Brandon's call on the tile
+---
 
-Use `noisy_net` for the framing role the missing brick was meant to fill. It
-failed screening on chroma (mean 9.7), not on grain, and it is coarser than
-linen, which is what framing wants. Strip the chroma at render time:
+## 0. CRAFT — The `LINKED` lamp is off the icon axis
+
+Brandon spotted this; my icon audit missed it because I queried `svg` and
+`[data-lucide]` and the LED is neither.
+
+Measured from the rail's left edge, pinned:
+
+| | glyph left | glyph width | glyph centre | label left |
+|---|---|---|---|---|
+| every icon row | 12 | 16 | **20** | 36 |
+| `#link-row` | 8 | 8 | **12** | 24 |
+
+`#link-row` is `flex items-center gap-3 px-2 h-7` with a bare 8px dot, so
+8 padding + 8 dot + 8 gap puts the label at 24. The icon rows are 12 + 16 + 8 =
+36. The lamp is 8px off the icon axis and the word is 12px left of every other
+label, which is why it reads as drifting rather than just small.
+
+Fix: give the LED the same 16px column an icon occupies, with the 8px lamp
+centred inside it, and match the row's left padding.
 
 ```css
-background-size: 17%;
-opacity: .26;
-mix-blend-mode: soft-light;
-filter: saturate(0) contrast(.72) brightness(1.03);
+#link-row { padding-left: 12px; }
+#link-led {
+  width: 16px; height: 16px;
+  display: grid; place-items: center;
+  background: none; box-shadow: none;   /* move to ::before */
+}
+#link-led::before {
+  content: ""; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--rf-neon-plum-core);
+  box-shadow: 0 0 6px var(--rf-neon-plum), 0 0 15px rgba(199,155,255,.7);
+}
 ```
 
-`saturate(0)` is the whole trick — grain survives, hue does not. This also
-closes the last open item on the nav-rail task: the rail's empty lower half
-gets material instead of absence.
+Lamp centre lands at 20, label at 36 — identical to every row above.
 
-### 3. Display type and section headings — the pulse
+**While in there:** check the unlit state keeps the 16px column, and check the
+collapsed rail, where the icon rows get extra left padding to centre a 16px
+glyph in the narrow rail. The lamp needs the same treatment or it will drift
+again in the other state.
 
-**These two are the answer to "does it have a pulse."** Everything else on this
-list makes the app better; this pair makes it recognisable, and both are cheap.
+## 1. CRAFT — `btn-brand` renders green in light theme
 
-Only Archivo and Martian Mono are in use anywhere. `main h1` computes 18px /
-weight 600 / sentence case. The reference `h1` is the badge face at 46px,
-`font-stretch: 118%`, `letter-spacing: -.018em`, uppercase, `line-height: .94`.
-Archivo already has the width axis, so no new font file is needed.
+**Ruled 2026-08-26: this is a bug, not a scope question.**
 
-Section headings use `card-title text-base` — 16px sentence case with a lucide
-icon — where the reference `h2` is Martian Mono 10px / 0.16em / uppercase /
-`--plum-lit`, hairline `border-bottom`, and a 5px plum square marker. After the
-keys that is the most recognisable element in the reference, and it finally
-resolves the four-heading-systems problem from the first review.
+The "light theme is left to DaisyUI" concession covers *surfaces and neutrals*.
+The reasoning was that a warm-graphite machined object does not really have a
+light mode, so its ground, panels and hairlines are not worth inventing twice.
+It was never a concession on signal colours.
 
-One judgement call in the task: the reference's marker glows, which would be a
-fifth emitter against a ceiling of four. Render it unlit — a section heading is
-not reporting a state.
+`btn-brand` is a project-authored class, ours in every theme. Green is not in
+the palette — it was retired. So this is the retired colour surviving in the one
+place it matters most: the primary action, including Go Live. An operator on
+light theme sees a green Go Live in a product where green means nothing and plum
+means armed.
 
-Todoist: `CRAFT — There is no display type anywhere, and section headings ignore the reference`
+Plum in both themes. The wordmark needed a light-specific ramp because a
+specular highlight cannot exist on a light panel — that was real physics. A
+button fill has no such constraint.
 
-### 4. The button tiers — largest structural deviation left
+Do this first: small, and on the live path.
 
-`.nav-item`, `.go-live-btn` and `.btn-ghost` all compute **48px**. DaisyUI's
-default, inherited everywhere. The reference separates tiers by size, material
-*and* emission; the app separates by material and emission only, so everything
-is Tier-1-sized.
+## 2. CRAFT — Finish the semantic colour sweep
 
-Reference: chip ~26px, machined key ~36px, lit collar ~50px.
+Raw DaisyUI semantic colours remaining, by file: `health.js` 44,
+`arrangement.js` 19, `library-sync.js` 8, `setup.js` 6, `search.js` 2,
+`live.js` 2, `error-boundary.js` 2.
 
-On a 460px panel this costs real money — nine nav keys eat 432px of height, and
-the result action column takes ~250px of width. Same pass: body leading is
-15/22.5 where the spec is 15/21.3, and padding is generous too, so the app has
-"recover room in padding, never in line height" backwards.
+Health's 44 are largely the migrated fault/status vocabulary doing its job —
+check before changing. The others are the unfinished half of the sweep that
+started with the performance-mode indicator.
 
-Todoist: `CRAFT — All three button tiers render at 48px; the tier system has collapsed`
+Sweep **by concept, not by screen**: find every place the app reports a state,
+decide what the state is, apply the one vocabulary. Doing it screen by screen is
+what left the inverted dot in place while Health looked finished.
 
-### 5. Batch — three reference patterns with obvious homes
+## 3. CRAFT — Arrangement needs its own pattern, spec first
 
-Titles wrapping to four lines (fixed for free by item 4 — re-check first), the
-Date filter / Libraries void wanting `.btn-chip`, and the absent `.row` and
-`.call` patterns.
+The least-finished screen. 184 buttons, 183 at exactly 77px — one height, no
+tier variation, roughly 14,000px of scroll. Unlabelled `Filter...` input. No
+heading on the lower list, so nothing says what it is or how it relates to the
+plan above.
 
-Todoist: `POLISH — Three reference patterns the app has obvious uses for`
+**Do not force it into the Forms pattern.** It is a fourth shape after the
+readout, the key bank and the form: a **list-and-compare** screen. Rows are
+interactive but scanned, so they want something closer to `.row` density than a
+button stack, while still reading as pressable.
+
+Off the live path and an optional module, so it should not jump the queue. The
+planning session owes a spec here rather than leaving it to inference.
+
+## 4. POLISH — Disabled controls still give no reason
+
+`Check spelling` on Spell Check, `PNG` and `SVG` on QR Codes. All `title: null`.
+A `title` is the minimum; helper text near the control is better, since a
+tooltip on a disabled button is unreliable on touch and QR Codes has the space
+beneath its preview.
 
 ---
 
-## The three questions, as of this audit
+## 5. Only Brandon can close this: the keyboard tab-through
 
-- **Would someone who runs a real console respect this?** Close to yes. Keys,
-  readout and status are right. Uniform 48px controls and the missing display
-  face are what still make it read as an unusually well-made dark web app.
-- **Could a nervous volunteer succeed on their second Sunday?** Yes. This is
-  now the strongest of the three.
-- **Does it have a pulse?** Not yet. Swap the wordmark and it is anonymous.
-  Item 3 is the whole answer.
+Three authored `:focus-visible` rules exist. **Neither session can verify them.**
+`:focus-visible` is a heuristic about input modality, not a media query, and no
+synthetic focus satisfies it — both sessions drive the browser the same way and
+both fail identically.
 
----
+The check: tab from Search through to Go Live and back, in a dark room at low
+brightness. If focus disappears anywhere on that path, the Fluent Regular's
+keyboard-speed premise is broken, and nothing either session can screenshot
+would reveal it.
 
-## Also open in Todoist, not part of this audit
-
-- `CRAFT — Audit DaisyUI's responsive defaults against a permanently narrow panel`
-- `CRAFT — Input is not acknowledged`
-- `POLISH — Motion timing, focus rings, reduced motion`
-- `Carried forward from the retired UI-consistency pass`
-- `Copy — the warm zone is empty` (partially landed; check what remains)
-- `Copy — put the Health tooltips on a diet`
+Five minutes for a person. Impossible for us. The quality floor asks for
+keyboard operability end to end, so this is the one open item standing between
+the app and that claim.
 
 ---
 
@@ -137,18 +163,22 @@ Todoist: `POLISH — Three reference patterns the app has obvious uses for`
 - **Surface:** always a docked side window. Never maximised.
 - **Nav rail:** 144px pinned. A truncated legend is a legend that failed.
 - **Fault colour:** `#C9922E`, Health only, enforced by selector.
-- **`--rf-dim` is a non-text token.** It fails AA on every surface. And there
-  is no third text step — anything between `muted` and `dim` lands within
-  0.3:1 of `muted` on `machined`, which nobody can see. When something needs to
-  read quieter than `muted`, use size and tracking, not a fainter colour.
+- **`--rf-dim` is a non-text token**, and there is no third text step. Quieter
+  than `muted` is achieved with size and tracking, not a fainter colour.
 - **Occlusion is a depth cue, not a colour cue.** A latched key is already
-  recessed; do not darken its legend as well.
+  recessed; do not darken its legend too.
+- **An emitter has a hot core; a lit edge does not.** Only emitters count
+  against the ceiling of four.
+- **Phosphor is for values, not labels.** The number glows; the word does not.
 - **The meter metaphor is for index progress only.** Never anything binary.
 - **The too-wide callout is setup-only.** Never a runtime overlay.
-- **Texture tiles are CC BY-SA 3.0**, by Atle Mo, attributed per tile with a
-  visible credit. Share-alike is an accepted risk, recorded not resolved.
-- **Screen tiles on chroma as well as luminance.** A luminance-only test lets
-  hue through, which is how `noisy_net` passed and would have tinted the panel.
+- **Looks and Macros are Tier 3 by design.** `h-20` was inert and stays gone;
+  the 44px floor covers touch.
+- **Refrain never restyles a name its user wrote.** No case transform, no
+  abbreviation; clamp with the full name in `title`.
+- **Texture tiles are CC BY-SA 3.0** by Atle Mo, attributed per tile. Share-alike
+  is an accepted risk, recorded not resolved.
+- **Screen tiles on chroma as well as luminance.**
 - **Tailwind class names stay utility-flavoured**, with static homes in
   `refrain.css`. Those rules look redundant and must not be tidied away.
 
@@ -158,29 +188,28 @@ Todoist: `POLISH — Three reference patterns the app has obvious uses for`
 
 Everything in CLAUDE.md still applies: core search stays independent, no
 telemetry, no silent data loss, no vendor names in shared code, lint clean,
-tests passing, `node --check` on touched files, exercise browser-visible
-changes against a running dev server, commit only when asked.
+tests passing, `node --check` on touched files, exercise browser-visible changes
+against a running dev server, commit only when asked.
 
-Plus, from the direction: copy is final copy in the right zone, never
-placeholder.
+Plus: copy is final copy in the right zone, never placeholder.
 
 ---
 
 ## Status log
 
-Editing session appends here. One line per task, newest last. Format:
+One line per item, newest last. Format:
 
-`YYYY-MM-DD · <task title> · done | partial | blocked · <one line>`
+`YYYY-MM-DD · <item> · done | partial | blocked · <one line>`
 
-- 2026-08-26 · Phase 1 and 2 · done · 72cac6a, 4a5bf52, fbd1fa5, 3d532a4
 - 2026-08-26 · Palette, radius, status indicators, fault colour · done · 059bf03
-- 2026-08-26 · Nav rail · done · 62bdcda, 144px pinned, nine keys at rest
-- 2026-08-26 · Index progress meter · done · 5989346, led-meter.js
-- 2026-08-26 · Tailwind JIT trap documented · done · 433a058
+- 2026-08-26 · Nav rail, meter, JIT trap documented · done · 62bdcda, 5989346, 433a058
 - 2026-08-26 · Texture · done · 633a697, two tiles, CC BY-SA, attributed
 - 2026-08-26 · Rail latching, icons, separators · done · 8765d47
-- 2026-08-26 · Docked-width nudge · done · refrain.css section 17
-- 2026-08-26 · CRAFT — No global grain, and three of four materials are unused · partial · body::after carries the chassis tile across the viewport, which is what stops the cards reading as stickers on nothing. Rail framing uses noisy_net with saturate(0), so the grain survives and the chroma does not. Grip still a stand-in; no dedicated grip tile.
-- 2026-08-26 · CRAFT — There is no display type anywhere · done · Page titles are Archivo 900 at stretch 118%, uppercase, leading 0.94, clamped to 5.6vw because ARRANGEMENT was being clipped silently at the reference's 46px. Section headings are Martian Mono 10px/0.16em plum-lit with a hairline rule and an unlit 5px marker. Icons dropped from both: the rail already says which screen you are on.
-- 2026-08-26 · CRAFT — All three button tiers render at 48px · done · Root cause was a vendoring regression, not a missing tier system: styled.min.css omits every size modifier, so 35 app-used classes did nothing. Full build restored, tiers now 46/34/25 against the reference's 50/36/26, and set explicitly so they cannot drift. Body leading 22.5 to 21.3 (DaisyUI's later `body { line-height: inherit }` was winning).
-- 2026-08-26 · POLISH — Three reference patterns · done · .btn-chip row for Date filter and Libraries, .rf-row for field/value pairs, .rf-call applied to the docked-width nudge. Title wrapping fixed for free by the tier work, as predicted: one line now, was four.
+- 2026-08-26 · Wordmark, lit-edge marker, phosphor, hash routing · done · 4016bbd
+- 2026-08-26 · Perf-mode indicator + rail specificity bug · done · 4c27425
+- 2026-08-26 · Forms pattern, all five sub-pages · done · 5f56e7d, 180db3e
+- 2026-08-26 · Tile rename, touch floor restored · done · 6ba9818, 3aeaf24
+- 2026-08-26 · Release v0.10.0 · done · c75f9a4
+- 2026-08-26 · Icon default, uniform key bank, 100/100 accessible names · done · ae928d4
+- 2026-08-26 · Narrow-plus-pointer rule corrected · done · 1b56e5b
+- 2026-08-26 · Motion polish · done · 7841005

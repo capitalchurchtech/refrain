@@ -55,9 +55,17 @@ width and the matching content margin already do —
 Those rules look redundant next to the utility class; they are not. Do not
 "clean them up".
 
-All six JS-applied utilities have static homes as of `5989346`: `w-16`, `w-36`,
-`ml-16`, `ml-36`, `opacity-50` and `pointer-events-none`. Keep it that way. When
-you add a class from JS, add its rule here in the same change.
+All six JS-applied utilities have static homes: `w-14`, `w-36`, `ml-14`,
+`ml-36`, `opacity-50` and `pointer-events-none`. Keep it that way. When you add
+a class from JS, add its rule here in the same change.
+
+The collapsed pair was `w-16`/`ml-16` until the rail narrowed to 3.5rem. If you
+change that width again, pick the Tailwind class whose name matches the value
+and rename all four references (both `classList.toggle` calls in `nav.js`, the
+two static homes, the two initial classes in `index.html`, the `.rf-group-label`
+selector, and the ultra-narrow media block). Redefining `w-16` to mean something
+other than 4rem would be worse than the rename: these names are only safe as
+conventions while they are still true.
 
 The utility names are the convention rather than semantic hooks like `.pinned`.
 That is deliberate: the static homes work, and renaming would churn markup for
@@ -119,10 +127,15 @@ different sessions.
   been moved there, and never work from a Todoist task that is already marked
   complete — retired findings get retired for a reason, usually that a later
   decision made them the wrong work.
-- Findings live in Todoist, project **IT › Refrain Feature Request**, tagged in
-  the title by severity: BLOCKER (unusable or unsafe to run live), CRAFT (works,
-  but below the bar), POLISH (batch these), NOTE (no action). No priorities, no
-  labels — the severity is in the title on purpose.
+- **Findings go in `.claude/handoff.md`, not a tracker.** They are written where
+  the work happens, with the severity in the heading: BLOCKER (unusable or
+  unsafe to run live), CRAFT (works, but below the bar), POLISH (batch these),
+  NOTE (no action). One file, current, self-contained — a finding that needs a
+  second system to make sense of it is a finding nobody will read.
+- There is an older Todoist project, **IT › Refrain Feature Request**, holding
+  the first weeks of findings. Treat it as archive. Do not add to it, and do not
+  assume a task there is still live; the handoff and its Status log are the
+  record.
 
 ## Before you commit
 

@@ -688,9 +688,9 @@ html.blackroom #results:has(.go-live-btn:focus-visible) .go-live-btn.rf-armed:no
  * THEME: DARK were ellipsising at 128 and a truncated legend is not a legend.
  * Still 80px narrower than the 224px this replaced.
  */
-#nav-rail.w-16 { width: 4rem; }
+#nav-rail.w-14 { width: 3.5rem; }
 #nav-rail.w-36 { width: 9rem; }
-#main-content.ml-16 { margin-left: 4rem; }
+#main-content.ml-14 { margin-left: 3.5rem; }
 #main-content.ml-36 { margin-left: 9rem; }
 
 /* Same class of bug, smaller blast radius: image-crop.js toggles these from JS
@@ -903,7 +903,7 @@ html.blackroom .rf-group-break {
 
 /* Collapsed shows the groove only. A collapsed rail is for someone who
    already knows the layout, and there is no width for a legend anyway. */
-#nav-rail.w-16 .rf-group-label {
+#nav-rail.w-14 .rf-group-label {
   display: none;
 }
 
@@ -2309,4 +2309,47 @@ html.blackroom .rf-preset + .rf-preset {
      for a name the operator wrote: it stays legible and complete-looking, and
      the full string is in `title` regardless. */
   overflow-wrap: anywhere;
+}
+
+/* ============================================================
+   30. THE COLLAPSED RAIL CENTRES ITS GLYPHS
+
+   Collapsed, every glyph in the rail sat left of centre, and by a
+   different amount each: nav items off by 4px, the Shortcuts key by 12,
+   the link LED by 20. So the column did not even line up with itself --
+   three different left edges in one vertical stack of icons, which is
+   what actually reads as "not centred" rather than the offset alone.
+
+   The cause is that nothing here is centred in the first place. Every
+   row is `justify-content: flex-start` with horizontal padding sized
+   for the expanded state, where the icon sits beside a label.
+   Collapsing hides the label and keeps the padding, so each glyph
+   parks at whatever its own left padding happens to be, and those
+   padding values were set by four different rules.
+
+   Centring by construction rather than by matching the numbers up:
+   with `justify-content: center` and the horizontal padding gone, a
+   glyph is centred whatever its width, so the LED at 8px and the
+   wordmark at 18.5px land on the same axis as a 16px icon. Nothing
+   here needs re-tuning if an icon size changes.
+
+   On specificity, because this rule has to win against three others
+   that set padding on the same elements: `padding: 8px 12px` comes from
+   the Tier 2 block at (2,1,0) for the id-based toggles and (1,2,0) for
+   `.nav-item`, and `px-2` from the markup at (0,1,0). The selectors
+   below match those weights rather than exceed them -- `.collapsed`
+   plus two ids is (2,1,0), `.collapsed` plus a class is (1,2,0) -- and
+   win on document order, being at the end of the file. Deliberately not
+   theme-scoped: a centred icon is centred in every theme.
+   ============================================================ */
+#nav-rail.collapsed .nav-item,
+#nav-rail.collapsed #brand-row,
+#nav-rail.collapsed #link-row,
+#nav-rail.collapsed #nav-help-toggle,
+#nav-rail.collapsed #theme-toggle,
+#nav-rail.collapsed #nav-pin-toggle {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+  gap: 0;
 }

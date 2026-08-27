@@ -252,7 +252,7 @@ export async function initNav({ onNavigate, viewIds }) {
   }
 
   function applyPinnedState() {
-    rail.classList.toggle("w-16", !pinned);
+    rail.classList.toggle("w-14", !pinned);
     rail.classList.toggle("w-36", pinned);
     rail.classList.toggle("collapsed", !pinned);
     // The rail is `fixed` (Section 13.1: `sticky` detached from the top
@@ -261,7 +261,7 @@ export async function initNav({ onNavigate, viewIds }) {
     // flow means main has to carry a matching margin instead of the
     // flex layout doing it automatically.
     const mainContent = document.getElementById("main-content");
-    mainContent.classList.toggle("ml-16", !pinned);
+    mainContent.classList.toggle("ml-14", !pinned);
     mainContent.classList.toggle("ml-36", pinned);
     document.querySelectorAll(".nav-label").forEach((el) => el.classList.toggle("hidden", !pinned));
     // Collapsed: just the mark. Expanded: swap in the full wordmark

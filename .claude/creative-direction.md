@@ -543,6 +543,17 @@ actually defines, on the build you think you are on. A wrong instrument
 produces confident, specific, verified-looking findings, which are more
 expensive than vague ones because nobody re-checks a number.
 
+**Audit the column, not the class.** Anything sharing a left-hand column has to
+sit on one axis regardless of what kind of element it is — icon, LED, meter,
+spinner, checkbox. Querying by tag or class finds the things you already had in
+mind and silently excludes the one that is different, which is usually the one
+that is misaligned. The rail's `LINKED` lamp sat 8px off the icon axis with its
+label 12px left of every other label, and an audit that queried `svg` and
+`[data-lucide]` could never have seen it.
+
+So: measure the axis, list everything on it, and check the outliers by position
+rather than by selector.
+
 **Check the element, not the appearance.** Eighteen controls in this app had no
 accessible name while looking perfectly labelled, because the visible text sat
 in `<div class="label">` — DaisyUI markup that renders identically to a real
