@@ -237,19 +237,46 @@
        that quietly stops listening mid-service is worse than one that
        never worked. Does not pulse.
        --------------------------------------------------------------- */
+    /* The lamp and the column it sits in are two different things, and
+       conflating them is what put this row off the rail's axis.
+
+       Pinned, every icon row computes glyph left 12, width 16, centre 20,
+       label left 36 (12 padding + 16 glyph + 8 gap). This row was 8 padding +
+       an 8px dot + 8 gap, so the lamp centred at 12 and the word started at
+       24: the lamp 8px off the axis and the label 12px off, two misalignments
+       compounding in one 28px row, which is why it read as drifting rather
+       than just small.
+
+       So #link-led is now the same 16px column an icon occupies, and the 8px
+       lamp is drawn inside it by ::before. The state rules target the pseudo
+       rather than the box on purpose -- putting background on the element that
+       defines the column is exactly what would collapse the lamp back to
+       filling it. Aligned by construction, and it stays aligned if the icon
+       size changes. */
     #link-led {
+      width: 16px; height: 16px;
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+    }
+    #link-led::before {
+      content: "";
       width: 8px; height: 8px;
       border-radius: 50%;
-      flex-shrink: 0;
       background: #2A2233;
       box-shadow: inset 0 1px 1px rgba(0,0,0,.8);
       transition: none;
     }
-    #link-led[data-link="up"] {
+    #link-led[data-link="up"]::before {
       background: #EDE0FF;
       box-shadow: 0 0 6px #C79BFF, 0 0 15px rgba(199,155,255,.7);
     }
+    /* And the row takes the icon rows' 12px, which they get from the Tier 2
+       padding rather than from px-2's 8px. Lower specificity than
+       `#nav-rail.collapsed #link-row`, so the collapsed state still centres. */
     #link-row {
+      padding-left: 12px;
+      padding-right: 12px;
       font-family: var(--rf-mono);
       font-size: 9px;
       letter-spacing: .15em;
@@ -261,7 +288,7 @@
     @media (prefers-reduced-motion: reduce) {
       /* Instant state change as the fallback, never removed feedback:
          the operator still has to see that their press landed. */
-      .rf-bezel, .rf-glass, #link-led { transition: none !important; }
+      .rf-bezel, .rf-glass, #link-led::before { transition: none !important; }
     }
   </style>
 </head>

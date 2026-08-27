@@ -212,4 +212,5 @@ One line per item, newest last. Format:
 - 2026-08-26 · Release v0.10.0 · done · c75f9a4
 - 2026-08-26 · Icon default, uniform key bank, 100/100 accessible names · done · ae928d4
 - 2026-08-26 · Narrow-plus-pointer rule corrected · done · 1b56e5b
-- 2026-08-26 · Motion polish · done · 7841005
+- 2026-08-26 · Killed DaisyUI's button-pop spring, stopped rail keys travelling · done · 7841005
+- 2026-08-26 · Collapsed rail to 3.5rem, glyphs centred by construction · done · 66c1a51

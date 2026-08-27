@@ -521,6 +521,33 @@ Read the code, then look at the rendered result. Screenshot it. Walk the flow
 as the Reluctant Operator mid-service, then the Fluent Regular, then the
 Installer on first run. Then write findings.
 
+### The worst one: the pane's animation clock does not advance
+
+Read this before measuring any width, margin or height on an element with a
+transition.
+
+`getAnimations()` on `#nav-rail` and `#main-content` reports
+`playState: "running"` with `currentTime: 0` and a 150ms duration — permanently.
+The clock never moves. Both elements carry `transition-all duration-150`, so
+**every property under that transition reports its start value indefinitely**.
+
+Verified: the rail reported **56px** where it was actually **144px**, and
+`margin-left` reported 12px where it was 144px. 56px is a real previous state,
+which is precisely what makes this the nastiest of the instrument failures — the
+number is plausible rather than obviously broken, and waiting longer feels like
+the fix and never works.
+
+```js
+el.style.setProperty("transition", "none", "important");
+void el.offsetWidth;   // force reflow
+// now measure
+```
+
+Treat any rail-width or content-column number taken without this as unverified,
+including ones in earlier handoffs. On a product whose surface is defined by
+being narrow, these are the two measurements that matter most, and they were the
+two most affected.
+
 ### Check the instrument before trusting the reading
 
 Repeatedly in one session a measurement was wrong while the reading looked
