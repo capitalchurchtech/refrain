@@ -757,3 +757,12 @@ Plus: copy is final copy in the right zone, never placeholder.
 - 2026-08-27 · Tier heights + touch floor into light theme · done · 6b53a37
 - 2026-08-27 · Link lamp printed, not lit, in light theme · done · 14e698e
 - 2026-08-27 · Index meter renders in light theme · done · add13de
+- 2026-08-30 · Item 1 · partial · Show-only header, Show on slide rows, collar
+  lands on the informed action · f10c3e9 · **server half impossible**: no
+  slide-level focus in ProPresenter 21.3 (`/{id}/focus` 204, `/{id}/{n}/focus`
+  and `/{id}/focus/{n}` 404, `slide_index` not writable). An index appears only
+  with `trigger`. Show opens the presentation, never the matched slide.
+- 2026-08-30 · Blocking alert() off the live path · done · d630ecf · five sites,
+  not three — both of spellcheck.js's were missing from the item. Non-blocking
+  overlay: layout does not move, focus not taken, control stays pressable.
+
