@@ -16,43 +16,6 @@ export function initSetup({ onComplete }) {
   const testResult = document.getElementById("setup-test-result");
   const saveBtn = document.getElementById("setup-save-btn");
   const progressWrap = document.getElementById("setup-progress");
-  /**
-   * Refrain is designed to sit docked beside ProPresenter. A window wide enough
-   * to be maximised means the operator has not got the point of the tool yet,
-   * and first-run setup is the one moment they are arranging windows anyway, so
-   * the nudge lands when it is actionable rather than as an interruption.
-   *
-   * Deliberately setup-only. A runtime callout could only ever be made
-   * *unlikely* to appear mid-service, never guaranteed not to, and that is not
-   * a risk worth carrying for a joke however good the joke is. The accepted
-   * cost is that someone who set up months ago and now runs it maximised never
-   * sees this: it is first-run orientation, not an ongoing correction.
-   *
-   * The threshold is measured rather than guessed, as far as it can be here.
-   * The rail is 144px pinned and a usable docked panel runs roughly 380-520px,
-   * so a docked window tops out near 520. The desktop this was built on is
-   * 1728px wide, so a maximised window is well over 1000. 900 sits clear of
-   * both: wide enough that no plausible dock reaches it, narrow enough that a
-   * genuinely maximised window always does. Worth revisiting against a real
-   * booth machine, which is the one measurement not available from here.
-   */
-  const DOCKED_WIDTH_CEILING = 900;
-
-  function maybeShowWidthNudge() {
-    if (window.innerWidth <= DOCKED_WIDTH_CEILING) return;
-    const wrap = document.getElementById("setup-width-nudge");
-    const text = document.getElementById("setup-width-nudge-text");
-    if (!wrap || !text) return;
-    // Warm zone: this is nowhere near the path to screen, and it is the one
-    // moment the installer is curious rather than under pressure. The second
-    // sentence does the work for anyone the first does not land for.
-    text.textContent =
-      "Refrain is built to sit beside ProPresenter, not in front of it. " +
-      "Drag this window narrow and tuck it to one side.";
-    wrap.classList.remove("hidden");
-  }
-
-  maybeShowWidthNudge();
 
   const progressMeter = document.getElementById("setup-progress-meter");
   const progressCount = document.getElementById("setup-progress-count");

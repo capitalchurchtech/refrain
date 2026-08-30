@@ -71,7 +71,7 @@ export function initImageCrop() {
 
           <div>
             <div class="rf-subhead">Output presets</div>
-            <div class="text-xs opacity-60 mb-1">Every dropped image is cropped to all of these, named like <span class="font-mono">photo_thirds-sq.jpg</span>.</div>
+            <div class="text-xs opacity-60 mb-1 rf-measure">Every dropped image is cropped to all of these, named like <span class="font-mono">photo_thirds-sq.jpg</span>.</div>
             <div class="flex flex-col gap-1" id="crop-presets-list"></div>
             <div class="flex flex-wrap items-center gap-2 mt-2">
               <select id="crop-catalog-select" class="select select-bordered select-xs" aria-label="Common size to add"></select>

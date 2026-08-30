@@ -605,7 +605,7 @@ function renderLibraryCard({ folders, selected, error }, arrangementFolders) {
       <summary class="collapse-title text-base font-semibold">Library Sync</summary>
       <div class="collapse-content">
         <div class="text-sm font-semibold mt-1">Searchable</div>
-        <div class="text-sm opacity-70 mb-1">Which Library folders to index and search. A smaller scope indexes much faster. Includes anything you want to find slides in, songs or otherwise (e.g. sermons).</div>
+        <div class="text-sm opacity-70 mb-1 rf-measure">Which Library folders to index and search. A smaller scope indexes much faster. Includes anything you want to find slides in, songs or otherwise (e.g. sermons).</div>
         <label class="label cursor-pointer justify-start gap-2 w-fit">
           <input type="checkbox" id="library-folder-all" class="checkbox checkbox-sm" ${allSelected ? "checked" : ""} />
           <span class="label-text">All libraries</span>
@@ -663,7 +663,7 @@ function renderArrangementFoldersSection({ folders, selected, error }) {
         : folders.length === 0
           ? `<div class="text-sm opacity-70">No Library folders found.</div>`
           : `
-      <div class="text-sm opacity-70 mb-1">
+      <div class="text-sm opacity-70 mb-1 rf-measure">
         Which Library folders are actually songs, for the drift-tracking module. Independent of what's
         searchable above, so e.g. a sermons folder can stay searchable without being treated as a "song"
         with an "arrangement" to track. ${useSuggestion ? `Pre-selected by name below. Check this looks right.` : ""}
@@ -748,7 +748,7 @@ function renderHealth(health, configOptions, versionInfo) {
           // the main thing that made this screen read as two copies of itself.
           // What belongs here is only what the strip can't say: how to fix it.
           propresenter.connected
-            ? `<div class="text-sm opacity-60">Last checked ${new Date(propresenter.lastCheckIn ?? Date.now()).toLocaleTimeString()}. Run Diagnose if ProPresenter is behaving oddly.</div>`
+            ? `<div class="text-sm opacity-60 rf-measure">Last checked ${new Date(propresenter.lastCheckIn ?? Date.now()).toLocaleTimeString()}. Run Diagnose if ProPresenter is behaving oddly.</div>`
             : `<div class="text-sm">Check ProPresenter is running with its Network API enabled (Preferences &gt; Network), and that the host and port under Settings are correct.</div>`
         }
       </div>
@@ -902,7 +902,7 @@ function renderHealth(health, configOptions, versionInfo) {
                            crawling off under Search &amp; indexing if you don't need it, and reindexing drops
                            back to seconds.</span>
                          </div>`
-                      : `<div class="text-sm opacity-60">
+                      : `<div class="text-sm opacity-60 rf-measure">
                            Changing your preferred arrangements or turning on playlist crawling changes what
                            every entry means, so those still need a full rebuild. Refrain switches to one
                            automatically when that happens, and says so.
@@ -956,7 +956,7 @@ function renderHealth(health, configOptions, versionInfo) {
             <i data-lucide="download" class="w-3.5 h-3.5"></i> Back up config
           </button>
         </div>
-        <div class="text-xs opacity-60">
+        <div class="text-xs opacity-60 rf-measure">
           Saved straight to <code>config.json</code>. No secrets live here, and every field is validated,
           so it is safe to change. Each section saves on its own.
         </div>
@@ -995,7 +995,7 @@ function renderHealth(health, configOptions, versionInfo) {
             <button type="button" id="config-detect-btn" class="btn btn-outline btn-sm">Detect ProPresenter</button>
             <span id="config-detect-result" class="text-sm"></span>
           </div>
-          <div class="text-xs opacity-60">Looks for ProPresenter's API <strong>on this machine only</strong> and fills in the host and port above. Save to apply.</div>
+          <div class="text-xs opacity-60 rf-measure">Looks for ProPresenter's API <strong>on this machine only</strong> and fills in the host and port above. Save to apply.</div>
 
           <div id="config-network-scan-offer" class="alert alert-warning py-2 text-sm items-start hidden">
             <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
@@ -1263,7 +1263,7 @@ function renderHealth(health, configOptions, versionInfo) {
                  <button id="update-recheck-btn" class="btn btn-chip">Check again</button>
                  <span id="update-status" class="text-sm"></span>
                </div>
-               <div class="text-xs opacity-60">Or double-click <span class="font-mono">scripts/update.command</span>. Either way, restart Refrain afterward to finish.</div>`
+               <div class="text-xs opacity-60 rf-measure">Or double-click <span class="font-mono">scripts/update.command</span>. Either way, restart Refrain afterward to finish.</div>`
             : `<div class="text-sm mt-1">This copy wasn't installed with Git, so download the latest ZIP from <a href="${escapeHtml(versionInfo?.repoUrl ?? "")}" target="_blank" rel="noopener" class="link">GitHub</a> and copy your <span class="font-mono">config.json</span> and <span class="font-mono">.env</span> into it. Your settings are never overwritten.</div>`
         }
       </div>

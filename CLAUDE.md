@@ -55,9 +55,10 @@ width and the matching content margin already do —
 Those rules look redundant next to the utility class; they are not. Do not
 "clean them up".
 
-All six JS-applied utilities have static homes: `w-14`, `w-36`, `ml-14`,
-`ml-36`, `opacity-50` and `pointer-events-none`. Keep it that way. When you add
-a class from JS, add its rule here in the same change.
+All eight JS-applied utilities have static homes: `w-14`, `w-36`, `ml-14`,
+`ml-36`, `opacity-50`, `pointer-events-none`, and the key bank's
+`lg:grid-cols-4` and `xl:grid-cols-5`. Keep it that way. When you add a class
+from JS, add its rule here in the same change.
 
 The collapsed pair was `w-16`/`ml-16` until the rail narrowed to 3.5rem. If you
 change that width again, pick the Tailwind class whose name matches the value

@@ -2,6 +2,40 @@ import { mountLiveReadout, paintGoing, clearGoing } from "./live-readout.js";
 import { showFailure } from "./notice.js";
 
 export function initSearch() {
+  /**
+   * Ask for a docked window, on the surface where it matters.
+   *
+   * Search and Live are the booth surface: narrow, beside ProPresenter, during
+   * a service. Everything else -- Health, Setup, Image Crop, QR Codes,
+   * Arrangement -- is a desk surface where a full window is correct, which is
+   * why this used to be wrong: it fired during first-run setup, telling an
+   * installer their window was too wide at the one moment it was not.
+   *
+   * Once per session and dismissible. The app cannot know when a service is
+   * about to start, so this can only be a reminder, and a reminder that repeats
+   * is a nag. Nothing is persisted: a new session is a new chance that the
+   * operator is about to go live.
+   */
+  const DOCKED_WIDTH_CEILING = 900;
+  let dockNudgeHandled = false;
+
+  function maybeShowDockNudge() {
+    if (dockNudgeHandled) return;
+    const wrap = document.getElementById("dock-nudge");
+    const text = document.getElementById("dock-nudge-text");
+    if (!wrap || !text) return;
+    if (window.innerWidth <= DOCKED_WIDTH_CEILING) return;
+    dockNudgeHandled = true;
+    text.textContent =
+      "Before a service, drag this narrow and tuck it beside ProPresenter. " +
+      "It is built to sit next to the thing you are running, not in front of it.";
+    wrap.classList.remove("hidden");
+    document.getElementById("dock-nudge-dismiss")?.addEventListener("click", () => {
+      wrap.classList.add("hidden");
+    });
+  }
+
+  maybeShowDockNudge();
   const queryInput = document.getElementById("query");
   const resultsEl = document.getElementById("results");
   const statusEl = document.getElementById("index-status");
@@ -179,7 +213,7 @@ export function initSearch() {
                   <div class="text-xs opacity-70">
                     Slide ${r.slideIndex + 1}${r.repeatCount > 1 ? ` &middot; sung ${r.repeatCount}&times;` : ""}${showModifiedDate && r.modifiedDate ? ` &middot; modified ${new Date(r.modifiedDate).toLocaleDateString()}` : ""}
                   </div>
-                  <div class="text-sm">${highlightMatch(r.snippet, query)}</div>
+                  <div class="text-sm rf-measure">${highlightMatch(r.snippet, query)}</div>
                 </div>
                 <!-- Go Live stays primary here and only here: the slide's text
                      is rendered alongside it, so this is the informed action.

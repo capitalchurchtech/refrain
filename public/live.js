@@ -96,7 +96,7 @@ export function initLive() {
                    The link-checking sentence is gone too: implementation detail on
                    the live path, and it contradicted "nothing runs on its own" one
                    sentence later. -->
-              <div class="text-xs opacity-60">
+              <div class="text-xs opacity-60 rf-measure">
                 Turns on by itself once something has been live for a couple of minutes.
               </div>
             </div>
@@ -130,12 +130,12 @@ export function initLive() {
 
         <div id="live-looks-wrap" class="hidden">
           <div class="text-xs uppercase tracking-wide opacity-60 mb-2">Looks</div>
-          <div id="live-looks" class="grid grid-cols-2 sm:grid-cols-3 gap-3"></div>
+          <div id="live-looks" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3"></div>
         </div>
 
         <div id="live-macros-wrap" class="hidden">
           <div class="text-xs uppercase tracking-wide opacity-60 mb-2">Macros</div>
-          <div id="live-macros" class="grid grid-cols-2 sm:grid-cols-3 gap-3"></div>
+          <div id="live-macros" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3"></div>
         </div>
 
         <div id="live-status" class="text-sm opacity-70"></div>

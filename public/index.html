@@ -260,11 +260,6 @@
          cannot block or steal focus even if setup is somehow re-entered at a
          bad moment. There is no runtime path and no dismissal flag, because it
          fires once by construction. -->
-    <div id="setup-width-nudge" class="hidden mb-6 text-sm rf-call" role="note">
-      <span class="rf-lede">Window</span>
-      <span id="setup-width-nudge-text"></span>
-    </div>
-
     <div class="card bg-base-200">
       <div class="card-body p-3 gap-4">
         <div>
@@ -370,7 +365,7 @@
       </div>
     </aside>
 
-    <main id="main-content" class="flex-1 min-w-0 p-3 max-w-3xl ml-14 transition-all duration-150">
+    <main id="main-content" class="flex-1 min-w-0 p-3 ml-14 transition-all duration-150">
       <!-- App-wide "Return" bar (Section: snap-back). Hidden until an
            app-initiated Go Live arms a return pin server-side; then it
            shows on every screen so the operator can snap back to where the
@@ -406,6 +401,22 @@
       </div>
 
       <section id="view-search">
+        <!-- The dock nudge, on the booth path rather than at setup.
+             It used to fire during first-run setup at any window over 900px,
+             which is exactly the moment a wide window is *correct*: setup is a
+             desk task, done unhurried, often on a different machine. Telling an
+             installer their window is wrong while they are configuring is both
+             annoying and untrue.
+
+             Search and Live are the booth surface -- docked, narrow, during a
+             service -- so this is where width actually matters, and the ask is
+             to dock before a service rather than that the setup is wrong. -->
+        <div id="dock-nudge" class="hidden mb-3 text-sm rf-call" role="note">
+          <span class="rf-lede">Window</span>
+          <span id="dock-nudge-text" class="rf-measure"></span>
+          <button id="dock-nudge-dismiss" class="btn btn-chip ml-2" type="button">Got it</button>
+        </div>
+
         <h1 class="text-lg font-semibold flex items-center gap-2 mb-4"><i data-lucide="search" class="w-5 h-5"></i> Search</h1>
         <div class="flex items-center justify-between mb-4">
           <div id="index-status" class="text-sm opacity-70"></div>

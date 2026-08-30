@@ -121,6 +121,57 @@ keyboard path, and that is the same hazard in the power path.
 
 ---
 
+## 1b. CRAFT — Fresh review of Search, 2026-08-30
+
+Item 2 below is **done** — measured 56 + 404 = 460 at docked width, no dead
+space. Verify before working it.
+
+Four findings from a fresh pass, ranked.
+
+### a. The index is four days stale and nothing says so — highest value
+
+The strip reads `445 · 8/26, 11:27 AM · 0s`. Today is 8/30. It renders
+identically to a fresh index: same colour, same weight, no signal.
+
+This is the silent failure mode — search misses anything edited since Tuesday
+and the operator cannot know. **The direction already wrote the copy for it**
+and it was never built: `Index is 2 days old. Refresh.`
+
+Operational rather than cosmetic. Treat staleness as a state with a threshold,
+surface it in the strip, and give it a one-press remedy. Not a lamp — see the
+meter reasoning; this is a text state, not an indicator.
+
+### b. The collar arms the first result at rest, which means nothing
+
+300 Go Live buttons, exactly one armed, and it is the first — not because the
+operator chose it but because it is first. A lit collar marking *position*
+rather than *state* is the same failure as a lamp that never changes, and it is
+the argument that killed the global sync bar, applied to the app's only Tier 1
+emitter.
+
+**Fix: at rest nothing is armed, so nothing is lit.** The readout is the hero at
+rest. The collar appears on hover or focus, where it genuinely marks what Enter
+would fire. That also makes the emitter mean something in the one place the
+operator most needs it to.
+
+### c. One action, two names, two treatments
+
+Header `Show in editor` (102px, sentence case, Tier 2) versus row `SHOW` (58px,
+mono uppercase, chip). Same action. The direction: an action keeps its name
+across the flow. Pick one name and one treatment.
+
+### d. Slide text gets 59% of the column, actions 37%
+
+Text measures 238px of a 404px column and wraps to five and seven lines. The
+text is what the operator is scanning.
+
+At docked width the actions probably belong **below** the slide text rather than
+beside it, returning the full column to the thing being read. Worth trying
+rendered rather than deciding here.
+
+**Minor:** slide numbers render as sentence-case body where they are data. The
+type rules put data in mono.
+
 ## 2. CRAFT — 29% of the window is dead space, and the brief caused it
 
 Brandon: "the main section is centered instead of hugging the left menu, that
@@ -773,4 +824,8 @@ Plus: copy is final copy in the right zone, never placeholder.
   Refrain is right to; and they are common (16 of 45 presentations), not rare.
   Not run: anything needing a slide edited in ProPresenter, a full rebuild the
   night before a service, a 20-minute wait, or quitting the church's ProPresenter.
+- 2026-08-30 · Item 2 · done · container cap dropped, measure moved to the text,
+  key bank to 4/5 columns, dock nudge re-aimed to the booth path. 1280px:
+  368px dead -> 0, main 768 -> 1136. Docked 460px unchanged at 316. Only 15
+  distinct prose sites needed measure, not the whole app.
 

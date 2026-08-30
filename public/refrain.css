@@ -2740,3 +2740,65 @@ html.blackroom .rf-notice {
 html.blackroom .rf-notice-close {
   color: var(--rf-text);
 }
+
+/* ============================================================
+   34. MEASURE
+
+   The content column used to stop at `max-w-3xl`, which at 1280px left
+   368px of dead space -- 28.7% of the window, with the column hugging
+   the rail and a void beside it. But that cap was doing two jobs, and
+   only one of them was wrong.
+
+   The job worth keeping is reading measure. There were no element-level
+   measure caps anywhere in this file, so the container was the only
+   thing providing one. Measured with the cap removed, seventeen prose
+   elements ran past 78 characters and the worst reached **158ch** at
+   1088px, which is unreadable in a different way than a narrow column
+   is. Slide text reached 141 characters at 870px.
+
+   So the cap moves from the container to the text. `<p>` is capped
+   directly because a paragraph is prose by definition and nothing in
+   this app uses one as a layout container (checked across all nine
+   screens). `.rf-measure` carries the same cap for the places where
+   prose is in a div, and for slide text -- which needs it most, being
+   the thing an operator actually reads under pressure.
+
+   70ch, which is the middle of the usual 60-80 range and lands near the
+   768px the container used to give at this type size.
+
+   Deliberately not applied by matching utility combinations. The prose
+   in this app tends to be `.text-xs.opacity-60`, but so are 196 of the
+   210 elements carrying that pair -- labels two words long. A selector
+   that catches "from" and "to" alongside a paragraph is not describing
+   anything.
+   ============================================================ */
+#main-content p,
+.rf-measure {
+  max-width: 70ch;
+}
+
+/**
+ * Static homes for the key bank's wider breakpoints.
+ *
+ * `lg:grid-cols-4` and `xl:grid-cols-5` exist only inside a template string in
+ * live.js, so Tailwind's runtime scanner never saw them at boot and would
+ * generate no rule -- the bank would silently stay at three columns and look
+ * like the change had not worked. Same trap as the six utilities already listed
+ * in CLAUDE.md; these are the seventh and eighth.
+ *
+ * Written as media queries rather than plain rules because the classes are
+ * responsive variants, and the breakpoints match Tailwind's own lg and xl so
+ * the names stay true to what they do.
+ */
+@media (min-width: 1024px) {
+  #live-looks.lg\:grid-cols-4,
+  #live-macros.lg\:grid-cols-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1280px) {
+  #live-looks.xl\:grid-cols-5,
+  #live-macros.xl\:grid-cols-5 {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
