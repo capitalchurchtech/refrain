@@ -2802,3 +2802,41 @@ html.blackroom .rf-notice-close {
     grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 }
+
+/* ============================================================
+   35. THE RAIL IS A BUTTED KEY BANK
+
+   Square corners, no gaps, the keys touching. Asked for three times,
+   and it is one change rather than three.
+
+   **The junction treatment was already doing the job the gap faked.**
+   Every key carries `inset 0 1px 0` catching light along its top edge
+   and `inset 0 -1px 0` falling to shadow at the bottom. With the keys
+   butted, one key's trailing shadow sits directly against the next
+   key's leading highlight, and that dark-then-light pair *is* the seam
+   between two caps on real hardware. The 4px gap was a substitute for a
+   seam the material can produce properly.
+
+   Square follows from the same logic rather than being a separate
+   taste: at a 3px radius on butted keys you get a notch of background
+   at every junction, sixteen of them down a nine-key column. Squared,
+   the bank reads as one machined block divided by seams.
+
+   The general rule, so this is principled rather than a one-off:
+   **anything in a butted bank is square; anything free-standing keeps
+   its radius.** Content buttons, cards and chips are separated by space
+   and keep their 4/3/2px. The rail is the only butted bank in the
+   product today, which is why this is scoped to it rather than global.
+
+   The group grooves become load-bearing here, since with the gaps gone
+   they are the only horizontal breaks in the column. They were already
+   built as a real machined groove -- shadowline cut, lit lower lip --
+   rather than a partial-opacity hairline, so they carry it.
+   ============================================================ */
+#nav-rail .nav-item,
+#nav-rail #brand-row,
+#nav-rail #nav-help-toggle,
+#nav-rail #theme-toggle,
+#nav-rail #nav-pin-toggle {
+  border-radius: 0;
+}

@@ -1076,4 +1076,10 @@ Plus: copy is final copy in the right zone, never placeholder.
   written down. Text state with a one-press Refresh, not a lamp. Returns null when
   fresh so nothing renders — no all-clear nobody asked for. 6 tests including the
   observed four-day case, clock skew, and unparseable dates.
+- 2026-08-30 · Item 3 · done · rail is a butted key bank. gap 0, radius 0, scoped
+  to the rail. Verified pinned and collapsed: seams between keys measure 0, the
+  only non-zero breaks are the two group grooves, glyphs stay centred at 56px.
+  The machined groove was already built to spec and carries the column at gap 0.
+  Note for item 8: the latched key does read more present between butted
+  neighbours, so re-check whether widening the accent edge is still needed.
 
