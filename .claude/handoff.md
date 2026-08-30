@@ -1,214 +1,156 @@
-# Handoff — the tail
+# Handoff — width, continuity, and the tail
 
-> **This file is the live handoff, and now the only record of findings.**
-> Findings are written here rather than in a tracker, with severity in the
-> heading. When a new handoff replaces this one the old version moves to
+> **This file is the live handoff, and the only record of findings.** Severity
+> in the heading. When a new handoff replaces this one the old version moves to
 > `.claude/handoffs/`. Anything not in here is not part of the brief.
 >
 > **Editing session:** read [creative-direction.md](creative-direction.md)
-> first, then work the items below in order. Append to the Status log as you go.
+> first, then work the items in order. Append to the Status log as you go.
 
-Written 2026-08-26. Supersedes
-[2026-08-26-reference-audit.md](handoffs/2026-08-26-reference-audit.md), every
-item of which is done.
+Written 2026-08-27. Supersedes
+[2026-08-27-light-theme-cluster.md](handoffs/2026-08-27-light-theme-cluster.md),
+whose light-theme items are all shipped.
 
 The older Todoist project is **archive**. Do not add to it and do not assume a
-task there is still live — several are stale or were superseded by decisions
-recorded below.
+task there is live.
 
 ---
 
 ## Where this stands
 
-`v0.10.0` shipped. Since the last handoff: the rail specificity bug that was
-charging the rail's width twice and leaving every screen under half its column;
-the inverted performance-mode indicator; hash routing; the touch-target floor
-that had been dead since the tier heights outranked it; the Forms pattern across
-all five sub-pages; the engraved wordmark; the lit-edge section markers;
-phosphor on values; the icon-size default; a uniform 44px key bank; and an
-accessible name on all 100 inputs.
+`v0.10.0` shipped; **seven commits sit unpushed after it**. The visual system is
+complete and verified in all three themes: palette, junctions, texture, display
+type, engraved wordmark, uniform 44px key bank, Forms pattern on all five
+sub-pages, hash routing, accessible names on all 100 inputs, and the whole
+light-theme signal cluster (AA on the primary action, tier heights, press
+feedback, link lamp, index meter).
 
-The three questions, honestly:
-
-- **Would someone who runs a real console respect this?** Yes, now.
-- **Could a nervous volunteer succeed on their second Sunday?** Yes. The
-  strongest of the three.
-- **Does it have a pulse?** Yes. The wordmark, the display titles and the
-  section markers carry it.
-
-What remains is tail, plus one thing only a person can do.
+The three questions: a console operator would respect it; a nervous volunteer
+would succeed; and it has a pulse. What is left is width, continuity between
+screens, and a short tail.
 
 ---
 
-## 0. CRAFT — The `LINKED` lamp is off the icon axis
+## 1. CRAFT — 29% of the window is dead space, and the brief caused it
 
-Brandon spotted this; my icon audit missed it because I queried `svg` and
-`[data-lucide]` and the LED is neither.
+Brandon: "the main section is centered instead of hugging the left menu, that
+means wasted pixels on dead space."
 
-Measured from the rail's left edge, pinned:
+Measured at 1280px, transitions disabled, sum check passing:
 
-| | glyph left | glyph width | glyph centre | label left |
-|---|---|---|---|---|
-| every icon row | 12 | 16 | **20** | 36 |
-| `#link-row` | 8 | 8 | **12** | 24 |
-
-`#link-row` is `flex items-center gap-3 px-2 h-7` with a bare 8px dot, so
-8 padding + 8 dot + 8 gap puts the label at 24. The icon rows are 12 + 16 + 8 =
-36. The lamp is 8px off the icon axis and the word is 12px left of every other
-label, which is why it reads as drifting rather than just small.
-
-Fix: give the LED the same 16px column an icon occupies, with the 8px lamp
-centred inside it, and match the row's left padding.
-
-```css
-#link-row { padding-left: 12px; }
-#link-led {
-  width: 16px; height: 16px;
-  display: grid; place-items: center;
-  background: none; box-shadow: none;   /* move to ::before */
-}
-#link-led::before {
-  content: ""; width: 8px; height: 8px; border-radius: 50%;
-  background: var(--rf-neon-plum-core);
-  box-shadow: 0 0 6px var(--rf-neon-plum), 0 0 15px rgba(199,155,255,.7);
-}
+```
+rail 144  +  main 768  +  dead 368  =  1280      368px = 28.7%
 ```
 
-Lamp centre lands at 20, label at 36 — identical to every row above.
+`#main-content` is flush against the rail — `gapRailToMain` is 0, so it is not
+literally centred. But content stops at `max-w-3xl` (768px) regardless of window
+width, and a column with a rail on one side and a 368px void on the other reads
+as adrift.
 
-**While in there:** check the unlit state keeps the 16px column, and check the
-collapsed rail, where the icon rows get extra left padding to centre a 16px
-glyph in the narrow rail. The lamp needs the same treatment or it will drift
-again in the other state.
+**The cap is doing two jobs, so deleting the class is not the fix.**
 
-## 1. CRAFT — `btn-brand` renders green in light theme
+- **Reading measure** for slide text and explanatory prose. There are **no
+  element-level measure caps anywhere in `refrain.css`**, so the container is
+  the only thing providing it. Remove it naively and slide text runs to 1136px,
+  which is worse.
+- **Constraining everything else.** Accidental and harmful.
 
-**Ruled 2026-08-26: this is a bug, not a scope question.**
+**It costs more than pixels.** Live's key bank is `grid-cols-2 sm:grid-cols-3`
+(`live.js:133`, `:138`) — three columns maximum. With the full width it takes
+four or five, putting 34 tiles in seven rows instead of twelve, on the screen
+where scrolling costs most.
 
-The "light theme is left to DaisyUI" concession covers *surfaces and neutrals*.
-The reasoning was that a warm-graphite machined object does not really have a
-light mode, so its ground, panels and hairlines are not worth inventing twice.
-It was never a concession on signal colours.
+### The fix
 
-`btn-brand` is a project-authored class, ours in every theme. Green is not in
-the palette — it was retired. So this is the retired colour surviving in the one
-place it matters most: the primary action, including Go Live. An operator on
-light theme sees a green Go Live in a product where green means nothing and plum
-means armed.
+1. **Drop the container cap.** Content hugs the rail and fills the width.
+2. **Put measure on the elements that need it**, not the container — slide text
+   and explanatory copy at roughly 70ch. Must land in the same change as (1).
+3. **Let the grids grow.** Live's key bank to four or five columns at width.
+4. **Re-aim the too-wide nudge.** It fires at setup, which is exactly when a
+   wide window is correct. It belongs on the booth path and should say to dock
+   before a service, not that the setup is wrong.
 
-Plum in both themes. The wordmark needed a light-specific ramp because a
-specular highlight cannot exist on a light panel — that was real physics. A
-button fill has no such constraint.
+### The brief was the root cause and is amended
 
-Do this first: small, and on the live path.
+The project card said *always a docked side window*. That came from the
+Reluctant Operator's surface and was applied to all nine screens.
 
-## 1b. CRAFT — Tier heights into light theme (heights only)
+**There are two surfaces.** BOOTH: Search and Live, docked, narrow, during a
+service. DESK: Health, Setup, Image Crop, QR Codes, Arrangement — a normal
+window, at a desk, unhurried. Material, palette, tiers and voice are identical;
+only the width assumption changes. Amended in `creative-direction.md` under
+Project card and Operating conditions.
 
-Found while fixing item 1. In light theme `.btn-brand` computes
-`min-height: 32px`, because the tier heights are dark-scoped — so light theme's
-primary action, Go Live included, sits **below the 44px touch floor**.
+---
 
-**Ruled: extend the tier heights into light theme. Heights only, not the tier
-system.** The parallel with item 1 is exact — a touch target is accessibility,
-not surfaces-and-neutrals, so the "light is left to DaisyUI" concession does not
-cover it, for the same reason it did not cover a failing contrast ratio.
+## 2. CRAFT — Make the latched nav key present, without a fifth emitter
 
-But the concession does still cover **material**. Light theme does not need the
-anodized cap gradient, the collar, the junction blocks or the texture; a light
-panel is not a machined one and pretending otherwise would be two products.
+Brandon asked whether the current nav item's icon and text could glow.
 
-So the split, now recorded in the direction: **material may be dark-only, signal
-and accessibility may not.** Take the three tier heights and the touch floor
-across. Leave the gradients, collars and junctions where they are.
+**Not glow.** Emission marks what the machine reports about itself; which screen
+you are on is the operator's own navigation. Same category error as glowing a
+filter count. And a latched key does not brighten.
 
-Smaller than item 1 and the same shape, so it should be quick.
+**But the instinct is right — it is not present enough.** Three changes, none
+spending an emitter:
 
-## 1c. CRAFT — The link lamp reads backwards in light theme
+1. **Give the lit edge its bleed**, as the section markers already have:
+   `box-shadow: inset 2px 0 0 var(--rf-plum), 0 0 6px rgba(169,111,232,.30);`
+2. **Widen the edge** from 2px to 3px.
+3. **Take the legend and icon to `--rf-text`.**
 
-Flagged by the editing session as material and therefore out of scope for 6b53a37.
-I measured it and it is not material — it is an inverted signal, which by the
-boundary in item 1b crosses into light theme.
+**Item 3 corrects an earlier ruling of mine.** I said the latched label must
+stay at `--rf-muted` because a bottomed-out key occludes its own light. Wrong:
+**occlusion applies to emitted light, not printed ink.** A silkscreen legend
+does not dim when the key is pressed.
 
-The LED rules were never theme-scoped, so light theme keeps the dark treatment.
-Against the light rail at `#F2F2F2`:
+---
 
-| | contrast |
-|---|---|
-| lit core `#EDE0FF` | **1.12:1** — effectively invisible |
-| unlit `#302838` | **12.62:1** — bold |
-| plum `#8446C9` | 5.07:1 |
+## 3. CRAFT — Every screen is a destination with no onward path
 
-So in light theme **`LINKED` is not a quiet dot, it is no dot at all** — an
-empty space with a soft plum halo around nothing — while lost link is a strong
-dark dot.
+The connective tissue between screens was never designed. Nine islands; nothing
+says what to do next, so the operator has to know the product to keep moving.
 
-**Corrected diagnosis** (the editing session caught this and was right): it is
-not a polarity bug. I first wrote that the loud state had come to mean normal,
-which contradicts itself — if lost link is the loud one, the instinct is working.
-The real failure is that at 1.12:1 the operator sees nothing and cannot tell
-whether that means linked or means the indicator is broken. An invisible lamp
-fails **silently**, which for the one control the quality floor names is the
-worse mode. A mis-polarised lamp at least reports something.
+- **Spell Check** flags a word, jumps to ProPresenter, and stops. No "next
+  flagged word", so nine typos is nine round trips driven manually.
+- **Lyrics** ends on "copy each into a new presentation." No path back to
+  Search to confirm it landed.
+- **Arrangement** pushes a correction and stops.
+- **Search is the hub and nothing visibly returns to it.** There is a `/`
+  shortcut the Fluent Regular knows and the Reluctant Operator never will.
 
-**Fix: on a light panel a status lamp is printed, not lit.** Lit becomes a solid
-`--rf-plum` fill at 5.07:1; unlit becomes a hollow ring or a pale dot. Ink where
-the dark theme has light. Keep the 16px column and the `::before` lamp from
-item 0 — only the fill and the shadow change.
+**Not a breadcrumb.** Every screen should end on the next action, the same way
+the voice rules already require of copy. Spell Check gets `Next flagged word`.
+Lyrics gets a way back to Search. Continuity built out of the work, not chrome.
 
-Not filed higher than CRAFT because light theme is not the booth condition, and
-the direction says a warm-graphite object does not really have a light mode. But
-it is the link indicator, which is the one thing the quality floor singles out,
-so it should not sit behind the semantic sweep.
+**Scroll position should persist per screen.** Verified reset. Query and results
+*do* survive navigation — leave Search for Health, come back, and the query and
+all 117 results are intact. Do not disturb that; only scroll is lost, and
+returning to the top of 117 results mid-service is what makes it feel like a
+website rather than a tool.
 
-**Also left deliberately and genuinely material, so not an item:** light theme's
-section headings stay sentence-case bold rather than mono silkscreen. That one is
-appearance, and the concession covers it.
+**Do not add a page transition.** Instant is correct — perceived power is almost
+entirely latency. The direction says nothing animates on the path to live;
+extend that to navigation.
 
-## 1d. CRAFT — The index meter is entirely invisible in light theme
+---
 
-Flagged by the editing session as the same trap as item 1c. It is, and it is
-worse. Verified in `refrain.css`:
+## 4. CRAFT — Finish the semantic colour sweep
 
-- `.rf-meter-cell` (1227) is unscoped and declares only `flex`, `min-width` and
-  `border-radius` — **no background.**
-- `[data-theme="dark"] .rf-meter-cell` (1233) carries the unlit fill.
-- `[data-theme="dark"] .rf-meter-cell.lit` (1241) carries the lit fill
-  (`--rf-neon-plum`) and the two-stop glow.
+Raw DaisyUI semantic colours by file: `health.js` 44, `arrangement.js` 19,
+`library-sync.js` 8, `setup.js` 6, `search.js` 2, `live.js` 2,
+`error-boundary.js` 2.
 
-So in light theme **both** states fall through to a rule with no background.
-Lit and unlit are identically transparent: the meter does not render at all.
-During the longest wait in the product, a light-theme operator sees a 14px empty
-strip and a count, with no progress indication whatsoever.
+**These are grep counts, so they are a starting point for looking, not
+findings.** Health's are largely the migrated fault/status vocabulary doing its
+job — resolve values before changing anything.
 
-Worse than the lamp, which at least had one visible state. Same root cause —
-fills scoped to dark with no light fallback — and the same fix shape: on a light
-panel the lit cell is a solid `--rf-plum` fill and the unlit cell is a pale
-recessed grey. Ink where the dark theme has light.
+Sweep **by concept, not by screen.** Doing it screen by screen is what left the
+inverted performance-mode dot in place while Health looked finished.
 
-Note the editing session's detail was slightly off (they had the lit cell as
-`#EDE0FF`-family; it is `#C79BFF`) but the instinct was right and the real
-finding is more severe than the one reported. Worth doing 1c and 1d together
-since they are one mistake in two places.
+---
 
-**Then sweep for the general case:** any two-state indicator where both fills
-are dark-scoped. A signal with one legible state is not a signal, and one with
-none is furniture.
-
-## 2. CRAFT — Finish the semantic colour sweep
-
-Raw DaisyUI semantic colours remaining, by file: `health.js` 44,
-`arrangement.js` 19, `library-sync.js` 8, `setup.js` 6, `search.js` 2,
-`live.js` 2, `error-boundary.js` 2.
-
-Health's 44 are largely the migrated fault/status vocabulary doing its job —
-check before changing. The others are the unfinished half of the sweep that
-started with the performance-mode indicator.
-
-Sweep **by concept, not by screen**: find every place the app reports a state,
-decide what the state is, apply the one vocabulary. Doing it screen by screen is
-what left the inverted dot in place while Health looked finished.
-
-## 3. CRAFT — Arrangement: the list-and-compare pattern
+## 5. CRAFT — Arrangement: the list-and-compare pattern
 
 The least-finished screen, and the fourth shape in the product after the
 readout, the key bank and the form. Spec follows; it is meant to be buildable
@@ -346,65 +288,80 @@ Errors on this screen use `text-warning` in five places (`arrangement.js` 157,
   Keep it; a reader seeing disabled write controls would be worse than not
   seeing them.
 
-## 4. POLISH — Disabled controls still give no reason
+---
+
+## 6. POLISH — Disabled controls give no reason
 
 `Check spelling` on Spell Check, `PNG` and `SVG` on QR Codes. All `title: null`.
 A `title` is the minimum; helper text near the control is better, since a
-tooltip on a disabled button is unreliable on touch and QR Codes has the space
-beneath its preview.
+tooltip on a disabled button is unreliable on touch.
 
 ---
 
-## 5. Only Brandon can close this: the keyboard tab-through
+## 7. Only Brandon can close this: the keyboard tab-through
 
-Three authored `:focus-visible` rules exist. **Neither session can verify them.**
+Three authored `:focus-visible` rules exist. **Neither session can verify them** —
 `:focus-visible` is a heuristic about input modality, not a media query, and no
-synthetic focus satisfies it — both sessions drive the browser the same way and
-both fail identically.
+synthetic focus satisfies it.
 
 The check: tab from Search through to Go Live and back, in a dark room at low
 brightness. If focus disappears anywhere on that path, the Fluent Regular's
-keyboard-speed premise is broken, and nothing either session can screenshot
-would reveal it.
-
-Five minutes for a person. Impossible for us. The quality floor asks for
-keyboard operability end to end, so this is the one open item standing between
-the app and that claim.
+keyboard-speed premise is broken and nothing either session can screenshot would
+reveal it. Five minutes for a person, impossible for us.
 
 ---
 
 ## Decisions on record, so they are not re-litigated
 
-- **Surface:** always a docked side window. Never maximised.
-- **Nav rail:** 144px pinned. A truncated legend is a legend that failed.
+- **Two surfaces:** booth (Search, Live) and desk (everything else).
+- **Light theme stays.** `system` is the default and resolves to light on any
+  machine not in dark mode, so it is the out-of-box rendering for a church
+  office computer. Not an opt-in minority. Do not raise dropping it again.
+- **Material may be dark-only; signal and accessibility may not.** Contrast,
+  hit area, press feedback and whether a component renders cross the theme
+  boundary. Gradients, collars and texture do not have to.
+- **Nav rail:** 144px pinned, 3.5rem collapsed. A truncated legend is a legend
+  that failed.
 - **Fault colour:** `#C9922E`, Health only, enforced by selector.
-- **`--rf-dim` is a non-text token**, and there is no third text step. Quieter
-  than `muted` is achieved with size and tracking, not a fainter colour.
-- **Occlusion is a depth cue, not a colour cue.** A latched key is already
-  recessed; do not darken its legend too.
+- **`--rf-dim` is a non-text token**, and there is no third text step.
 - **An emitter has a hot core; a lit edge does not.** Only emitters count
   against the ceiling of four.
-- **Phosphor is for values, not labels.** The number glows; the word does not.
-- **The meter metaphor is for index progress only.** Never anything binary.
-- **The too-wide callout is setup-only.** Never a runtime overlay.
-- **Looks and Macros are Tier 3 by design.** `h-20` was inert and stays gone;
-  the 44px floor covers touch.
-- **Refrain never restyles a name its user wrote.** No case transform, no
-  abbreviation; clamp with the full name in `title`.
-- **Texture tiles are CC BY-SA 3.0** by Atle Mo, attributed per tile. Share-alike
-  is an accepted risk, recorded not resolved.
-- **Screen tiles on chroma as well as luminance.**
+- **Phosphor is for values the machine reports about itself**, never feedback on
+  the operator's own action.
+- **Occlusion applies to emitted light, not printed ink.**
+- **The meter metaphor is for index progress only.**
+- **The too-wide callout is setup-only** — and see item 1.4, it is misaimed.
+- **Looks and Macros are Tier 3 by design.**
+- **Refrain never restyles a name its user wrote.**
+- **Texture tiles are CC BY-SA 3.0** by Atle Mo, attributed per tile.
 - **Tailwind class names stay utility-flavoured**, with static homes in
   `refrain.css`. Those rules look redundant and must not be tidied away.
 
 ---
 
+## Before you measure anything
+
+Read the instrument section of `creative-direction.md`. Six confident wrong
+readings happened in two days. The two that will bite you fastest:
+
+- **The pane's animation clock is frozen.** Anything under `transition-all`
+  reports its start value forever — including colour. Set
+  `transition: none !important`, force a reflow, then measure.
+- **Cache-bust the page, not the stylesheet** (`/?r=N#screen`). The pane holds
+  the document and the modules independently, so current JS is not evidence of a
+  current stylesheet.
+
+Use `offsetHeight` for heights, and make transitioned measurements satisfy an
+independent sum.
+
+---
+
 ## Constraints, unchanged
 
-Everything in CLAUDE.md still applies: core search stays independent, no
-telemetry, no silent data loss, no vendor names in shared code, lint clean,
-tests passing, `node --check` on touched files, exercise browser-visible changes
-against a running dev server, commit only when asked.
+Everything in CLAUDE.md applies: core search stays independent, no telemetry, no
+silent data loss, no vendor names in shared code, lint clean, tests passing,
+`node --check` on touched files, exercise browser-visible changes against a
+running dev server, commit only when asked.
 
 Plus: copy is final copy in the right zone, never placeholder.
 
@@ -412,20 +369,23 @@ Plus: copy is final copy in the right zone, never placeholder.
 
 ## Status log
 
-One line per item, newest last. Format:
-
 `YYYY-MM-DD · <item> · done | partial | blocked · <one line>`
 
 - 2026-08-26 · Palette, radius, status indicators, fault colour · done · 059bf03
 - 2026-08-26 · Nav rail, meter, JIT trap documented · done · 62bdcda, 5989346, 433a058
-- 2026-08-26 · Texture · done · 633a697, two tiles, CC BY-SA, attributed
+- 2026-08-26 · Texture · done · 633a697
 - 2026-08-26 · Rail latching, icons, separators · done · 8765d47
 - 2026-08-26 · Wordmark, lit-edge marker, phosphor, hash routing · done · 4016bbd
 - 2026-08-26 · Perf-mode indicator + rail specificity bug · done · 4c27425
 - 2026-08-26 · Forms pattern, all five sub-pages · done · 5f56e7d, 180db3e
 - 2026-08-26 · Tile rename, touch floor restored · done · 6ba9818, 3aeaf24
 - 2026-08-26 · Release v0.10.0 · done · c75f9a4
-- 2026-08-26 · Icon default, uniform key bank, 100/100 accessible names · done · ae928d4
+- 2026-08-26 · Icon default, uniform key bank, 100/100 names · done · ae928d4
 - 2026-08-26 · Narrow-plus-pointer rule corrected · done · 1b56e5b
-- 2026-08-26 · Killed DaisyUI's button-pop spring, stopped rail keys travelling · done · 7841005
-- 2026-08-26 · Collapsed rail to 3.5rem, glyphs centred by construction · done · 66c1a51
+- 2026-08-26 · Button spring killed, rail keys stilled · done · 7841005
+- 2026-08-26 · Collapsed rail to 3.5rem · done · 66c1a51
+- 2026-08-27 · LINKED lamp on the icon axis · done · a97104b
+- 2026-08-27 · btn-brand plum in light theme · done · 3b175ce
+- 2026-08-27 · Tier heights + touch floor into light theme · done · 6b53a37
+- 2026-08-27 · Link lamp printed, not lit, in light theme · done · 14e698e
+- 2026-08-27 · Index meter renders in light theme · done · add13de

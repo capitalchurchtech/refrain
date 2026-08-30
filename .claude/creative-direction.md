@@ -14,9 +14,10 @@ PRODUCT      Refrain. Runs beside ProPresenter, searches inside slide
              content, and puts it on screen.
 JOB          Find the right slide fast and send it live.
 STAKES       Live operational. Failure is visible to a room.
-SURFACE      Always a docked side window beside ProPresenter. Narrow panel,
-             tall. Never designed for a maximised window; a wide viewport
-             means the operator has it set up wrong.
+SURFACE      Two, not one. BOOTH: Search and Live, docked beside
+             ProPresenter during a service. Narrow panel, tall, glanced at.
+             DESK: Health, Setup, Image Crop, QR Codes, Arrangement — a
+             normal window, at a desk, not during a service.
 STACK        Node / Express, Tailwind, DaisyUI, Firestore.
 BRAND        Independent. Open source. Judged on first look by other churches.
 ```
@@ -54,9 +55,27 @@ obvious visual path. Never average them.
 
 ## Operating conditions
 
-Test literally against all of these at once: dark room at low brightness;
-glanced at, not read; seconds of attention; someone talking to the operator;
-docked in a narrow vertical panel; failure is public.
+**Booth, for Search and Live.** Test literally against all of these at once:
+dark room at low brightness; glanced at, not read; seconds of attention;
+someone talking to the operator; docked in a narrow vertical panel; failure is
+public.
+
+**Desk, for everything else.** A normal window, ordinary light, unhurried, no
+audience. Health, Setup, Image Crop, QR Codes and Arrangement are admin work
+done by the tech admin or the Installer, not by the operator mid-service.
+
+This was one surface in earlier versions of this document, written from the
+Reluctant Operator's persona and applied to all three. That was wrong, and it
+had consequences: a container width capped for a narrow panel wasted 29% of a
+1280px window on the admin screens, and the too-wide nudge fired during setup —
+telling the Installer they had it set up wrong at exactly the moment a wide
+window was correct.
+
+**A wide window is misuse only on the booth path.** The nudge belongs there and
+should say to dock it before a service, not that the setup is wrong.
+
+Nothing about the material, the palette, the tiers or the voice changes between
+the two. Only the assumption about width, and what that licenses.
 
 ## Palette
 
@@ -93,13 +112,40 @@ no calmer.
 
 The same applies to occlusion. A latched key is already recessed, and depth is
 the cue — darkening its legend as well is belt-and-braces that costs
-legibility for a signal the shadow has already sent. Keep the legend at
-`muted`; let the junction and the accent edge carry the state.
+legibility for a signal the shadow has already sent.
+
+**But occlusion applies to emitted light, not printed ink.** A silkscreen legend
+does not dim when the key is pressed, so a latched key's label and icon may go
+to `text` at full strength. What they may not do is *glow*: which screen you are
+on is the operator's own navigation, not a state the machine is reporting, and
+emission is reserved for the latter. Presence comes from the accent edge, its
+soft lateral bleed, and full-strength ink — never from a fifth emitter.
 
 Warm hue is realism, saturated heat is signal. Neutrals lean warm because that
 is what metal looks like in a real room. But nothing is ever given a saturated
 warm colour except live. Not a warning, not a hover, not a chart. Neon values
 are emitters only and never appear as fills.
+
+### Light theme is a default path, not an opt-in
+
+`system` is the default theme when nothing is set, and `system` resolves to
+light on any machine not already in dark mode. So **light theme is the
+out-of-box rendering for a church office computer in daylight** — the
+Installer's condition, and a persona this document treats as first-class.
+
+It is not a minority preference and it cannot be dropped to avoid maintaining
+it. Five accessibility defects accumulated in the default rendering before
+anyone checked.
+
+**Verify in the theme the reporter is using, not the theme the design is
+written for.** That is the actionable form of the rule below — it names how to
+know which theme to check rather than leaving it to remember to check both.
+
+**And the concession needs saying precisely, because it was read too widely.**
+"Light theme is left to DaisyUI" can only ever mean *light theme does not get
+bespoke material*. It never licensed leaving signal, contrast, hit area, press
+feedback, or whether a component renders at all unverified. Material is
+appearance. The rest is whether the thing works.
 
 ### The design system is dark-scoped, so check the theme you do not design in
 
@@ -643,6 +689,17 @@ contrast check goes wrong on its own terms:
 So split the job: the browser answers which colour or rule actually applied,
 arithmetic answers what that means. Doing both in one query is where the
 plausible wrong number comes from.
+
+**A grep-shaped audit of scoping must compare resolved values, not selector
+text.** A sweep for "which selectors lack a light-theme rule" normalised
+`html.blackroom .rf-led.lit` and the unscoped `.rf-led.lit` to the same key, so
+a rule that already had its light value came back as a false positive. Selector
+text tells you what was written; only the resolved value tells you what a theme
+actually gets.
+
+This is the column-versus-class lesson one level up, and it applies to every
+count in this document that came from a grep. A number like "49 uses" or "12 of
+94 sites" is a starting point for looking, never a finding on its own.
 
 **Make every transitioned measurement satisfy an independent sum.** A frozen
 clock was caught once by noticing that 144 + 316 = 460 — rail plus column
