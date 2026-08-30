@@ -9,6 +9,7 @@ import {
   fullRebuildSuggestion,
   WATCH_DEFAULTS,
   FULL_REBUILD_SUGGEST_DAYS,
+  indexStaleness,
 } from "../server/library-watch.js";
 
 const READY = WATCH_DEFAULTS.settleAfterReadyMs + 1000;
@@ -315,4 +316,48 @@ test("the watcher resumes once performance mode ends", async () => {
   } finally {
     w.stop();
   }
+});
+
+// --- index staleness: the silent failure ---
+
+test("a fresh index says nothing at all", () => {
+  // Not a "fresh" object -- null, so the caller renders nothing. An all-clear
+  // nobody asked for is noise on the screen used under pressure.
+  const now = Date.UTC(2026, 7, 30);
+  assert.equal(indexStaleness(new Date(now).toISOString(), now), null);
+  assert.equal(indexStaleness(new Date(now - 47 * 3600_000).toISOString(), now), null);
+});
+
+test("two days old is the threshold, and it reports the age", () => {
+  const now = Date.UTC(2026, 7, 30);
+  const s = indexStaleness(new Date(now - 2 * 86_400_000).toISOString(), now);
+  assert.equal(s.days, 2);
+  assert.match(s.message, /Index is 2 days old\. Refresh\./);
+});
+
+test("the observed case: four days, which renders identically to fresh today", () => {
+  const now = Date.UTC(2026, 7, 30);
+  const s = indexStaleness(new Date(now - 4 * 86_400_000).toISOString(), now);
+  assert.equal(s.days, 4);
+  assert.match(s.message, /4 days old/);
+});
+
+test("one day is singular, if the threshold is ever lowered", () => {
+  const now = Date.UTC(2026, 7, 30);
+  const s = indexStaleness(new Date(now - 86_400_000).toISOString(), now, 1);
+  assert.match(s.message, /Index is 1 day old/);
+});
+
+test("a missing or unparseable builtAt reports nothing rather than guessing", () => {
+  const now = Date.UTC(2026, 7, 30);
+  for (const bad of [null, undefined, "", "not a date", 0]) {
+    assert.equal(indexStaleness(bad, now), null);
+  }
+});
+
+test("a builtAt in the future is not stale", () => {
+  // Clock skew between two machines sharing a synced folder should not produce
+  // a negative age rendered as staleness.
+  const now = Date.UTC(2026, 7, 30);
+  assert.equal(indexStaleness(new Date(now + 86_400_000).toISOString(), now), null);
 });

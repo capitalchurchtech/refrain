@@ -243,3 +243,46 @@ export function fullRebuildSuggestion(daysSince, threshold = FULL_REBUILD_SUGGES
       `ProPresenter upgrade changed. Worth running once you have a quiet hour.`,
   };
 }
+
+/**
+ * How long an index can go untouched before it should say so.
+ *
+ * Two days, and the reasoning is about when a church actually edits. The
+ * watcher reindexes within seconds of a presentation being saved -- but only
+ * while Refrain is running, and on most machines it is not. Songs get edited
+ * midweek with the app closed, so a Sunday morning index can be four days
+ * behind with nothing having gone wrong.
+ *
+ * That is the silent failure: a stale index renders identically to a fresh one,
+ * search quietly misses anything edited since, and the operator has no way to
+ * know. Two days spans a normal gap between touching the app without reaching
+ * back past the previous weekend.
+ */
+export const INDEX_STALE_DAYS = 2;
+
+/**
+ * Whether the index is old enough to mention, and what to say about it.
+ *
+ * Returns null below the threshold rather than a "fresh" object, so the caller
+ * renders nothing at all rather than an all-clear. A reassurance the operator
+ * did not ask for is noise on the screen they use under pressure, and it is the
+ * same reasoning that keeps nominal from being a colour anywhere else.
+ *
+ * Deliberately age rather than a real freshness check. Knowing whether the
+ * library has actually changed means reading every file, which is the expensive
+ * thing this exists to avoid doing on every page load. Age is honest about what
+ * it measures: nobody has looked recently.
+ */
+export function indexStaleness(builtAt, now = Date.now(), thresholdDays = INDEX_STALE_DAYS) {
+  const t = builtAt ? new Date(builtAt).getTime() : NaN;
+  if (!Number.isFinite(t)) return null;
+  const days = Math.floor((now - t) / 86_400_000);
+  if (days < thresholdDays) return null;
+  return {
+    days,
+    // Cold zone: what is true, then the one action. "Refresh" rather than
+    // "Reindex changed only" because the button beside it is the remedy and
+    // the operator does not need the mechanism named twice.
+    message: `Index is ${days} ${days === 1 ? "day" : "days"} old. Refresh.`,
+  };
+}

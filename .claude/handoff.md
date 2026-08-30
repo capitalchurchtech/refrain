@@ -1071,4 +1071,9 @@ Plus: copy is final copy in the right zone, never placeholder.
   what was found — verified against a real crash: query and presentation names
   absent, trail intact. 19 tests on redaction and on the report surviving
   circular payloads and throwing getters.
+- 2026-08-30 · Item 1b(a) · done · index staleness surfaced. `indexStaleness()`
+  beside `fullRebuildSuggestion()`, same shape, 2-day threshold with the reasoning
+  written down. Text state with a one-press Refresh, not a lamp. Returns null when
+  fresh so nothing renders — no all-clear nobody asked for. 6 tests including the
+  observed four-day case, clock skew, and unparseable dates.
 

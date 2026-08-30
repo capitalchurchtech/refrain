@@ -53,7 +53,9 @@ import {
   daysSinceFullBuild,
   getIndexedSlide,
 } from "./search-index.js";
-import { startLibraryWatch, fullRebuildSuggestion } from "./library-watch.js";
+import { startLibraryWatch, fullRebuildSuggestion,
+  indexStaleness,
+} from "./library-watch.js";
 import {
   isLive,
   initialState as initialPerformanceState,
@@ -792,6 +794,7 @@ function indexStatusPayload() {
       lastError: performance.lastError,
     },
     fullRebuildSuggestion: fullRebuildSuggestion(daysSinceFullBuild(index)),
+    staleness: indexStaleness(index?.builtAt ?? null),
     autoReindex: autoReindexEnabled()
       ? (libraryWatch?.status() ?? { watching: 0, outcome: "not started", pending: null })
       : null,

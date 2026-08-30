@@ -93,6 +93,44 @@ export function initSearch() {
     return checked.length < allLibraryFolders.length ? checked : null;
   }
 
+  /**
+   * Shows the index's age when it is old enough to matter, with the one press
+   * that fixes it.
+   *
+   * Nothing is rendered below the threshold -- an all-clear the operator did
+   * not ask for is noise on the screen they use under pressure.
+   */
+  function renderStaleness(staleness) {
+    const el = document.getElementById("index-staleness");
+    if (!el) return;
+    if (!staleness) {
+      el.classList.add("hidden");
+      el.innerHTML = "";
+      return;
+    }
+    el.classList.remove("hidden");
+    el.innerHTML = `
+      <span class="rf-flag">${escapeHtml(staleness.message)}</span>
+      <button id="index-refresh-btn" class="btn btn-chip ml-2">Refresh</button>`;
+    el.querySelector("#index-refresh-btn").addEventListener("click", async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      btn.textContent = "Refreshing";
+      crumb("reindex", { from: "stale" });
+      try {
+        const res = await fetch("/api/index/reindex-changed", { method: "POST" });
+        if (!res.ok) {
+          const { error } = await res.json().catch(() => ({}));
+          showFailure(`Couldn't refresh the index: ${error ?? "no answer"}. Try the Health screen.`);
+          return;
+        }
+        await refreshStatus();
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  }
+
   async function refreshStatus() {
     const [indexRes, connRes] = await Promise.all([
       fetch("/api/index/status").then((r) => r.json()),
@@ -110,6 +148,18 @@ export function initSearch() {
         }
       `
       : `<span class="inline-flex items-center gap-1"><i data-lucide="database" class="w-3.5 h-3.5"></i>Not built yet</span>`;
+
+    // The silent failure: a four-day-old index renders identically to a fresh
+    // one -- same colour, same weight, no signal -- while search quietly misses
+    // anything edited since. The watcher only reindexes while Refrain is
+    // running, and on most machines it is not, so a Sunday index can be days
+    // behind with nothing having gone wrong.
+    //
+    // Text state rather than a lamp, per the meter reasoning: an indicator that
+    // sits dark for weeks and lights once is not reporting, and the emitter
+    // budget is spent. And it carries its own remedy, because telling an
+    // operator something is wrong without the fix is half an answer.
+    renderStaleness(indexRes.staleness);
     if (window.lucide) window.lucide.createIcons();
 
     if (!connRes.connected) {
