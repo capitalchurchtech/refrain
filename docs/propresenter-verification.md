@@ -82,11 +82,35 @@ Confirmed on a real library: 80 of 184 songs have more than one arrangement and
 Relies on: `GET /v1/presentation/{uuid}` (read live at click time to resolve the
 current arrangement) plus the trigger endpoint from section 2.
 
-**Open question worth confirming here:** a few slides in a real library had
-`enabled: false`. Whether ProPresenter counts disabled slides in the flat
-trigger index is unverified, and Refrain currently counts them. If a song with a
-disabled slide fires one slide off, that is the cause. Capture the song and
-say which slide is disabled.
+**Verified 2026-08-30 on the live rig.** The wrong-slide correction works, and
+it was tested with a real divergence rather than a contrived one:
+
+- A song whose arrangement reorders groups was found by scanning: THIRDS puts a
+  slide at flat index 19 that raw group order puts at 58. Firing 19 with the
+  live selection also on THIRDS put the expected slide on the screens.
+- Then the stale case, which is what an arrangement switch actually produces:
+  index **58** was sent with the correct `(group, offset)` anchor, and the
+  server re-pointed it to **19** and fired the right slide. `corrected: true`,
+  and a 39-slide error was absorbed silently.
+- Repeated groups collapse as claimed: a chorus reported "sung 10x", "sung 13x"
+  and "sung 6x" on distinct rows, each distinct lyric appearing once at its
+  first occurrence.
+
+**Still needs a person:** switching the arrangement in ProPresenter's own UI
+between the two Go Live presses. The stale-index test above drives the identical
+code path with the identical input, so this is a belt-and-braces confirmation
+rather than an open risk.
+
+**Resolved 2026-08-30: ProPresenter counts disabled slides, and Refrain is
+right to count them too.** Measured on the live rig against a presentation with
+a disabled slide at flat index 25: firing index 27 put index 27 on the screens,
+with the expected text. Had ProPresenter skipped the disabled slide, that call
+would have landed on the following slide instead, and it did not.
+
+Also worth correcting: this is not rare. 16 of 45 presentations sampled contain
+at least one disabled slide, one of them six. So the behaviour matters far more
+than "a few slides" implied, which is why it is now measured rather than left
+open.
 
 **A note on speed.** On the machine this was tested against, ProPresenter took
 2 to 5 seconds to answer a trigger, focus, or status call, and appeared to
@@ -136,6 +160,20 @@ then succeeded in 15-30ms each once it had settled).
    means, so carrying entries over would leave the index a mix of two
    arrangements. Expect it to take as long as step 1.
 
+**Step 2 verified 2026-08-30, which is the claim that carries the feature.**
+With nothing touched in ProPresenter, "Reindex changed only" finished in **68ms**
+and reported **445 carried over, 0 changed, 0 added, 0 unverifiable**. So the
+fingerprints are stable across runs and an incremental reindex genuinely re-reads
+nothing. Had this reported a large number changed, every incremental reindex
+would in truth have been a full rebuild.
+
+**Steps 1, 3–8 still need a person, for two different reasons.** Steps 3–7 need a
+slide edited and saved in ProPresenter, which its API cannot do. Steps 1 and 8
+both force a full rebuild, and they were deliberately not run the evening before
+a service: a rebuild that fails or half-completes would degrade search on the
+Sunday, and the index was known-good at 445 presentations. Run them on a
+weekday, as the top of this section says.
+
 If ProPresenter is configured on another machine (host is not localhost),
 reindexing has no files to check and should always report a full rebuild.
 
@@ -160,6 +198,27 @@ The claim is that Refrain holds completely still while you are live.
 6. Quit ProPresenter. Within a minute performance mode should go **On** by
    itself, saying it cannot tell whether you are live. Start ProPresenter
    again and it should stand down once it can see the screens are clear.
+
+**Steps 1, 2, 3 and 5 verified 2026-08-30 on the live rig.**
+
+- Step 1: with the screens clear it read Off, source `null`.
+- Step 2: **it armed itself.** After two minutes of continuous output it went
+  On with source `auto` and the explanation "On because ProPresenter is showing
+  something". Worth knowing that it survived the live slide *changing* partway
+  through: performance mode tracks whether the rig is live, not which slide is,
+  so its timer does not restart when the operator advances. The live readout's
+  elapsed clock does restart, and that difference is correct in both cases.
+- Step 3: search kept working normally while armed (300 results), and the
+  **Reindex changed only** button still worked — an operator who explicitly
+  asks for a reindex gets one; the mode suppresses what Refrain would do on its
+  own, not what it is told to do.
+- Step 5: a manual arm outlasted clearing the screens, staying On with source
+  `manual`, and released only when told to.
+
+**Steps 4 and 6 not run.** Step 4 needs a twenty-minute wait. Step 6 means
+quitting the church's ProPresenter, which is not something to do to someone
+else's rig without asking. The unknown-state arm behind step 6 does have unit
+coverage in `test/performance-mode.test.js`.
 
 ---
 

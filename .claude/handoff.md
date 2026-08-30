@@ -765,4 +765,12 @@ Plus: copy is final copy in the right zone, never placeholder.
 - 2026-08-30 · Blocking alert() off the live path · done · d630ecf · five sites,
   not three — both of spellcheck.js's were missing from the item. Non-blocking
   overlay: layout does not move, focus not taken, control stays pressable.
+- 2026-08-30 · Verification checklist 2b–2d · done · ran against the live rig.
+  Arrangement correction proven with a real divergence (stale index 58 re-pointed
+  to 19, right slide fired). Performance mode arms itself at 2min, `source: auto`,
+  and a manual arm outlasts a clear. Incremental reindex: 445 carried, 0 changed,
+  68ms. **Open question resolved**: ProPresenter counts disabled slides, so
+  Refrain is right to; and they are common (16 of 45 presentations), not rare.
+  Not run: anything needing a slide edited in ProPresenter, a full rebuild the
+  night before a service, a 20-minute wait, or quitting the church's ProPresenter.
 
