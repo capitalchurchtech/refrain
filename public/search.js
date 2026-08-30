@@ -1,4 +1,5 @@
 import { mountLiveReadout, paintGoing, clearGoing } from "./live-readout.js";
+import { showFailure } from "./notice.js";
 
 export function initSearch() {
   const queryInput = document.getElementById("query");
@@ -304,7 +305,10 @@ export function initSearch() {
         if (!res.ok) {
           const { error } = await res.json();
           clearGoing();
-          alert(`Failed to go live: ${error}`);
+          // Cold zone: what happened, then the next action. The operator can
+          // press again with this still on screen -- that is the whole point of
+          // it not being an alert.
+          showFailure(`Didn't go live: ${error ?? "ProPresenter didn't answer"}. Press Go Live again.`);
         } else {
           window.refreshReturnBar?.();
         }
@@ -325,7 +329,7 @@ export function initSearch() {
         });
         if (!res.ok) {
           const { error } = await res.json();
-          alert(`Failed to show in editor: ${error}`);
+          showFailure(`Didn't open the editor: ${error ?? "ProPresenter didn't answer"}. Nothing on the screens changed.`);
         }
       } finally {
         editorBtn.disabled = false;

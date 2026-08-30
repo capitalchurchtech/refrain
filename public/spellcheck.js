@@ -4,6 +4,8 @@
  * (the API can't edit slides). "Ignore" adds a word to the allowlist so
  * it stops being flagged everywhere.
  */
+
+import { showFailure } from "./notice.js";
 export function initSpellcheck() {
   const container = document.getElementById("view-spellcheck");
   let lastResults = null;
@@ -182,8 +184,10 @@ export function initSpellcheck() {
               slideText: btn.dataset.slideText || "",
             }),
           });
-          if (!res.ok) alert(`Failed to go live: ${(await res.json()).error}`);
-          else window.refreshReturnBar?.();
+          if (!res.ok) {
+            const { error } = await res.json().catch(() => ({}));
+            showFailure(`Didn't go live: ${error ?? "ProPresenter didn't answer"}. Press Go Live again.`);
+          } else window.refreshReturnBar?.();
         } finally {
           btn.disabled = false;
         }
@@ -199,7 +203,10 @@ export function initSpellcheck() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ presentationId: btn.dataset.presentationId }),
           });
-          if (!res.ok) alert(`Failed to show in editor: ${(await res.json()).error}`);
+          if (!res.ok) {
+            const { error } = await res.json().catch(() => ({}));
+            showFailure(`Didn't open the editor: ${error ?? "ProPresenter didn't answer"}. Nothing on the screens changed.`);
+          }
         } finally {
           btn.disabled = false;
         }

@@ -63,10 +63,20 @@ the one slide guaranteed *not* to be the match — the search found a word
 somewhere in the presentation and slide 1 is the position that had nothing to do
 with it.
 
-Which means the header's **Show in Editor should open at the first matching
-slide, not slide 1.** The endpoint is gaining a slide index for the per-slide
-Show anyway, so this costs nothing and turns the header button from merely safe
-into actually useful.
+**CORRECTED 2026-08-27 — this part is not possible and must not be re-specced.**
+ProPresenter 21.3 exposes no slide-level focus. Probed against the live rig:
+`/v1/presentation/{id}/focus` works at presentation level (204); every
+slide-indexed variant 404s, and `slide_index` appears **only** alongside
+`trigger` — which is the hazard this item exists to remove.
+
+So `/api/focus` stays as it is, Show opens the presentation, and header Show and
+per-slide Show do the same thing. The per-slide one still earns its place, but
+for a different reason than I gave: **it is the safe action in the row where the
+live one is**, so the operator never travels to the header to avoid firing.
+That is a mis-aim and tab-order argument, not a precision one.
+
+I asserted a capability without checking the API. The editing session probed it
+rather than building against my assumption.
 
 ### The collar resolves itself
 

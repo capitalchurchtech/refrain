@@ -1,3 +1,5 @@
+import { showFailure } from "./notice.js";
+
 /**
  * App-wide "Return", and the history behind it.
  *
@@ -139,7 +141,7 @@ export function initReturnBar() {
       });
       if (!res.ok) {
         const { error } = await res.json().catch(() => ({}));
-        alert(`Couldn't return: ${error ?? res.statusText}`);
+        showFailure(`Couldn't go back: ${error ?? res.statusText}. Nothing on the screens changed.`);
         return;
       }
       const data = await res.json().catch(() => ({}));
