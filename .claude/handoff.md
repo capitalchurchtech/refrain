@@ -1082,4 +1082,9 @@ Plus: copy is final copy in the right zone, never placeholder.
   The machined groove was already built to spec and carries the column at gap 0.
   Note for item 8: the latched key does read more present between butted
   neighbours, so re-check whether widening the accent edge is still needed.
+- 2026-08-30 · Item 1c(b) · done · Live's tiles set in --rf-sans. My own miss from
+  the tile rename: I wrote that `text-transform: none` was load-bearing because
+  these are names the operator typed, then set them in mono, which restyles them
+  just as surely. "Full Screen/Standard" measures 114px in sans against 154px in
+  mono and now fits one line.
 

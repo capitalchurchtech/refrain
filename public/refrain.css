@@ -610,10 +610,22 @@ html.blackroom .rf-tile {
   border: 0;
   box-shadow: inset 0 0 0 1px var(--rf-hairline);
   color: var(--rf-text);
-  font-family: var(--rf-mono);
-  font-size: 11px;
+  /**
+   * Sans, not mono, and this was my own miss when the tile was named.
+   *
+   * I wrote that `text-transform: none` was load-bearing here because these are
+   * names the operator typed in ProPresenter -- and then set them in Martian
+   * Mono, which restyles those names just as surely as uppercasing them would.
+   * The rule is not about case; it is that user-authored data passes through as
+   * content. Mono is for data Refrain produces: counts, timestamps, indices.
+   *
+   * Practically better too. Mono is wider, so "Full Screen/Standard" wrapped to
+   * two lines at a width where the interface face does not.
+   */
+  font-family: var(--rf-sans);
+  font-size: 12px;
   font-weight: 500;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.01em;
   text-transform: none;
   text-shadow: none;
 }
