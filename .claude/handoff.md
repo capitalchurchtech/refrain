@@ -14,8 +14,6 @@ whose light-theme items are all shipped.
 The older Todoist project is **archive**. Do not add to it and do not assume a
 task there is live.
 
----
-
 ## Where this stands
 
 `v0.10.0` shipped; **seven commits sit unpushed after it**. The visual system is
@@ -31,7 +29,89 @@ screens, and a short tail.
 
 ---
 
-## 1. CRAFT — 29% of the window is dead space, and the brief caused it
+## 1. BLOCKER — Show is the default action, not Go Live
+
+Brandon: "Most primary actions should show the item not push a slide live,
+ensure that's the default across all quick items."
+
+Filed BLOCKER because the current default is the hazardous one on the live path,
+for the persona the direction says sets the default path.
+
+### The principle: hazard scales with what you cannot see
+
+Brandon's clarification sharpens this, and it is better than a blanket rule.
+It is not "Show everywhere." It is that **a live action is only legitimate once
+the operator can see what they are firing.**
+
+**Presentation header — remove Go Live entirely.** `Go Live (Slide 1)`
+(`search.js:157`) is a blind action: you searched for a word, matched a
+presentation, and the header offers to fire *slide 1* — a slide you have not
+looked at and which by definition is not the one you matched. If you wanted
+slide 1 you would be browsing, not searching. Header becomes **Show in Editor
+only**.
+
+**Per-slide rows — Go Live stays, and stays primary.** The slide's text is
+rendered right there. You found it, you read it, you send it. That is the core
+loop of the product. Add a Show option alongside it (they currently have none,
+`search.js:176`) as the secondary action, for opening the editor to check
+context before committing.
+
+So the safe default applies to the *unseen* action, not to every action.
+
+**And slide 1 is useless as a target generally, not just as a live one.** It is
+the one slide guaranteed *not* to be the match — the search found a word
+somewhere in the presentation and slide 1 is the position that had nothing to do
+with it.
+
+Which means the header's **Show in Editor should open at the first matching
+slide, not slide 1.** The endpoint is gaining a slide index for the per-slide
+Show anyway, so this costs nothing and turns the header button from merely safe
+into actually useful.
+
+### The collar resolves itself
+
+`search.js:194` applies `rf-armed` to the **first** `.go-live-btn` in the
+results. With the header button gone, that naturally becomes the first slide
+row — one collar, on the only live action on the screen, and it is the informed
+one. Verify this still lands correctly after the header button is removed
+rather than assuming it.
+
+**Guard by separation, not confirmation.** A confirm dialog would violate
+"confirmation is instantaneous or the operator presses twice." Within a slide
+row, Go Live sits apart from Show rather than butted against it, so a mis-aim
+lands on nothing.
+
+### A knock-on worth having
+
+The header currently stacks two buttons in a ~250px column, which is what wraps
+presentation titles onto four lines at docked width (logged separately in the
+earlier audit). Dropping to one button gives the title that width back.
+
+### Scope: found things, not live controls
+
+Applies to **search results, Spell Check jumps, Arrangement rows, history
+entries** — anything that is a *found item*.
+
+**Explicitly excluded: the Live screen.** Clear, Looks and Macros are live
+controls by definition; their whole job is putting things on screens. Nothing
+there changes.
+
+### The one piece of server work
+
+`/api/focus` (`server/index.js:1048`) accepts only `presentationId`, so "show in
+editor" opens the presentation rather than the slide that was found. It needs a
+slide index, and `focusPresentation` needs to navigate to it — otherwise Show
+cannot be the default for a slide result, which is the case that matters most.
+
+### Keyboard
+
+Enter on a focused result must Show, not Go Live. Go Live needs a deliberate
+modifier or its own key. The Fluent Regular currently has Go Live as the only
+keyboard path, and that is the same hazard in the power path.
+
+---
+
+## 2. CRAFT — 29% of the window is dead space, and the brief caused it
 
 Brandon: "the main section is centered instead of hugging the left menu, that
 means wasted pixels on dead space."
@@ -83,7 +163,60 @@ Project card and Operating conditions.
 
 ---
 
-## 1b. CRAFT — A status cluster, replacing the orphaned LINKED row
+## 3. CRAFT — The nav rail becomes a butted key bank
+
+Brandon, in three messages: square corners rather than rounded, drop the gaps,
+let the buttons touch. One change.
+
+**Current state:** `#nav-items` is `flex flex-col gap-1` (4px), the bottom
+control group is also `gap-1`, and nav keys inherit `--rounded-btn: 3px` with no
+nav-specific radius rule.
+
+**Target:** `gap: 0` and `border-radius: 0` on the nav keys and the bottom
+control group. Scoped to the rail.
+
+### Why this is right, beyond looking tighter
+
+**The junction treatment already does the job the gap was faking.** Each key
+carries `inset 0 1px 0` catching light on its top edge and `inset 0 -1px 0`
+falling to shadow at the bottom. When keys touch, one key's trailing shadow sits
+directly against the next key's leading highlight, and that dark-then-light pair
+*is* the seam between two key caps on real hardware. The gap was a substitute
+for a seam the material can produce properly.
+
+Square corners follow from the same logic: at 3px radius on butted keys you get
+a notch of background at every junction — sixteen of them down a nine-key
+column. Squares let the bank read as one machined block divided by seams.
+
+### Two consequences
+
+**The latched key gets more present for free.** Recessed between two raised
+neighbours and framed by their edges, it reads far more strongly as a pressed
+key in a bank. **Re-check item 2 before doing it** — widening the accent edge to
+3px may become unnecessary, and item 2's other two parts may be enough.
+
+**The group dividers become load-bearing.** With the gaps gone, the SERVICE /
+PREP / SYSTEM score lines are the only horizontal breaks in the column. They
+need to be a real machined groove — `border-top: 1px solid var(--rf-shadowline)`
+with `box-shadow: 0 1px 0 rgba(255,240,235,.06)` below — not a partial-opacity
+hairline. If that has already landed, verify it still reads at gap 0.
+
+### The general rule, so this is principled rather than a one-off
+
+**Anything in a butted bank is square; anything free-standing keeps its radius.**
+Content buttons, cards and chips are separated by space and keep 4/3/2px. The
+rail is the only butted bank in the product today, which is why this is a rail
+change and not a global one.
+
+**Open question, not a decision:** the Live tile bank is also a key bank, but
+its tiles are separated by `gap-3`. A console's Looks bank would plausibly be
+butted too — but 34 butted tiles with variable-length names may read as a wall
+rather than a bank. Worth trying once the rail lands and judging it rendered,
+rather than deciding it here.
+
+---
+
+## 4. CRAFT — A status cluster, replacing the orphaned LINKED row
 
 Brandon: "Live indicator light on collapsed menu looks way off. On expanded menu
 still looks off. Maybe have a status section that looks like hardware with
@@ -155,58 +288,9 @@ object with three indicators rather than three short rows.
 **Do not** make the lamps interactive. They report; they are not controls. That
 is the whole point of separating them from the key bank.
 
-## 1a. CRAFT — The nav rail becomes a butted key bank
+---
 
-Brandon, in three messages: square corners rather than rounded, drop the gaps,
-let the buttons touch. One change.
-
-**Current state:** `#nav-items` is `flex flex-col gap-1` (4px), the bottom
-control group is also `gap-1`, and nav keys inherit `--rounded-btn: 3px` with no
-nav-specific radius rule.
-
-**Target:** `gap: 0` and `border-radius: 0` on the nav keys and the bottom
-control group. Scoped to the rail.
-
-### Why this is right, beyond looking tighter
-
-**The junction treatment already does the job the gap was faking.** Each key
-carries `inset 0 1px 0` catching light on its top edge and `inset 0 -1px 0`
-falling to shadow at the bottom. When keys touch, one key's trailing shadow sits
-directly against the next key's leading highlight, and that dark-then-light pair
-*is* the seam between two key caps on real hardware. The gap was a substitute
-for a seam the material can produce properly.
-
-Square corners follow from the same logic: at 3px radius on butted keys you get
-a notch of background at every junction — sixteen of them down a nine-key
-column. Squares let the bank read as one machined block divided by seams.
-
-### Two consequences
-
-**The latched key gets more present for free.** Recessed between two raised
-neighbours and framed by their edges, it reads far more strongly as a pressed
-key in a bank. **Re-check item 2 before doing it** — widening the accent edge to
-3px may become unnecessary, and item 2's other two parts may be enough.
-
-**The group dividers become load-bearing.** With the gaps gone, the SERVICE /
-PREP / SYSTEM score lines are the only horizontal breaks in the column. They
-need to be a real machined groove — `border-top: 1px solid var(--rf-shadowline)`
-with `box-shadow: 0 1px 0 rgba(255,240,235,.06)` below — not a partial-opacity
-hairline. If that has already landed, verify it still reads at gap 0.
-
-### The general rule, so this is principled rather than a one-off
-
-**Anything in a butted bank is square; anything free-standing keeps its radius.**
-Content buttons, cards and chips are separated by space and keep 4/3/2px. The
-rail is the only butted bank in the product today, which is why this is a rail
-change and not a global one.
-
-**Open question, not a decision:** the Live tile bank is also a key bank, but
-its tiles are separated by `gap-3`. A console's Looks bank would plausibly be
-butted too — but 34 butted tiles with variable-length names may read as a wall
-rather than a bank. Worth trying once the rail lands and judging it rendered,
-rather than deciding it here.
-
-## 1c. CRAFT — Health's accordion headers use three different treatments
+## 5. CRAFT — Health's accordion headers use three different treatments
 
 Brandon: "Health accordion icons are not vertically aligned nicely."
 
@@ -261,66 +345,9 @@ axis, since the screen has 46 buttons and several row idioms.
 `.row` treatment — silkscreen label, value beside it — which would make the
 rows uniform by construction rather than by tuning.
 
-## 1d. BLOCKER — Show is the default action, not Go Live
-
-Brandon: "Most primary actions should show the item not push a slide live,
-ensure that's the default across all quick items."
-
-Filed BLOCKER because the current default is the hazardous one on the live path,
-for the persona the direction says sets the default path.
-
-### Why
-
-The Reluctant Operator is *nervous, mistakes are public*. A primary action that
-instantly changes what a room sees is the most hazardous default available. And
-Search is a **finding** tool: you search to find, then you decide. Showing is
-inspection; going live is commitment.
-
-**The sharpest instance:** per-slide result rows (`search.js:176`) have *only*
-Go Live. No editor option at all. The single most common interaction in the
-product — find a specific slide, act on it — has no safe path today.
-
-### Prominence and hazard are different axes — do not move the collar
-
-**Show in Editor takes prominence.** First in reading order, Tier 2 machined
-key, the default focus target, and what Enter does on a focused result.
-
-**Go Live keeps the Tier 1 lit collar.** The collar is the armed/live signal and
-it marks the thing that changes the room. Moving it to the safe action would
-waste the emitter *and* make the hazardous action quieter than the safe one. On
-real hardware the biggest most-reachable control is not the dangerous one; the
-dangerous one is the one that is lit.
-
-**Guard by separation, not confirmation.** A confirm dialog would violate
-"confirmation is instantaneous or the operator presses twice." Instead Go Live
-sits visually apart from Show rather than butted against it, so a mis-aim lands
-on nothing.
-
-### Scope: found things, not live controls
-
-Applies to **search results, Spell Check jumps, Arrangement rows, history
-entries** — anything that is a *found item*.
-
-**Explicitly excluded: the Live screen.** Clear, Looks and Macros are live
-controls by definition; their whole job is putting things on screens. Nothing
-there changes.
-
-### The one piece of server work
-
-`/api/focus` (`server/index.js:1048`) accepts only `presentationId`, so "show in
-editor" opens the presentation rather than the slide that was found. It needs a
-slide index, and `focusPresentation` needs to navigate to it — otherwise Show
-cannot be the default for a slide result, which is the case that matters most.
-
-### Keyboard
-
-Enter on a focused result must Show, not Go Live. Go Live needs a deliberate
-modifier or its own key. The Fluent Regular currently has Go Live as the only
-keyboard path, and that is the same hazard in the power path.
-
 ---
 
-## 1e. CRAFT — History entries jump to the editor on click
+## 6. CRAFT — History entries jump to the editor on click
 
 Brandon: "The history panel needs to have the items jump you there on click
 (not on the screens but the editor)."
@@ -344,7 +371,64 @@ Two implementation notes:
 Same treatment as the Arrangement list rows in item 5: flush, hairline groove,
 hover as the affordance, not a raised key.
 
-## 2. CRAFT — Make the latched nav key present, without a fifth emitter
+---
+
+## 7. CRAFT — Macro tiles carry the macro's own colour
+
+Brandon: "The macro icons need to pull the square and color just like in
+ProPresenter's UI. Do it creatively so it doesn't look horrible but respects the
+real version of the macro."
+
+**This reverses a deliberate decision, so read the existing reasoning first.**
+`propresenter-client.js:219` drops the colour on purpose: *"they are arbitrary
+hues (this rig has magenta, lime and two blues) and the palette reserves
+saturated warm for what is live. An icon is structural and survives being drawn
+in one colour; a hue does not."*
+
+That argument is correct about **filling a tile** with an arbitrary hue. It is
+not an argument for discarding the colour, and a rule written since points the
+other way: **"Refrain never restyles a name its user wrote."** A macro's colour
+is the operator's own classification, the same category as its name. Dropping it
+is a stronger form of restyling than showing it.
+
+### Both concerns resolve at once
+
+**The macro colour is printed ink. Live is emission.** A flat swatch with no
+glow and a lit collar with a halo are categorically different objects, so even a
+red or orange macro swatch cannot be mistaken for the live signal. Same
+distinction that lets the section markers glow without spending an emitter,
+applied in reverse.
+
+### Form
+
+Faithful to what ProPresenter shows, which is a coloured square:
+
+- **~10px square swatch** at the tile's leading edge, on the icon axis, in the
+  macro's exact colour. Flat: no gradient, no bevel, and **never a glow**.
+- **1px `--rf-hairline` rim**, so a very pale or very dark macro still reads
+  against the panel. The rim does not alter the colour, it gives it an edge —
+  the same trick as the light-theme lamp's hollow ring.
+- **The icon stays.** ProPresenter shows both; the icon is structural, the
+  swatch is identity.
+- **No colour means no swatch.** Never substitute grey: an absent swatch is
+  honest, an invented one is a colour the operator did not choose.
+- Applies to macros. Looks do not carry a colour in the API — leave them alone
+  rather than inventing parity.
+
+### Server change
+
+`propresenter-client.js` currently maps `{ id, name, icon }` and discards
+`entry.color`. Add it, and **update that comment** — it records the opposite
+decision and will otherwise read as an instruction to whoever sees the field
+being passed through.
+
+Check the shape ProPresenter returns before assuming hex; it may be a
+components object rather than a string, and a malformed colour must degrade to
+no swatch rather than to black.
+
+---
+
+## 8. CRAFT — Make the latched nav key present, without a fifth emitter
 
 Brandon asked whether the current nav item's icon and text could glow.
 
@@ -367,7 +451,7 @@ does not dim when the key is pressed.
 
 ---
 
-## 3. CRAFT — Every screen is a destination with no onward path
+## 9. CRAFT — Every screen is a destination with no onward path
 
 The connective tissue between screens was never designed. Nine islands; nothing
 says what to do next, so the operator has to know the product to keep moving.
@@ -396,7 +480,7 @@ extend that to navigation.
 
 ---
 
-## 4. CRAFT — Finish the semantic colour sweep
+## 10. CRAFT — Finish the semantic colour sweep
 
 Raw DaisyUI semantic colours by file: `health.js` 44, `arrangement.js` 19,
 `library-sync.js` 8, `setup.js` 6, `search.js` 2, `live.js` 2,
@@ -411,7 +495,7 @@ inverted performance-mode dot in place while Health looked finished.
 
 ---
 
-## 5. CRAFT — Arrangement: the list-and-compare pattern
+## 11. CRAFT — Arrangement: the list-and-compare pattern
 
 The least-finished screen, and the fourth shape in the product after the
 readout, the key bank and the form. Spec follows; it is meant to be buildable
@@ -551,7 +635,7 @@ Errors on this screen use `text-warning` in five places (`arrangement.js` 157,
 
 ---
 
-## 6. POLISH — Disabled controls give no reason
+## 12. POLISH — Disabled controls give no reason
 
 `Check spelling` on Spell Check, `PNG` and `SVG` on QR Codes. All `title: null`.
 A `title` is the minimum; helper text near the control is better, since a
@@ -559,7 +643,7 @@ tooltip on a disabled button is unreliable on touch.
 
 ---
 
-## 7. Only Brandon can close this: the keyboard tab-through
+## 13. Only Brandon can close this: the keyboard tab-through
 
 Three authored `:focus-visible` rules exist. **Neither session can verify them** —
 `:focus-visible` is a heuristic about input modality, not a media query, and no
@@ -569,6 +653,9 @@ The check: tab from Search through to Go Live and back, in a dark room at low
 brightness. If focus disappears anywhere on that path, the Fluent Regular's
 keyboard-speed premise is broken and nothing either session can screenshot would
 reveal it. Five minutes for a person, impossible for us.
+
+---
+
 
 ---
 
@@ -641,6 +728,16 @@ Plus: copy is final copy in the right zone, never placeholder.
 - 2026-08-26 · Forms pattern, all five sub-pages · done · 5f56e7d, 180db3e
 - 2026-08-26 · Tile rename, touch floor restored · done · 6ba9818, 3aeaf24
 - 2026-08-26 · Release v0.10.0 · done · c75f9a4
+- 2026-08-29 · Dark by default; light theme kept as documented secondary · done · 86c5e0c
+- 2026-08-29 · Return history, ten places · done · 35997f7 · verified on the live rig
+- 2026-08-29 · Macro icons from ProPresenter's image_type · done · 61ecd60
+- 2026-08-30 · Item 1 · partial · Show-only header, Show on slide rows, collar
+  lands on the informed action. **The server half is not possible**: ProPresenter
+  21.3 exposes no slide-level focus. `/v1/presentation/{id}/focus` returns 204,
+  `/{id}/{n}/focus` and `/{id}/focus/{n}` both 404, and `slide_index` is not
+  writable (PUT and POST both 404, nothing fired). An index only ever appears
+  alongside `trigger`, which is the hazard the item exists to avoid. So Show
+  opens the presentation, never the matched slide.
 - 2026-08-26 · Icon default, uniform key bank, 100/100 names · done · ae928d4
 - 2026-08-26 · Narrow-plus-pointer rule corrected · done · 1b56e5b
 - 2026-08-26 · Button spring killed, rail keys stilled · done · 7841005

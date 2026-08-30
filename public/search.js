@@ -153,12 +153,19 @@ export function initSearch() {
                 ${song.slides.length} matching slide${song.slides.length === 1 ? "" : "s"}${song.appearsIn.length ? ` &middot; in ${song.appearsIn.length} playlist(s)` : ""}
               </div>
             </div>
-            <div class="flex flex-col gap-1 shrink-0">
-              <button class="btn btn-brand btn-xs go-live-btn" data-presentation-id="${song.presentationId}" data-slide-index="0" data-presentation-name="${escapeHtml(song.presentationName ?? "")}" data-arrangement-name="${escapeHtml(song.arrangementName ?? "")}">
-                Go Live (Slide 1)
-              </button>
+            <!-- Show only. "Go Live (Slide 1)" used to sit here, and it was a
+                 blind action: you searched for a word, matched a presentation,
+                 and the header offered to fire slide 1 -- a slide you have not
+                 looked at, and by definition not the one you matched. If you
+                 wanted slide 1 you would be browsing, not searching.
+
+                 A live action is only legitimate once the operator can see what
+                 they are firing, which is true in the slide rows below and was
+                 never true here. Dropping to one button also gives the title
+                 back the width that was wrapping it onto four lines. -->
+            <div class="shrink-0">
               <button class="btn btn-outline btn-xs show-in-editor-btn" data-presentation-id="${song.presentationId}">
-                Show in Editor
+                Show in editor
               </button>
             </div>
           </div>
@@ -173,9 +180,20 @@ export function initSearch() {
                   </div>
                   <div class="text-sm">${highlightMatch(r.snippet, query)}</div>
                 </div>
-                <button class="btn btn-brand btn-xs go-live-btn shrink-0" data-presentation-id="${r.presentationId}" data-slide-index="${r.slideIndex}" data-group-id="${escapeHtml(r.groupId ?? "")}" data-group-offset="${r.groupOffset ?? ""}" data-slide-text="${escapeHtml(r.snippet ?? "")}" data-presentation-name="${escapeHtml(r.presentationName ?? "")}" data-arrangement-name="${escapeHtml(r.arrangementName ?? "")}">
-                  Go Live
-                </button>
+                <!-- Go Live stays primary here and only here: the slide's text
+                     is rendered alongside it, so this is the informed action.
+                     Show sits apart from it rather than butted against it --
+                     guarding by separation rather than by a confirm dialog,
+                     because a confirmation the operator has to read is the
+                     thing that makes them press twice. -->
+                <div class="flex items-center gap-3 shrink-0">
+                  <button class="btn btn-chip show-in-editor-btn" data-presentation-id="${r.presentationId}" title="Open in ProPresenter's editor without changing what is on the screens">
+                    Show
+                  </button>
+                  <button class="btn btn-brand btn-xs go-live-btn" data-presentation-id="${r.presentationId}" data-slide-index="${r.slideIndex}" data-group-id="${escapeHtml(r.groupId ?? "")}" data-group-offset="${r.groupOffset ?? ""}" data-slide-text="${escapeHtml(r.snippet ?? "")}" data-presentation-name="${escapeHtml(r.presentationName ?? "")}" data-arrangement-name="${escapeHtml(r.arrangementName ?? "")}">
+                    Go Live
+                  </button>
+                </div>
               </div>
             `
               )
@@ -191,6 +209,11 @@ export function initSearch() {
     // and the collar moves to whatever the operator hovers or tabs to from
     // there, so a broad query does not light 1315 buttons at once. See the
     // moving-hero block in refrain.css.
+    //
+    // With the header's blind Go Live gone, the first `.go-live-btn` in the
+    // results is now the first *slide row* rather than a presentation header --
+    // so the collar lands on the informed action for free. Asserted in the
+    // browser rather than assumed.
     resultsEl.querySelector(".go-live-btn")?.classList.add("rf-armed");
   }
 
