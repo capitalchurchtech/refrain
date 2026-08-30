@@ -210,7 +210,23 @@ export class ProPresenterClient {
 
   /** The Macros configured in this ProPresenter. */
   async getMacros() {
-    return normalizeIdList(await this.#get("/v1/macros"));
+    const raw = await this.#get("/v1/macros");
+    // Mapped from the raw entries rather than by re-indexing the normalized
+    // list: normalizeIdList drops anything without a uuid, so a single
+    // malformed macro would shift every icon by one and quietly mislabel the
+    // whole bank.
+    //
+    // Deliberately not the macro's `color`. The operator did choose those, but
+    // they are arbitrary hues (this rig has magenta, lime and two blues) and
+    // the palette reserves saturated warm for what is live. An icon is
+    // structural and survives being drawn in one colour; a hue does not.
+    return (Array.isArray(raw) ? raw : [])
+      .map((entry) => ({
+        id: entry?.id?.uuid,
+        name: entry?.id?.name ?? "Untitled",
+        icon: macroIcon(entry?.image_type),
+      }))
+      .filter((entry) => entry.id);
   }
 
   /** Runs a Macro by uuid. */
@@ -288,6 +304,35 @@ function normalizeIdList(list) {
   return (Array.isArray(list) ? list : [])
     .map((entry) => ({ id: entry?.id?.uuid, name: entry?.id?.name ?? "Untitled" }))
     .filter((entry) => entry.id);
+}
+
+/**
+ * ProPresenter's macro icons, as a Lucide name.
+ *
+ * A macro carries an `image_type` -- the icon the operator picked for it in
+ * ProPresenter -- from a small closed set. Reading it means a church's own
+ * Timer, Bell and Megaphone macros arrive on the Live screen looking like
+ * themselves, so a bank of 26 mono labels becomes scannable by shape rather
+ * than by reading every one under pressure.
+ *
+ * A closed enum from ProPresenter's own API, so mapping it here is the same
+ * kind of thing as reading `presentation_index` -- ProPresenter-specific by
+ * nature, and confined to ProPresenter's own client file.
+ *
+ * Unknown values fall through to null rather than a guess: a wrong icon is
+ * worse than none, because it makes the bank look scannable while lying.
+ */
+const MACRO_ICONS = {
+  Sun: "sun",
+  Bell: "bell",
+  Timer: "timer",
+  Megaphone: "megaphone",
+  Audio: "volume-2",
+  Exclamation: "circle-alert",
+};
+
+export function macroIcon(imageType) {
+  return MACRO_ICONS[imageType] ?? null;
 }
 
 export { normalizeText };

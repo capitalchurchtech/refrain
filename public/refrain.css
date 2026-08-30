@@ -2627,3 +2627,33 @@ html.blackroom .rf-return-entry:hover {
 #return-history-tab {
   width: fit-content;
 }
+
+/* A macro's own icon, from ProPresenter's `image_type`. Drawn in the tile's
+   ink rather than the macro's colour: the icon is structural and survives one
+   colour, a hue would not, and the palette reserves saturated warm for live.
+   Sized against the label rather than the icon default, since it sits beside
+   11px mono in a Tier 3 tile. */
+.rf-tile-icon {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  margin-right: 7px;
+  opacity: 0.75;
+}
+
+/**
+ * And the tile must not wrap, or the icon goes above the label.
+ *
+ * DaisyUI's `.btn` sets `flex-wrap: wrap`, so on a tile whose name needs two
+ * lines the label became a flex item too wide to sit beside the icon and got
+ * pushed onto its own line -- putting the glyph on top, centred, on exactly the
+ * four longest macros. This is the same trap that once pushed the nav rail's
+ * legends under their icons, and it is invisible from the short names: 22 of
+ * the 26 tiles looked perfect.
+ *
+ * The icon is `flex: none` and the label already clamps, so nowrap costs
+ * nothing and the row stays icon-then-name at any length.
+ */
+.rf-tile {
+  flex-wrap: nowrap;
+}

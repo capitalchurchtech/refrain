@@ -222,11 +222,19 @@ export function initLive() {
         // full name goes in `title` so nothing is ever lost -- no abbreviating
         // and no case transform, because the operator named these in
         // ProPresenter and Refrain does not restyle a name its user wrote.
+        // Macros carry the icon the operator chose for them in ProPresenter
+        // (`image_type`), which makes a bank of 26 mono labels scannable by
+        // shape instead of by reading every one under pressure. Looks have no
+        // equivalent and simply render without one, so the markup has to work
+        // either way rather than reserving a gap.
         (it) =>
-          `<button class="btn rf-tile" data-${kind}="${escapeHtml(it.id)}" title="${escapeHtml(it.name)}"><span class="rf-tile-label">${escapeHtml(it.name)}</span></button>`
+          `<button class="btn rf-tile" data-${kind}="${escapeHtml(it.id)}" title="${escapeHtml(it.name)}">${
+            it.icon ? `<i data-lucide="${escapeHtml(it.icon)}" class="rf-tile-icon"></i>` : ""
+          }<span class="rf-tile-label">${escapeHtml(it.name)}</span></button>`
       )
       .join("");
     document.getElementById(wrapId).classList.remove("hidden");
+    if (window.lucide) window.lucide.createIcons();
     grid.querySelectorAll(`[data-${kind}]`).forEach((btn) =>
       btn.addEventListener("click", () => fire(btn, `/api/live/${kind}`, { id: btn.dataset[kind] }, btn.textContent.trim()))
     );

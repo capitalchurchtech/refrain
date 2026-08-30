@@ -206,6 +206,144 @@ butted too — but 34 butted tiles with variable-length names may read as a wall
 rather than a bank. Worth trying once the rail lands and judging it rendered,
 rather than deciding it here.
 
+## 1c. CRAFT — Health's accordion headers use three different treatments
+
+Brandon: "Health accordion icons are not vertically aligned nicely."
+
+Measured: the icons *are* centred within their own rows — vertical centre offset
+0 on all five that have one. The rows are the problem.
+
+**Three header treatments in one screen:**
+
+| where | `health.js` | treatment |
+|---|---|---|
+| Library Sync, error state | 594 | `flex items-center gap-2` **with icon** |
+| Library Sync, normal state | 605 | plain block, **no icon at all** |
+| Five config sections | 964, 1018, 1059, 1102, 1143 | `min-h-0 py-2`, icon, inline hint |
+
+Consequences:
+
+- **Library Sync only gets an icon when it is broken.** In its normal state the
+  icon column has a hole, and the label starts where the others' icons do.
+- **Row heights are 56, 56, 64, 64, 76 and 80px** — five heights across six
+  rows. The `text-xs opacity-50` hint ("host, port, role", "scope,
+  arrangements", "defaults") sits inline after the name and wraps differently
+  per row, so each row is sized by its own content.
+- An icon centred in a 76px row sits *below* the name it labels; centred in a
+  56px row it sits beside it. That drift down the column is what reads as bad
+  alignment.
+
+### Fix
+
+**One treatment for all six**, and **align the icon to the first text line
+rather than to the row.** Centring in the row is what causes the drift, and it
+will keep drifting at docked width where the hints wrap whatever the padding is:
+
+```css
+/* header row */
+display: flex;
+align-items: flex-start;
+gap: 8px;
+
+/* the icon, sitting on the name's cap height rather than the block centre */
+margin-top: calc((1lh - 16px) / 2);   /* or a measured px equivalent */
+flex: none;
+```
+
+Every header gets an icon at `w-4 h-4 opacity-70`, including Library Sync's
+normal state — pick the same `folder-sync` glyph its error state already uses.
+
+Then apply the item-0 lesson: **audit the column, not the class.** Once these
+six agree, check every other icon-plus-label row on Health against the same
+axis, since the screen has 46 buttons and several row idioms.
+
+**Related, already logged as item 4:** the hint text is a candidate for the
+`.row` treatment — silkscreen label, value beside it — which would make the
+rows uniform by construction rather than by tuning.
+
+## 1d. BLOCKER — Show is the default action, not Go Live
+
+Brandon: "Most primary actions should show the item not push a slide live,
+ensure that's the default across all quick items."
+
+Filed BLOCKER because the current default is the hazardous one on the live path,
+for the persona the direction says sets the default path.
+
+### Why
+
+The Reluctant Operator is *nervous, mistakes are public*. A primary action that
+instantly changes what a room sees is the most hazardous default available. And
+Search is a **finding** tool: you search to find, then you decide. Showing is
+inspection; going live is commitment.
+
+**The sharpest instance:** per-slide result rows (`search.js:176`) have *only*
+Go Live. No editor option at all. The single most common interaction in the
+product — find a specific slide, act on it — has no safe path today.
+
+### Prominence and hazard are different axes — do not move the collar
+
+**Show in Editor takes prominence.** First in reading order, Tier 2 machined
+key, the default focus target, and what Enter does on a focused result.
+
+**Go Live keeps the Tier 1 lit collar.** The collar is the armed/live signal and
+it marks the thing that changes the room. Moving it to the safe action would
+waste the emitter *and* make the hazardous action quieter than the safe one. On
+real hardware the biggest most-reachable control is not the dangerous one; the
+dangerous one is the one that is lit.
+
+**Guard by separation, not confirmation.** A confirm dialog would violate
+"confirmation is instantaneous or the operator presses twice." Instead Go Live
+sits visually apart from Show rather than butted against it, so a mis-aim lands
+on nothing.
+
+### Scope: found things, not live controls
+
+Applies to **search results, Spell Check jumps, Arrangement rows, history
+entries** — anything that is a *found item*.
+
+**Explicitly excluded: the Live screen.** Clear, Looks and Macros are live
+controls by definition; their whole job is putting things on screens. Nothing
+there changes.
+
+### The one piece of server work
+
+`/api/focus` (`server/index.js:1048`) accepts only `presentationId`, so "show in
+editor" opens the presentation rather than the slide that was found. It needs a
+slide index, and `focusPresentation` needs to navigate to it — otherwise Show
+cannot be the default for a slide result, which is the case that matters most.
+
+### Keyboard
+
+Enter on a focused result must Show, not Go Live. Go Live needs a deliberate
+modifier or its own key. The Fluent Regular currently has Go Live as the only
+keyboard path, and that is the same hazard in the power path.
+
+---
+
+## 1e. CRAFT — History entries jump to the editor on click
+
+Brandon: "The history panel needs to have the items jump you there on click
+(not on the screens but the editor)."
+
+Consistent with 1d, and the same reasoning: a history entry is a record of
+something that happened, so acting on it means going to look at it.
+
+Arrangement's history entries (`arrangement.js:440`) are
+`<div class="... history-entry" data-service-date="...">` — not interactive. The
+row becomes clickable and calls `/api/focus`, opening the song in the
+ProPresenter editor. **Never `/api/trigger`.**
+
+Two implementation notes:
+
+- There is already a button inside each entry (`arrangement.js:502` reads
+  `btn.closest(".history-entry")`). Making the row clickable must not swallow
+  that button's click — stop propagation on the inner control.
+- The row needs a hover affordance and a real accessible name, per the Forms
+  pattern. A clickable div with no keyboard path is worse than a static one.
+
+Same treatment as the Arrangement list rows in item 5: flush, hairline groove,
+hover as the affordance, not a raised key.
+
 ## 2. CRAFT — Make the latched nav key present, without a fifth emitter
 
 Brandon asked whether the current nav item's icon and text could glow.
