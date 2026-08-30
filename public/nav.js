@@ -118,7 +118,7 @@ export async function initNav({ onNavigate, viewIds }) {
    */
   const hashId = location.hash.slice(1);
   let activeId = items.some((i) => i.id === hashId) ? hashId : (items[0]?.id ?? "search");
-  let currentTheme = prefs.theme ?? "system";
+  let currentTheme = prefs.theme ?? "dark";
   // Expanded by default until the user chooses: on a fresh install navPinned
   // is unset (null), so a first-time user sees labels rather than a wall of
   // unlabeled icons. Once they collapse or expand, that choice (true/false)

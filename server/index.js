@@ -252,7 +252,7 @@ app.get("/api/preferences", (_req, res) => {
   // navPinned is left as null when the user hasn't chosen, so the frontend
   // can default a first-time user to the expanded (labelled) nav.
   res.json({
-    theme: config.theme ?? "system",
+    theme: config.theme ?? "dark",
     navPinned: config.navPinned ?? null,
     welcomeDismissed: Boolean(config.welcomeDismissed),
   });
