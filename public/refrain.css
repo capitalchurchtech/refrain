@@ -2539,3 +2539,91 @@ html.blackroom #link-led[data-link="up"]::before {
 html.blackroom #link-row[data-link="down"] {
   color: #E8DCEF;
 }
+
+/* ============================================================
+   32. THE RETURN HISTORY
+
+   Return used to offer one place back, because the server kept one. A
+   second jump overwrote the first, so the way back to the plan was
+   destroyed by the act of leaving the tangent -- which is why it
+   "sometimes worked". It keeps ten now, and they need somewhere to go.
+
+   The panel is recessed, because it reports where you have been rather
+   than being something you press: it is a readout whose lines happen to
+   be actionable. Its rows follow the same reasoning as Arrangement's
+   list -- a row is a line on a panel you can touch, not a key -- so
+   they sit flush with hairline grooves and take hover as the
+   affordance, with no raised fill and no travel.
+
+   No emitter anywhere in here. This is navigation history, not a state
+   the machine is reporting about itself, and the budget of four is
+   already spent.
+   ============================================================ */
+#return-history-panel {
+  margin-top: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+}
+[data-theme="dark"] #return-history-panel,
+html.blackroom #return-history-panel {
+  background-color: var(--rf-ground);
+  box-shadow: var(--rf-junction-recessed);
+}
+
+.rf-return-entry {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 12px;
+  min-height: 36px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+/* Hairline grooves between lines, not around them: a divider belongs
+   between two rows, and a border on every row draws one twice. */
+.rf-return-entry + .rf-return-entry {
+  border-top: 1px solid var(--rf-hairline);
+}
+.rf-return-name {
+  font-size: 13px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The operator's own text, so it is never transformed -- see the tile rule.
+   Only the metadata beside it is Refrain's to set in silkscreen. */
+.rf-return-meta {
+  flex: none;
+  font-family: var(--rf-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+}
+[data-theme="dark"] .rf-return-name,
+html.blackroom .rf-return-name {
+  color: var(--rf-text);
+}
+[data-theme="dark"] .rf-return-meta,
+html.blackroom .rf-return-meta {
+  color: var(--rf-muted);
+}
+[data-theme="dark"] .rf-return-entry:hover,
+html.blackroom .rf-return-entry:hover {
+  background-color: var(--rf-machined);
+}
+/* A row is not a key, so pressing it does not travel. The rim tightens
+   instead, the same acknowledgement the chips use. */
+.rf-return-entry:active {
+  transform: none;
+}
+
+/* The standalone handle, for when there is no bar above it. Left-aligned
+   rather than full width: it is a tab you pull, and a full-width control
+   would read as a banner claiming something is happening. */
+#return-history-tab {
+  width: fit-content;
+}

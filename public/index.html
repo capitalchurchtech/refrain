@@ -375,11 +375,34 @@
            app-initiated Go Live arms a return pin server-side; then it
            shows on every screen so the operator can snap back to where the
            plan was in one click. -->
-      <div id="return-bar" class="hidden alert alert-warning py-2 px-3 mb-3 flex items-center justify-between gap-2" role="status" aria-live="polite">
-        <span id="return-bar-label" class="text-sm"></span>
-        <button id="return-bar-btn" class="btn btn-outline btn-sm shrink-0">
-          <i data-lucide="corner-up-left" class="w-4 h-4"></i> Return
+      <div id="return-wrap" class="mb-3">
+        <div id="return-bar" class="hidden alert alert-warning py-2 px-3 flex items-center justify-between gap-2" role="status" aria-live="polite">
+          <span id="return-bar-label" class="text-sm min-w-0"></span>
+          <span class="flex items-center gap-1 shrink-0">
+            <button id="return-bar-btn" class="btn btn-outline btn-sm">
+              <i data-lucide="corner-up-left" class="w-4 h-4"></i> Return
+            </button>
+            <!-- The pulldown handle. Sits with Return rather than apart from it,
+                 because "back one" and "back further" are the same intent at
+                 different depths. -->
+            <button id="return-history-toggle" class="btn btn-chip hidden" aria-expanded="false"
+                    aria-controls="return-history-panel" title="Earlier places you jumped from">
+              <i data-lucide="history" class="w-3 h-3"></i>
+              <span id="return-history-count"></span>
+            </button>
+          </span>
+        </div>
+
+        <!-- When nothing was jumped away from just now but earlier places are
+             still reachable, the bar is gone and only this tab remains. It is a
+             handle, not an alert: it reports no state and demands nothing. -->
+        <button id="return-history-tab" class="hidden btn btn-chip" aria-expanded="false"
+                aria-controls="return-history-panel">
+          <i data-lucide="history" class="w-3 h-3"></i>
+          <span id="return-history-tab-count"></span>
         </button>
+
+        <div id="return-history-panel" class="hidden" role="group" aria-label="Places you jumped from"></div>
       </div>
 
       <section id="view-search">

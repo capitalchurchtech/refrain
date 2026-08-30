@@ -63,6 +63,7 @@ import {
   describe as describePerformance,
 } from "./performance-mode.js";
 import { resolveArrangement, flattenGroups, findLiveIndex } from "./arrangements.js";
+import { pushReturnEntry, findReturnEntry } from "./return-history.js";
 import {
   syncLibrary,
   takeSnapshot,
@@ -941,13 +942,29 @@ app.get("/api/search/folders", (_req, res) => {
   res.json({ folders: getIndexedFolders() });
 });
 
-// The "return pin": a single-slot memory of the slide that was live the
-// instant the operator last used the app to jump somewhere. It arms only
-// on an app-initiated Go Live and is captured once, so advancing slides by
-// hand in ProPresenter afterward never moves it — letting a worship
-// operator snap back to where the plan was before a tangent. In-memory on
-// purpose: it's ephemeral live-service state, not data worth persisting.
-let returnPin = null;
+// Where the operator has jumped away from, newest first. Arms only on an
+// app-initiated Go Live and each place is captured once, so advancing slides
+// by hand in ProPresenter afterward never moves it.
+//
+// This was a single slot, which is why Return "sometimes worked": a second
+// jump overwrote the first, so the way back to the plan was destroyed by the
+// act of leaving the tangent you were trying to leave. Two jumps is not an
+// edge case — it is what hunting for something mid-service looks like.
+//
+// In-memory on purpose, like the slot before it: ephemeral live-service state,
+// not data worth persisting. A restart clearing it is correct, since a "return
+// to" from before a restart points into a service that already ended.
+let returnHistory = [];
+
+// Whether the bar should be offering the most recent place right now.
+//
+// Separate from the history on purpose, because "where you have been" and
+// "there is something to come back from" are two different facts. Returning
+// answers the second without erasing the first: the place stays reachable
+// through the history, it just stops being an alert. Conflating them made the
+// history-only state unreachable, since any non-empty history always had a head
+// to show on the bar.
+let returnPinActive = false;
 
 /**
  * Re-points a stored slide index at the slide the operator actually clicked.
@@ -1008,7 +1025,8 @@ app.post("/api/trigger", async (req, res) => {
     // Capture where we were before jumping, so "Return" can bring us back.
     // Compared against the corrected index, since that's what will fire.
     if (current && !(current.presentationId === presentationId && current.slideIndex === target.index)) {
-      returnPin = current;
+      returnHistory = pushReturnEntry(returnHistory, { ...current, leftAt: new Date().toISOString() });
+      returnPinActive = true;
     }
 
     await client.triggerSlide(presentationId, target.index);
@@ -1041,8 +1059,11 @@ app.post("/api/focus", async (req, res) => {
 });
 
 // Current return pin, for the app-wide "Return" bar to show/hide itself.
+// `pin` is the most recent place, which is what the bar shows at rest;
+// `history` is everything reachable behind it. Both come from one call so the
+// bar and its pulldown can never disagree about the same moment.
 app.get("/api/return-pin", (_req, res) => {
-  res.json({ pin: returnPin });
+  res.json({ pin: returnPinActive ? (returnHistory[0] ?? null) : null, history: returnHistory });
 });
 
 // Snap back to where we were before the jump: bring that presentation up
@@ -1050,14 +1071,26 @@ app.get("/api/return-pin", (_req, res) => {
 // slide themselves, then consume the pin. Deliberately focus-only, not a
 // trigger — returning must never change what's on the screens mid-service.
 app.post("/api/return", async (req, res) => {
-  if (!returnPin) return res.status(409).json({ error: "Nothing to return to." });
-  const target = returnPin;
+  const { presentationId, slideIndex } = req.body ?? {};
+  // Identified by value rather than by position: the history can gain an entry
+  // between the operator seeing the list and clicking it, which would shift
+  // every index and return them somewhere they did not choose. No body means
+  // "the most recent", which is the bar's own button.
+  const target =
+    presentationId !== undefined
+      ? findReturnEntry(returnHistory, presentationId, slideIndex)
+      : (returnHistory[0] ?? null);
+  if (!target) return res.status(409).json({ error: "Nothing to return to." });
   try {
     await client.focusPresentation(target.presentationId);
-    returnPin = null;
-    res.json({ ok: true, returnedTo: target });
+    // Stand the bar down, but keep the place. The operator has answered "do you
+    // want to go back", not "was this ever somewhere you were" -- and a place
+    // they returned to once is a place they may want again. The history is what
+    // the pulldown reads.
+    returnPinActive = false;
+    res.json({ ok: true, returnedTo: target, pinActive: false, history: returnHistory });
   } catch (err) {
-    // leave the pin armed so the operator can try again
+    // leave the history intact so the operator can try again
     res.status(502).json({ error: err.message });
   }
 });

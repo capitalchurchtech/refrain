@@ -83,6 +83,129 @@ Project card and Operating conditions.
 
 ---
 
+## 1b. CRAFT — A status cluster, replacing the orphaned LINKED row
+
+Brandon: "Live indicator light on collapsed menu looks way off. On expanded menu
+still looks off. Maybe have a status section that looks like hardware with
+several status lights?"
+
+**The geometry is already correct — do not nudge pixels.** Measured with
+transitions disabled: expanded rail 144, every glyph centre at 20; collapsed
+rail 56, every glyph centre at 28, which is the exact rail centre. The lamp is
+8×8 in a 16px box in both states. The axis fix from `a97104b` holds.
+
+Three other things are wrong, and they are why it still reads badly:
+
+- **Optical mass.** A 16px lucide icon is a line drawing filling its box; an 8px
+  solid dot covers about 20% of the same area. Centred but recessive — it cannot
+  hold a column of icons.
+- **Row height.** `#link-row` is `h-7`, **28px**, among nav items at 36 and
+  bottom controls at 40. The shortest thing in the rail.
+- **Category.** Everything else in that column is a control with hover and press
+  behaviour. LINKED is a static readout wedged among them, so it reads as an
+  orphan — a status line dressed as a menu item.
+
+### The cluster
+
+Brandon's instinct is right and it is the correct fix. It solves the category
+problem — status stops pretending to be navigation — and it is the most
+recognisable rack-unit vocabulary the product has not used.
+
+It also fixes a scattering problem: **status currently lives in four places.**
+Link in the rail, index freshness on Search's stat strip, performance mode on
+Live (`live.js`, 11 references), live state in `live-readout.js` on Search only.
+Nothing tells the operator what is live while they are on Health.
+
+**Which lamps earn a place.** Same discipline that ruled out the global sync
+bar: a lamp that never changes is decoration.
+
+- **LINK** — yes. The quality floor names it: disconnected must be unmistakable
+  and always visible.
+- **LIVE** — yes, and arguably the strongest of the three. The phosphor readout
+  exists only on Search, so nothing reports live state from any other screen.
+- **PERF** — yes, probably. It varies on its own, arming after something has
+  been live a couple of minutes and releasing when the screens clear, so it is a
+  machine-reported state that actually moves.
+- **INDEX** — no. Stale index is real but not binary and rarely changes. The
+  direction already wrote the text line for it: `Index is 2 days old. Refresh.`
+  A lamp that holds one colour for weeks is furniture.
+
+**No emitter-budget problem.** The ceiling counts emitter *kinds*, and "the
+LEDs" is already one of the four. A cluster of three is still one kind.
+
+### Form
+
+A recessed sub-panel at the foot of the rail, above the controls, separated by a
+score line. Junction treatment pointing inward so it reads as an inset
+instrument rather than another row — this is the one place in the rail that is
+recessed rather than flush or raised, which is exactly right: **recessed means
+information comes out.**
+
+- Expanded: lamp plus silkscreen legend at 8px / 0.15em, one per row, on the
+  existing 16px icon column so the axis survives.
+- Collapsed at 56px: lamps only, stacked, centred on the rail axis. Legends drop.
+- The lamps keep the item-0 construction — 16px column, 8px lamp drawn by
+  `::before`, so neither state can collapse the column.
+- Light theme: printed, not lit, per the rule in the direction. Solid fill lit,
+  hollow ring unlit.
+
+Give the panel a real height rather than `h-7` per row, so it reads as one
+object with three indicators rather than three short rows.
+
+**Do not** make the lamps interactive. They report; they are not controls. That
+is the whole point of separating them from the key bank.
+
+## 1a. CRAFT — The nav rail becomes a butted key bank
+
+Brandon, in three messages: square corners rather than rounded, drop the gaps,
+let the buttons touch. One change.
+
+**Current state:** `#nav-items` is `flex flex-col gap-1` (4px), the bottom
+control group is also `gap-1`, and nav keys inherit `--rounded-btn: 3px` with no
+nav-specific radius rule.
+
+**Target:** `gap: 0` and `border-radius: 0` on the nav keys and the bottom
+control group. Scoped to the rail.
+
+### Why this is right, beyond looking tighter
+
+**The junction treatment already does the job the gap was faking.** Each key
+carries `inset 0 1px 0` catching light on its top edge and `inset 0 -1px 0`
+falling to shadow at the bottom. When keys touch, one key's trailing shadow sits
+directly against the next key's leading highlight, and that dark-then-light pair
+*is* the seam between two key caps on real hardware. The gap was a substitute
+for a seam the material can produce properly.
+
+Square corners follow from the same logic: at 3px radius on butted keys you get
+a notch of background at every junction — sixteen of them down a nine-key
+column. Squares let the bank read as one machined block divided by seams.
+
+### Two consequences
+
+**The latched key gets more present for free.** Recessed between two raised
+neighbours and framed by their edges, it reads far more strongly as a pressed
+key in a bank. **Re-check item 2 before doing it** — widening the accent edge to
+3px may become unnecessary, and item 2's other two parts may be enough.
+
+**The group dividers become load-bearing.** With the gaps gone, the SERVICE /
+PREP / SYSTEM score lines are the only horizontal breaks in the column. They
+need to be a real machined groove — `border-top: 1px solid var(--rf-shadowline)`
+with `box-shadow: 0 1px 0 rgba(255,240,235,.06)` below — not a partial-opacity
+hairline. If that has already landed, verify it still reads at gap 0.
+
+### The general rule, so this is principled rather than a one-off
+
+**Anything in a butted bank is square; anything free-standing keeps its radius.**
+Content buttons, cards and chips are separated by space and keep 4/3/2px. The
+rail is the only butted bank in the product today, which is why this is a rail
+change and not a global one.
+
+**Open question, not a decision:** the Live tile bank is also a key bank, but
+its tiles are separated by `gap-3`. A console's Looks bank would plausibly be
+butted too — but 34 butted tiles with variable-length names may read as a wall
+rather than a bank. Worth trying once the rail lands and judging it rendered,
+rather than deciding it here.
+
 ## 2. CRAFT — Make the latched nav key present, without a fifth emitter
 
 Brandon asked whether the current nav item's icon and text could glow.

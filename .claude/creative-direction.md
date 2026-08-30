@@ -507,6 +507,21 @@ On press the cap travels two pixels and the collar tightens. Light never
 brightens on press: a real key bottoming out occludes its own light rather than
 adding to it.
 
+### A bank of keys is butted and square
+
+Where keys sit together as a bank they touch, with no gap and no radius.
+Free-standing controls keep their corners; a bank does not.
+
+The seam is the material, not the space. Each key's trailing shadow sits
+directly against its neighbour's leading highlight, and that dark-then-light
+pair is what the join between two key caps looks like. A gap is a substitute for
+a seam the junction treatment can produce properly, and a radius on butted keys
+puts a notch of background at every junction.
+
+One consequence worth expecting: a latched key reads far more strongly when it
+is recessed between two raised neighbours, because their edges frame it. Check
+whether a bank needs its accent widened before widening it.
+
 ### Latching keys
 
 A key representing a state you are already in is **latched down**, the way an
