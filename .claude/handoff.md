@@ -172,6 +172,242 @@ rendered rather than deciding here.
 **Minor:** slide numbers render as sentence-case body where they are data. The
 type rules put data in mono.
 
+## 1c. CRAFT — Fresh review of the other eight screens, 2026-08-30
+
+### Verified fixed — do not re-work
+
+Zero unlabelled inputs on all eight screens. Every disabled button carries a
+`title` (**item 12 is done**). `h1` is 25.76px uppercase on every screen. Live's
+tiles are uniform 44px. Arrangement's rows are 33px, not 77px — scroll height
+6,318 rather than ~14,000.
+
+### a. Three screens have no real headings
+
+**Live, Image Crop and QR Codes have zero `<h2>` elements.** Their sections are
+`<div>`s styled to look like headings:
+
+- Live: `PERFORMANCE MODE`, `CLEAR`, `LOOKS`, `MACROS` — divs at 12px uppercase
+- Image Crop: `OUTPUT PRESETS`, `RECENT ACTIVITY` — divs at 9px uppercase
+- QR Codes: no section structure at all beyond `h1`
+
+Same class as the `<div class="label">` finding: the design is right, the
+structure is not. A screen-reader user cannot navigate Live by heading, and Live
+is the busiest screen during a service. Health, Scripture, Lyrics, Spell Check
+and Arrangement all have real `h2`s, so this is three screens out of step rather
+than a missing convention.
+
+### b. Live's tiles are in monospace, and those are user-authored names
+
+"Full Screen/Standard", "Christmas Countdown", "(FS) Worship" render in Martian
+Mono. **That restyles names the operator wrote in ProPresenter**, which breaks
+the rule in the direction. Mono is for data — counts, timestamps, indices. A
+name is content and belongs in `--rf-sans`.
+
+Also practically worse: mono is wider, so "Full Screen/Standard" wraps to two
+lines where the interface face probably would not.
+
+### c. Section labels disagree on size
+
+Live's are 12px, Image Crop's are 9px. Same role, two values. Pick one — the
+silkscreen spec is 8-10px, so 9px is the compliant one.
+
+### d. Health has two `h2` treatments
+
+`Settings` renders at 17px uppercase while the card titles use the 10px mono
+silkscreen. This is the finding from the very first review and it is still open.
+
+### e. Health still has two singleton button heights
+
+One at 28px, one at 30px, among 36×13 and 44×31. Two controls that never got a
+tier class.
+
+### Instrument note
+
+A `glowingEls` count in this pass was invalid — the query omitted a visibility
+filter and accumulated across screens as they rendered into the DOM. Nothing is
+reported from it. Recording the error rather than the number, per the rule about
+grep-shaped and selector-shaped audits.
+
+## 1d. FEATURE — A crash report the operator copies, not one the app sends
+
+**Brandon's revision, and it is better than the emailing version I specced
+first. Build this one.** The original spec is kept below the line for its
+report-contents section, which still applies; ignore its transport.
+
+Instead of the app sending mail, the crash surface shows the report and offers
+one button that copies it. The operator pastes it wherever they like.
+
+### Why this is the better design
+
+- **It deletes the risk surface.** No SMTP, no credentials, no recipient
+  config, no `nodemailer`, no `POST /api/crash-report` to protect, no rate
+  limiting, no crash-loop mail storm, no swallowed send failures. Roughly half
+  the original spec was machinery to stop the reporter making things worse.
+- **The telemetry question stops existing** rather than being defensible.
+  Nothing leaves the machine, so the README's claim is untouched.
+- **Redaction stops being load-bearing.** The operator sees the report before it
+  goes anywhere. Consent rather than engineering, and better than any scrubbing
+  rule I could write. Keep the redaction anyway — someone will paste without
+  reading — but it is now a second line of defence rather than the only one.
+- **It works when an emailer could not.** A mailer cannot report a server crash
+  that killed the server, or anything at all with the network down — often
+  exactly why things broke. A client-rendered page with a copy button works in
+  both cases.
+
+Accepted cost: fewer reports, because a volunteer mid-service will reload and
+carry on rather than copy anything. That is the right behaviour for them, and a
+crash that matters recurs.
+
+### Where it lives — extend what exists, do not build a new page
+
+`public/error-boundary.js` already has both surfaces:
+
+- `safeRender` shows an in-view message when a screen's render throws. That is
+  already a crash page for that screen — give it the report.
+- `installGlobalErrorBoundary` shows a dismissible banner for uncaught errors
+  and rejections. Give it the report too.
+
+### Craft that makes it good rather than merely simpler
+
+- **Two actions, and the volunteer's is the obvious one.** `Reload` is primary
+  and large — mid-service that is the only thing they should do. `Copy report`
+  is secondary, for the admin afterwards.
+- **Show the report, do not hide it behind the button.** Visibility is the
+  consent mechanism. A scrollable block is fine.
+- **One press copies everything.** A `Copy report` button writing the whole
+  block to the clipboard, not "select the text below".
+- **Do not use `mailto:`.** Practical URL length caps around 2,000 characters
+  truncate the report silently, and formatting is mangled. Clipboard plus "paste
+  it into an email" is more reliable and platform-agnostic.
+- **The crash surface must not depend on the app that crashed.** No module
+  imports, minimal JS, inline styles if necessary. If the renderer died, the
+  thing reporting it cannot rely on the renderer.
+- **Assembling the report must not throw.** Guard the serialisation — a circular
+  object in an error payload will break `JSON.stringify` — and fall back to
+  whatever partial report can be built. A crash reporter that crashes is the
+  joke that writes itself.
+- **Cold zone.** A crash mid-service is the coldest moment in the product. State
+  what happened and what to do now. No charm anywhere near it.
+
+### Copy
+
+Something close to:
+
+```
+This screen stopped working. Reload to carry on.
+If it keeps happening, copy the report and send it to your tech admin.
+```
+
+Report contents, the ranked field list, and the redaction rules are unchanged
+from the section below — only the transport changes.
+
+---
+
+## 1d-orig. Superseded transport: crash reports by email
+
+Brandon: any error that would normally crash the app emails him a report
+detailed enough that fixing it is trivial — which app, which page, what the last
+actions were.
+
+### First: this is not telemetry, but only if built exactly this way
+
+CLAUDE.md forbids telemetry absolutely: *no phoning home to anything the project
+controls*. An email from the operator's own server, using their own SMTP
+credentials, to their own address, is the machine telling its owner — a
+different thing. Three conditions keep it that way, and the first is
+non-negotiable:
+
+1. **No default recipient, ever.** `to` ships empty. If unset, the feature is
+   inert and no code path sends anything. A default address in shipped code
+   would route every other church's crashes to one inbox with nobody opting in.
+   That would be telemetry, and the worst kind.
+2. **The project never proxies.** SMTP credentials are the operator's, in
+   `.env`. No relay, no Refrain-hosted endpoint, no third-party error service.
+3. **The README gets updated honestly.** "No telemetry" stays true, but the
+   distinction has to be stated rather than left for someone to discover. That
+   is the "be honest in the docs" rule.
+
+### Second: what must never be in a report
+
+A crash on Search could otherwise carry slide text, a search query, or
+presentation names. CLAUDE.md forbids *committing* real church data; emailing it
+is worse.
+
+**Breadcrumbs record what was pressed, never what was found.**
+
+- **Never:** slide text, search query strings, presentation or song names, lyrics,
+  scripture text, macro names (user-authored), library file paths.
+- **Yes:** route, Refrain's own control ids and labels, HTTP method + path +
+  status, timings, error message and stack, counts.
+
+A search breadcrumb reads `search → 117 results`, never the query. Presentation
+UUIDs are safe; names are not.
+
+### What makes a report actually actionable
+
+Ranked by whether an agent can fix without it:
+
+1. **Commit SHA.** Without it everything else is guesswork about which code ran.
+   Highest-value single field. Include whether the tree was dirty at boot.
+2. **Error message, class, and stack with file:line.**
+3. **Which side** — client or server. Different files, different fixes.
+4. **Route** (`#health`) — the hash routing added earlier makes this free.
+5. **Breadcrumb timeline** — the last ~25 events, ring buffer, memory only,
+   never persisted.
+6. **State that changes behaviour:** theme, viewport, rail pinned or collapsed,
+   role (logger/reader), which modules are active, ProPresenter reachable, index
+   age.
+7. **Occurrence count** — is this the first time or the fortieth. A crash loop
+   and a one-off need different responses.
+
+### Format: one fenced block, paste-ready
+
+Subject: `Refrain crash · <screen> · <error class>` so it is scannable in an
+inbox. Body is a single fenced block containing the whole report, so it can be
+copied into an agent session in one action rather than reassembled.
+
+Lead the block with repo, version and commit — the fix starts there.
+
+### The reporter must never make things worse
+
+- **Never crashes the app.** A failing send is swallowed. A reporter that throws
+  inside an error handler turns a recoverable error into a dead app.
+- **Never blocks.** Fire and forget; nothing on the live path waits on SMTP.
+- **Rate limited.** Dedupe by error signature, cap per hour. A crash loop must
+  not send four hundred emails during a service.
+- **Independent of ProPresenter.** The most useful reports are the ones where
+  ProPresenter is the thing that broke.
+- Client errors need `POST /api/crash-report` to reach the mailer. Rate-limit
+  that endpoint too.
+
+### Where it hooks in — all four points exist already
+
+- `public/error-boundary.js` — `installGlobalErrorBoundary` (uncaught +
+  unhandledrejection) and `safeRender` (per-screen render failures).
+- `server/index.js:131` and `:134` — `unhandledRejection` and
+  `uncaughtException`.
+- Add Express error middleware for 500s, which currently return JSON and vanish.
+
+### Architecture, per CLAUDE.md
+
+- Non-secret config in `config.json`: `crashReport: { enabled, to, from }`.
+  Document the shape in `config.example.json`.
+- Secrets in `.env`: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`. Names
+  listed blank in `.env.example`.
+- `getCrashReportModuleStatus(config)` in `server/config.js`, reporting off /
+  misconfigured / active, surfaced on Health like every other optional module.
+  Missing credentials degrade to misconfigured — never crash, never silently
+  stop reporting.
+- Tests for the redaction and the rate limiter specifically. Redaction is the
+  part where a bug leaks church data, so it earns a test rather than a manual
+  check.
+
+### One decision for Brandon
+
+Sending mail needs a dependency; `nodemailer` is the conventional choice. This
+project is deliberately spare, so that is worth an explicit yes rather than
+assuming. The alternative is hand-rolling SMTP, which is worse.
+
 ## 2. CRAFT — 29% of the window is dead space, and the brief caused it
 
 Brandon: "the main section is centered instead of hugging the left menu, that
@@ -828,4 +1064,11 @@ Plus: copy is final copy in the right zone, never placeholder.
   key bank to 4/5 columns, dock nudge re-aimed to the booth path. 1280px:
   368px dead -> 0, main 768 -> 1136. Docked 460px unchanged at 316. Only 15
   distinct prose sites needed measure, not the whole app.
+- 2026-08-30 · Item 1d · done · crash report the operator copies. Nothing sent:
+  no SMTP, no endpoint, no config, no dependency. `/api/build` exposes the commit
+  (read from .git, no subprocess), cached client-side at boot so a report still
+  has it when the server is what died. Breadcrumbs record what was pressed, never
+  what was found — verified against a real crash: query and presentation names
+  absent, trail intact. 19 tests on redaction and on the report surviving
+  circular payloads and throwing getters.
 

@@ -8,6 +8,8 @@
  * button, persisted in config.json's theme.
  */
 
+import { crumb } from "./breadcrumbs.js";
+
 const THEME_CYCLE = ["system", "light", "dark", "blackroom"];
 const THEME_LABEL = { system: "System", light: "Light", dark: "Dark", blackroom: "Blackroom" };
 const THEME_ICON = { system: "sun-moon", light: "sun", dark: "moon", blackroom: "moon-star" };
@@ -208,6 +210,8 @@ export async function initNav({ onNavigate, viewIds }) {
   }
 
   function setActive(id) {
+    // Which screen, never what was on it.
+    crumb("nav", { to: id });
     activeId = id;
     /**
      * replaceState, not pushState. pushState would give back-button navigation

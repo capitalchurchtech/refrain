@@ -1,5 +1,6 @@
 import { mountLiveReadout, paintGoing, clearGoing } from "./live-readout.js";
 import { showFailure } from "./notice.js";
+import { crumb } from "./breadcrumbs.js";
 
 export function initSearch() {
   /**
@@ -250,6 +251,9 @@ export function initSearch() {
     // so the collar lands on the informed action for free. Asserted in the
     // browser rather than assumed.
     resultsEl.querySelector(".go-live-btn")?.classList.add("rf-armed");
+    // The count, never the query. `search -> 117 results` is enough to see the
+    // shape of what led to a crash; the words are the operator's church's.
+    crumb("search", { results: songs.length });
   }
 
   // String-based (not DOM textContent->innerHTML) so quote characters are
@@ -349,6 +353,7 @@ export function initSearch() {
       } finally {
         liveBtn.disabled = false;
       }
+      crumb("golive", { presentation: liveBtn.dataset.presentationId, slide: Number(liveBtn.dataset.slideIndex) });
       return;
     }
 

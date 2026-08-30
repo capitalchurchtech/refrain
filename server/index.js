@@ -64,6 +64,7 @@ import {
 } from "./performance-mode.js";
 import { resolveArrangement, flattenGroups, findLiveIndex } from "./arrangements.js";
 import { pushReturnEntry, findReturnEntry } from "./return-history.js";
+import { buildInfo } from "./build-info.js";
 import {
   syncLibrary,
   takeSnapshot,
@@ -84,6 +85,12 @@ import { loadSpeller, findTypos, tokenize, addToAllowlist, removeFromAllowlist, 
 import { normalizeSongTitle } from "../providers/planning-center.js";
 
 const { version } = JSON.parse(readFileSync("./package.json", "utf-8"));
+
+// Which code is actually running, resolved once at boot. The crash report's
+// most valuable field is the commit: a church updates by `git pull`, so two
+// machines can both report v0.11.0 and be eleven commits apart, and without it
+// every stack trace is guesswork about which source produced it.
+const BUILD = buildInfo({ version });
 
 /**
  * Candidate lyrics sites a church can pick from for the Lyrics-assist
@@ -202,6 +209,14 @@ function isNewerVersion(a, b) {
  * request identifies this install or its church in any way, consistent
  * with the "no phone-home" privacy commitment in the README.
  */
+// Build identity for the crash report. The client fetches this once at boot and
+// caches it, deliberately: at crash time the server may be the thing that
+// broke, and a report missing its commit is the one field that makes the rest
+// guesswork.
+app.get("/api/build", (_req, res) => {
+  res.json(BUILD);
+});
+
 app.get("/api/version-check", async (_req, res) => {
   try {
     const ghRes = await fetch(GITHUB_PACKAGE_JSON_URL, { signal: AbortSignal.timeout(5000) });
