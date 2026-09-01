@@ -7,6 +7,8 @@
  * provider's supportsPlanBrowsing capability — Planning Center has it,
  * but nothing here hardcodes that it's the only provider that could.
  */
+import { showFailure } from "./notice.js";
+
 export function initArrangement() {
   const container = document.getElementById("view-arrangement");
   let currentSongs = [];
@@ -51,9 +53,18 @@ export function initArrangement() {
               ? `<div class="alert alert-info py-2 text-sm">Read-only. This machine's role is "reader," so comparisons run on the logger machine.</div>`
               : ""
           }
-          ${showWeekendPlan ? `<div id="weekend-plan-card" class="card bg-base-200"><div class="card-body p-3 gap-2"></div></div>` : ""}
-          <input type="text" id="arrangement-song-filter" class="input input-bordered w-full" placeholder="Filter..." aria-label="Filter songs by name" />
-          <div class="flex flex-col divide-y divide-base-300" id="arrangement-song-list"></div>
+          ${showWeekendPlan ? `<div id="weekend-plan-card" class="card bg-base-200 rf-hero"><div class="card-body p-3 gap-2"></div></div>` : ""}
+          <div class="rf-field">
+            <label for="arrangement-song-filter" class="flex items-center justify-between gap-2">
+              <span>Filter songs</span>
+              <span id="arrangement-song-count"></span>
+            </label>
+            <input type="text" id="arrangement-song-filter" class="input input-bordered w-full" placeholder="Type to narrow" />
+          </div>
+          <div>
+            <h2 class="card-title">Tracked songs</h2>
+            <div class="rf-list" id="arrangement-song-list"></div>
+          </div>
         </div>
         <div id="arrangement-detail" class="hidden"></div>
       </div>
@@ -91,7 +102,7 @@ export function initArrangement() {
     ]);
     const data = await planRes.json();
     if (!planRes.ok) {
-      body.innerHTML = `<h2 class="card-title text-base"><i data-lucide="calendar-check" class="w-4 h-4"></i> This weekend's plan</h2><div class="text-sm text-warning">${escapeHtml(data.error)}</div>`;
+      body.innerHTML = `<h2 class="card-title text-base"><i data-lucide="calendar-check" class="w-4 h-4"></i> This weekend's plan</h2><div class="text-sm rf-flag">${escapeHtml(data.error)}</div>`;
       return;
     }
     // Keep the picker in sync with whichever plan actually loaded (e.g. first load with no selection yet).
@@ -117,7 +128,7 @@ export function initArrangement() {
           .map(
             (s) => `
           <div class="flex items-center gap-2 py-1.5 text-sm">
-            <i data-lucide="${s.presentationId ? "check-circle-2" : "help-circle"}" class="w-3.5 h-3.5 shrink-0 ${s.presentationId ? "text-success" : "text-warning"}"></i>
+            <span class="rf-led rf-led-col ${s.presentationId ? "lit" : ""}" title="${s.presentationId ? "Matched in ProPresenter" : "Not found in ProPresenter"}"></span>
             <span class="flex-1 truncate min-w-0">${escapeHtml(s.title)}</span>
           </div>
         `
@@ -125,7 +136,7 @@ export function initArrangement() {
           .join("")}
       </div>
       <button id="compare-all-btn" class="btn btn-brand btn-sm w-fit mt-1">
-        <i data-lucide="git-compare" class="w-3.5 h-3.5"></i> Compare All Songs
+        <i data-lucide="git-compare" class="w-3.5 h-3.5"></i> Compare all songs
       </button>
       <div id="compare-all-results"></div>
     `;
@@ -154,7 +165,7 @@ export function initArrangement() {
       });
       const data = await res.json();
       if (!res.ok) {
-        resultsEl.innerHTML = `<div class="text-sm text-warning mt-2">${escapeHtml(data.error)}</div>`;
+        resultsEl.innerHTML = `<div class="text-sm rf-flag mt-2">${escapeHtml(data.error)}</div>`;
         return;
       }
 
@@ -169,7 +180,7 @@ export function initArrangement() {
               <div class="text-sm bg-base-100 rounded p-2" data-presentation-id="${escapeHtml(r.presentationId ?? "")}" data-service-date="${escapeHtml(data.serviceDate)}">
                 <div class="font-medium flex items-center justify-between gap-2">
                   <span class="flex items-center gap-2 min-w-0 truncate">
-                    <i data-lucide="${matches ? "check-circle-2" : "alert-triangle"}" class="w-3.5 h-3.5 shrink-0 ${matches ? "text-success" : "text-warning"}"></i>
+                    ${matches ? `<span class="rf-mark-gap"></span>` : `<i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 rf-flag"></i>`}
                     ${escapeHtml(r.presentationName ?? r.title)}
                   </span>
                   <label class="label cursor-pointer gap-1 py-0 shrink-0" title="Always recommend an update for this song, even when it matches">
@@ -182,7 +193,7 @@ export function initArrangement() {
                   r.ignored
                     ? `<div class="text-xs opacity-60 mt-1 flex items-center gap-1"><i data-lucide="eye-off" class="w-3 h-3"></i> Ignored. Marked as an atypical, non-representative performance.</div>`
                     : suggestUpdate
-                      ? `<div class="text-warning text-xs mt-1">${r.alwaysDiffers && matches ? "Flagged as always different. Review and update the plan." : "Consider updating the plan to match what was actually played."}</div>`
+                      ? `<div class="rf-flag text-xs mt-1">${r.alwaysDiffers && matches ? "Flagged as always different. Review and update the plan." : "Consider updating the plan to match what was actually played."}</div>`
                       : ""
                 }
                 <div class="flex items-center gap-2 mt-1">
@@ -209,7 +220,7 @@ export function initArrangement() {
           ${
             data.unmatched.length
               ? `<div class="text-sm bg-base-100 rounded p-2">
-                  <div class="font-medium flex items-center gap-2"><i data-lucide="help-circle" class="w-3.5 h-3.5 text-warning"></i> Not found in ProPresenter</div>
+                  <div class="font-medium flex items-center gap-2"><i data-lucide="help-circle" class="w-3.5 h-3.5 rf-flag"></i> Not found in ProPresenter</div>
                   <div class="opacity-70 mt-1">${data.unmatched.map((u) => escapeHtml(u.title)).join(", ")}</div>
                 </div>`
               : ""
@@ -224,7 +235,7 @@ export function initArrangement() {
     } finally {
       if (btn.isConnected) {
         btn.disabled = false;
-        btn.innerHTML = `<i data-lucide="git-compare" class="w-3.5 h-3.5"></i> Compare All Songs`;
+        btn.innerHTML = `<i data-lucide="git-compare" class="w-3.5 h-3.5"></i> Compare all songs`;
         if (window.lucide) window.lucide.createIcons();
       }
     }
@@ -279,13 +290,13 @@ export function initArrangement() {
           });
           const data = await res.json();
           if (!res.ok) {
-            resultEl.innerHTML = `<span class="text-warning">${escapeHtml(data.error)}</span>`;
+            resultEl.innerHTML = `<span class="rf-flag">${escapeHtml(data.error)}</span>`;
             btn.remove();
             return;
           }
           btn.remove();
           resultEl.innerHTML = `
-            <span class="text-success"><i data-lucide="check" class="w-3 h-3 inline"></i> Pushed to ${escapeHtml(providerDisplayName)}.</span>
+            <span class="rf-nominal"><i data-lucide="check" class="w-3 h-3 inline"></i> Pushed to ${escapeHtml(providerDisplayName)}.</span>
             <button class="btn btn-ghost btn-xs undo-push-btn">Undo</button>
           `;
           if (window.lucide) window.lucide.createIcons();
@@ -302,13 +313,13 @@ export function initArrangement() {
               const undoData = await undoRes.json();
               resultEl.innerHTML = undoRes.ok
                 ? `<span class="opacity-60">Reverted.</span>`
-                : `<span class="text-warning">${escapeHtml(undoData.error)}</span>`;
+                : `<span class="rf-flag">${escapeHtml(undoData.error)}</span>`;
             } catch (err) {
-              resultEl.innerHTML = `<span class="text-warning">${escapeHtml(err.message)}</span>`;
+              resultEl.innerHTML = `<span class="rf-flag">${escapeHtml(err.message)}</span>`;
             }
           });
         } catch (err) {
-          resultEl.innerHTML = `<span class="text-warning">${escapeHtml(err.message)}</span>`;
+          resultEl.innerHTML = `<span class="rf-flag">${escapeHtml(err.message)}</span>`;
           btn.remove();
         }
       });
@@ -333,28 +344,50 @@ export function initArrangement() {
           await runWeekendCompare();
         } catch (err) {
           btn.disabled = false;
-          alert(`Failed to update: ${err.message}`);
+          showFailure(`Could not change this week's ignore setting: ${err.message}`);
         }
       });
     });
   }
 
+  /**
+   * A list, not a key bank. Rows sit flush with a hairline groove between
+   * them and hover as the affordance -- 184 raised keys would be absurd, and
+   * that is what the `btn-ghost` stack this replaces amounted to.
+   *
+   * Two lines, because on one the song name -- the thing the operator is
+   * scanning by -- was truncated to about 150px by the metadata beside it.
+   *
+   * The status is binary: a planned arrangement is on record or it is not, and
+   * absent is not a fault. So a lit plum lamp against an unlit dot, the same
+   * vocabulary as the rail's link lamp, rather than green versus amber.
+   */
   function renderSongList(songs, role) {
     const listEl = document.getElementById("arrangement-song-list");
+    const countEl = document.getElementById("arrangement-song-count");
+    if (countEl) {
+      countEl.textContent =
+        songs.length === currentSongs.length
+          ? `${currentSongs.length} tracked`
+          : `${songs.length} of ${currentSongs.length}`;
+    }
+
     listEl.innerHTML = songs.length
       ? songs
-          .map(
-            (s) => `
-      <button class="btn btn-ghost btn-sm justify-start song-btn w-full h-auto py-2 rounded-none min-w-0" data-id="${s.presentationId}">
-        <i data-lucide="${s.hasPlannedArrangement ? "check-circle-2" : "alert-circle"}" class="w-3.5 h-3.5 shrink-0 ${s.hasPlannedArrangement ? "text-success" : "text-warning"}"></i>
-        <span class="flex-1 text-left truncate min-w-0">${escapeHtml(s.name)}</span>
-        <span class="text-xs opacity-60 flex items-center gap-2 shrink-0">
-          <span class="flex items-center gap-1"><i data-lucide="history" class="w-3 h-3"></i>${s.historyCount}</span>
-          ${s.lastServiceDate ? `<span class="flex items-center gap-1"><i data-lucide="calendar" class="w-3 h-3"></i>${escapeHtml(s.lastServiceDate)}</span>` : ""}
+          .map((s) => {
+            const meta = [
+              `${s.historyCount} ${s.historyCount === 1 ? "service" : "services"}`,
+              s.lastServiceDate,
+            ].filter(Boolean);
+            return `
+      <button class="rf-list-row song-btn" data-id="${escapeHtml(s.presentationId)}">
+        <span class="rf-led rf-led-col ${s.hasPlannedArrangement ? "lit" : ""}" title="${s.hasPlannedArrangement ? "Planned arrangement on record" : "No planned arrangement yet"}"></span>
+        <span class="rf-list-body">
+          <span class="rf-list-name" title="${escapeHtml(s.name)}">${escapeHtml(s.name)}</span>
+          <span class="rf-list-meta">${escapeHtml(meta.join(" \u00b7 "))}</span>
         </span>
-      </button>
-    `
-          )
+      </button>`;
+          })
           .join("")
       : `<div class="text-sm opacity-60 py-2">No matches</div>`;
 
@@ -365,6 +398,19 @@ export function initArrangement() {
     if (window.lucide) window.lucide.createIcons();
   }
 
+  /**
+   * One song's record.
+   *
+   * The comparison is the hero, and that is the change that matters here. It
+   * used to render *actual* as a prose line of arrow-joined section names and
+   * *planned* as a textarea -- one a sentence, the other an edit field, so the
+   * two things this screen exists to compare could not be compared at a
+   * glance. They are now the same type on the same axis, and the resting state
+   * is a reading, not a form. Editing is still one press away.
+   *
+   * The rest of the record -- section mapping, history -- drops below into
+   * ordinary cards, because exactly one thing on a view is the hero.
+   */
   async function renderDetail(presentationId, role) {
     latestRequestedSongId = presentationId;
     const listViewEl = document.getElementById("arrangement-list-view");
@@ -376,123 +422,126 @@ export function initArrangement() {
     if (latestRequestedSongId !== presentationId) return;
     const isLogger = role === "logger";
     const uniqueGroups = [...new Set(record.groupSequence)];
+    const planned = record.manualPlannedArrangement ?? [];
 
     detailEl.innerHTML = `
-      <button id="arrangement-back-btn" class="btn btn-ghost btn-sm w-fit">
-        <i data-lucide="arrow-left" class="w-4 h-4"></i> Back
+      <button id="arrangement-back-btn" class="btn btn-chip w-fit">
+        <i data-lucide="arrow-left" class="w-3 h-3"></i> Back
       </button>
-      <div class="card bg-base-200 mt-2">
-        <div class="card-body p-3 gap-4">
-          <h2 class="card-title text-base">${escapeHtml(record.songName)}</h2>
 
-          <div>
-            <div class="text-sm font-semibold mb-1">Actual arrangement (from ProPresenter)</div>
-            <div class="text-sm opacity-70">${record.groupSequence.map(escapeHtml).join(" &rarr; ")}</div>
-          </div>
-
-          <div>
-            <div class="text-sm font-semibold mb-1">Section mapping</div>
-            <div class="flex flex-col gap-1" id="mapping-rows">
-              ${uniqueGroups
-                .map(
-                  (g) => `
-                <div class="flex items-center gap-2">
-                  <span class="text-sm w-40 shrink-0 truncate" title="${escapeHtml(g)}">${escapeHtml(g)}</span>
-                  <span class="opacity-50">&rarr;</span>
-                  <input type="text" class="input input-bordered input-xs flex-1 mapping-input" data-group="${escapeHtml(g)}" value="${escapeHtml(record.sectionMapping[g] ?? g)}" ${isLogger ? "" : "disabled"} />
-                </div>
-              `
-                )
-                .join("")}
-            </div>
-            ${isLogger ? `<button id="save-mapping-btn" class="btn btn-outline btn-xs mt-2">Save Mapping</button>` : ""}
-          </div>
-
-          <div>
-            <div class="text-sm font-semibold mb-1">Planned arrangement (one section per line)</div>
-            <textarea id="planned-textarea" rows="4" class="textarea textarea-bordered w-full text-sm" ${isLogger ? "" : "disabled"}>${escapeHtml((record.manualPlannedArrangement ?? []).join("\n"))}</textarea>
-            ${isLogger ? `<button id="save-planned-btn" class="btn btn-outline btn-xs mt-2">Save Planned Arrangement</button>` : ""}
-          </div>
-
+      <div class="card bg-base-200 rf-hero mt-2">
+        <div class="card-body p-3 gap-3">
+          <h2 class="card-title">Comparison</h2>
+          <div class="rf-detail-name">${escapeHtml(record.songName)}</div>
+          ${renderComparison(record.groupSequence, planned, isLogger)}
           ${
             isLogger
               ? `
-          <div class="flex flex-wrap items-center gap-2">
-            <input type="date" id="service-date" class="input input-bordered input-sm" value="${new Date().toISOString().slice(0, 10)}" />
-            <button id="run-comparison-btn" class="btn btn-outline btn-sm">Run Comparison Now</button>
-            <span id="comparison-result" class="text-sm"></span>
-          </div>`
+          <div class="rf-control-row">
+            <div class="rf-field rf-field-fixed">
+              <label for="service-date">Service date</label>
+              <input type="date" id="service-date" class="input input-bordered" value="${new Date().toISOString().slice(0, 10)}" />
+            </div>
+            <button id="run-comparison-btn" class="btn btn-brand btn-sm">Run comparison</button>
+          </div>
+          <div id="comparison-result" class="rf-silkscreen"></div>`
               : ""
           }
+        </div>
+      </div>
 
-          <div>
-            <div class="text-sm font-semibold mb-1">History</div>
-            <div class="flex flex-col gap-2" id="history-list">
-              ${
-                (record.history ?? []).length === 0
-                  ? `<div class="text-sm opacity-60">No comparisons run yet.</div>`
-                  : [...record.history]
-                      .reverse()
-                      .map(
-                        (h) => {
-                          const matches = !h.diff.skipped.length && !h.diff.added.length && !h.diff.reordered.length;
-                          return `
-                <div class="text-sm bg-base-100 rounded p-2 history-entry" data-service-date="${escapeHtml(h.serviceDate)}">
-                  <div class="font-medium flex items-center justify-between gap-2">
-                    <span class="flex items-center gap-2">
-                      <i data-lucide="${matches ? "check-circle-2" : "alert-triangle"}" class="w-3.5 h-3.5 shrink-0 ${matches ? "text-success" : "text-warning"}"></i>
-                      ${formatCompactDate(h.serviceDate)}
-                    </span>
-                    ${
-                      isLogger && !matches
-                        ? `<button class="btn btn-ghost btn-xs history-ignore-btn">
-                            <i data-lucide="${h.ignored ? "eye" : "eye-off"}" class="w-3 h-3"></i> ${h.ignored ? "Un-ignore" : "Ignore"}
-                          </button>`
-                        : ""
-                    }
-                  </div>
+      <div class="card bg-base-200 mt-3">
+        <div class="card-body p-3 gap-2">
+          <h2 class="card-title">Section mapping</h2>
+          <div class="flex flex-col gap-1" id="mapping-rows">
+            ${uniqueGroups
+              .map(
+                (g) => `
+              <div class="flex items-center gap-2">
+                <span class="text-sm w-40 shrink-0 truncate" title="${escapeHtml(g)}">${escapeHtml(g)}</span>
+                <span class="rf-arrow">&rarr;</span>
+                <input type="text" class="input input-bordered input-xs flex-1 mapping-input" data-group="${escapeHtml(g)}" value="${escapeHtml(record.sectionMapping[g] ?? g)}" aria-label="Name for ${escapeHtml(g)}" ${isLogger ? "" : "disabled"} />
+              </div>`
+              )
+              .join("")}
+          </div>
+          ${isLogger ? `<button id="save-mapping-btn" class="btn btn-chip w-fit mt-1">Save mapping</button>` : ""}
+          <div id="mapping-result" class="rf-silkscreen"></div>
+        </div>
+      </div>
+
+      <div class="card bg-base-200 mt-3">
+        <div class="card-body p-3 gap-2">
+          <h2 class="card-title">History</h2>
+          <div class="flex flex-col gap-2" id="history-list">
+            ${
+              (record.history ?? []).length === 0
+                ? `<div class="text-sm opacity-60">No comparisons run yet.</div>`
+                : [...record.history]
+                    .reverse()
+                    .map((h) => {
+                      const matches = !h.diff.skipped.length && !h.diff.added.length && !h.diff.reordered.length;
+                      return `
+              <div class="text-sm bg-base-100 rounded p-2 history-entry" data-service-date="${escapeHtml(h.serviceDate)}">
+                <div class="font-medium flex items-center justify-between gap-2">
+                  <span class="flex items-center gap-2">
+                    ${matches ? `<span class="rf-mark-gap"></span>` : `<i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 rf-flag"></i>`}
+                    ${formatCompactDate(h.serviceDate)}
+                  </span>
                   ${
-                    h.ignored
-                      ? `<div class="text-xs opacity-60 mt-1 flex items-center gap-1"><i data-lucide="eye-off" class="w-3 h-3"></i> Ignored. Atypical performance, excluded from suggestions.</div>`
+                    isLogger && !matches
+                      ? `<button class="btn btn-chip history-ignore-btn">
+                          <i data-lucide="${h.ignored ? "eye" : "eye-off"}" class="w-3 h-3"></i> ${h.ignored ? "Un-ignore" : "Ignore"}
+                        </button>`
                       : ""
                   }
-                  ${renderSequenceComparison(h.planned, h.actual)}
                 </div>
-              `;
-                        }
-                      )
-                      .join("")
-              }
-            </div>
+                ${
+                  h.ignored
+                    ? `<div class="text-xs opacity-60 mt-1 flex items-center gap-1"><i data-lucide="eye-off" class="w-3 h-3"></i> Ignored. Atypical performance, excluded from suggestions.</div>`
+                    : ""
+                }
+                ${renderSequenceComparison(h.planned, h.actual)}
+              </div>`;
+                    })
+                    .join("")
+            }
           </div>
         </div>
       </div>
     `;
 
     if (isLogger) {
-      document.getElementById("save-mapping-btn").addEventListener("click", async () => {
+      wirePlannedEditor(presentationId, role, planned);
+
+      document.getElementById("save-mapping-btn").addEventListener("click", async (e) => {
+        // Captured synchronously: `currentTarget` is only valid for the
+        // duration of the dispatch, and this handler awaits, so reading it
+        // after the fetch gets null -- which threw inside the catch block and
+        // swallowed the failure notice entirely.
+        const btn = e.currentTarget;
         const sectionMapping = {};
         detailEl.querySelectorAll(".mapping-input").forEach((input) => {
           sectionMapping[input.dataset.group] = input.value.trim() || input.dataset.group;
         });
-        await fetch(`/api/arrangement/song/${presentationId}/mapping`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sectionMapping }),
-        });
-      });
-
-      document.getElementById("save-planned-btn").addEventListener("click", async () => {
-        const manualPlannedArrangement = document
-          .getElementById("planned-textarea")
-          .value.split("\n")
-          .map((s) => s.trim())
-          .filter(Boolean);
-        await fetch(`/api/arrangement/song/${presentationId}/planned`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ manualPlannedArrangement }),
-        });
+        const resultEl = document.getElementById("mapping-result");
+        btn.disabled = true;
+        try {
+          const res = await fetch(`/api/arrangement/song/${presentationId}/mapping`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sectionMapping }),
+          });
+          // The old version fired and forgot: a rejected save looked exactly
+          // like a successful one, so a mapping could be silently lost.
+          if (!res.ok) throw new Error((await res.json()).error ?? res.statusText);
+          resultEl.textContent = "Saved";
+        } catch (err) {
+          resultEl.textContent = "";
+          showFailure(`Could not save the section mapping: ${err.message}. Your text is still in the fields — try again.`);
+        } finally {
+          if (btn.isConnected) btn.disabled = false;
+        }
       });
 
       document.getElementById("run-comparison-btn").addEventListener("click", () => runComparison(presentationId, false));
@@ -512,7 +561,7 @@ export function initArrangement() {
             await renderDetail(presentationId, role);
           } catch (err) {
             btn.disabled = false;
-            alert(`Failed to update: ${err.message}`);
+            showFailure(`Could not change this week's ignore setting: ${err.message}`);
           }
         });
       });
@@ -528,6 +577,61 @@ export function initArrangement() {
     listViewEl.classList.add("hidden");
     detailEl.classList.remove("hidden");
     detailEl.scrollIntoView({ block: "start" });
+  }
+
+  /**
+   * Swaps the planned line for an editor and back.
+   *
+   * The planned arrangement has to stay editable — this is the screen where
+   * you correct the record — but an edit field cannot be the resting state or
+   * the comparison stops being a comparison. So the field is one press away
+   * and puts itself away again when it is done.
+   */
+  function wirePlannedEditor(presentationId, role, planned) {
+    const editBtn = document.getElementById("edit-planned-btn");
+    if (!editBtn) return;
+    const line = document.getElementById("planned-line");
+
+    editBtn.addEventListener("click", () => {
+      editBtn.classList.add("hidden");
+      line.innerHTML = `
+        <textarea id="planned-textarea" rows="4" class="textarea textarea-bordered w-full text-sm">${escapeHtml(planned.join("\n"))}</textarea>
+        <div class="rf-silkscreen mt-1">One section per line</div>
+        <div class="flex items-center gap-2 mt-2">
+          <button id="save-planned-btn" class="btn btn-chip">Save</button>
+          <button id="cancel-planned-btn" class="btn btn-chip">Cancel</button>
+        </div>
+      `;
+      document.getElementById("planned-textarea").focus();
+
+      document.getElementById("cancel-planned-btn").addEventListener("click", () => renderDetail(presentationId, role));
+
+      document.getElementById("save-planned-btn").addEventListener("click", async (e) => {
+        // See the note on the mapping save: `currentTarget` does not survive
+        // the await.
+        const btn = e.currentTarget;
+        const manualPlannedArrangement = document
+          .getElementById("planned-textarea")
+          .value.split("\n")
+          .map((t) => t.trim())
+          .filter(Boolean);
+        btn.disabled = true;
+        try {
+          const res = await fetch(`/api/arrangement/song/${presentationId}/planned`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ manualPlannedArrangement }),
+          });
+          if (!res.ok) throw new Error((await res.json()).error ?? res.statusText);
+          await renderDetail(presentationId, role);
+        } catch (err) {
+          if (btn.isConnected) btn.disabled = false;
+          // Deliberately does not re-render: a failed save must leave the
+          // operator's typing on screen so they can retry or copy it out.
+          showFailure(`Could not save the planned arrangement: ${err.message}. Your text is still in the box.`);
+        }
+      });
+    });
   }
 
   async function runComparison(presentationId, force) {
@@ -614,31 +718,86 @@ export function initArrangement() {
     return num ? `${abbr}${num}` : abbr;
   }
 
-  /** Abbreviates every section and collapses consecutive repeats into "C1×2" instead of "C1, C1" — comma-joined, not arrow-joined, to read as a compact list rather than a flow diagram. */
-  function compactSequence(sequence) {
-    if (!sequence?.length) return "(none)";
+  /** Abbreviates every section and collapses consecutive repeats into "C1×2" instead of "C1, C1". */
+  function compactTokens(sequence) {
     const collapsed = [];
-    for (const raw of sequence) {
+    for (const raw of sequence ?? []) {
       const label = abbreviateSection(raw);
       const last = collapsed[collapsed.length - 1];
       if (last && last.label === label) last.count += 1;
       else collapsed.push({ label, count: 1 });
     }
-    return collapsed.map((c) => (c.count > 1 ? `${c.label}×${c.count}` : c.label)).join(", ");
+    return collapsed.map((c) => (c.count > 1 ? `${c.label}×${c.count}` : c.label));
   }
 
   /**
-   * Two-row "Planned" vs "Slides" comparison, abbreviated and
-   * comma-joined — replaces a single run-on sentence of full section
-   * names with something scannable at a glance. "Planned" (not e.g.
-   * "PCO") deliberately doesn't name the provider, since a future
-   * church-management integration wouldn't be PCO at all.
+   * Marks the tokens on one side that the other side has no counterpart for.
+   *
+   * Multiset difference rather than a positional diff on purpose: positionally,
+   * a single inserted chorus makes every token after it "different", which
+   * paints the whole line and tells the operator nothing. By count, only the
+   * sections that are genuinely extra or missing get marked.
+   */
+  function markDivergence(mine, theirs) {
+    const pool = new Map();
+    for (const t of theirs) pool.set(t, (pool.get(t) ?? 0) + 1);
+    return mine.map((label) => {
+      const left = pool.get(label) ?? 0;
+      if (left > 0) {
+        pool.set(label, left - 1);
+        return { label, diverges: false };
+      }
+      return { label, diverges: true };
+    });
+  }
+
+  function renderTokens(tokens, joiner) {
+    if (!tokens.length) return `<span class="rf-compare-empty">Not recorded</span>`;
+    return tokens
+      .map((t) => `<span class="${t.diverges ? "rf-flag" : ""}">${escapeHtml(t.label)}</span>`)
+      .join(`<span class="rf-arrow">${joiner}</span>`);
+  }
+
+  /**
+   * The detail view's hero: the two sequences in the same treatment, on the
+   * same axis, so a divergence reads as a shape rather than as a sentence.
+   *
+   * "Planned" deliberately doesn't name the provider — a future
+   * church-management integration wouldn't be Planning Center at all — while
+   * "from ProPresenter" is provenance and belongs on the silkscreen line.
+   */
+  function renderComparison(actual, planned, isLogger) {
+    const actualTokens = compactTokens(actual);
+    const plannedTokens = compactTokens(planned);
+    return `
+      <div class="rf-compare">
+        <div class="rf-compare-line">
+          <span class="rf-silkscreen">Actual &middot; from ProPresenter</span>
+          <span class="rf-compare-seq">${renderTokens(markDivergence(actualTokens, plannedTokens), " &rarr; ")}</span>
+        </div>
+        <div class="rf-compare-line">
+          <span class="rf-silkscreen flex items-center gap-2">
+            <span>Planned</span>
+            ${isLogger ? `<button id="edit-planned-btn" class="btn btn-chip">Edit</button>` : ""}
+          </span>
+          <span class="rf-compare-seq" id="planned-line">${renderTokens(markDivergence(plannedTokens, actualTokens), " &rarr; ")}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  /**
+   * The compact two-row version, for a history entry or a compare-all result
+   * where the hero treatment would be too loud. Same vocabulary, comma-joined
+   * and collapsed so it reads as a list rather than a flow diagram.
    */
   function renderSequenceComparison(planned, actual) {
+    const plannedTokens = compactTokens(planned);
+    const actualTokens = compactTokens(actual);
     return `
       <div class="grid grid-cols-[4.5rem_1fr] gap-x-2 gap-y-0.5 text-xs mt-1">
-        <span class="opacity-60">Planned:</span><span>${escapeHtml(compactSequence(planned))}</span>
-        <span class="opacity-60">Slides:</span><span>${escapeHtml(compactSequence(actual))}</span>
+        <span class="opacity-60">Planned:</span><span>${renderTokens(markDivergence(plannedTokens, actualTokens), ", ")}</span>
+        <span class="opacity-60">Slides:</span><span>${renderTokens(markDivergence(actualTokens, plannedTokens), ", ")}</span>
       </div>
     `;
   }

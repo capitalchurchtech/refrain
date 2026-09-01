@@ -2557,49 +2557,11 @@ html.blackroom #status-cluster {
   pointer-events: none;
 }
 
-/**
- * The lamps take the icon column, not their own width.
- *
- * `.rf-led` on its own is a 7px dot, which centres at 15.5px against a nav
- * icon column centred at 20 -- close enough to look like a mistake rather than
- * a difference. Same construction as the link lamp instead: a 16px column with
- * an 8px lamp drawn inside by ::before, so the cluster sits on the rail's axis
- * and neither state can collapse the column.
- */
-#status-cluster .rf-led {
-  width: 16px;
-  height: 16px;
-  display: grid;
-  place-items: center;
-  background: none;
-  box-shadow: none;
-}
-#status-cluster .rf-led::before {
-  content: "";
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  /* Light theme: printed, not lit. A hollow ring reads as a lamp that is off,
-     where an invisible pale dot reads as nothing at all. */
-  background: transparent;
-  box-shadow: inset 0 0 0 1.5px #9A8FA6;
-}
-#status-cluster .rf-led.lit::before {
-  background: var(--rf-plum);
-  box-shadow: none;
-}
-[data-theme="dark"] #status-cluster .rf-led::before,
-html.blackroom #status-cluster .rf-led::before {
-  background: #2A2233;
-  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.8);
-}
-[data-theme="dark"] #status-cluster .rf-led.lit::before,
-html.blackroom #status-cluster .rf-led.lit::before {
-  background: #EDE0FF;
-  box-shadow:
-    0 0 5px #C79BFF,
-    0 0 13px rgba(199, 155, 255, 0.55);
-}
+/* The lamps take the icon column rather than their own width: `.rf-led` alone
+   is a 7px dot, which centres at 15.5px against a nav icon column centred at
+   20. The 16px construction lives on `.rf-led-col` in Section 36, since
+   Arrangement's list needed the same thing; the markup in status-cluster.js
+   carries both classes. */
 
 .rf-status-legend {
   font-family: var(--rf-mono);
@@ -2959,4 +2921,233 @@ html.blackroom .rf-notice-close {
    one leading mark rather than two competing ones. */
 .rf-tile-swatch + .rf-tile-icon {
   margin-right: 6px;
+}
+
+/* ============================================================
+   36. LIST ROWS, AND THE COMPARISON
+
+   Arrangement was the last screen still built out of DaisyUI defaults,
+   and it failed in a way the other screens had already been fixed for:
+   it treated a list like a button bank. 184 songs rendered as 184
+   `btn-ghost` stacks at 77px each, which is not a list, it is a wall of
+   keys. A list row is a line on a panel you can touch. It sits flush at
+   chassis level, separated by a hairline groove, and hover is the whole
+   affordance -- no raised fill, because nothing here rises.
+
+   The one-line row was also costing the operator the thing they scan
+   by. Status, name, history count and date on one line truncated the
+   song name to about 150px in a 316px column. Two lines, with the
+   metadata demoted to mono silkscreen on the second, gives the name the
+   full width.
+   ============================================================ */
+.rf-list {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.rf-list-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+/* Grooves between, not around. A border on every row draws a line above the
+   first and below the last, which boxes the list and makes it a card again. */
+.rf-list-row + .rf-list-row {
+  border-top: 1px solid var(--rf-hairline);
+}
+[data-theme="dark"] .rf-list-row:hover,
+html.blackroom .rf-list-row:hover {
+  background: var(--rf-raised);
+}
+.rf-list-row:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+.rf-list-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.rf-list-name {
+  font-size: 15px;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-theme="dark"] .rf-list-name,
+html.blackroom .rf-list-name {
+  color: var(--rf-text);
+}
+/* The metadata sits on the name's axis rather than floating right: a value
+   that moves horizontally from row to row cannot be scanned down a column. */
+.rf-list-meta {
+  font-family: var(--rf-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Dark-scoped, following `.rf-field > label`: `--rf-muted` has no light-theme
+   value, so applying it unscoped puts a 2.83:1 grey on white. In light the
+   metadata inherits and the hierarchy comes from size, tracking and case --
+   which is what the palette note next to `--rf-dim` says to do. */
+[data-theme="dark"] .rf-list-meta,
+html.blackroom .rf-list-meta {
+  color: var(--rf-muted);
+}
+/* Co-located with the height it relaxes, per the cascade note at the top of
+   this file. A finger needs 44px; a mouse does not. */
+@media (hover: none) {
+  .rf-list-row {
+    min-height: 44px;
+  }
+}
+
+/**
+ * The lamp column, lifted out of `#status-cluster` so a second caller does not
+ * copy twenty lines of it.
+ *
+ * `.rf-led` alone is a 7px dot. Against a 16px icon column it centres at 15.5
+ * and reads as a mistake rather than a difference, so the lamp is drawn by
+ * `::before` inside a 16px box -- which also means neither state can collapse
+ * the column and shift the text beside it.
+ *
+ * Specificity is deliberate: `.rf-led.rf-led-col` is 0,2,0, matching
+ * `[data-theme="dark"] .rf-led.lit` above, and wins on position because this
+ * section is last. A single-class `.rf-led-col` would read correctly and lose.
+ */
+.rf-led.rf-led-col {
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  background: none;
+  box-shadow: none;
+}
+[data-theme="dark"] .rf-led.rf-led-col.lit,
+html.blackroom .rf-led.rf-led-col.lit {
+  background: none;
+  box-shadow: none;
+}
+.rf-led.rf-led-col::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  /* Light theme: printed, not lit. A hollow ring reads as a lamp that is off,
+     where an invisible pale dot reads as nothing at all. */
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px #9A8FA6;
+}
+.rf-led.rf-led-col.lit::before {
+  background: var(--rf-plum);
+  box-shadow: none;
+}
+[data-theme="dark"] .rf-led.rf-led-col::before,
+html.blackroom .rf-led.rf-led-col::before {
+  background: #2A2233;
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.8);
+}
+[data-theme="dark"] .rf-led.rf-led-col.lit::before,
+html.blackroom .rf-led.rf-led-col.lit::before {
+  background: #EDE0FF;
+  box-shadow:
+    0 0 5px #C79BFF,
+    0 0 13px rgba(199, 155, 255, 0.55);
+}
+/* A blank of the same width, for a row whose nominal state is no mark at all
+   (Section 29). Without it the text jumps 24px between marked and unmarked
+   rows, which is the alignment the mark was supposed to be readable against. */
+.rf-mark-gap {
+  display: inline-block;
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+/**
+ * The comparison.
+ *
+ * This screen exists to answer "was it played the way the plan said", and the
+ * two things it was comparing were rendered in different media: actual as a
+ * prose line of arrow-joined names, planned as a textarea. One is a sentence
+ * and the other is an edit field, so the operator could not compare them at a
+ * glance -- they had to read one and remember it while reading the other.
+ *
+ * Same type, same size, same left axis, stacked. A divergence then shows up as
+ * a shape rather than as a sentence, which is the entire point.
+ */
+/**
+ * The song's own name, in the hero, in ordinary type.
+ *
+ * It sat in the `.card-title` slot, which in dark theme is mono, uppercase,
+ * letterspaced and plum -- the section-heading treatment. That restyles a name
+ * the user wrote, and "GREAT IS THY FAITHFULNESS" is not what they typed. The
+ * heading slot now says what the card is; the name is content beneath it.
+ */
+.rf-detail-name {
+  font-size: 17px;
+  line-height: 1.3;
+}
+[data-theme="dark"] .rf-detail-name,
+html.blackroom .rf-detail-name {
+  color: var(--rf-text);
+}
+
+/* A field whose content has a fixed width -- a date, a time -- opts out of
+   taking the control row's slack. The pattern gives spare width to fields
+   because a clipped select was the failure it was written for, but a 430px
+   date box is the same failure in the other direction: slack handed to
+   something that cannot use it. */
+.rf-control-row > .rf-field-fixed {
+  flex: 0 0 auto;
+}
+
+.rf-compare {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.rf-compare-line {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.rf-compare-seq {
+  font-family: var(--rf-mono);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  line-height: 1.5;
+  word-break: break-word;
+}
+[data-theme="dark"] .rf-compare-seq,
+html.blackroom .rf-compare-seq {
+  color: var(--rf-text);
+}
+/* The joiner is structure, not content, so it recedes. Muted rather than a
+   fainter ink of the same size, per the note on --rf-dim. Unscoped because the
+   same joiner appears in the section mapping and the compact history rows. */
+[data-theme="dark"] .rf-arrow,
+html.blackroom .rf-arrow {
+  color: var(--rf-muted);
+}
+[data-theme="dark"] .rf-compare-empty,
+html.blackroom .rf-compare-empty {
+  color: var(--rf-muted);
 }

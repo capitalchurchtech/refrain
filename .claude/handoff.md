@@ -932,6 +932,41 @@ Errors on this screen use `text-warning` in five places (`arrangement.js` 157,
 
 ---
 
+## 13. POLISH — `--rf-muted` and `--rf-fault` have no light-theme value
+
+Found while verifying item 11 in light theme, and it is not an Arrangement
+problem — it is app-wide, so it belongs to item 10's sweep rather than to any
+one screen.
+
+Both tokens are declared once, on `:root`, with dark-theme values and no light
+override. Measured against a booted light theme (not a runtime `data-theme`
+flip, which reads stale — see the note below):
+
+- `.rf-silkscreen`, which sets `color: var(--rf-muted)` unscoped: **2.52:1** on
+  the light card surface. Every silkscreen label on every screen.
+- `.rf-flag`, which sets `color: var(--rf-fault)` unscoped: **2.46:1**. Every
+  fault mark outside Health, including Health's own strip.
+
+The parts of the codebase that got this right dark-scope the declaration and
+let light inherit — `.rf-field > label` is the model — which is consistent with
+the palette's own note beside `--rf-dim`: when something must read quieter,
+use size and tracking, not a fainter ink. Arrangement's three new muted rules
+now follow that pattern. The two base classes above still do not.
+
+Either give both tokens a light value, or dark-scope the two base rules the way
+`.rf-field > label` does. The second is smaller and matches what is already
+there.
+
+**Instrument note, because it cost time twice.** Light theme cannot be checked
+by setting `data-theme="light"` from the console: the vendored Tailwind JIT
+resolves theme values at boot and does not regenerate them, so `main` keeps a
+near-white inherited colour and every reading below it is fiction. Boot the
+server with the theme actually set. And `canvas.fillStyle` does **not** convert
+`oklch()` — it hands back the components unchanged, which silently turns every
+contrast ratio into a made-up number. Paint one pixel and read it back with
+`getImageData` instead, and sanity-check the instrument against white-on-black
+returning 21 before trusting anything it says.
+
 ## 12. POLISH — Disabled controls give no reason
 
 `Check spelling` on Spell Check, `PNG` and `SVG` on QR Codes. All `title: null`.
@@ -1126,4 +1161,28 @@ Plus: copy is final copy in the right zone, never placeholder.
   you were on was the hardest label to pick out. Legend to --rf-text (16.25:1 vs
   6.53:1), edge 2px->3px with the section-marker bleed. My "light never brightens
   on press" ruling was wrong: occlusion applies to emitted light, not printed ink.
-
+- 2026-09-01 · Item 11 · done · Arrangement rebuilt to the list-and-compare
+  spec. Rows are no longer keys: flush at chassis level, hairline grooves,
+  hover as the affordance, two lines — which takes the song name from ~150px of
+  a 316px column to the full width (measured 432px at a 640px viewport, geometry
+  independently checked as 16+8+432+16 = 472). Status is a lit/unlit lamp on the
+  16px column, not green versus amber; that construction was lifted out of
+  `#status-cluster` into `.rf-led-col` rather than copied, and the cluster
+  re-verified unchanged. Filter has a visible label and a live count. The detail
+  view's comparison is now the hero: both sequences in the same type on the same
+  axis, with genuinely extra or missing sections marked by multiset difference
+  (a positional diff paints everything after one insertion and says nothing).
+  Editing is one press away and puts itself back.
+  Two corrections to my own work along the way. The song name was sitting in the
+  `.card-title` slot, which in dark theme is mono, uppercase, letterspaced plum —
+  so the hero was restyling a name the user wrote. The heading now says
+  "Comparison" and the name is content beneath it in ordinary type.
+  And a real bug the spec did not ask about: both save handlers read
+  `e.currentTarget` after an await, where it is null. The catch block threw on
+  it, so a failed save re-enabled nothing and showed no notice at all — a
+  rejected write looked exactly like a successful one. Captured synchronously;
+  both failure paths now report and keep the operator's typing.
+  Verified against a running server in both themes: reader/logger split intact,
+  stale-response guard intact under a 600ms/0ms race, marked and unmarked rows
+  share a left axis in both lists, 44px touch floor engages. Light-theme gaps in
+  `--rf-muted`/`--rf-fault` are pre-existing and app-wide — logged as item 13.

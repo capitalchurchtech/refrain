@@ -69,7 +69,7 @@ export function initStatusCluster() {
   host.innerHTML = LAMPS.map(
     (l) => `
     <div class="rf-status-row" data-lamp="${l.id}" data-on="false">
-      <span class="rf-led" data-lamp-led></span>
+      <span class="rf-led rf-led-col" data-lamp-led></span>
       <span class="nav-label rf-status-legend whitespace-nowrap hidden">${l.legend}</span>
     </div>`
   ).join("");
