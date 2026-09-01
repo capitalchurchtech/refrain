@@ -1087,4 +1087,10 @@ Plus: copy is final copy in the right zone, never placeholder.
   these are names the operator typed, then set them in mono, which restyles them
   just as surely. "Full Screen/Standard" measures 114px in sans against 154px in
   mono and now fits one line.
+- 2026-09-01 · History records from the first item, not the first jump · done ·
+  Brandon. The heartbeat now records every presentation that goes live, so the
+  panel fills from the first item ProPresenter loads. Item granularity, not slide
+  — 30 advances through one song add one entry. Cap 10 -> 30 to cover a service.
+  The pin is held separately from the history now: the head is what is on screen,
+  so reading the bar off it would have offered to return you where you already are.
 

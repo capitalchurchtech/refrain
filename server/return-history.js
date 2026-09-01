@@ -17,8 +17,15 @@
  * a restart would point at a service that already ended.
  */
 
-/** How many places back the operator can reach. */
-export const MAX_RETURN_HISTORY = 10;
+/**
+ * How many places back the operator can reach.
+ *
+ * Raised from ten when the history started recording from the first item rather
+ * than from the first jump: a service runs fifteen to twenty-five items between
+ * countdown and closer, and a list that drops the opening song halfway through
+ * the morning is not a record of the service.
+ */
+export const MAX_RETURN_HISTORY = 30;
 
 /** Two entries are the same place if they are the same slide of the same presentation. */
 export function sameSlide(a, b) {
@@ -26,16 +33,23 @@ export function sameSlide(a, b) {
 }
 
 /**
- * Records a place worth coming back to, newest first.
+ * Records a presentation that has been live, newest first.
  *
- * Revisiting somewhere already in the history moves it to the front rather than
- * adding a second copy: the list is "places you can go back to", and a place
- * does not become two places by being left twice. Without that, bouncing
- * between two slides would fill all ten entries with those two.
+ * **Item granularity, not slide**, and that is the whole difference from
+ * `pushReturnEntry`. The history now fills from the first item ProPresenter
+ * loads rather than from the first time the operator uses Go Live, which means
+ * it sees every slide change -- and a worship leader advancing thirty slides
+ * through one song would otherwise bury the running order under thirty entries
+ * of the same song. One entry per presentation makes the panel read like the
+ * service.
+ *
+ * Revisiting a presentation moves it to the front and takes the newer slide
+ * index, so "go back to that song" lands where the operator last was in it
+ * rather than at the slide it opened on.
  */
-export function pushReturnEntry(history, entry, max = MAX_RETURN_HISTORY) {
+export function pushLiveItem(history, entry, max = MAX_RETURN_HISTORY) {
   if (!entry || !entry.presentationId || !Number.isInteger(entry.slideIndex)) return history ?? [];
-  const rest = (history ?? []).filter((e) => !sameSlide(e, entry));
+  const rest = (history ?? []).filter((e) => e.presentationId !== entry.presentationId);
   return [entry, ...rest].slice(0, max);
 }
 
@@ -48,9 +62,16 @@ export function pushReturnEntry(history, entry, max = MAX_RETURN_HISTORY) {
  * index by one. Position would silently return them to the wrong place.
  */
 export function findReturnEntry(history, presentationId, slideIndex) {
-  return (
-    (history ?? []).find(
-      (e) => e.presentationId === presentationId && e.slideIndex === Number(slideIndex)
-    ) ?? null
+  const list = history ?? [];
+  // Exact match first, for a caller that has a current slide index.
+  const exact = list.find(
+    (e) => e.presentationId === presentationId && e.slideIndex === Number(slideIndex)
   );
+  if (exact) return exact;
+  // Otherwise fall back to the presentation. With item granularity the stored
+  // slide index advances as the operator moves through a song, so a panel
+  // rendered a few seconds ago can carry a stale index -- and returning to the
+  // right song at a slightly different slide is obviously better than refusing
+  // because a number moved. Focus is presentation-level anyway.
+  return list.find((e) => e.presentationId === presentationId) ?? null;
 }

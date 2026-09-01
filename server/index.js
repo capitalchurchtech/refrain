@@ -65,7 +65,7 @@ import {
   describe as describePerformance,
 } from "./performance-mode.js";
 import { resolveArrangement, flattenGroups, findLiveIndex } from "./arrangements.js";
-import { pushReturnEntry, findReturnEntry } from "./return-history.js";
+import { pushLiveItem, findReturnEntry } from "./return-history.js";
 import { buildInfo } from "./build-info.js";
 import {
   syncLibrary,
@@ -682,6 +682,24 @@ async function heartbeat() {
     checkedAt: now,
   };
 
+  // Everything that goes on the screens joins the history, from the first item
+  // ProPresenter loads. It used to fill only from app-initiated jumps, so a
+  // service run entirely from ProPresenter's own controls left the panel empty
+  // and the operator with nothing to go back to -- which is most of a service.
+  //
+  // Recorded per presentation rather than per slide: advancing thirty slides
+  // through one song would otherwise bury the running order under thirty copies
+  // of it. `pushLiveItem` moves a revisited item to the front and takes the
+  // newer slide index, so going back lands where the operator last was in it.
+  if (enriched) {
+    returnHistory = pushLiveItem(returnHistory, {
+      presentationId: enriched.presentationId,
+      slideIndex: enriched.slideIndex,
+      name: enriched.presentationName ?? enriched.name ?? null,
+      leftAt: new Date(now).toISOString(),
+    });
+  }
+
   const was = performance.armed;
   performance = advancePerformance({ state: performance, layers, now });
   if (performance.armed !== was) {
@@ -982,7 +1000,15 @@ let returnHistory = [];
 // through the history, it just stops being an alert. Conflating them made the
 // history-only state unreachable, since any non-empty history always had a head
 // to show on the bar.
-let returnPinActive = false;
+// The place the bar is currently offering to go back to, captured at the moment
+// of an app-initiated jump.
+//
+// Held separately from the history rather than read off its head, and that
+// separation is load-bearing now: the heartbeat pushes every item that goes
+// live, so the head of the history is whatever is on the screens *right now* --
+// which after a jump is the thing you jumped to. Reading the bar off it would
+// have it offering to return you to where you already are.
+let returnPin = null;
 
 /**
  * Re-points a stored slide index at the slide the operator actually clicked.
@@ -1043,8 +1069,9 @@ app.post("/api/trigger", async (req, res) => {
     // Capture where we were before jumping, so "Return" can bring us back.
     // Compared against the corrected index, since that's what will fire.
     if (current && !(current.presentationId === presentationId && current.slideIndex === target.index)) {
-      returnHistory = pushReturnEntry(returnHistory, { ...current, leftAt: new Date().toISOString() });
-      returnPinActive = true;
+      returnPin = { ...current, leftAt: new Date().toISOString() };
+      // Also into the history, so a jump between heartbeats is not missed.
+      returnHistory = pushLiveItem(returnHistory, returnPin);
     }
 
     await client.triggerSlide(presentationId, target.index);
@@ -1081,7 +1108,7 @@ app.post("/api/focus", async (req, res) => {
 // `history` is everything reachable behind it. Both come from one call so the
 // bar and its pulldown can never disagree about the same moment.
 app.get("/api/return-pin", (_req, res) => {
-  res.json({ pin: returnPinActive ? (returnHistory[0] ?? null) : null, history: returnHistory });
+  res.json({ pin: returnPin, history: returnHistory });
 });
 
 // Snap back to where we were before the jump: bring that presentation up
@@ -1097,7 +1124,7 @@ app.post("/api/return", async (req, res) => {
   const target =
     presentationId !== undefined
       ? findReturnEntry(returnHistory, presentationId, slideIndex)
-      : (returnHistory[0] ?? null);
+      : returnPin;
   if (!target) return res.status(409).json({ error: "Nothing to return to." });
   try {
     await client.focusPresentation(target.presentationId);
@@ -1105,7 +1132,7 @@ app.post("/api/return", async (req, res) => {
     // want to go back", not "was this ever somewhere you were" -- and a place
     // they returned to once is a place they may want again. The history is what
     // the pulldown reads.
-    returnPinActive = false;
+    returnPin = null;
     res.json({ ok: true, returnedTo: target, pinActive: false, history: returnHistory });
   } catch (err) {
     // leave the history intact so the operator can try again
