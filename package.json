@@ -1,6 +1,6 @@
 {
   "name": "refrain",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "Full-text slide search for ProPresenter, with optional lyrics-assist and arrangement drift tracking.",
   "license": "MIT",
   "type": "module",
