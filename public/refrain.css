@@ -892,9 +892,23 @@ html.blackroom #nav-rail #nav-pin-toggle:active {
  * light rather than adding to it.
  *
  * So it inverts. Recessed junction, no outer contact shadow because a
- * bottomed-out key is not casting one, and the label and icon go darker rather
- * than lighter. Eight keys up, one down, and no colour needed to carry it --
- * the plum inset is a latch marker, not the signal itself.
+ * bottomed-out key is not casting one. Eight keys up, one down, and no colour
+ * needed to carry it -- the plum inset is a latch marker, not the signal
+ * itself.
+ *
+ * **Correcting myself on the legend.** I originally darkened the label and icon
+ * along with the junction, reasoning that light never brightens on press
+ * because a key bottoming out occludes its own light. That is true of *emitted*
+ * light and it does not apply here: a silkscreen legend is printed ink, and ink
+ * does not dim because the key it is printed on has travelled. The result was a
+ * latched key whose label was exactly as quiet as the eight unlatched ones --
+ * measured identical at #A295AC -- so the one screen you are actually on was
+ * the hardest thing in the rail to pick out.
+ *
+ * The legend goes to --rf-text. The lit edge gets the soft bleed the section
+ * markers already have and widens to 3px. None of it spends an emitter: a bleed
+ * has no hot core, and which screen you are on is the operator's own
+ * navigation, not a state the machine is reporting about itself.
  */
 [data-theme="dark"] #nav-rail .nav-item.btn-active,
 html.blackroom #nav-rail .nav-item.btn-active {
@@ -902,8 +916,17 @@ html.blackroom #nav-rail .nav-item.btn-active {
   box-shadow:
     inset 0 2px 6px rgba(0, 0, 0, 0.8),
     inset 0 -1px 0 rgba(255, 240, 235, 0.07),
-    inset 2px 0 0 var(--rf-plum);
+    inset 3px 0 0 var(--rf-plum),
+    0 0 6px rgba(169, 111, 232, 0.3);
   transform: none;
+}
+/* Printed ink does not dim because the key travelled. This is the one screen
+   the operator is on; it should be the most legible legend in the rail. */
+[data-theme="dark"] #nav-rail .nav-item.btn-active .nav-label,
+html.blackroom #nav-rail .nav-item.btn-active .nav-label,
+[data-theme="dark"] #nav-rail .nav-item.btn-active svg,
+html.blackroom #nav-rail .nav-item.btn-active svg {
+  color: var(--rf-text);
 }
 /* Already bottomed out, so pressing it again has nowhere to travel. */
 [data-theme="dark"] #nav-rail .nav-item.btn-active:active,

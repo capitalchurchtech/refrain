@@ -1120,4 +1120,10 @@ Plus: copy is final copy in the right zone, never placeholder.
   showing it. Flat 10px swatch, hairline rim, never a glow — printed ink cannot
   be read as the live emitter. Malformed colour degrades to no swatch, never to
   black (6 tests). 26/26 macros, 15 distinct colours, Looks untouched.
+- 2026-09-01 · Item 8 · done · and NOT moot, correcting my own earlier flag. The
+  butting did make the latched key structurally more present, but its legend and
+  icon measured identical to all eight unlatched ones (#A295AC) — so the screen
+  you were on was the hardest label to pick out. Legend to --rf-text (16.25:1 vs
+  6.53:1), edge 2px->3px with the section-marker bleed. My "light never brightens
+  on press" ruling was wrong: occlusion applies to emitted light, not printed ink.
 
