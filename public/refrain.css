@@ -2905,3 +2905,35 @@ html.blackroom .rf-notice-close {
 #nav-rail #nav-pin-toggle {
   border-radius: 0;
 }
+
+/**
+ * A macro's own colour, as ProPresenter shows it.
+ *
+ * The operator classified their macros by colour, and that classification is
+ * theirs in the same way the name is — "Refrain never restyles a name its user
+ * wrote" applies to both. Discarding it was a stronger form of restyling than
+ * showing it.
+ *
+ * **Printed ink, never emission.** Flat: no gradient, no bevel, and above all
+ * no glow. That is what keeps an arbitrary hue from colliding with the palette
+ * rule reserving saturated warm for what is live — a flat swatch and a lit
+ * collar with a halo are categorically different objects, so a red macro cannot
+ * be mistaken for the live signal.
+ *
+ * The hairline rim does not alter the colour, it gives it an edge, so a very
+ * pale or very dark macro still reads against the panel. Same trick as the
+ * light-theme lamp's hollow ring.
+ */
+.rf-tile-swatch {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin-right: 7px;
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 1px var(--rf-hairline);
+}
+/* With a swatch present the icon tightens up against it, so the pair reads as
+   one leading mark rather than two competing ones. */
+.rf-tile-swatch + .rf-tile-icon {
+  margin-right: 6px;
+}

@@ -1115,4 +1115,9 @@ Plus: copy is final copy in the right zone, never placeholder.
   beside 10px card titles) and item 1c(c) (12px vs 9px). Blanket rule deleted;
   headings now take a treatment by name. Verified across eight screens: exactly
   two treatments, card-title 10px and subhead 9px, no unclassed headings.
+- 2026-09-01 · Item 7 · done · macro tiles carry the macro's colour. Reverses my
+  earlier decision, correctly: dropping it was a stronger form of restyling than
+  showing it. Flat 10px swatch, hairline rim, never a glow — printed ink cannot
+  be read as the live emitter. Malformed colour degrades to no swatch, never to
+  black (6 tests). 26/26 macros, 15 distinct colours, Looks untouched.
 

@@ -216,15 +216,22 @@ export class ProPresenterClient {
     // malformed macro would shift every icon by one and quietly mislabel the
     // whole bank.
     //
-    // Deliberately not the macro's `color`. The operator did choose those, but
-    // they are arbitrary hues (this rig has magenta, lime and two blues) and
-    // the palette reserves saturated warm for what is live. An icon is
-    // structural and survives being drawn in one colour; a hue does not.
+    // The colour comes through now, and the earlier reasoning for dropping it
+    // was half right. It was correct that an arbitrary hue cannot *fill* a
+    // tile: the palette reserves saturated warm for what is live. It was wrong
+    // that this meant discarding the colour, because a macro's colour is the
+    // operator's own classification -- the same category as its name, and
+    // "Refrain never restyles a name its user wrote".
+    //
+    // Both hold at once because a flat swatch with no glow and a lit collar
+    // with a halo are categorically different objects. Printed ink is not
+    // emission, so even a red macro swatch cannot be read as the live signal.
     return (Array.isArray(raw) ? raw : [])
       .map((entry) => ({
         id: entry?.id?.uuid,
         name: entry?.id?.name ?? "Untitled",
         icon: macroIcon(entry?.image_type),
+        color: macroColorHex(entry?.color),
       }))
       .filter((entry) => entry.id);
   }
@@ -333,6 +340,34 @@ const MACRO_ICONS = {
 
 export function macroIcon(imageType) {
   return MACRO_ICONS[imageType] ?? null;
+}
+
+/**
+ * A macro's colour, as hex, or null.
+ *
+ * ProPresenter reports colour as float components rather than a string:
+ * `{ red, green, blue, alpha }` on 0..1. Verified across a real rig's 26
+ * macros — all four keys present on every one, all alpha 1.
+ *
+ * **Anything malformed returns null rather than a colour.** The failure that
+ * matters is degrading to black: a missing or broken value would otherwise
+ * paint a confident black swatch, which is a classification the operator never
+ * chose and indistinguishable from one they did. No colour must mean no swatch.
+ *
+ * Fully transparent counts as no colour for the same reason — a swatch nobody
+ * can see is worse than an absent one, because the space still reads as
+ * meaningful.
+ */
+export function macroColorHex(color) {
+  if (!color || typeof color !== "object") return null;
+  const { red, green, blue, alpha } = color;
+  const parts = [red, green, blue];
+  if (!parts.every((c) => typeof c === "number" && Number.isFinite(c))) return null;
+  if (typeof alpha === "number" && alpha <= 0) return null;
+  // Clamp rather than reject: floats round out to 1.0000001 and that is not a
+  // malformed colour, it is arithmetic.
+  const byte = (c) => Math.round(Math.min(1, Math.max(0, c)) * 255);
+  return "#" + parts.map((c) => byte(c).toString(16).padStart(2, "0").toUpperCase()).join("");
 }
 
 export { normalizeText };

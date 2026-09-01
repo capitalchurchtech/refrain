@@ -229,6 +229,13 @@ export function initLive() {
         // either way rather than reserving a gap.
         (it) =>
           `<button class="btn rf-tile" data-${kind}="${escapeHtml(it.id)}" title="${escapeHtml(it.name)}">${
+            // The macro's own colour, as ProPresenter shows it. Printed ink,
+            // never lit: a flat swatch and a lit collar are different objects,
+            // so even a red macro cannot be read as the live signal. No colour
+            // means no swatch — an invented grey would be a classification the
+            // operator never chose.
+            it.color ? `<span class="rf-tile-swatch" style="background:${escapeHtml(it.color)}"></span>` : ""
+          }${
             it.icon ? `<i data-lucide="${escapeHtml(it.icon)}" class="rf-tile-icon"></i>` : ""
           }<span class="rf-tile-label">${escapeHtml(it.name)}</span></button>`
       )
