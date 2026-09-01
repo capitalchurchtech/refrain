@@ -70,7 +70,7 @@ export function initImageCrop() {
           </details>
 
           <div>
-            <div class="rf-subhead">Output presets</div>
+            <h2 class="rf-subhead">Output presets</h2>
             <div class="text-xs opacity-60 mb-1 rf-measure">Every dropped image is cropped to all of these, named like <span class="font-mono">photo_thirds-sq.jpg</span>.</div>
             <div class="flex flex-col gap-1" id="crop-presets-list"></div>
             <div class="flex flex-wrap items-center gap-2 mt-2">
@@ -108,7 +108,7 @@ export function initImageCrop() {
         }
 
         <div>
-          <div class="rf-subhead">Recent activity</div>
+          <h2 class="rf-subhead">Recent activity</h2>
           <div class="flex flex-col gap-1" id="crop-activity-list">
             ${renderActivity(data.recentActivity)}
           </div>

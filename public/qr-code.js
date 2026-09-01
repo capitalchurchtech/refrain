@@ -95,6 +95,7 @@ export function initQrCode() {
 
         <div class="flex flex-col lg:flex-row gap-4">
           <div class="flex flex-col gap-3 flex-1 min-w-0">
+            <h2 class="rf-subhead">What to encode</h2>
             <div class="rf-field">
               <label for="qr-type">Type</label>
               <select id="qr-type" class="select select-bordered">
@@ -142,6 +143,7 @@ export function initQrCode() {
                fields on the left are the entry; this is the payoff. -->
           <div class="card bg-base-200 rf-hero w-full lg:w-72 shrink-0">
             <div class="card-body p-3 gap-3 items-center">
+              <h2 class="rf-subhead self-start">Your code</h2>
             <div class="bg-base-300 rounded p-3 w-full flex items-center justify-center min-h-[16rem]">
               <img id="qr-preview" alt="QR preview" class="max-w-full h-auto hidden" />
               <div id="qr-preview-empty" class="text-sm opacity-50 text-center">Fill in the fields to see your code.</div>
@@ -508,7 +510,7 @@ export function initQrCode() {
     el.innerHTML = `
       <div class="divider my-1"></div>
       <div class="flex items-center justify-between mb-1">
-        <div class="text-sm font-semibold">Recent codes</div>
+        <h2 class="rf-subhead" style="margin-bottom:0">Recent codes</h2>
         <button id="qr-recent-clear" class="btn btn-chip">Clear</button>
       </div>
       <div class="text-xs opacity-60 mb-2">Your last ${entries.length} downloaded ${entries.length === 1 ? "code" : "codes"}. Click one to restore its settings.</div>

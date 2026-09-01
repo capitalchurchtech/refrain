@@ -79,7 +79,7 @@ export function initLive() {
         </div>
 
         <div id="perf-mode-wrap">
-          <div class="text-xs uppercase tracking-wide opacity-60 mb-2">Performance mode</div>
+          <h2 class="rf-subhead">Performance mode</h2>
           <div id="perf-mode-card" class="card bg-base-200">
             <div class="card-body p-3 gap-2">
               <div class="flex items-center justify-between gap-3">
@@ -104,7 +104,7 @@ export function initLive() {
         </div>
 
         <div id="live-message-wrap" class="hidden">
-          <div class="text-xs uppercase tracking-wide opacity-60 mb-2">Message on screen</div>
+          <h2 class="rf-subhead">Message on screen</h2>
           <div class="card bg-base-200">
             <div class="card-body p-3 gap-3">
               <select id="live-message-select" class="select select-bordered select-sm hidden"></select>
@@ -119,7 +119,7 @@ export function initLive() {
         </div>
 
         <div>
-          <div class="text-xs uppercase tracking-wide opacity-60 mb-2">Clear</div>
+          <h2 class="rf-subhead">Clear</h2>
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <button class="btn btn-brand h-20 text-base" data-clear="all"><span class="flex flex-col items-center gap-1"><i data-lucide="x-octagon" class="w-6 h-6"></i> Clear All</span></button>
             <button class="btn btn-outline h-20 text-base" data-clear="slide"><span class="flex flex-col items-center gap-1"><i data-lucide="type" class="w-6 h-6"></i> Slide</span></button>
@@ -129,12 +129,12 @@ export function initLive() {
         </div>
 
         <div id="live-looks-wrap" class="hidden">
-          <div class="text-xs uppercase tracking-wide opacity-60 mb-2">Looks</div>
+          <h2 class="rf-subhead">Looks</h2>
           <div id="live-looks" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3"></div>
         </div>
 
         <div id="live-macros-wrap" class="hidden">
-          <div class="text-xs uppercase tracking-wide opacity-60 mb-2">Macros</div>
+          <h2 class="rf-subhead">Macros</h2>
           <div id="live-macros" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3"></div>
         </div>
 

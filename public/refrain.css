@@ -1603,18 +1603,26 @@ html.blackroom main h1 > svg {
   display: none;
 }
 
-/* Sub-headings keep the badge face a step down. */
-[data-theme="dark"] main h2:not(.card-title),
-html.blackroom main h2:not(.card-title),
-[data-theme="dark"] main h3,
-html.blackroom main h3 {
-  font-family: var(--rf-sans);
-  font-size: 17px;
-  font-weight: 800;
-  font-stretch: 110%;
-  text-transform: uppercase;
-  letter-spacing: -0.01em;
-}
+/**
+ * There is no blanket sub-heading rule, and removing it is the point.
+ *
+ * A `main h2:not(.card-title)` rule used to put the 17px badge face on any
+ * heading that had not opted out. It contradicted the section-heading block
+ * directly below, which says there is exactly one treatment -- and it was the
+ * second treatment. On Health it produced a 17px uppercase "Settings" next to
+ * card titles in 10px mono silkscreen, which was the very first finding of the
+ * first review and stayed open for weeks.
+ *
+ * It also caught anything new. Converting Live, Image Crop and QR Codes to real
+ * `<h2>` elements silently styled all nine of their section headings at 17px,
+ * because a bare element selector reaches further than whoever wrote it was
+ * thinking about.
+ *
+ * So headings take a treatment by name -- `.card-title` for a card's own
+ * heading with its lit edge, `.rf-subhead` for a subsection -- and an
+ * unclassed `h2` inherits body type. That is a legible default, and it makes
+ * the next person choose rather than inherit a surprise.
+ */
 
 /**
  * Section headings. After the keys, the most recognisable element in the

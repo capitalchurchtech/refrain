@@ -951,7 +951,7 @@ function renderHealth(health, configOptions, versionInfo) {
   const configCard = `
       <div class="flex flex-col gap-2">
         <div class="flex items-baseline justify-between gap-2">
-          <h2 class="text-base font-semibold">Settings</h2>
+          <h2 class="rf-subhead" style="margin-bottom:0">Settings</h2>
           <button id="backup-config-btn" class="btn btn-chip">
             <i data-lucide="download" class="w-3.5 h-3.5"></i> Back up config
           </button>

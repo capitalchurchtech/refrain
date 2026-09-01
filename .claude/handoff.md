@@ -1108,4 +1108,11 @@ Plus: copy is final copy in the right zone, never placeholder.
   28 collapsed (exact rail centre), legends drop. I first used the bare 7px
   .rf-led and it centred at 15.5 against a 20 column — the spec said keep the
   16px construction and it was right.
+- 2026-09-01 · Items 1c(a), 1c(c), 5 · done · all three were one root cause.
+  Live, Image Crop and QR Codes got real <h2>s — and immediately rendered at 17px,
+  because `main h2:not(.card-title)` was putting the badge face on any heading
+  that had not opted out. That same rule was item 5 (Health's 17px "Settings"
+  beside 10px card titles) and item 1c(c) (12px vs 9px). Blanket rule deleted;
+  headings now take a treatment by name. Verified across eight screens: exactly
+  two treatments, card-title 10px and subhead 9px, no unclassed headings.
 
