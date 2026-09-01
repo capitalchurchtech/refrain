@@ -803,8 +803,7 @@ html.blackroom .nav-label {
 #nav-rail .nav-item,
 #nav-rail #theme-toggle,
 #nav-rail #nav-pin-toggle,
-#nav-rail #nav-help-toggle,
-#nav-rail #link-row {
+#nav-rail #nav-help-toggle {
   gap: 0.5rem;
 }
 
@@ -2454,7 +2453,6 @@ html.blackroom .rf-preset + .rf-preset {
    ============================================================ */
 #nav-rail.collapsed .nav-item,
 #nav-rail.collapsed #brand-row,
-#nav-rail.collapsed #link-row,
 #nav-rail.collapsed #nav-help-toggle,
 #nav-rail.collapsed #theme-toggle,
 #nav-rail.collapsed #nav-pin-toggle {
@@ -2465,91 +2463,138 @@ html.blackroom .rf-preset + .rf-preset {
 }
 
 /* ============================================================
-   31. THE LINK INDICATOR
+   31. THE STATUS CLUSTER
 
-   The specific instance of section 27's LED, and the one control the
-   quality floor singles out by name: disconnected has to be
-   unmistakable and always visible. It lived in index.html as raw hexes
-   until it needed a light theme, at which point it belonged with the
-   palette.
+   Three lamps at the foot of the rail: LINK, LIVE, PERF. It replaces a
+   single LINKED row whose geometry was already correct -- every glyph
+   centred on the rail axis in both states -- but which read badly for
+   three other reasons.
 
-   Two things are settled here. The column geometry, from the axis fix:
-   #link-led is the same 16px column an icon occupies and the 8px lamp
-   is drawn inside it by ::before, so the row sits on the rail's axis
-   and neither state can collapse the column by setting a background on
-   the element that defines it.
+   It was optically light: a 16px icon is a line drawing filling its
+   box, an 8px dot covers a fifth of the same area, so it could not hold
+   a column of icons however well centred. It was the shortest thing in
+   the rail at 28px among 36s and 40s. And it was the wrong category --
+   a static readout wedged among controls with hover and press
+   behaviour, so it read as an orphan.
 
-   And the theme split. Emission is material and stays dark-only -- but
-   a signal is not material, so it cannot simply lose its glow and keep
-   its colour. Measured against the light rail (oklch(0.961), so about
-   #F3F3F3), the dark theme's lit core #EDE0FF is **1.12:1**: the
-   LINKED state was invisible, while no-link at #302838 was 12.62:1 and
-   bold. An operator could not see the normal state at all, and an
-   invisible lamp is indistinguishable from a lamp that failed to
-   render.
+   The cluster fixes the category rather than the pixels. Status stops
+   pretending to be navigation.
 
-   So: where a theme cannot support emission, a signal converts to fill
-   rather than losing its glow. On a light panel a status lamp is
-   printed, not lit -- ink where the dark theme has light. Lit is solid
-   --rf-plum at 5.07:1, unlit is a hollow ring at 2.74:1, which keeps
-   present louder than absent the way the dark theme does.
+   **Recessed, and it is the only recessed thing in the rail.** The keys
+   are raised because a finger goes on them; this is sunk because
+   information comes out of it. That is the elevation rule doing real
+   work rather than decorating.
+
+   Emission is material, so it stays dark-only. On a light panel a lamp
+   is printed: solid fill lit, hollow ring unlit -- the rule from the
+   link lamp, which these inherit by using .rf-led.
    ============================================================ */
-#link-led {
+
+/* The score line above it, so the cluster reads as a separate object
+   rather than three more rows. Same machined groove as the group
+   breaks: the cut takes the shadow, the lower lip catches light. */
+.rf-status-break {
+  height: 0;
+  margin: 8px 0 0;
+}
+[data-theme="dark"] .rf-status-break,
+html.blackroom .rf-status-break {
+  border-top: 1px solid var(--rf-shadowline);
+  box-shadow: 0 1px 0 rgba(255, 240, 235, 0.06);
+}
+
+#status-cluster {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0;
+}
+/* One object with three indicators, rather than three short rows. */
+[data-theme="dark"] #status-cluster,
+html.blackroom #status-cluster {
+  background-color: var(--rf-ground);
+  box-shadow: var(--rf-junction-recessed);
+}
+
+.rf-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  min-height: 22px;
+  /* Reports, never responds. No hover, no press, no cursor change -- the
+     whole reason for lifting these out of the key bank. */
+  pointer-events: none;
+}
+
+/**
+ * The lamps take the icon column, not their own width.
+ *
+ * `.rf-led` on its own is a 7px dot, which centres at 15.5px against a nav
+ * icon column centred at 20 -- close enough to look like a mistake rather than
+ * a difference. Same construction as the link lamp instead: a 16px column with
+ * an 8px lamp drawn inside by ::before, so the cluster sits on the rail's axis
+ * and neither state can collapse the column.
+ */
+#status-cluster .rf-led {
   width: 16px;
   height: 16px;
   display: grid;
   place-items: center;
-  flex-shrink: 0;
+  background: none;
+  box-shadow: none;
 }
-/* Unlit, light: a hollow ring. Quieter than the lit state, and still an
-   object rather than nothing, so absence reads as a lamp that is off. */
-#link-led::before {
+#status-cluster .rf-led::before {
   content: "";
   width: 8px;
   height: 8px;
   border-radius: 50%;
+  /* Light theme: printed, not lit. A hollow ring reads as a lamp that is off,
+     where an invisible pale dot reads as nothing at all. */
   background: transparent;
   box-shadow: inset 0 0 0 1.5px #9A8FA6;
-  transition: none;
 }
-/* Lit, light: solid ink. */
-#link-led[data-link="up"]::before {
+#status-cluster .rf-led.lit::before {
   background: var(--rf-plum);
   box-shadow: none;
 }
-
-/* Unlit, dark: a recessed dead lamp. */
-[data-theme="dark"] #link-led::before,
-html.blackroom #link-led::before {
+[data-theme="dark"] #status-cluster .rf-led::before,
+html.blackroom #status-cluster .rf-led::before {
   background: #2A2233;
   box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.8);
 }
-/* Lit, dark: the emitter. Higher specificity than the dark unlit rule above,
-   which is what keeps it winning at equal position. Does not pulse. */
-[data-theme="dark"] #link-led[data-link="up"]::before,
-html.blackroom #link-led[data-link="up"]::before {
+[data-theme="dark"] #status-cluster .rf-led.lit::before,
+html.blackroom #status-cluster .rf-led.lit::before {
   background: #EDE0FF;
   box-shadow:
-    0 0 6px #C79BFF,
-    0 0 15px rgba(199, 155, 255, 0.7);
+    0 0 5px #C79BFF,
+    0 0 13px rgba(199, 155, 255, 0.55);
 }
 
-/* The row takes the icon rows' 12px rather than px-2's 8px, so the lamp lands
-   on the rail's axis and the legend lines up with every other label. Lower
-   specificity than `#nav-rail.collapsed #link-row`, so collapsed still
-   centres. */
-#link-row {
-  padding-left: 12px;
-  padding-right: 12px;
+.rf-status-legend {
   font-family: var(--rf-mono);
-  font-size: 9px;
+  font-size: 8px;
   letter-spacing: 0.15em;
   text-transform: uppercase;
-  color: #A295AC;
 }
-[data-theme="dark"] #link-row[data-link="down"],
-html.blackroom #link-row[data-link="down"] {
-  color: #E8DCEF;
+[data-theme="dark"] .rf-status-legend,
+html.blackroom .rf-status-legend {
+  color: var(--rf-muted);
+}
+/* The legend brightens with its lamp, so a lit row reads as one thing
+   rather than a bright dot beside grey text. */
+[data-theme="dark"] .rf-status-row[data-on="true"] .rf-status-legend,
+html.blackroom .rf-status-row[data-on="true"] .rf-status-legend {
+  color: var(--rf-text);
+}
+
+/* Collapsed: lamps only, centred on the rail axis. The legends go with
+   every other label, and the lamp keeps its 16px column so the axis
+   survives -- see the collapsed-rail centring rule. */
+#nav-rail.collapsed #status-cluster .rf-status-row {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+  gap: 0;
 }
 
 /* ============================================================

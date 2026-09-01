@@ -1102,4 +1102,10 @@ Plus: copy is final copy in the right zone, never placeholder.
   (4) crawl aborts after 10 consecutive read failures instead of asking 221 more
   times. Measured: the heartbeat was NOT hammering (3ms, 0 failures) — said so
   rather than confirming the theory.
+- 2026-09-01 · Item 4 · done · status cluster replaces the orphaned LINKED row.
+  LINK / LIVE / PERF, recessed sub-panel, score line above, not interactive.
+  Index deliberately has no lamp. Verified on-axis both states: 20 expanded,
+  28 collapsed (exact rail centre), legends drop. I first used the bare 7px
+  .rf-led and it centred at 15.5 against a 20 column — the spec said keep the
+  16px construction and it was right.
 

@@ -239,7 +239,7 @@
     @media (prefers-reduced-motion: reduce) {
       /* Instant state change as the fallback, never removed feedback:
          the operator still has to see that their press landed. */
-      .rf-bezel, .rf-glass, #link-led::before { transition: none !important; }
+      .rf-bezel, .rf-glass, .rf-led::before { transition: none !important; }
     }
   </style>
 </head>
@@ -346,10 +346,13 @@
       <nav id="nav-items" class="flex flex-col flex-1"></nav>
 
       <div class="flex flex-col">
-        <div id="link-row" class="flex items-center gap-3 px-2 h-7" data-link="down" title="ProPresenter link">
-          <span id="link-led" class="shrink-0" data-link="down"></span>
-          <span class="nav-label whitespace-nowrap hidden" id="link-label">No link</span>
-        </div>
+        <!-- The status cluster. Recessed, because recessed means information
+             comes out — the one place in the rail that is neither flush nor
+             raised, which is exactly right for the only thing here that reports
+             rather than responds. Separated from the keys by a score line so it
+             stops reading as another menu item. -->
+        <div class="rf-status-break" aria-hidden="true"></div>
+        <div id="status-cluster" role="group" aria-label="ProPresenter status"></div>
         <button id="nav-help-toggle" class="btn btn-ghost btn-sm justify-start gap-3 px-2" title="Keyboard shortcuts (?)">
           <span class="shrink-0"><i data-lucide="keyboard"></i></span>
           <span class="nav-label whitespace-nowrap hidden">Shortcuts</span>
