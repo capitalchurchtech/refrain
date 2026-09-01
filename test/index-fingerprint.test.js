@@ -41,30 +41,36 @@ function previousIndex(overrides = {}) {
 
 // --- fileFingerprint ---
 
-test("fileFingerprint combines size, mtime and hash", () => {
-  assert.equal(fileFingerprint({ size: 100, mtimeMs: 1700000000000, hash: "abc" }), "100:1700000000000:abc");
+test("fileFingerprint is size and mtime — metadata only, never contents", () => {
+  // Refrain does not open presentation files. stat() reads the directory entry
+  // and the body is never touched, so ProPresenter is never competing with
+  // Refrain for a handle on a document it may be writing.
+  assert.equal(fileFingerprint({ size: 100, mtimeMs: 1700000000000 }), "100:1700000000000");
 });
 
 test("fileFingerprint rounds sub-millisecond mtimes", () => {
   // The filesystem keeps nanoseconds while Node reports fractional ms. Left
   // unrounded, a file could fingerprint differently on two reads and re-index
   // forever — the same trap that broke mtime comparison in library-sync.
-  const a = fileFingerprint({ size: 5, mtimeMs: 1700000000000.4, hash: "h" });
-  const b = fileFingerprint({ size: 5, mtimeMs: 1700000000000.0, hash: "h" });
+  const a = fileFingerprint({ size: 5, mtimeMs: 1700000000000.4 });
+  const b = fileFingerprint({ size: 5, mtimeMs: 1700000000000.0 });
   assert.equal(a, b);
 });
 
-test("fileFingerprint changes when only the content hash changes", () => {
-  const same = { size: 100, mtimeMs: 1700000000000 };
-  assert.notEqual(fileFingerprint({ ...same, hash: "aaa" }), fileFingerprint({ ...same, hash: "bbb" }));
-});
-
-// --- readFingerprint ---
-
-test("readFingerprint detects an edit that preserves size and mtime", async () => {
-  // Library Sync copies presentations between accounts and preserves mtimes,
-  // so same-size same-mtime different-content is reachable in practice. This
-  // is the case size+mtime alone would miss.
+test("a same-size same-mtime edit is NOT detected, and that is the trade", async () => {
+  // Documenting a deliberate limitation rather than deleting the test that
+  // used to cover it.
+  //
+  // Content hashing caught this, at the cost of reading all 445 library files
+  // in full on every incremental reindex. Refrain touching library files is
+  // what corrupted three of this church's workspaces, so the reads went. The
+  // hole hashing closed was created by Library Sync back-dating mtimes, and
+  // that back-dating is gone too — a synced-in file now carries the time it
+  // actually arrived, which a plain mtime comparison sees.
+  //
+  // What remains uncovered needs someone to restore a timestamp deliberately
+  // onto a same-size edit. If that ever becomes real, the fix is a full
+  // rebuild, not resuming whole-file reads.
   const dir = await mkdtemp(path.join(tmpdir(), "refrain-fp-"));
   try {
     const file = path.join(dir, "song.pro");
@@ -75,11 +81,10 @@ test("readFingerprint detects an edit that preserves size and mtime", async () =
     const before = await readFingerprint(file);
 
     await writeFile(file, "BBBB"); // same 4 bytes
-    await utimes(file, when, when); // same mtime
+    await utimes(file, when, when); // and the timestamp put back by hand
     const after = await readFingerprint(file);
 
-    assert.notEqual(before, after, "content change must be detected");
-    assert.ok(before.startsWith("4:"), "size is part of the fingerprint");
+    assert.equal(after, before, "metadata cannot see it, by design");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

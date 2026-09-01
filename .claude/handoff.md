@@ -1093,4 +1093,13 @@ Plus: copy is final copy in the right zone, never placeholder.
   — 30 advances through one song add one entry. Cap 10 -> 30 to cover a service.
   The pin is held separately from the history now: the head is what is on screen,
   so reading the bar off it would have offered to return you where you already are.
+- 2026-09-01 · Workspace corruption · done · Library Sync wrote .pro files into a
+  live ProPresenter library with no running-check of any kind. Three workspaces
+  corrupted; a sync ran the night before the last. Four fixes: (1) refuse to sync
+  in either direction while ProPresenter runs, failing closed, plus no more mtime
+  back-dating; (2) fingerprint from stat() only — Refrain never opens a library
+  file now; (3) heartbeat backs off 4s->30s with no client, 1800->240 calls/hr;
+  (4) crawl aborts after 10 consecutive read failures instead of asking 221 more
+  times. Measured: the heartbeat was NOT hammering (3ms, 0 failures) — said so
+  rather than confirming the theory.
 

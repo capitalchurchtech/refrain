@@ -20,38 +20,45 @@
  * This module is pure except for readFingerprint, so the decisions are testable
  * without a ProPresenter or a library on disk.
  */
-import { readFile, stat } from "node:fs/promises";
-import { createHash } from "node:crypto";
+import { stat } from "node:fs/promises";
 
 /**
  * A file's identity for change detection: size, mtime, and content hash.
  *
  * Size and mtime alone would be cheaper, but they are not sufficient here.
- * Library Sync copies presentations between macOS accounts and preserves
- * mtimes (see stageAndWrite/copyAtomic in arrangement-diff.js and
- * library-sync.js), so a synced-in file can arrive with content that differs
- * from the local copy while carrying the same size and mtime. Hashing removes
- * that hole, and at 0.46s for a whole library there is no reason to gamble.
+ * **Metadata only — Refrain never opens a presentation file.** `stat()` reads
+ * the directory entry; the file body is never touched, so ProPresenter is never
+ * competing with Refrain for a handle on a document it may be writing.
  *
- * The hash alone would be enough to be correct; size and mtime ride along
- * because they cost nothing and make a mismatch legible when diagnosing why
- * something re-indexed.
+ * This used to SHA-1 the full contents of every .pro file on every incremental
+ * reindex — 445 whole-file reads out of the live library, repeatedly, for the
+ * life of the app. The hash existed to close one specific hole: Library Sync
+ * preserved mtimes when copying, so a synced-in file could arrive with
+ * different content under the same size and mtime.
+ *
+ * That hole is closed at its source instead. `copyAtomic` no longer back-dates
+ * what it writes, so a synced-in file carries the time it actually arrived and
+ * a plain mtime comparison sees it. The two changes only work together: reading
+ * metadata alone would have been unsafe while sync was still lying about
+ * timestamps.
+ *
+ * What remains is the ordinary case of a file changed in place without its size
+ * or mtime moving, which requires deliberately restoring a timestamp. Against
+ * that, this is the wrong trade to make: a church lost three workspaces to
+ * Refrain touching library files, and reading every one of them in full, every
+ * few seconds, is not a cost worth paying for a hole that no longer exists.
  */
-export function fileFingerprint({ size, mtimeMs, hash }) {
-  return `${size}:${Math.round(mtimeMs)}:${hash}`;
+export function fileFingerprint({ size, mtimeMs }) {
+  return `${size}:${Math.round(mtimeMs)}`;
 }
 
-/** Fingerprints one .pro file, or null if it cannot be read. */
+/** Fingerprints one .pro file from its metadata, or null if it cannot be read. */
 export async function readFingerprint(filePath) {
   if (!filePath) return null;
   try {
-    const [stats, contents] = await Promise.all([stat(filePath), readFile(filePath)]);
+    const stats = await stat(filePath);
     if (!stats.isFile()) return null;
-    return fileFingerprint({
-      size: stats.size,
-      mtimeMs: stats.mtimeMs,
-      hash: createHash("sha1").update(contents).digest("hex"),
-    });
+    return fileFingerprint({ size: stats.size, mtimeMs: stats.mtimeMs });
   } catch {
     // Deleted, renamed, permissions, or on a volume that went away. Callers
     // treat null as "cannot vouch for this one" and re-fetch it.

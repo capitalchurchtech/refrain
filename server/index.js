@@ -52,6 +52,7 @@ import {
   getIndexedLibraryDirs,
   daysSinceFullBuild,
   getIndexedSlide,
+  lastCrawlAbort,
 } from "./search-index.js";
 import { startLibraryWatch, fullRebuildSuggestion,
   indexStaleness,
@@ -66,6 +67,8 @@ import {
 } from "./performance-mode.js";
 import { resolveArrangement, flattenGroups, findLiveIndex } from "./arrangements.js";
 import { pushLiveItem, findReturnEntry } from "./return-history.js";
+import { checkLibrarySafeToTouch } from "./library-guard.js";
+import { heartbeatInterval } from "./heartbeat-pacing.js";
 import { buildInfo } from "./build-info.js";
 import {
   syncLibrary,
@@ -636,7 +639,13 @@ let heartbeatTimer = null;
  * readout matter MORE during a service, not less. What performance mode stops
  * is index work, which is the expensive part.
  */
-const HEARTBEAT_MS = 4_000;
+// When a browser last polled. The heartbeat follows this rather than running
+// flat out forever: see heartbeat-pacing.js for why 43,200 requests a day at
+// idle was not defensible.
+let lastClientAt = null;
+export function noteClientActivity() {
+  lastClientAt = Date.now();
+}
 
 let liveState = {
   connected: false,
@@ -712,10 +721,16 @@ async function heartbeat() {
 const pollPerformance = heartbeat;
 
 function startPerformancePolling() {
-  clearInterval(heartbeatTimer);
-  heartbeatTimer = setInterval(() => heartbeat().catch(() => {}), HEARTBEAT_MS);
-  heartbeatTimer.unref?.();
-  heartbeat().catch(() => {});
+  clearTimeout(heartbeatTimer);
+  // Rescheduled after each beat rather than fixed, so the rate can follow
+  // whether anyone is actually watching without tearing down a timer.
+  const beat = async () => {
+    await heartbeat().catch(() => {});
+    const next = heartbeatInterval({ lastClientAt });
+    heartbeatTimer = setTimeout(beat, next);
+    heartbeatTimer.unref?.();
+  };
+  beat();
 }
 
 /**
@@ -813,6 +828,7 @@ function indexStatusPayload() {
     },
     fullRebuildSuggestion: fullRebuildSuggestion(daysSinceFullBuild(index)),
     staleness: indexStaleness(index?.builtAt ?? null),
+    crawlAborted: lastCrawlAbort(),
     autoReindex: autoReindexEnabled()
       ? (libraryWatch?.status() ?? { watching: 0, outcome: "not started", pending: null })
       : null,
@@ -939,6 +955,7 @@ app.post("/api/index/reindex-changed", async (_req, res) => {
 // heartbeat's cache rather than calling ProPresenter, so a browser left open on
 // this screen costs ProPresenter nothing.
 app.get("/api/live-state", (_req, res) => {
+  noteClientActivity();
   res.json(liveStatePayload());
 });
 
@@ -1108,6 +1125,7 @@ app.post("/api/focus", async (req, res) => {
 // `history` is everything reachable behind it. Both come from one call so the
 // bar and its pulldown can never disagree about the same moment.
 app.get("/api/return-pin", (_req, res) => {
+  noteClientActivity();
   res.json({ pin: returnPin, history: returnHistory });
 });
 
@@ -1230,6 +1248,9 @@ app.post("/api/live/message-clear", async (req, res) => {
 // live in library-sync.js; these routes only resolve paths and report.
 
 const LIBRARY_SYNC_STATE = "./cache/library-sync-last-run.json";
+// Survives a restart, so an operator who quits ProPresenter and restarts
+// Refrain before syncing is not stuck without a library path.
+const LIBRARY_SYNC_DIR_CACHE = "./cache/library-sync-library-dir.json";
 
 // One sync at a time. Two overlapping runs would interleave their copies and
 // their snapshots, and this writes into a library nobody wants to gamble with.
@@ -1253,6 +1274,14 @@ function librarySyncSettings() {
  * rather than hardcoded: no vendor install layout baked in, and it fails
  * honestly when the library is missing or empty instead of guessing a path.
  */
+// The library directory, remembered from the last time ProPresenter told us.
+//
+// This exists because of a genuine tension the guard exposes: finding the
+// library means asking ProPresenter's API, which requires it to be running --
+// and writing to the library requires it to be closed. So the path is learned
+// while the app is up (a read-only call, safe) and used while it is down.
+let cachedLibraryDir = null;
+
 async function resolveLibraryDir(libraryName) {
   const items = await client.getLibrary([libraryName]);
   if (!items?.length) {
@@ -1263,6 +1292,8 @@ async function resolveLibraryDir(libraryName) {
   if (!dir) {
     return { dir: null, error: "ProPresenter did not report a file path for that library's presentations." };
   }
+  cachedLibraryDir = { libraryName, dir, learnedAt: new Date().toISOString() };
+  await writeLastRun(LIBRARY_SYNC_DIR_CACHE, cachedLibraryDir).catch(() => {});
   return { dir, error: null };
 }
 
@@ -1326,10 +1357,60 @@ app.post("/api/library-sync/run", async (_req, res) => {
     return res.status(409).json({ error: "A sync is already running. Wait for it to finish." });
   }
   const settings = librarySyncSettings();
+
+  /**
+   * Nothing touches a library while ProPresenter is running.
+   *
+   * This is the fix for three corrupted workspaces. Receive writes .pro files
+   * into the live library directory; send reads it. Doing either under a
+   * running ProPresenter is how its catalog and the filesystem diverge, and a
+   * torn file captured by `send` propagates to every other machine.
+   *
+   * Checked here rather than deeper down so it covers both directions and
+   * cannot be reached around, and it refuses rather than warns.
+   */
+  const safety = await checkLibrarySafeToTouch({
+    apiProbe: async () => {
+      try {
+        // Cheapest call that proves the app is answering.
+        await client.testConnection();
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  });
+  if (!safety.safe) {
+    return res.status(409).json({
+      error: `${safety.reason} Library Sync copies presentation files in and out of the library ` +
+        `folder, and doing that while ProPresenter has the workspace open can corrupt it.`,
+      blockedBy: "propresenter-running",
+      evidence: safety.evidence,
+    });
+  }
+
   librarySyncInFlight = true;
   try {
-    const { dir, error } = await resolveLibraryDir(settings.libraryName);
-    if (error) return res.status(502).json({ error });
+    // With ProPresenter closed the API cannot tell us where the library is, so
+    // use the path learned the last time it was open.
+    let dir = null;
+    const live = await resolveLibraryDir(settings.libraryName).catch(() => ({ dir: null, error: null }));
+    if (live.dir) {
+      dir = live.dir;
+    } else {
+      const cached = cachedLibraryDir ?? (await readLastRun(LIBRARY_SYNC_DIR_CACHE));
+      if (cached?.libraryName === settings.libraryName && cached.dir) {
+        dir = cached.dir;
+      }
+    }
+    if (!dir) {
+      return res.status(409).json({
+        error:
+          `Refrain does not know where the "${settings.libraryName}" library lives on disk yet. ` +
+          `Open the Library Sync screen once with ProPresenter running so it can learn the path, ` +
+          `then quit ProPresenter and sync.`,
+      });
+    }
 
     const ends = syncEndpoints(settings, dir);
     const snapshotsDir = path.join(settings.sharedFolder, "snapshots");

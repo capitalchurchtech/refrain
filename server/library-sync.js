@@ -31,7 +31,7 @@
  * the receiving side. That is deliberate. Pruning is a human decision, taken
  * with a snapshot in hand, not something a scheduled job gets to do.
  */
-import { readdir, stat, mkdir, copyFile, rename, link, rm, readFile, writeFile, utimes } from "node:fs/promises";
+import { readdir, stat, mkdir, copyFile, rename, link, rm, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
 
@@ -136,14 +136,24 @@ export async function listLibraryFiles(dir) {
   return files.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** Copy preserving mtime, via a temp file so a partial write is never visible. */
+/**
+ * Copy via a temp file, so a partial write is never visible.
+ *
+ * **No longer preserves mtime, and that is deliberate.** It used to restore the
+ * source's timestamps after the rename, so the next sync's unchanged-check
+ * would not re-copy. The cost was that a file could land in a library carrying
+ * a timestamp older than the moment it arrived -- invisible to anything
+ * watching the folder for changes, including ProPresenter and including
+ * Refrain's own indexer.
+ *
+ * A freshly written file now says so. Re-copying an unchanged file on the next
+ * run is a few hundred milliseconds; a file that lies about its age is a
+ * workspace that disagrees with its own catalog.
+ */
 async function copyAtomic(from, to) {
   const tmp = `${to}.refrain-tmp`;
   await copyFile(from, tmp);
-  const s = await stat(from);
   await rename(tmp, to);
-  // Keep mtime so the next run's unchanged-check works and we don't re-copy.
-  await utimes(to, s.atime, s.mtime);
 }
 
 /**

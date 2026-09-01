@@ -61,6 +61,18 @@ Wired up but not finished (the interface exists, the methods currently refuse to
 - The Firestore and SFTP storage backends. They show up in the config and the plugin system recognizes them, but their read and write methods are stubs. If you need true multi machine sharing and a synced folder won't do, finishing one of these is the next job, not a switch you can flip today. CONTRIBUTING.md describes the interface.
 - Only two church management providers exist so far (Manual and Planning Center). Rock RMS, Church Community Builder, Elvanto and the rest are documented as places to plug in, not built integrations.
 
+### A warning about Library Sync, and what changed
+
+**If you ran Library Sync before v0.13.0, run it only with ProPresenter closed, and check your workspaces.**
+
+Library Sync copies presentation files into the library folder ProPresenter reports as its own. Until v0.13.0 there was no check on whether ProPresenter was running at the time. ProPresenter keeps a private catalog of each workspace, built from the library at startup and held open while the app runs — files appearing or being replaced underneath it is how that catalog and the files on disk stop agreeing, which is what a corrupted workspace is.
+
+One church lost three workspaces in the months after adopting Refrain, having lost none in the years before, with a sync run the night before the last one. That is correlation rather than proof, but the mechanism was real and unguarded, and it is the most likely explanation.
+
+Refrain now refuses to run a sync while ProPresenter is running — in either direction, because reading the library while ProPresenter writes to it captures a torn file that then propagates to every other machine. If it cannot tell whether ProPresenter is running, it refuses.
+
+Two related changes came with it. Sync no longer back-dates the timestamps of files it writes, so a file that lands in a library says when it arrived. And Refrain no longer opens presentation files at all: the index fingerprints them from `stat()` metadata, where it used to read all of them in full on every reindex.
+
 Not independently checked:
 
 - **Light theme is secondary.** Refrain is designed for a dark booth and starts in dark; light and system are there if you want them, and light gets the same colours, contrast, hit areas and indicators, but not the machined material — no cap gradients, lit collars or panel junctions, because a warm-graphite object does not really have a light mode. It is also the theme we look at least, and a run of defects that only appeared there (a primary action below AA contrast, a touch target under 44px, a status lamp that was invisible, a progress meter that did not render) were all found and fixed late. Those are fixed, but if you run light theme and something looks wrong, it is more likely to be real than a misreading, and worth reporting.

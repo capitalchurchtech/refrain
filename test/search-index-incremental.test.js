@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { rebuildIndex, getIndex } from "../server/search-index.js";
+import { rebuildIndex, getIndex, lastCrawlAbort } from "../server/search-index.js";
 import { readFingerprint } from "../server/index-fingerprint.js";
 
 /**
@@ -84,7 +84,7 @@ test("a full build records a path and fingerprint for every presentation", async
     assert.equal(client.fetched.length, 2);
     for (const id of ["a", "b"]) {
       assert.equal(index.presentations[id].presentationPath, songs[id].filePath);
-      assert.match(index.presentations[id].fingerprint, /^\d+:\d+:[0-9a-f]{40}$/);
+      assert.match(index.presentations[id].fingerprint, /^\d+:\d+$/);
     }
     assert.deepEqual(index.buildOptions, { preferredArrangements: ["FS"], crawlPlaylists: false });
   });
@@ -312,5 +312,59 @@ test("an incremental caller may wait on an in-flight full rebuild", async () => 
     release();
     const [a, b] = await Promise.all([full, joined]);
     assert.equal(a, b, "the incremental caller should receive the full rebuild's result");
+  });
+});
+
+test("a crawl stops asking once ProPresenter has clearly stopped answering", async () => {
+  // Measured on a real rig: a rebuild begun too soon after launch failed 221 of
+  // 445 reads, and the old loop asked all 221 times anyway. Once a run of reads
+  // is failing, the useful thing is to stop and say so.
+  await withTempCwd(async (dir) => {
+    const specs = {};
+    for (let i = 0; i < 40; i++) specs[`s${i}`] = { name: `Song ${i}`, text: "words", body: `body-${i}` };
+    const songs = await makeSongs(dir, specs);
+
+    const client = fakeProPresenter(songs);
+    const realGet = client.getPresentation.bind(client);
+    let calls = 0;
+    client.getPresentation = async (id) => {
+      calls += 1;
+      // Healthy for a few, then ProPresenter falls over and stays down.
+      if (calls > 3) throw new Error("ProPresenter is not responding");
+      return realGet(id);
+    };
+
+    await rebuildIndex(client, {}, []);
+
+    // It must give up well short of asking all forty.
+    assert.ok(calls < 20, `kept asking ${calls} times after it started failing`);
+    assert.ok(calls >= 10, `gave up after only ${calls} — one slow document must not abandon a rebuild`);
+
+    const abort = lastCrawlAbort();
+    assert.ok(abort, "the abort is recorded rather than reported as a clean build");
+    assert.ok(abort.consecutiveFailures >= 10);
+  });
+});
+
+test("a few scattered failures do not abandon a rebuild", async () => {
+  // One document deleted between the library listing and the read, or one slow
+  // response, is ordinary. Only a sustained run means the app is not coping.
+  await withTempCwd(async (dir) => {
+    const specs = {};
+    for (let i = 0; i < 20; i++) specs[`s${i}`] = { name: `Song ${i}`, text: "words", body: `body-${i}` };
+    const songs = await makeSongs(dir, specs);
+
+    const client = fakeProPresenter(songs);
+    const realGet = client.getPresentation.bind(client);
+    let calls = 0;
+    client.getPresentation = async (id) => {
+      calls += 1;
+      if (calls % 5 === 0) throw new Error("transient");
+      return realGet(id);
+    };
+
+    await rebuildIndex(client, {}, []);
+    assert.equal(calls, 20, "every presentation was still attempted");
+    assert.equal(lastCrawlAbort(), null, "scattered failures are not an abort");
   });
 });

@@ -40,6 +40,21 @@ const PRESENTATION_FETCH_CONCURRENCY = 1;
  */
 const FETCH_PACING_MS = 120;
 
+/**
+ * Consecutive read failures before the crawl gives up on ProPresenter.
+ *
+ * A rebuild started too soon after ProPresenter launches has been measured
+ * failing **221 of 445 reads** — and the old loop asked all 221 times anyway,
+ * politely, 120ms apart, for four minutes. Once a run of reads is failing, the
+ * app is busy indexing its own media and the useful thing to do is stop asking
+ * and say so.
+ *
+ * Ten rather than two or three: a single slow document, or one deleted between
+ * the library listing and the read, is ordinary and must not abandon a rebuild
+ * the operator asked for. Ten in a row is not one bad document.
+ */
+const CRAWL_ABORT_AFTER_CONSECUTIVE_FAILURES = 10;
+
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 let currentIndex = { builtAt: null, presentations: {} };
@@ -47,6 +62,9 @@ let rebuildInFlight = null;
 // Which kind of run is in flight, so a later caller can tell whether joining it
 // would actually satisfy them. See the guard in rebuildIndex.
 let rebuildInFlightMode = null;
+// Set when a crawl gave up because ProPresenter stopped answering, so the
+// Health screen can say the index is partial instead of implying a clean run.
+let rebuildAbortedInfo = null;
 let rebuildProgress = { inProgress: false, stage: null, current: 0, total: 0 };
 
 export function getIndex() {
@@ -232,8 +250,17 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
     let fetched = 0;
     let failedButKept = 0;
     let failedAndEmpty = 0;
+    let consecutiveFailures = 0;
+    let crawlAborted = null;
     rebuildProgress = { inProgress: true, stage: "presentations", current: 0, total: idsNeedingSlides.length };
     await runWithConcurrency(idsNeedingSlides, PRESENTATION_FETCH_CONCURRENCY, async (id) => {
+      // Once ProPresenter has stopped answering, stop asking. Remaining
+      // presentations keep whatever the previous index had for them.
+      if (crawlAborted) {
+        const prev = previousPresentations[id];
+        if (prev?.slides?.length) Object.assign(presentations[id], carriedEntryFields(prev));
+        return;
+      }
       // Used to tell "the file is as we read it" from "the operator saved it
       // while we were reading it" for presentations we had no prior path for.
       const fetchStartedAt = Date.now();
@@ -261,6 +288,7 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
         presentations[id].fingerprint =
           carriedFingerprints[id] ??
           (client.isLocalHost ? await readFingerprintUnchangedSince(presentationPath, fetchStartedAt) : null);
+        consecutiveFailures = 0;
       } catch {
         // The presentation may have been deleted since the library listing was
         // fetched, or the call may have failed transiently.
@@ -276,6 +304,19 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
           failedButKept += 1;
         } else {
           failedAndEmpty += 1;
+        }
+        consecutiveFailures += 1;
+        if (consecutiveFailures >= CRAWL_ABORT_AFTER_CONSECUTIVE_FAILURES) {
+          crawlAborted = {
+            after: fetched + 1,
+            of: idsNeedingSlides.length,
+            consecutiveFailures,
+          };
+          console.log(
+            `Stopped indexing after ${consecutiveFailures} reads in a row failed — ProPresenter is not keeping up. ` +
+              `Kept the previous index for the remaining ${idsNeedingSlides.length - fetched - 1} presentation(s). ` +
+              `Give it a few minutes after launch and try again.`
+          );
         }
       }
       fetched += 1;
@@ -293,6 +334,13 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
     }
     if (failedAndEmpty > 0) {
       console.log(`${failedAndEmpty} presentation(s) could not be read and have no slides indexed.`);
+    }
+    if (crawlAborted) {
+      // Surfaced on the index status so the Health screen can say the index is
+      // partial, rather than reporting a clean build over a third of a library.
+      rebuildAbortedInfo = crawlAborted;
+    } else {
+      rebuildAbortedInfo = null;
     }
 
     const newIndex = {
@@ -387,6 +435,17 @@ export function getIndexedLibraryDirs() {
     if (entry.presentationPath) dirs.add(path.dirname(entry.presentationPath));
   }
   return [...dirs];
+}
+
+/**
+ * Set when the last crawl gave up because ProPresenter stopped answering.
+ *
+ * Exposed so the Health screen can say the index is partial. Reporting a clean
+ * build over a third of a library is the silent-failure shape this project has
+ * been removing everywhere else.
+ */
+export function lastCrawlAbort() {
+  return rebuildAbortedInfo;
 }
 
 /** Days since the whole library was last read, or null if never/unknown. */
