@@ -170,6 +170,7 @@ export function initArrangement() {
       }
 
       resultsEl.innerHTML = `
+        <div id="arrangement-next-host" class="flex items-center gap-3 mt-2"></div>
         <div class="flex flex-col gap-2 mt-2">
           ${data.results
             .map((r) => {
@@ -177,7 +178,7 @@ export function initArrangement() {
               const suggestUpdate = (!matches || r.alwaysDiffers) && !r.ignored;
               const canPush = suggestUpdate && r.externalSongId && r.externalArrangementId;
               return `
-              <div class="text-sm bg-base-100 rounded p-2" data-presentation-id="${escapeHtml(r.presentationId ?? "")}" data-service-date="${escapeHtml(data.serviceDate)}">
+              <div class="text-sm bg-base-100 rounded p-2 compare-result" data-presentation-id="${escapeHtml(r.presentationId ?? "")}" data-service-date="${escapeHtml(data.serviceDate)}">
                 <div class="font-medium flex items-center justify-between gap-2">
                   <span class="flex items-center gap-2 min-w-0 truncate">
                     ${matches ? `<span class="rf-mark-gap"></span>` : `<i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 rf-flag"></i>`}
@@ -228,6 +229,7 @@ export function initArrangement() {
         </div>
       `;
       wireCompareAllResultActions(resultsEl);
+      wireNextDivergent(resultsEl);
       if (window.lucide) window.lucide.createIcons();
       // Song-list counts (historyCount/lastServiceDate) are now stale
       // until the next full render() — not worth a rebuild here, since
@@ -239,6 +241,40 @@ export function initArrangement() {
         if (window.lucide) window.lucide.createIcons();
       }
     }
+  }
+
+  /**
+   * Walks the songs that actually need attention.
+   *
+   * Comparing a plan produces a list where most rows are fine and a few are
+   * not, and the screen stopped at the list: the operator scrolled it looking
+   * for the marked ones, pushed a correction, then scrolled again to find
+   * where they were. Same shape as Spell Check's flagged slides, so it gets
+   * the same control rather than a second idea about what "next" means.
+   *
+   * Only the divergent rows are in the walk. A row that matches is not work.
+   */
+  function wireNextDivergent(resultsEl) {
+    const host = resultsEl.querySelector("#arrangement-next-host");
+    if (!host) return;
+    const rows = [...resultsEl.querySelectorAll(".compare-result")].filter((r) =>
+      r.querySelector("[data-lucide='alert-triangle'], .rf-flag")
+    );
+    if (!rows.length) {
+      host.innerHTML = `<span class="rf-hint">Every song matches its plan. Nothing to review.</span>`;
+      return;
+    }
+    host.innerHTML = `<button id="arrangement-next-btn" class="btn btn-chip">Next song to review</button>
+                      <span id="arrangement-next-progress" class="rf-silkscreen"></span>`;
+    let cursor = -1;
+    document.getElementById("arrangement-next-btn").addEventListener("click", () => {
+      cursor = (cursor + 1) % rows.length;
+      for (const r of rows) r.classList.remove("rf-current");
+      rows[cursor].classList.add("rf-current");
+      rows[cursor].scrollIntoView({ block: "center" });
+      const p = document.getElementById("arrangement-next-progress");
+      if (p) p.textContent = `${cursor + 1} of ${rows.length}`;
+    });
   }
 
   /**
@@ -473,7 +509,7 @@ export function initArrangement() {
       <div class="card bg-base-200 mt-3">
         <div class="card-body p-3 gap-2">
           <h2 class="card-title">History</h2>
-          <div class="flex flex-col gap-2" id="history-list">
+          <div class="rf-list" id="history-list">
             ${
               (record.history ?? []).length === 0
                 ? `<div class="text-sm opacity-60">No comparisons run yet.</div>`
@@ -482,7 +518,9 @@ export function initArrangement() {
                     .map((h) => {
                       const matches = !h.diff.skipped.length && !h.diff.added.length && !h.diff.reordered.length;
                       return `
-              <div class="text-sm bg-base-100 rounded p-2 history-entry" data-service-date="${escapeHtml(h.serviceDate)}">
+              <div class="text-sm rf-record-row history-entry" data-service-date="${escapeHtml(h.serviceDate)}"
+                   role="button" tabindex="0"
+                   aria-label="Open ${escapeHtml(record.songName)} from ${escapeHtml(formatCompactDate(h.serviceDate))} in ProPresenter">
                 <div class="font-medium flex items-center justify-between gap-2">
                   <span class="flex items-center gap-2">
                     ${matches ? `<span class="rf-mark-gap"></span>` : `<i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 rf-flag"></i>`}
@@ -510,6 +548,8 @@ export function initArrangement() {
         </div>
       </div>
     `;
+
+    wireHistoryOpen(presentationId, detailEl);
 
     if (isLogger) {
       wirePlannedEditor(presentationId, role, planned);
@@ -547,7 +587,10 @@ export function initArrangement() {
       document.getElementById("run-comparison-btn").addEventListener("click", () => runComparison(presentationId, false));
 
       detailEl.querySelectorAll(".history-ignore-btn").forEach((btn) => {
-        btn.addEventListener("click", async () => {
+        btn.addEventListener("click", async (e) => {
+          // Belt and braces with the row's own `closest("button")` check: this
+          // one survives if the row handler is ever rewritten.
+          e.stopPropagation();
           const serviceDate = btn.closest(".history-entry").dataset.serviceDate;
           const currentlyIgnored = btn.textContent.includes("Un-ignore");
           btn.disabled = true;
@@ -577,6 +620,51 @@ export function initArrangement() {
     listViewEl.classList.add("hidden");
     detailEl.classList.remove("hidden");
     detailEl.scrollIntoView({ block: "start" });
+  }
+
+  /**
+   * A history entry opens that song in ProPresenter's editor.
+   *
+   * **Focus, never trigger.** A record of something that happened is a place to
+   * go and look, not something to put back on the screens -- and the operator
+   * clicking a July service in the middle of a September one must not change
+   * what the congregation is seeing. `/api/focus` moves the editor only.
+   *
+   * The Ignore button lives inside the row, so its click is stopped from
+   * reaching the row underneath it; otherwise ignoring a week would also jump
+   * the editor somewhere. And the row is reachable from the keyboard, because a
+   * clickable div without that is worse than a static one -- it looks
+   * actionable to a mouse and does not exist to anything else.
+   */
+  function wireHistoryOpen(presentationId, detailEl) {
+    detailEl.querySelectorAll(".history-entry").forEach((row) => {
+      const open = async () => {
+        if (row.dataset.opening === "1") return;
+        row.dataset.opening = "1";
+        try {
+          const res = await fetch("/api/focus", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ presentationId }),
+          });
+          if (!res.ok) throw new Error((await res.json()).error ?? res.statusText);
+        } catch (err) {
+          showFailure(`Couldn't open that in ProPresenter: ${err.message}. Nothing on the screens changed.`);
+        } finally {
+          delete row.dataset.opening;
+        }
+      };
+      row.addEventListener("click", (e) => {
+        if (e.target.closest("button")) return; // the Ignore control is its own target
+        open();
+      });
+      row.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        if (e.target.closest("button")) return;
+        e.preventDefault(); // Space would scroll the panel out from under them
+        open();
+      });
+    });
   }
 
   /**

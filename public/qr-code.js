@@ -150,9 +150,10 @@ export function initQrCode() {
             </div>
             <div id="qr-error" class="text-sm rf-flag text-center hidden"></div>
             <div class="flex gap-2 w-full">
-              <button id="qr-download-png" class="btn btn-brand btn-sm flex-1" disabled><i data-lucide="download" class="w-4 h-4"></i> PNG</button>
-              <button id="qr-download-svg" class="btn btn-outline btn-sm flex-1" disabled><i data-lucide="download" class="w-4 h-4"></i> SVG</button>
+              <button id="qr-download-png" class="btn btn-brand btn-sm flex-1" title="Fill in the fields above first" disabled><i data-lucide="download" class="w-4 h-4"></i> PNG</button>
+              <button id="qr-download-svg" class="btn btn-outline btn-sm flex-1" title="Fill in the fields above first" disabled><i data-lucide="download" class="w-4 h-4"></i> SVG</button>
             </div>
+            <div id="qr-download-reason" class="rf-hint text-center">Fill in the fields above first.</div>
             <div class="text-xs opacity-50 text-center">SVG is best for print (scales with no blur). Logos apply to PNG only.</div>
             </div>
           </div>
@@ -336,24 +337,46 @@ export function initQrCode() {
     debounceTimer = setTimeout(updatePreview, 250);
   }
 
+  /**
+   * Enables the download buttons, or disables them and says why.
+   *
+   * The reason goes beside the buttons rather than only into a `title`,
+   * because a tooltip on a disabled control cannot be reached on a
+   * touchscreen -- and a booth machine is as likely to be a tablet as a
+   * laptop. The title stays as well, for a mouse.
+   *
+   * `pngEnabled` exists because the two buttons genuinely differ in one state:
+   * a raster logo is fine in a PNG and impossible in an SVG, so PNG stays
+   * available while SVG explains itself.
+   */
+  function setDownloadReason(reason, { pngEnabled = false } = {}) {
+    const pngBtn = document.getElementById("qr-download-png");
+    const svgBtn = document.getElementById("qr-download-svg");
+    const el = document.getElementById("qr-download-reason");
+    if (!pngBtn || !svgBtn) return;
+    pngBtn.disabled = !pngEnabled;
+    svgBtn.disabled = !pngEnabled || Boolean(reason);
+    pngBtn.title = pngBtn.disabled ? reason ?? "" : "";
+    svgBtn.title = svgBtn.disabled ? reason ?? "" : "";
+    if (el) {
+      el.textContent = reason ?? "";
+      el.classList.toggle("hidden", !reason);
+    }
+  }
+
   async function updatePreview() {
     const content = buildContent();
     const img = document.getElementById("qr-preview");
     const empty = document.getElementById("qr-preview-empty");
     const errEl = document.getElementById("qr-error");
-    const pngBtn = document.getElementById("qr-download-png");
-    const svgBtn = document.getElementById("qr-download-svg");
     if (!img) return; // navigated away
 
     if (!content.trim()) {
       img.classList.add("hidden");
       empty.classList.remove("hidden");
       errEl.classList.add("hidden");
-      pngBtn.disabled = true;
-      svgBtn.disabled = true;
       // A disabled control that gives no reason is a dead button.
-      pngBtn.title = "Fill in the fields above first";
-      svgBtn.title = "Fill in the fields above first";
+      setDownloadReason("Fill in the fields above first.");
       lastPngDataUrl = null;
       return;
     }
@@ -365,18 +388,19 @@ export function initQrCode() {
       img.classList.remove("hidden");
       empty.classList.add("hidden");
       errEl.classList.add("hidden");
-      pngBtn.disabled = false;
-      pngBtn.title = "";
       // SVG can't carry a raster logo, so only offer it when no logo is set.
       // That reason used to live only in this comment: the operator added a
       // logo, watched SVG grey out, and was told nothing.
-      svgBtn.disabled = Boolean(state.logoDataUrl);
-      svgBtn.title = svgBtn.disabled ? "SVG can't include a logo. Clear the logo to download SVG." : "";
+      setDownloadReason(
+        state.logoDataUrl ? "SVG can't include a logo. Clear the logo to download SVG." : null,
+        { pngEnabled: true }
+      );
     } catch (err) {
       errEl.textContent = err.message;
       errEl.classList.remove("hidden");
-      pngBtn.disabled = true;
-      svgBtn.disabled = true;
+      // The error branch used to disable both and say nothing, so a failed
+      // generate looked the same as an empty form.
+      setDownloadReason("That code couldn't be generated, so there is nothing to download yet.");
     }
   }
 

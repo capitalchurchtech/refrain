@@ -353,7 +353,7 @@ export function initSearch() {
     const parts = [];
     while (matchStart !== -1) {
       parts.push(escapeHtml(source.slice(cursor, matchStart)));
-      parts.push(`<mark class="bg-warning text-warning-content rounded px-0.5">${escapeHtml(source.slice(matchStart, matchStart + q.length))}</mark>`);
+      parts.push(`<mark class="rf-match">${escapeHtml(source.slice(matchStart, matchStart + q.length))}</mark>`);
       cursor = matchStart + q.length;
       matchStart = lowerSource.indexOf(lowerQuery, cursor);
     }

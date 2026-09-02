@@ -644,7 +644,7 @@ rows uniform by construction rather than by tuning.
 
 ---
 
-## 6. CRAFT — History entries jump to the editor on click
+## 6. CRAFT — History entries jump to the editor on click — DONE 2026-09-02
 
 Brandon: "The history panel needs to have the items jump you there on click
 (not on the screens but the editor)."
@@ -748,7 +748,7 @@ does not dim when the key is pressed.
 
 ---
 
-## 9. CRAFT — Every screen is a destination with no onward path
+## 9. CRAFT — Every screen is a destination with no onward path — DONE 2026-09-02
 
 The connective tissue between screens was never designed. Nine islands; nothing
 says what to do next, so the operator has to know the product to keep moving.
@@ -777,7 +777,7 @@ extend that to navigation.
 
 ---
 
-## 10. CRAFT — Finish the semantic colour sweep
+## 10. CRAFT — Finish the semantic colour sweep — DONE 2026-09-02
 
 Raw DaisyUI semantic colours by file: `health.js` 44, `arrangement.js` 19,
 `library-sync.js` 8, `setup.js` 6, `search.js` 2, `live.js` 2,
@@ -932,7 +932,7 @@ Errors on this screen use `text-warning` in five places (`arrangement.js` 157,
 
 ---
 
-## 22. POLISH — `--rf-muted` and `--rf-fault` have no light-theme value
+## 22. POLISH — `--rf-muted` and `--rf-fault` have no light-theme value — DONE 2026-09-02
 
 Found while verifying item 11 in light theme, and it is not an Arrangement
 problem — it is app-wide, so it belongs to item 10's sweep rather than to any
@@ -967,7 +967,7 @@ contrast ratio into a made-up number. Paint one pixel and read it back with
 `getImageData` instead, and sanity-check the instrument against white-on-black
 returning 21 before trusting anything it says.
 
-## 12. POLISH — Disabled controls give no reason
+## 12. POLISH — Disabled controls give no reason — DONE 2026-09-02
 
 `Check spelling` on Spell Check, `PNG` and `SVG` on QR Codes. All `title: null`.
 A `title` is the minimum; helper text near the control is better, since a
@@ -1381,3 +1381,44 @@ half-dead ProPresenter and each failed in the safe direction:
   the issue into the cache: the screen says "Configured folder not found: songs.
   This library has: Songs, Hymns, Liturgy." Cache restored, shasum verified.
   267 tests, lint clean.
+- 2026-09-02 · Items 6, 9, 10, 12 and 22 done. Remaining: 21 (blocked on a
+  healthy ProPresenter), 13 (Brandon's), and the rest of 17.
+  Item 22 fixed at the token, not per rule: `[data-theme="light"]` gives
+  `--rf-muted` #685F72 (6.05:1) and `--rf-fault` #8A5A00 (5.93:1), so ~20
+  unscoped `var(--rf-muted)` rules became correct at once and Arrangement's
+  three dark-scopings could be reverted. The fault override had to be
+  co-located directly under its `:root` declaration — placed with the other
+  light tokens 1,070 lines earlier it read correctly, lost the cascade at equal
+  specificity, and still measured 2.75:1. Exactly the trap in this repo's own
+  CLAUDE.md, walked into anyway.
+  Item 10 done by resolved value, and grep would have been actively wrong:
+  `text-warning` already resolved to phosphor, `badge-success`/`badge-info` to
+  the muted LED, `alert-warning`/`alert-info` to plum tints, Health's
+  `badge-error` to the fault dot. The genuinely raw ones were green #00A96E,
+  red #FF5861, cyan #00B5FF and amber #FFBE00. Status dots became `.rf-led`,
+  transient results `.rf-flag`/`.rf-nominal`, and the utilities themselves were
+  given palette values so a future `text-error` cannot land back on stock
+  DaisyUI. The search highlight was the worst of them — raw #FFBE00, the
+  saturated warm reserved for live output, behind lyrics on every result. Now a
+  plum wash plus a 2px inset underline, which is what actually marks it: the
+  wash alone measured 1.35:1 against the card, the underline 4.79:1 dark and
+  5.07:1 light.
+  Item 9: scroll persists per screen, and two things had to be fixed to make it
+  work. `focusSearchInput` called `q.focus()`, which scrolls a 31,000px view
+  back to the top and silently undid every restore — it takes `preventScroll`
+  now. And the restore ran its first attempt on `requestAnimationFrame`, which
+  never fires in the preview pane, so the one step I could not observe was the
+  one that mattered; it runs on the same timer as its own retry loop now.
+  Verified 900->900 and 2400->2400 across two hops, with a screen that has no
+  saved position still landing at top. Onward actions: Spell Check walks flagged
+  slides, Arrangement walks divergent songs, Lyrics ends on "Find it in Search"
+  carrying the song title. Both walks are focus-only, never trigger.
+  Item 6: history rows are role=button, tabindex=0, labelled, Enter-operable,
+  and call `/api/focus` only — verified that Ignore posts its own call without
+  opening the editor.
+  One bug worth remembering: `querySelectorAll("[data-slide-index]")` also
+  matched the Go Live button nested in each card, so "next" walked 6 slides
+  where there were 3 and landed every other step on a button. Both walks now
+  select an explicit class. A bare attribute selector is not a hook.
+  267 tests, lint clean. config.json and the index cache were each swapped for
+  verification and restored, shasum verified.

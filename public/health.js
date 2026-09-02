@@ -70,7 +70,7 @@ export function initHealth() {
             return;
           }
           statusEl.textContent = "Updated. Restart Refrain to finish.";
-          statusEl.className = "text-sm text-success";
+          statusEl.className = "text-sm rf-nominal";
         } catch (err) {
           statusEl.textContent = `Update failed: ${err.message}`;
           statusEl.className = "text-sm text-warning";
@@ -196,7 +196,7 @@ export function initHealth() {
             document.getElementById("config-port").value = found.port;
             const extra = data.candidates.length > 1 ? ` (+${data.candidates.length - 1} more)` : "";
             detectResult.textContent = `Found ${found.name} at ${found.host}:${found.port}${extra}. Save to apply.`;
-            detectResult.className = "text-sm text-success";
+            detectResult.className = "text-sm rf-nominal";
             networkOffer?.classList.add("hidden");
           } else if (scanNetwork) {
             detectResult.textContent = "Nothing found on the network either. Type the host and port above.";
@@ -209,7 +209,7 @@ export function initHealth() {
           }
         } catch (err) {
           detectResult.textContent = `Scan failed: ${err.message}`;
-          detectResult.className = "text-sm text-error";
+          detectResult.className = "text-sm rf-flag";
         } finally {
           button.disabled = false;
         }
@@ -245,7 +245,7 @@ export function initHealth() {
           const data = await res.json();
           if (!res.ok) {
             statusEl.textContent = data.error;
-            statusEl.className = "text-sm text-error";
+            statusEl.className = "text-sm rf-flag";
             return;
           }
           // Say what happened rather than just "done". A reindex that quietly
@@ -275,12 +275,12 @@ export function initHealth() {
           const freshStatus = document.getElementById("health-reindex-status");
           if (freshStatus) {
             freshStatus.textContent = message;
-            freshStatus.className = "text-sm text-success";
+            freshStatus.className = "text-sm rf-nominal";
           }
           return;
         } catch (err) {
           statusEl.textContent = `Reindex failed: ${err.message}`;
-          statusEl.className = "text-sm text-error";
+          statusEl.className = "text-sm rf-flag";
         } finally {
           if (reindexBtn.isConnected) {
             reindexBtn.disabled = false;
@@ -534,7 +534,7 @@ export function initHealth() {
           const data = await res.json();
           if (!res.ok) {
             statusEl.textContent = data.error;
-            statusEl.className = "text-sm config-save-status text-error";
+            statusEl.className = "text-sm config-save-status rf-flag";
             return;
           }
           saved = true;
@@ -904,7 +904,7 @@ function renderHealth(health, configOptions, versionInfo) {
                 // skips is indistinguishable from a watcher that is broken.
                 const watchLine = watch
                   ? `<div class="text-sm opacity-60 flex items-center gap-1.5">
-                       <span class="w-2 h-2 rounded-full ${watch.watching > 0 ? "bg-success" : "bg-warning"}"></span>
+                       <span class="rf-led ${watch.watching > 0 ? "lit" : ""}" title="${watch.watching > 0 ? "Watching for library changes" : "Not watching"}"></span>
                        ${
                          watch.watching > 0
                            ? `Watching ${watch.watching} library folder${watch.watching === 1 ? "" : "s"}. Edited presentations reindex on their own.`
@@ -1055,7 +1055,7 @@ function renderHealth(health, configOptions, versionInfo) {
               ProPresenter it finds belongs to another machine that may be mid-service, and
               some networks treat a sweep like this as suspicious. Only do it if you know
               ProPresenter is running on a different computer.
-              <button type="button" id="config-network-scan-btn" class="btn btn-warning btn-xs mt-2 block">Search the network anyway</button>
+              <button type="button" id="config-network-scan-btn" class="btn btn-chip mt-2 block">Search the network anyway</button>
             </span>
           </div>
             <div class="flex items-center gap-2 pt-1">
@@ -1327,7 +1327,7 @@ function renderHealth(health, configOptions, versionInfo) {
       <div class="bg-base-200 rounded p-3 flex flex-col gap-1">
         <div class="text-xs uppercase tracking-wide opacity-50">ProPresenter</div>
         <div class="text-sm font-medium flex items-center gap-1.5 rf-value">
-          <span class="w-2 h-2 rounded-full ${propresenter.connected ? "bg-success" : "bg-error"}"></span>
+          <span class="rf-led ${propresenter.connected ? "lit" : ""}" title="${propresenter.connected ? "ProPresenter is answering" : "ProPresenter is not answering"}"></span>
           ${propresenter.connected ? "Connected" : "Not answering"}
         </div>
         <div class="text-xs opacity-60 break-all">${escapeHtml(propresenter.host ?? "")}:${propresenter.port ?? ""}</div>
@@ -1340,7 +1340,7 @@ function renderHealth(health, configOptions, versionInfo) {
       <div class="bg-base-200 rounded p-3 flex flex-col gap-1">
         <div class="text-xs uppercase tracking-wide opacity-50">Version</div>
         <div class="text-sm font-medium flex items-center gap-1.5 rf-value">
-          <span class="w-2 h-2 rounded-full ${versionInfo?.updateAvailable ? "bg-info" : "bg-success"}"></span>
+          <span class="rf-led ${versionInfo?.updateAvailable ? "lit" : ""}" title="${versionInfo?.updateAvailable ? "An update is available" : "Up to date"}"></span>
           v${version}
         </div>
         <div class="text-xs opacity-60">${

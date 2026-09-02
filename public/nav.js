@@ -209,9 +209,60 @@ export async function initNav({ onNavigate, viewIds }) {
     applyImageCropDot();
   }
 
+  /**
+   * Where each screen was left, so coming back does not start at the top.
+   *
+   * Query and results already survive navigation -- leave Search for Health,
+   * come back, and all 117 results are still there. Only the scroll position
+   * was lost, which is the difference between a tool and a website: being
+   * returned to the top of 117 results mid-service means finding your place
+   * again by hand, every time.
+   *
+   * Screen id to scrollY. Deliberately not persisted across a reload; this is
+   * about moving between screens within a sitting.
+   */
+  const scrollPositions = new Map();
+
+  function restoreScroll(id) {
+    const target = scrollPositions.get(id) ?? 0;
+    if (!target) {
+      window.scrollTo(0, 0);
+      return;
+    }
+    // A screen that rebuilds itself from a fetch is still short on the first
+    // frame, so the page cannot reach the target yet. Retry briefly rather
+    // than restoring to a height that does not exist -- but stop the moment
+    // the operator scrolls, because their intent outranks the restore.
+    let attempts = 0;
+    let done = false;
+    const stop = () => {
+      done = true;
+      window.removeEventListener("wheel", stop);
+      window.removeEventListener("touchstart", stop);
+      window.removeEventListener("keydown", stop);
+    };
+    window.addEventListener("wheel", stop, { passive: true });
+    window.addEventListener("touchstart", stop, { passive: true });
+    window.addEventListener("keydown", stop);
+    const attempt = () => {
+      if (done) return;
+      window.scrollTo(0, target);
+      if (window.scrollY < target - 1 && attempts++ < 6) {
+        setTimeout(attempt, 50);
+        return;
+      }
+      stop();
+    };
+    // A timer rather than requestAnimationFrame, and the retry loop below uses
+    // one too, so the whole restore runs on one clock instead of two.
+    setTimeout(attempt, 0);
+  }
+
   function setActive(id) {
     // Which screen, never what was on it.
     crumb("nav", { to: id });
+    // Before the switch, or activeId is already the destination.
+    if (activeId && activeId !== id) scrollPositions.set(activeId, window.scrollY);
     activeId = id;
     /**
      * replaceState, not pushState. pushState would give back-button navigation
@@ -224,6 +275,7 @@ export async function initNav({ onNavigate, viewIds }) {
     history.replaceState(null, "", `#${id}`);
     renderItems();
     onNavigate(id);
+    restoreScroll(id);
     // Opening Search puts the cursor in the box, so it's ready to type from
     // any tab (this is what the "/" and Cmd/Ctrl+K shortcuts land on, and
     // it also re-focuses when you click back to the Search tab).
@@ -233,7 +285,11 @@ export async function initNav({ onNavigate, viewIds }) {
   function focusSearchInput() {
     const q = document.getElementById("query");
     if (q) {
-      q.focus();
+      // `preventScroll` matters here: the query box sits at the top of a view
+      // that can be 31,000px tall, so a plain focus() scrolls the whole page
+      // back to the top -- which silently undid the scroll restore above and
+      // made returning to Search always land at result one.
+      q.focus({ preventScroll: true });
       q.select();
     }
   }

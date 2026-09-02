@@ -56,7 +56,7 @@ export function initSetup({ onComplete }) {
         testResult.textContent = "";
         const extra = data.candidates.length > 1 ? ` (+${data.candidates.length - 1} more found)` : "";
         detectResult.textContent = `Found ${found.name} at ${found.host}:${found.port}${extra}`;
-        detectResult.className = "text-sm ml-2 text-success";
+        detectResult.className = "text-sm ml-2 rf-nominal";
         networkOffer?.classList.add("hidden");
       } else if (scanNetwork) {
         detectResult.textContent = "Nothing found on the network either. Enter the host and port by hand below.";
@@ -70,7 +70,7 @@ export function initSetup({ onComplete }) {
       }
     } catch (err) {
       detectResult.textContent = `Scan failed: ${err.message}`;
-      detectResult.className = "text-sm ml-2 text-error";
+      detectResult.className = "text-sm ml-2 rf-flag";
     } finally {
       button.disabled = false;
       updateSaveEnabled();
@@ -95,7 +95,7 @@ export function initSetup({ onComplete }) {
       const data = await res.json();
       connectionVerified = data.connected;
       testResult.textContent = data.connected ? "Connected." : data.error;
-      testResult.className = `text-sm ${data.connected ? "text-success" : "text-error"}`;
+      testResult.className = `text-sm ${data.connected ? "rf-nominal" : "rf-flag"}`;
     } finally {
       testBtn.disabled = false;
       updateSaveEnabled();

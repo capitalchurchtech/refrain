@@ -186,13 +186,13 @@ export function initLibrarySync() {
         const out = await res.json();
         if (!res.ok) {
           status.textContent = out.error;
-          status.className = "text-sm text-error";
+          status.className = "text-sm rf-flag";
           return;
         }
         await load();
       } catch (err) {
         status.textContent = err.message;
-        status.className = "text-sm text-error";
+        status.className = "text-sm rf-flag";
       }
     });
 
@@ -207,7 +207,7 @@ export function initLibrarySync() {
         const out = await res.json();
         if (!res.ok && out.error) {
           status.textContent = out.error;
-          status.className = "text-sm text-error";
+          status.className = "text-sm rf-flag";
           return;
         }
         // A refusal comes back as a normal record with ok:false and a reason,
@@ -215,7 +215,7 @@ export function initLibrarySync() {
         await load();
       } catch (err) {
         status.textContent = err.message;
-        status.className = "text-sm text-error";
+        status.className = "text-sm rf-flag";
       } finally {
         btn.disabled = false;
       }

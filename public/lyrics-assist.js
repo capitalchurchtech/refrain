@@ -102,10 +102,34 @@ export function initLyricsAssist() {
              anything to copy. -->
         <p id="lyrics-slides-note" class="text-xs opacity-60 hidden">${NO_SLIDE_CREATION}</p>
         <div id="lyrics-slides" class="flex flex-col gap-2"></div>
+        <!-- The screen used to end here, on "copy each into a new
+             presentation yourself" -- a instruction to go and do something in
+             another app, with no way back to check it landed. Once the slides
+             have been built in ProPresenter, the next thing anyone does is
+             search for them, so the screen ends on that instead of on a
+             full stop. -->
+        <div id="lyrics-onward" class="hidden flex flex-wrap items-center gap-3 pt-1">
+          <button id="lyrics-to-search-btn" class="btn btn-chip">
+            <i data-lucide="search" class="w-3 h-3"></i> Find it in Search
+          </button>
+          <span class="rf-hint">Once you have built the slides, search for a line to confirm Refrain can see them.</span>
+        </div>
       </div>
     `;
 
     if (window.lucide) window.lucide.createIcons();
+
+    document.getElementById("lyrics-to-search-btn")?.addEventListener("click", () => {
+      // Takes the song title with it, so Search opens on what was just built
+      // rather than on an empty box that has to be retyped from memory.
+      const title = document.getElementById("lyrics-song")?.value.trim();
+      const q = document.getElementById("query");
+      if (q && title) {
+        q.value = title;
+        q.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+      location.hash = "#search";
+    });
 
     // Builds the scoped search URL, or null if there's no song title yet.
     function currentSearchUrl() {
@@ -166,6 +190,11 @@ export function initLyricsAssist() {
       const slides = await splitText(text, splitterId);
       renderSlidePreview(document.getElementById("lyrics-slides"), slides, document.getElementById("lyrics-group-repeats").checked);
       document.getElementById("lyrics-slides-note").classList.toggle("hidden", slides.length === 0);
+      // The onward action appears with the output, not before it: offering
+      // "find it in Search" before anything has been split is an instruction
+      // to look for something that does not exist yet.
+      const onward = document.getElementById("lyrics-onward");
+      if (onward) onward.classList.toggle("hidden", slides.length === 0);
     });
   }
 

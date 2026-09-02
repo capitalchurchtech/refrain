@@ -7,6 +7,9 @@
 
 import { showFailure } from "./notice.js";
 export function initSpellcheck() {
+  // Which flagged slide the "next" control is on, so working through a scan is
+  // a rhythm rather than a hunt. -1 means "not started"; it resets per scan.
+  let cursor = -1;
   const container = document.getElementById("view-spellcheck");
   let lastResults = null;
 
@@ -27,6 +30,7 @@ export function initSpellcheck() {
               <select id="spellcheck-playlist" class="select select-bordered"><option value="">Loading...</option></select>
             </div>
             <button id="spellcheck-scan-btn" class="btn btn-brand btn-sm w-fit" title="Choose a playlist first" disabled>Check spelling</button>
+            <p id="spellcheck-scan-reason" class="rf-hint">Choose a playlist first.</p>
             <p class="text-xs opacity-60">Fix anything real in ProPresenter. The buttons on each result jump you there.</p>
           </div>
         </div>
@@ -52,6 +56,7 @@ export function initSpellcheck() {
         </details>
 
         <div id="spellcheck-status" class="text-sm opacity-70"></div>
+        <div id="spellcheck-next-host" class="flex items-center gap-3"></div>
         <div id="spellcheck-results" class="flex flex-col gap-3"></div>
       </div>
     `;
@@ -85,8 +90,13 @@ export function initSpellcheck() {
     });
 
     select.addEventListener("change", () => {
+      // The reason shows beside the control, not only in a tooltip: a title on
+      // a disabled button is unreachable on a touchscreen, which is half the
+      // machines this runs on.
       scanBtn.disabled = !select.value;
       scanBtn.title = scanBtn.disabled ? "Choose a playlist first" : "";
+      const reason = document.getElementById("spellcheck-scan-reason");
+      if (reason) reason.classList.toggle("hidden", !scanBtn.disabled);
     });
     scanBtn.addEventListener("click", () => runScan(select.value, scanBtn));
   }
@@ -123,6 +133,7 @@ export function initSpellcheck() {
     const resultsEl = document.getElementById("spellcheck-results");
     const total = data.presentations.reduce((n, p) => n + p.slides.reduce((m, s) => m + s.words.length, 0), 0);
 
+    renderNextControl(total);
     statusEl.textContent = total
       ? `${total} word${total === 1 ? "" : "s"} to review across ${data.presentations.length} presentation${data.presentations.length === 1 ? "" : "s"}.${data.truncated ? ` (checked the first ${data.scannedCount})` : ""}`
       : `No likely typos found${data.truncated ? ` in the first ${data.scannedCount} items` : ""}. `;
@@ -136,7 +147,7 @@ export function initSpellcheck() {
           ${p.slides
             .map(
               (s) => `
-            <div class="text-sm bg-base-100 rounded p-2" data-presentation-id="${escapeHtml(p.presentationId)}" data-slide-index="${s.slideIndex}">
+            <div class="text-sm bg-base-100 rounded p-2 spellcheck-slide" data-presentation-id="${escapeHtml(p.presentationId)}" data-slide-index="${s.slideIndex}">
               <div class="whitespace-pre-line">${highlight(s.text, s.words.map((w) => w.word))}</div>
               <div class="flex flex-wrap items-center gap-2 mt-2">
                 ${s.words
@@ -162,6 +173,59 @@ export function initSpellcheck() {
 
     if (window.lucide) window.lucide.createIcons();
     wireResultActions();
+    cursor = -1;
+  }
+
+  /**
+   * Working through the list, instead of hunting down it.
+   *
+   * A scan that flags nine typos was nine manual round trips: read a word,
+   * scroll to find its card, press Show in Editor, fix it in ProPresenter,
+   * scroll back, find where you were. The screen ended at the finding and gave
+   * no way to continue, which is the thing this is fixing across the app --
+   * every screen should end on the next action.
+   *
+   * It advances by slide rather than by word, and is named that way, because
+   * ProPresenter has no slide-level focus endpoint at all (verified: 204 on
+   * /focus, 404 on every per-slide variant). A control called "next word"
+   * would promise a precision the API cannot deliver. What it can do is open
+   * the right presentation and put the right card under the operator's eye.
+   */
+  function renderNextControl(total) {
+    const host = document.getElementById("spellcheck-next-host");
+    if (!host) return;
+    host.innerHTML = total
+      ? `<button id="spellcheck-next-btn" class="btn btn-brand btn-sm">Next flagged slide</button>
+         <span id="spellcheck-next-progress" class="rf-silkscreen"></span>`
+      : "";
+    const btn = document.getElementById("spellcheck-next-btn");
+    if (btn) btn.addEventListener("click", goToNextFlagged);
+  }
+
+  async function goToNextFlagged() {
+    const cards = [...document.querySelectorAll("#spellcheck-results .spellcheck-slide")];
+    if (!cards.length) return;
+    cursor = (cursor + 1) % cards.length;
+    const card = cards[cursor];
+
+    for (const c of cards) c.classList.remove("rf-current");
+    card.classList.add("rf-current");
+    card.scrollIntoView({ block: "center" });
+
+    const progress = document.getElementById("spellcheck-next-progress");
+    if (progress) progress.textContent = `${cursor + 1} of ${cards.length}`;
+
+    // Editor only. Working through typos must never put a slide on the screens.
+    try {
+      const res = await fetch("/api/focus", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ presentationId: card.dataset.presentationId }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? res.statusText);
+    } catch (err) {
+      showFailure(`Couldn't open that in ProPresenter: ${err.message}. Nothing on the screens changed.`);
+    }
   }
 
   function wireResultActions() {

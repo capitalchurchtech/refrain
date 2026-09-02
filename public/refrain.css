@@ -127,6 +127,34 @@ html.blackroom {
   --rf-machined: #221D2B;
 }
 
+/**
+ * The two tokens that a light theme genuinely needs its own value for.
+ *
+ * `:root` above holds the dark palette, and most of it is only ever read from
+ * a `[data-theme="dark"]` rule, so light never sees it. These two are the
+ * exception: `.rf-silkscreen` and `.rf-flag` set `color` unscoped, so in light
+ * theme they resolved to a dark-theme ink and measured 2.52:1 and 2.46:1 --
+ * failing AA on every screen, including Health's own fault strip.
+ *
+ * Fixed at the token rather than by dark-scoping each rule, which is what the
+ * finding originally proposed. Scoping would have worked and would have been
+ * smaller, but it makes every future unscoped `var(--rf-muted)` a new bug, and
+ * there are around twenty of them already. A token that is correct in both
+ * themes makes the whole class correct at once.
+ *
+ * `--rf-fault` in particular must not simply inherit body text: a fault mark
+ * that is not marked is worse than no mark, because the screen then looks
+ * nominal. So it keeps its ochre identity and goes dark enough to earn it --
+ * 5.93:1 on white, 5.29:1 on the card surface.
+ *
+ * `--rf-muted` stays clearly quieter than body text (6.05:1 against body's
+ * 14.68:1), so the hierarchy the design intends survives the theme rather than
+ * flattening into one ink.
+ */
+[data-theme="light"] {
+  --rf-muted: #685F72;
+}
+
 /* ============================================================
    2. ELEVATION
 
@@ -1195,6 +1223,22 @@ html.blackroom .badge-ghost > svg {
    ============================================================ */
 :root {
   --rf-fault: #C9922E;
+}
+/**
+ * The light-theme fault ink, immediately beneath the value it overrides.
+ *
+ * It has to live here rather than with the other light tokens further up,
+ * and the reason is the cascade note at the top of this file. `:root` and
+ * `[data-theme="light"]` are both 0,1,0, so position decides -- and this
+ * `:root` block sits ~1,070 lines *after* the light palette. An override up
+ * there read correctly, resolved to #C9922E anyway, and measured 2.75:1 on
+ * white while looking entirely reasonable in the source.
+ *
+ * Co-located so the next person changing the fault colour sees both values
+ * at once instead of one of them.
+ */
+[data-theme="light"] {
+  --rf-fault: #8A5A00;
 }
 
 [data-theme="dark"] #view-health .badge-error,
@@ -3001,12 +3045,10 @@ html.blackroom .rf-list-name {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* Dark-scoped, following `.rf-field > label`: `--rf-muted` has no light-theme
-   value, so applying it unscoped puts a 2.83:1 grey on white. In light the
-   metadata inherits and the hierarchy comes from size, tracking and case --
-   which is what the palette note next to `--rf-dim` says to do. */
-[data-theme="dark"] .rf-list-meta,
-html.blackroom .rf-list-meta {
+/* Unscoped, because `--rf-muted` now has a light-theme value of its own. This
+   was dark-scoped when it did not, which left Arrangement as the one screen
+   whose row metadata was not muted in light. */
+.rf-list-meta {
   color: var(--rf-muted);
 }
 /* Co-located with the height it relaxes, per the cascade note at the top of
@@ -3143,11 +3185,203 @@ html.blackroom .rf-compare-seq {
 /* The joiner is structure, not content, so it recedes. Muted rather than a
    fainter ink of the same size, per the note on --rf-dim. Unscoped because the
    same joiner appears in the section mapping and the compact history rows. */
-[data-theme="dark"] .rf-arrow,
-html.blackroom .rf-arrow {
+.rf-arrow {
   color: var(--rf-muted);
 }
-[data-theme="dark"] .rf-compare-empty,
-html.blackroom .rf-compare-empty {
+.rf-compare-empty {
   color: var(--rf-muted);
+}
+
+/* ============================================================
+   37. THE LAST RAW SEMANTIC COLOURS
+
+   Section 29 built the fault vocabulary and Section 13 built the badges,
+   but a set of DaisyUI utilities was still resolving to stock colours.
+   Measured rather than grepped, because grep is actively misleading here:
+   `text-warning` already resolves to phosphor, `badge-success` and
+   `badge-info` are already the muted LED, `alert-warning` and `alert-info`
+   are already plum tints, and Health's `badge-error` is already the fault
+   dot. Reading the class names would have "fixed" all of those and missed
+   the ones below, which resolved to #00A96E green, #FF5861 red, #00B5FF
+   cyan and #FFBE00 amber.
+
+   Two things happen here. The call sites that were using a colour to mean
+   something move to the vocabulary that already exists -- status dots
+   become `.rf-led`, transient results become `.rf-flag` / `.rf-nominal`.
+   And the utilities themselves are given palette values, so a future use
+   cannot land back on stock DaisyUI. The second is the part that makes
+   this the last time: without it, every new `text-error` is a new bug.
+   ============================================================ */
+
+/* Nominal is not a colour event (Section 29), so "it worked" is simply not
+   marked -- the words already say it. Green leaves the app entirely here. */
+.text-success,
+.text-info {
+  color: var(--rf-muted);
+}
+
+/* Anything that failed joins the one fault ink, in both themes. */
+.text-error {
+  color: var(--rf-fault);
+}
+
+/* Fills. `bg-warning` was the worst of these: raw #FFBE00 is the saturated
+   warm the direction reserves for what is on the screens. */
+.bg-success,
+.bg-info {
+  background-color: var(--rf-machined);
+}
+.bg-warning,
+.bg-error {
+  background-color: var(--rf-fault);
+}
+
+/* The Diagnose findings' severity stripe. `border-error` was already done;
+   the other three fell through. Marked or not marked, per Section 29 --
+   the chip beside the stripe carries which kind. */
+[data-theme="dark"] #view-health .border-warning,
+html.blackroom #view-health .border-warning {
+  border-color: var(--rf-fault);
+}
+[data-theme="dark"] #view-health .border-info,
+html.blackroom #view-health .border-info,
+[data-theme="dark"] #view-health .border-success,
+html.blackroom #view-health .border-success {
+  border-color: var(--rf-hairline);
+}
+
+/**
+ * The "Check" chip, built exactly like `badge-error` above.
+ *
+ * It reads identically to Problem, and that is deliberate: there are two
+ * states, marked and not, and the word in the chip is what distinguishes a
+ * Problem from a Check. Giving them two different marks would be inventing a
+ * severity scale the operator has to learn before the label they can just read.
+ */
+[data-theme="dark"] .badge-warning,
+html.blackroom .badge-warning {
+  background-color: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0 0 0 13px;
+  height: auto;
+  min-height: 0;
+  position: relative;
+  font-family: var(--rf-mono);
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--rf-fault);
+}
+[data-theme="dark"] .badge-warning::before,
+html.blackroom .badge-warning::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--rf-fault);
+  box-shadow: 0 0 4px rgba(201, 146, 46, 0.7);
+}
+[data-theme="dark"] .badge-warning > svg,
+html.blackroom .badge-warning > svg {
+  display: none;
+}
+
+/**
+ * The search match highlight.
+ *
+ * The most-looked-at element in the product, and it was `bg-warning
+ * text-warning-content` -- a raw #FFBE00 fill, the one saturated warm the
+ * direction reserves for live output, sitting behind lyrics on every result
+ * of every search.
+ *
+ * A wash rather than a fill, and plum rather than warm: it marks which words
+ * matched without competing with the lit collar on Go Live two inches away.
+ * Deliberately no glow. This is ink on a page, not a lamp reporting a state,
+ * and the emitter budget is spent.
+ */
+.rf-match {
+  border-radius: 2px;
+  padding: 0 2px;
+  background: rgba(132, 70, 201, 0.16);
+  /* The underline is what actually marks the word. A wash alone measured
+     1.49:1 against the card -- present, but not something you can pick out of
+     a paragraph at a glance, which is the one job it has. `inset` rather than
+     a real border so it cannot shift the line metrics of the lyric it sits in. */
+  box-shadow: inset 0 -2px 0 var(--rf-plum);
+  color: inherit;
+}
+[data-theme="dark"] .rf-match,
+html.blackroom .rf-match {
+  background: rgba(169, 111, 232, 0.22);
+  box-shadow: inset 0 -2px 0 var(--rf-plum-lit);
+  color: var(--rf-text);
+}
+
+/**
+ * Helper text under a control, for the reason a thing is unavailable or the
+ * one hint a field needs.
+ *
+ * Quieter than body copy and louder than a tooltip, which is the point: a
+ * `title` on a *disabled* button is unreachable on a touchscreen, and a booth
+ * machine is as likely to be a tablet as a laptop. So the reason is printed.
+ */
+.rf-hint {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--rf-muted);
+}
+
+/**
+ * A record you can open, as opposed to a row you can pick.
+ *
+ * `.rf-list-row` is a single-line pick with a lamp and a name. A history entry
+ * is a small block -- a date, sometimes a note, and a two-line comparison --
+ * that is also a place you can go. Same material rules as the list (flush at
+ * chassis level, hairline groove between, hover as the whole affordance, never
+ * a raised key), but laid out as a block rather than a centred line.
+ *
+ * Interactive by construction: a div you can click is only acceptable if it is
+ * also focusable and operable from the keyboard, which the markup does with
+ * role, tabindex and a keydown handler. In a dark booth the focus ring is not
+ * decoration.
+ */
+.rf-record-row {
+  display: block;
+  width: 100%;
+  padding: 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.rf-record-row + .rf-record-row {
+  border-top: 1px solid var(--rf-hairline);
+}
+[data-theme="dark"] .rf-record-row:hover,
+html.blackroom .rf-record-row:hover {
+  background: var(--rf-raised);
+}
+.rf-record-row:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+.rf-record-row:focus-visible {
+  outline: 2px solid var(--rf-plum-lit);
+  outline-offset: -2px;
+}
+/* The controls inside a record stay their own targets. */
+.rf-record-row .btn {
+  cursor: pointer;
+}
+
+/* The record the operator is being walked through right now. A rim, not a
+   fill: it marks position without restyling the content underneath, and
+   without spending an emitter on something that moves every few seconds. */
+.rf-current {
+  box-shadow: inset 0 0 0 1px var(--rf-plum-lit);
 }
