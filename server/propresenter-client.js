@@ -37,6 +37,23 @@ function normalizeText(text) {
 
 const LOCAL_HOSTNAMES = ["localhost", "127.0.0.1", "::1"];
 
+/**
+ * One path segment, encoded.
+ *
+ * Every id below arrives from a request body, and until now went into the URL
+ * raw. For a real uuid or layer name this is a no-op -- hex, dashes and
+ * underscores all pass through untouched -- so the only thing it changes is
+ * the case where the value is not what it should be: an id containing `/` or
+ * `..` would otherwise resolve to a different ProPresenter endpoint than the
+ * one the method name claims.
+ *
+ * Not reachable from outside the machine (the server binds 127.0.0.1, only
+ * `express.json()` is mounted so a cross-origin simple request cannot fill
+ * `req.body`, and no side-effecting GET route exists). Closed anyway, because
+ * "unreachable" is a property of three other files staying the way they are.
+ */
+const seg = (value) => encodeURIComponent(String(value ?? ""));
+
 const DEFAULT_TIMEOUT_MS = 8000;
 // Triggering, focusing and reading a presentation make ProPresenter do real
 // work (loading a document, pushing to outputs) and it appears to serialize
@@ -100,23 +117,58 @@ export class ProPresenterClient {
    *   and slow to crawl in full; see config.json's librarySync.folders.
    */
   async getLibrary(folderNames = null) {
-    const folders = await this.getLibraryFolders();
-    const wanted = folderNames
-      ? (folders ?? []).filter((f) => folderNames.includes(f.name))
-      : folders ?? [];
+    return (await this.getLibraryDetailed(folderNames)).items;
+  }
+
+  /**
+   * The same crawl, plus what went wrong doing it.
+   *
+   * Two silent failures used to live here. Folder names were matched with
+   * `folderNames.includes(f.name)`, so a config saying "songs" against a
+   * ProPresenter folder called "Songs" matched nothing and produced an empty
+   * index with no explanation. And a folder that timed out was written to the
+   * console and its presentations were simply absent from search -- the crawl
+   * circuit breaker catches a total collapse, not one folder quietly missing.
+   *
+   * Both are now reported. Matching is case- and whitespace-insensitive, and
+   * the crawl says which configured names it could not find, which folders
+   * threw, and what names were actually available -- because "you typed Songs
+   * and this library has Song" is the whole answer, and the operator cannot
+   * get to it from an empty result.
+   *
+   * Iterates ProPresenter's folder order rather than the config's, which keeps
+   * the previous ordering and means a duplicated or twice-matching config
+   * entry cannot crawl the same folder twice.
+   */
+  async getLibraryDetailed(folderNames = null) {
+    const all = (await this.getLibraryFolders()) ?? [];
+    const availableFolders = all.map((f) => f.name);
+    let wanted = all;
+    let unmatchedNames = [];
+
+    if (folderNames) {
+      const want = new Set(folderNames.map(normalizeFolderName));
+      wanted = all.filter((f) => want.has(normalizeFolderName(f.name)));
+      const found = new Set(wanted.map((f) => normalizeFolderName(f.name)));
+      unmatchedNames = folderNames.filter((n) => !found.has(normalizeFolderName(n)));
+    }
+
     const items = [];
+    const failedFolders = [];
     for (const folder of wanted) {
       try {
-        const folderContents = await this.#get(`/v1/library/${folder.uuid}`);
+        const folderContents = await this.#get(`/v1/library/${seg(folder.uuid)}`);
         for (const item of folderContents?.items ?? []) {
           items.push({ id: item.uuid, name: item.name, folder: folder.name });
         }
       } catch (err) {
+        // One folder failing or timing out shouldn't abort the whole crawl --
+        // but it must not vanish either.
         console.log(`  library folder "${folder.name}" failed: ${err.message}`);
-        // One folder failing/timing out shouldn't abort the whole crawl.
+        failedFolders.push({ name: folder.name, error: err.message });
       }
     }
-    return items;
+    return { items, failedFolders, unmatchedNames, availableFolders };
   }
 
   /** Recursive playlist tree (folders/groups containing playlists). */
@@ -126,7 +178,7 @@ export class ProPresenterClient {
 
   /** A single playlist's items — filters to actual presentations. */
   async getPlaylistItems(playlistId) {
-    const playlist = await this.#get(`/v1/playlist/${playlistId}`);
+    const playlist = await this.#get(`/v1/playlist/${seg(playlistId)}`);
     const items = (playlist?.items ?? [])
       .filter((item) => item.type === "presentation" && item.presentation_info?.presentation_uuid)
       .map((item) => ({
@@ -145,7 +197,7 @@ export class ProPresenterClient {
    * so it gets a short budget and the caller proceeds without it.
    */
   async getPresentation(presentationId, { timeoutMs = LIVE_TIMEOUT_MS } = {}) {
-    return this.#get(`/v1/presentation/${presentationId}`, { timeoutMs });
+    return this.#get(`/v1/presentation/${seg(presentationId)}`, { timeoutMs });
   }
 
   /**
@@ -168,7 +220,7 @@ export class ProPresenterClient {
 
   /** Triggers a slide live by presentation id + 0-based flat slide index. */
   async triggerSlide(presentationId, slideIndex) {
-    await this.#get(`/v1/presentation/${presentationId}/${slideIndex}/trigger`, { timeoutMs: LIVE_TIMEOUT_MS });
+    await this.#get(`/v1/presentation/${seg(presentationId)}/${seg(slideIndex)}/trigger`, { timeoutMs: LIVE_TIMEOUT_MS });
   }
 
   /**
@@ -178,7 +230,7 @@ export class ProPresenterClient {
    * window sitting on whatever playlist item they had open.
    */
   async focusPresentation(presentationId) {
-    await this.#get(`/v1/presentation/${presentationId}/focus`, { timeoutMs: LIVE_TIMEOUT_MS });
+    await this.#get(`/v1/presentation/${seg(presentationId)}/focus`, { timeoutMs: LIVE_TIMEOUT_MS });
   }
 
   /**
@@ -212,7 +264,7 @@ export class ProPresenterClient {
 
   /** Activates a Look by uuid (changes what each screen shows). */
   async triggerLook(id) {
-    await this.#get(`/v1/look/${id}/trigger`);
+    await this.#get(`/v1/look/${seg(id)}/trigger`);
   }
 
   /** The Macros configured in this ProPresenter. */
@@ -245,7 +297,7 @@ export class ProPresenterClient {
 
   /** Runs a Macro by uuid. */
   async triggerMacro(id) {
-    await this.#get(`/v1/macro/${id}/trigger`);
+    await this.#get(`/v1/macro/${seg(id)}/trigger`);
   }
 
   /**
@@ -253,7 +305,7 @@ export class ProPresenterClient {
    * audio, props, messages, announcements, slide, media, video_input.
    */
   async clearLayer(layer) {
-    await this.#get(`/v1/clear/layer/${layer}`);
+    await this.#get(`/v1/clear/layer/${seg(layer)}`);
   }
 
   // --- Messages (the on-screen announcement layer) ---
@@ -284,12 +336,12 @@ export class ProPresenterClient {
    */
   async triggerMessage(id, values) {
     const body = (values ?? []).map((v) => ({ name: v.name, text: { text: v.text ?? "" } }));
-    await this.#post(`/v1/message/${id}/trigger`, body);
+    await this.#post(`/v1/message/${seg(id)}/trigger`, body);
   }
 
   /** Hides a message that's currently showing. */
   async clearMessage(id) {
-    await this.#get(`/v1/message/${id}/clear`);
+    await this.#get(`/v1/message/${seg(id)}/clear`);
   }
 }
 
@@ -314,6 +366,11 @@ function extractMessageTokens(message) {
 // The list endpoints (looks, macros, and similar) return arrays of
 // { id: { uuid, name, index } }. Flatten to the shape the UI needs, dropping
 // anything without a usable uuid so a malformed entry can't render a dead button.
+/** Folder names are compared the way a person would read them, not byte-wise. */
+function normalizeFolderName(name) {
+  return String(name ?? "").trim().toLowerCase();
+}
+
 function normalizeIdList(list) {
   return (Array.isArray(list) ? list : [])
     .map((entry) => ({ id: entry?.id?.uuid, name: entry?.id?.name ?? "Untitled" }))

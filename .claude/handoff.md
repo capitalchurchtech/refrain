@@ -932,7 +932,7 @@ Errors on this screen use `text-warning` in five places (`arrangement.js` 157,
 
 ---
 
-## 13. POLISH — `--rf-muted` and `--rf-fault` have no light-theme value
+## 22. POLISH — `--rf-muted` and `--rf-fault` have no light-theme value
 
 Found while verifying item 11 in light theme, and it is not an Arrangement
 problem — it is app-wide, so it belongs to item 10's sweep rather than to any
@@ -1123,7 +1123,7 @@ These are pure functions of a JSON shape. The file's header comment is
 currently the only record of ProPresenter 21.3's response shapes; a test would
 make that record enforceable instead of aspirational.
 
-### 18. LOW — URL path segments are interpolated unencoded
+### 18. LOW — URL path segments are interpolated unencoded — FIXED 2026-09-02
 
 `presentationId`, `slideIndex`, look/macro/message `id`, `folder.uuid` all go
 into the ProPresenter URL raw. `layer` is correctly allowlisted against
@@ -1135,13 +1135,13 @@ re-litigates it: the server binds `127.0.0.1` (`server/index.js:2673`), only
 `req.body`, and there are no side-effecting GET routes. Fix anyway with
 `encodeURIComponent` in the client — one file, closes the class.
 
-### 19. LOW — `/api/trigger` does not validate `slideIndex`
+### 19. LOW — `/api/trigger` does not validate `slideIndex` — FIXED 2026-09-02
 
 `Number(slideIndex)` accepts NaN, floats and negatives. Both current callers
 pass an index straight from the index, so it is unreachable today, but the
 route is the contract. Require `Number.isInteger(n) && n >= 0`.
 
-### 20. LOW — library folder matching is case-sensitive and silent
+### 20. LOW — library folder matching is case-sensitive and silent — FIXED 2026-09-02
 
 `getLibrary` filters with `folderNames.includes(f.name)`, so `"songs"` in
 config against `"Songs"` in ProPresenter crawls nothing and the operator gets
@@ -1324,7 +1324,7 @@ half-dead ProPresenter and each failed in the safe direction:
   Verified against a running server in both themes: reader/logger split intact,
   stale-response guard intact under a 600ms/0ms race, marked and unmarked rows
   share a left axis in both lists, 44px touch floor engages. Light-theme gaps in
-  `--rf-muted`/`--rf-fault` are pre-existing and app-wide — logged as item 13.
+  `--rf-muted`/`--rf-fault` are pre-existing and app-wide — logged as item 22.
 - 2026-09-02 · ProPresenter surface review · items 14, 15, 16 fixed; 17 partly.
   Item 14: `anchorsAvailable`/`indexAccuracyNotice` in search-index, surfaced
   through index-status and rendered on Search, where accuracy outranks age —
@@ -1355,3 +1355,29 @@ half-dead ProPresenter and each failed in the safe direction:
   mechanism was observed failing safe on it, including performance mode arming
   itself on unknown layers and correctly deferring the rebuild.
   254 tests, lint clean.
+- 2026-09-02 · Review items 18, 19, 20 fixed. Also renumbered my own light-theme
+  finding from 13 to 22 — 13 was already "Only Brandon can close this".
+  Item 18: a `seg()` helper encodes every interpolated path segment in the
+  client. A no-op for a real uuid, which is the point and what the test asserts;
+  the traversal test asserts path SHAPE rather than the absence of dots, because
+  `encodeURIComponent` leaves `..` alone and encodes the slashes — my first
+  version of that assertion was wrong about its own mechanism.
+  Item 19: `parseSlideIndex` checks the type before coercing. Running it against
+  a live server caught a hole in my own first fix: `slideIndex: null` passed,
+  because `Number(null)` is 0, so a caller with a missing index would have
+  quietly fired the first slide of the song. Same for "", [] and true. All
+  rejected now, verified against the route. It lives in `arrangements.js`
+  because `server/index.js` calls `app.listen` at module scope, so importing it
+  to test one function boots a server — which is also why the routes have no
+  unit tests, worth fixing some day.
+  Item 20: folder matching is case- and whitespace-insensitive, iterating
+  ProPresenter's folder order so a twice-matching config entry cannot crawl the
+  same folder twice. `getLibraryDetailed` reports unmatched names, failed
+  folders and what names were actually available; `getLibrary` still returns a
+  bare array so callers are untouched. Carried onto the index so a restart does
+  not make a missing folder look resolved, and rendered on Health — together
+  with `crawlAborted`, which turned out to be surfaced nowhere either, so the
+  circuit-breaker abort was equally invisible. Verified end to end by injecting
+  the issue into the cache: the screen says "Configured folder not found: songs.
+  This library has: Songs, Hymns, Liturgy." Cache restored, shasum verified.
+  267 tests, lint clean.

@@ -65,6 +65,9 @@ let rebuildInFlightMode = null;
 // Set when a crawl gave up because ProPresenter stopped answering, so the
 // Health screen can say the index is partial instead of implying a clean run.
 let rebuildAbortedInfo = null;
+// Which configured library folders could not be found or could not be read on
+// the last full crawl. Null when everything the operator asked for was read.
+let libraryFolderIssues = null;
 let rebuildProgress = { inProgress: false, stage: null, current: 0, total: 0 };
 
 export function getIndex() {
@@ -145,7 +148,25 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
     const presentations = {};
 
     console.log(`Fetching library${folders ? ` (folders: ${folders.join(", ")})` : ""}...`);
-    const library = await client.getLibrary(folders);
+    const crawl = await client.getLibraryDetailed(folders);
+    const library = crawl.items;
+    // Carried onto the index so the Health screen can say which configured
+    // folders were not found and which ones threw. An index short by a whole
+    // folder used to be indistinguishable from a complete one.
+    libraryFolderIssues =
+      crawl.unmatchedNames.length || crawl.failedFolders.length
+        ? {
+            unmatchedNames: crawl.unmatchedNames,
+            failedFolders: crawl.failedFolders,
+            availableFolders: crawl.availableFolders,
+          }
+        : null;
+    if (crawl.unmatchedNames.length) {
+      console.log(
+        `  configured folder(s) not found: ${crawl.unmatchedNames.join(", ")} ` +
+          `— this library has: ${crawl.availableFolders.join(", ")}`
+      );
+    }
     console.log(`Library: ${library?.length ?? 0} presentations found.`);
     for (const item of library ?? []) {
       const id = item.id;
@@ -345,6 +366,7 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
 
     const newIndex = {
       schemaVersion: SCHEMA_VERSION,
+      libraryFolderIssues,
       builtAt: new Date().toISOString(),
       buildDurationMs: Date.now() - startedAt,
       crawledPlaylists: crawlPlaylists,
@@ -446,6 +468,16 @@ export function getIndexedLibraryDirs() {
  */
 export function lastCrawlAbort() {
   return rebuildAbortedInfo;
+}
+
+/**
+ * Folder problems from the last crawl, or from the loaded cache.
+ *
+ * Falls back to the index's own copy so restarting Refrain does not make a
+ * missing folder look resolved.
+ */
+export function lastLibraryFolderIssues() {
+  return libraryFolderIssues ?? currentIndex?.libraryFolderIssues ?? null;
 }
 
 /** Days since the whole library was last read, or null if never/unknown. */

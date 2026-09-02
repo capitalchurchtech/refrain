@@ -24,7 +24,17 @@ function fakeProPresenter(songs) {
     fetched,
     isLocalHost: true,
     async getLibrary() {
-      return Object.entries(songs).map(([id, s]) => ({ id, name: s.name, folder: "Songs" }));
+      return (await this.getLibraryDetailed()).items;
+    },
+    // The full crawl reports folder problems alongside the items, so the index
+    // can say when it is short by a whole folder.
+    async getLibraryDetailed() {
+      return {
+        items: Object.entries(songs).map(([id, s]) => ({ id, name: s.name, folder: "Songs" })),
+        failedFolders: [],
+        unmatchedNames: [],
+        availableFolders: ["Songs"],
+      };
     },
     async getPresentation(id) {
       fetched.push(id);

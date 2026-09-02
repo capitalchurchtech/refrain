@@ -42,6 +42,7 @@ import {
   shouldAutoRebuild,
   anchorsAvailable,
   indexAccuracyNotice,
+  lastLibraryFolderIssues,
   search,
   getIndex,
   getRebuildProgress,
@@ -67,7 +68,7 @@ import {
   disarmManually,
   describe as describePerformance,
 } from "./performance-mode.js";
-import { resolveArrangement, flattenGroups, findLiveIndex } from "./arrangements.js";
+import { resolveArrangement, flattenGroups, findLiveIndex, parseSlideIndex } from "./arrangements.js";
 import { pushLiveItem, findReturnEntry } from "./return-history.js";
 import { checkLibrarySafeToTouch } from "./library-guard.js";
 import { heartbeatInterval } from "./heartbeat-pacing.js";
@@ -836,6 +837,10 @@ function indexStatusPayload() {
     anchorsAvailable: anchorsAvailable(index),
     accuracy: indexAccuracyNotice(index),
     crawlAborted: lastCrawlAbort(),
+    // A configured folder that does not exist, or one that threw mid-crawl.
+    // Either way the index is short by a whole folder and search misses every
+    // song in it, which nothing used to say out loud.
+    libraryFolderIssues: lastLibraryFolderIssues(),
     autoReindex: autoReindexEnabled()
       ? (libraryWatch?.status() ?? { watching: 0, outcome: "not started", pending: null })
       : null,
@@ -1100,8 +1105,24 @@ app.post("/api/trigger", async (req, res) => {
   if (!presentationId || slideIndex === undefined) {
     return res.status(400).json({ error: "presentationId and slideIndex are required" });
   }
+  if (typeof presentationId !== "string") {
+    return res.status(400).json({ error: "presentationId must be a string" });
+  }
+  // A slide number is a non-negative integer or it is not a slide number.
+  // `Number(slideIndex)` accepted NaN, 3.7 and -1 and passed them straight
+  // into the trigger URL. Both current callers read the value out of the
+  // search index so none of that is reachable today, but the route is the
+  // contract, and "no caller does that yet" is not a validation strategy.
+  //
+  // The type is checked before the coercion, because `Number()` maps null, ""
+  // and [] all to 0 -- so a caller whose slide index was simply missing would
+  // have fired the first slide of the song instead of getting an error. That is
+  // the worst possible failure here: silently correct-looking, and live.
+  const requested = parseSlideIndex(slideIndex);
+  if (requested === null) {
+    return res.status(400).json({ error: "slideIndex must be a whole number, zero or greater" });
+  }
   try {
-    const requested = Number(slideIndex);
 
     // Both reads are independent of each other, and ProPresenter can take
     // seconds per call on a busy machine, so run them together rather than

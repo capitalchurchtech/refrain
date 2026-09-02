@@ -729,6 +729,55 @@ function selectOptions(options, current) {
     .join("");
 }
 
+/**
+ * The two ways an index can be short without looking short.
+ *
+ * A configured folder that does not exist matched nothing and produced an
+ * index missing every song in it. A folder that threw mid-crawl, or a crawl
+ * that hit the consecutive-failure breaker, did the same. Both were reported
+ * only to the console, so on screen a partial index and a complete one were
+ * the same picture -- and the operator finds out by searching for a song on a
+ * Sunday and not finding it.
+ *
+ * The unmatched-name case prints what the library actually has, because "you
+ * asked for Songs and this library has Song" is the entire answer and there
+ * is no way to reach it from an empty result.
+ */
+function renderIndexShortfall(index) {
+  const issues = index.libraryFolderIssues;
+  const aborted = index.crawlAborted;
+  if (!issues && !aborted) return "";
+
+  const parts = [];
+  if (issues?.unmatchedNames?.length) {
+    const many = issues.unmatchedNames.length !== 1;
+    parts.push(
+      `<div><strong>Configured folder${many ? "s" : ""} not found: ` +
+        `${issues.unmatchedNames.map(escapeHtml).join(", ")}.</strong> ` +
+        `This library has: ${(issues.availableFolders ?? []).map(escapeHtml).join(", ") || "no folders"}. ` +
+        `Every song in the missing folder${many ? "s" : ""} is absent from search. ` +
+        `Fix the folder names in Configuration below, then rebuild.</div>`
+    );
+  }
+  if (issues?.failedFolders?.length) {
+    parts.push(
+      `<div><strong>Could not read: ${issues.failedFolders.map((f) => escapeHtml(f.name)).join(", ")}.</strong> ` +
+        `Those folders' songs are missing from search. Rebuild once ProPresenter is responding.</div>`
+    );
+  }
+  if (aborted) {
+    parts.push(
+      `<div><strong>Indexing stopped early.</strong> ` +
+        `${escapeHtml(aborted.message ?? "ProPresenter stopped answering.")}</div>`
+    );
+  }
+
+  return `<div class="alert alert-warning py-2 text-sm mt-2 items-start">
+            <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
+            <span class="flex flex-col gap-1">${parts.join("")}</span>
+          </div>`;
+}
+
 function renderHealth(health, configOptions, versionInfo) {
   const { propresenter, index, arrangementModule, role, version, config, envRequirements } = health;
 
@@ -800,6 +849,7 @@ function renderHealth(health, configOptions, versionInfo) {
                  </div>`
               : ""
         }
+        ${renderIndexShortfall(index)}
         ${
           index.rebuild.inProgress
             ? `<div class="flex items-center gap-3 mt-1">

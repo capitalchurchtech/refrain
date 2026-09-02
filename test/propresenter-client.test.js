@@ -124,3 +124,144 @@ test("204 means no content, not malformed JSON", async () => {
     assert.equal(await client().getLayerStatus(), null);
   });
 });
+
+// --- URL path segments are encoded, so an id cannot pick a different endpoint ---
+
+function urlRecorder() {
+  const urls = [];
+  const stub = async (url) => {
+    urls.push(String(url));
+    return { ok: true, status: 200, json: async () => [] };
+  };
+  return { urls, stub };
+}
+
+test("a slash in an id cannot redirect the call to another endpoint", async () => {
+  // Raw interpolation made `/v1/macro/${id}/trigger` reachable as any path the
+  // id chose. `..` then normalises away the segment the method name promised.
+  const { urls, stub } = urlRecorder();
+  await withFetch(stub, async () => {
+    await client().triggerMacro("../../v1/clear/layer/audio");
+  });
+  assert.equal(urls.length, 1);
+  // The property that matters is the path SHAPE, not the absence of dots:
+  // encodeURIComponent leaves `..` alone and encodes the slashes, which is
+  // what makes traversal impossible. So assert the structure directly.
+  const path = new URL(urls[0]).pathname;
+  assert.deepEqual(path.split("/").slice(1, 3), ["v1", "macro"], `still a macro call: ${path}`);
+  assert.equal(path.split("/").length, 5, `exactly /v1/macro/<id>/trigger: ${path}`);
+  assert.ok(path.endsWith("/trigger"));
+  assert.ok(!path.includes("/clear/layer"), "did not become a clear call");
+});
+
+test("every id-bearing call encodes its segment", async () => {
+  const nasty = "a/b?c=d#e";
+  const cases = [
+    ["triggerLook", (c) => c.triggerLook(nasty)],
+    ["triggerMacro", (c) => c.triggerMacro(nasty)],
+    ["clearMessage", (c) => c.clearMessage(nasty)],
+    ["focusPresentation", (c) => c.focusPresentation(nasty)],
+    ["getPresentation", (c) => c.getPresentation(nasty)],
+    ["getPlaylistItems", (c) => c.getPlaylistItems(nasty)],
+  ];
+  for (const [name, call] of cases) {
+    const { urls, stub } = urlRecorder();
+    await withFetch(stub, async () => {
+      await call(client());
+    });
+    const u = urls[0];
+    assert.ok(!u.includes("?"), `${name} left a query string: ${u}`);
+    assert.ok(!u.includes("#"), `${name} left a fragment: ${u}`);
+    assert.equal(u.split("/v1/")[1].split("/").filter((p) => p === "b").length, 0, `${name} split the id: ${u}`);
+  }
+});
+
+test("a real uuid passes through untouched, so encoding changed nothing normal", async () => {
+  // The whole point: this is a no-op for valid input. If encoding mangled a
+  // uuid, every Go Live in the building would break.
+  const uuid = "4B9C1E2A-7F30-4A55-9C21-0D8E6F1A2B3C";
+  const { urls, stub } = urlRecorder();
+  await withFetch(stub, async () => {
+    await client().triggerSlide(uuid, 12);
+  });
+  assert.equal(urls[0], `http://localhost:56563/v1/presentation/${uuid}/12/trigger`);
+});
+
+// --- library folder matching ---
+
+function libraryStub({ folders, contents = {}, failing = [] }) {
+  return async (url) => {
+    const u = String(url);
+    if (u.endsWith("/v1/libraries")) {
+      return { ok: true, status: 200, json: async () => folders };
+    }
+    const uuid = decodeURIComponent(u.split("/v1/library/")[1] ?? "");
+    if (failing.includes(uuid)) return { ok: false, status: 500 };
+    return { ok: true, status: 200, json: async () => ({ items: contents[uuid] ?? [] }) };
+  };
+}
+
+const FOLDERS = [
+  { uuid: "f1", name: "Songs" },
+  { uuid: "f2", name: "Hymns" },
+  { uuid: "f3", name: "Liturgy" },
+];
+const CONTENTS = {
+  f1: [{ uuid: "s1", name: "Build My Life" }],
+  f2: [{ uuid: "h1", name: "Great Is Thy Faithfulness" }],
+  f3: [{ uuid: "l1", name: "Creed" }],
+};
+
+test("folder names match case-insensitively — the silent empty index", async () => {
+  // `folderNames.includes(f.name)` meant a config saying "songs" against a
+  // ProPresenter folder called "Songs" crawled nothing, and the operator got an
+  // empty index with no explanation.
+  await withFetch(libraryStub({ folders: FOLDERS, contents: CONTENTS }), async () => {
+    const r = await client().getLibraryDetailed(["songs", "  HYMNS  "]);
+    assert.deepEqual(r.items.map((i) => i.id).sort(), ["h1", "s1"]);
+    assert.deepEqual(r.unmatchedNames, []);
+  });
+});
+
+test("a configured folder that does not exist is reported, with what does", async () => {
+  await withFetch(libraryStub({ folders: FOLDERS, contents: CONTENTS }), async () => {
+    const r = await client().getLibraryDetailed(["Songs", "Chorales"]);
+    assert.deepEqual(r.unmatchedNames, ["Chorales"]);
+    assert.deepEqual(r.availableFolders, ["Songs", "Hymns", "Liturgy"]);
+    assert.deepEqual(r.items.map((i) => i.id), ["s1"], "the folder that does exist still crawls");
+  });
+});
+
+test("a folder that throws is reported rather than silently omitted", async () => {
+  // One folder timing out must not abort the crawl -- but its songs are missing
+  // from search, and that was only ever a console line.
+  await withFetch(libraryStub({ folders: FOLDERS, contents: CONTENTS, failing: ["f2"] }), async () => {
+    const r = await client().getLibraryDetailed(["Songs", "Hymns"]);
+    assert.deepEqual(r.items.map((i) => i.id), ["s1"]);
+    assert.equal(r.failedFolders.length, 1);
+    assert.equal(r.failedFolders[0].name, "Hymns");
+  });
+});
+
+test("a duplicated or twice-matching config entry does not crawl a folder twice", async () => {
+  await withFetch(libraryStub({ folders: FOLDERS, contents: CONTENTS }), async () => {
+    const r = await client().getLibraryDetailed(["Songs", "songs", "SONGS"]);
+    assert.deepEqual(r.items.map((i) => i.id), ["s1"], "crawled once");
+  });
+});
+
+test("no folder filter means every folder, in ProPresenter's own order", async () => {
+  await withFetch(libraryStub({ folders: FOLDERS, contents: CONTENTS }), async () => {
+    const r = await client().getLibraryDetailed(null);
+    assert.deepEqual(r.items.map((i) => i.id), ["s1", "h1", "l1"]);
+    assert.deepEqual(r.unmatchedNames, []);
+  });
+});
+
+test("getLibrary still returns a bare array, so existing callers are unaffected", async () => {
+  await withFetch(libraryStub({ folders: FOLDERS, contents: CONTENTS }), async () => {
+    const items = await client().getLibrary(["Songs"]);
+    assert.ok(Array.isArray(items));
+    assert.deepEqual(items.map((i) => i.id), ["s1"]);
+  });
+});

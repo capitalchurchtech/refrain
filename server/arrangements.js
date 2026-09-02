@@ -157,3 +157,23 @@ export function findLiveIndex(liveSlides, anchor) {
 
   return null;
 }
+
+/**
+ * A slide index off the wire, or null if it is not one.
+ *
+ * Accepts a number or a digit string, since the value arrives as JSON from our
+ * own front end but has been a string in the DOM on the way there. Everything
+ * else is rejected rather than coerced, and that is the whole point: `Number()`
+ * maps null, "" and [] all to 0, so a caller whose slide index was simply
+ * missing would have fired the first slide of the song instead of erroring --
+ * silently correct-looking, and live.
+ *
+ * Lives here rather than beside the route because `server/index.js` calls
+ * `app.listen` at module scope, so importing it to test one function boots a
+ * server. That is also why the routes themselves have no unit tests.
+ */
+export function parseSlideIndex(value) {
+  if (typeof value === "number") return Number.isInteger(value) && value >= 0 ? value : null;
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) return Number(value.trim());
+  return null;
+}

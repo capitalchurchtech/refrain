@@ -106,11 +106,16 @@ test("the rebuild paces itself instead of hammering ProPresenter", async () => {
   const { rebuildIndex } = await import("../server/search-index.js");
   const calls = [];
   const client = {
-    getLibrary: async () => [
-      { id: "a", name: "A", folder: "Songs" },
-      { id: "b", name: "B", folder: "Songs" },
-      { id: "c", name: "C", folder: "Songs" },
-    ],
+    getLibraryDetailed: async () => ({
+      items: [
+        { id: "a", name: "A", folder: "Songs" },
+        { id: "b", name: "B", folder: "Songs" },
+        { id: "c", name: "C", folder: "Songs" },
+      ],
+      failedFolders: [],
+      unmatchedNames: [],
+      availableFolders: ["Songs"],
+    }),
     getPresentation: async (id) => {
       calls.push({ id, at: Date.now() });
       return { presentation: { current_arrangement: "", groups: [{ uuid: "g", slides: [{ text: id }] }] } };
