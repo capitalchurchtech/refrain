@@ -41,6 +41,21 @@ const LIBRARY_FILE_EXT = ".pro";
 /** A source smaller than this is treated as a mistake rather than an instruction. */
 export const DEFAULT_MINIMUM_FILES = 25;
 
+/**
+ * How often to re-ask whether the library is still safe to touch, mid-sync.
+ *
+ * The guard used to be checked once, before a job that copies files one at a
+ * time and can run for minutes over a network share. If ProPresenter launched
+ * partway through -- a shared booth machine, someone starting the service --
+ * every remaining write landed under a running instance, which is the exact
+ * condition that cost three workspaces.
+ *
+ * Aborting is safe by construction: each file lands via temp-then-rename, and
+ * anything about to be replaced was already backed up, so a partial run leaves
+ * a consistent library and a reported list of what was done.
+ */
+export const DEFAULT_RECHECK_EVERY_MS = 2000;
+
 /** How many dated snapshots to keep before the oldest are pruned. */
 export const DEFAULT_SNAPSHOTS_TO_KEEP = 30;
 
@@ -228,7 +243,15 @@ export async function listSnapshots(snapshotsDir) {
  *
  * @returns {Promise<{ok: boolean, reason?: string, copied: string[], replaced: string[], unchanged: number, extra: string[], backedUp: string[]}>}
  */
-export async function syncLibrary({ sourceDir, destDir, backupDir = null, minimumFiles = DEFAULT_MINIMUM_FILES }) {
+export async function syncLibrary({
+  sourceDir,
+  destDir,
+  backupDir = null,
+  minimumFiles = DEFAULT_MINIMUM_FILES,
+  safeToContinue = null,
+  recheckEveryMs = DEFAULT_RECHECK_EVERY_MS,
+  now = () => Date.now(),
+}) {
   const resolvedSource = path.resolve(sourceDir);
   const resolvedDest = path.resolve(destDir);
   if (resolvedSource === resolvedDest) {
@@ -241,14 +264,44 @@ export async function syncLibrary({ sourceDir, destDir, backupDir = null, minimu
     return { ok: false, reason: guard.reason, copied: [], replaced: [], unchanged: 0, extra: [], backedUp: [] };
   }
 
+  // Throttled so a long sync is re-checked regularly without paying for a
+  // process listing per file. A short sync checks once and is unaffected.
+  let lastCheckedAt = now();
+  const copied = [];
+  const replaced = [];
+  const backedUp = [];
+  const stillSafe = async () => {
+    if (typeof safeToContinue !== "function") return null;
+    const t = now();
+    if (t - lastCheckedAt < recheckEveryMs) return null;
+    lastCheckedAt = t;
+    const verdict = await safeToContinue();
+    if (verdict && verdict.safe === false) return verdict.reason ?? "No longer safe to touch the library.";
+    return null;
+  };
+  const abandon = (reason) => ({
+    ok: false,
+    aborted: true,
+    reason,
+    copied,
+    replaced,
+    unchanged: 0,
+    extra: [],
+    backedUp,
+  });
+
   await mkdir(resolvedDest, { recursive: true });
   const dest = await listLibraryFiles(resolvedDest);
   const plan = planSync(source, dest);
 
-  const backedUp = [];
   if (backupDir && plan.toReplace.length) {
     await mkdir(backupDir, { recursive: true });
     for (const name of plan.toReplace) {
+      // Guarded too, not just the copy loop: reading a .pro file while
+      // ProPresenter is writing it captures a torn copy, and in `send`
+      // direction the folder being read here is the live library.
+      const unsafe = await stillSafe();
+      if (unsafe) return abandon(unsafe);
       // Copy rather than move: if the sync then fails, the destination is
       // still intact and we have the backup either way.
       await copyAtomic(path.join(resolvedDest, name), path.join(backupDir, name));
@@ -256,14 +309,24 @@ export async function syncLibrary({ sourceDir, destDir, backupDir = null, minimu
     }
   }
 
-  for (const name of [...plan.toCopy, ...plan.toReplace]) {
+  for (const name of plan.toCopy) {
+    const unsafe = await stillSafe();
+    if (unsafe) return abandon(unsafe);
     await copyAtomic(path.join(resolvedSource, name), path.join(resolvedDest, name));
+    copied.push(name);
+  }
+  for (const name of plan.toReplace) {
+    const unsafe = await stillSafe();
+    if (unsafe) return abandon(unsafe);
+    await copyAtomic(path.join(resolvedSource, name), path.join(resolvedDest, name));
+    replaced.push(name);
   }
 
   return {
     ok: true,
-    copied: plan.toCopy,
-    replaced: plan.toReplace,
+    aborted: false,
+    copied,
+    replaced,
     unchanged: plan.unchanged.length,
     extra: plan.extra,
     backedUp,

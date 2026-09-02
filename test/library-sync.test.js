@@ -238,3 +238,122 @@ test("two snapshots in the same second get separate folders", async () => {
   assert.equal(second.name, `${first.name}-2`);
   assert.deepEqual(await listSnapshots(snaps), [first.name, second.name], "both are listed, so both can be pruned later");
 });
+
+// --- the mid-sync re-check: ProPresenter launching partway through ---
+//
+// The guard used to be asked once, before a job that copies one file at a time
+// and can run for minutes over a share. Everything below is about the window
+// that opened in the middle of it.
+
+test("syncLibrary aborts mid-copy when the library stops being safe", async () => {
+  const src = await seed("src", ["a.pro", "b.pro", "c.pro", "d.pro"]);
+  const dst = await seed("dst", []);
+  // Safe for the first check, unsafe from the second on -- i.e. ProPresenter
+  // launched after the sync had already started.
+  let calls = 0;
+  const r = await syncLibrary({
+    sourceDir: src,
+    destDir: dst,
+    minimumFiles: 1,
+    safeToContinue: async () => {
+      calls += 1;
+      return calls === 1 ? { safe: true, reason: null } : { safe: false, reason: "ProPresenter is running." };
+    },
+    // Every file is a checkpoint, so the test does not depend on wall-clock.
+    recheckEveryMs: 0,
+    now: () => calls * 1000,
+  });
+  assert.equal(r.ok, false);
+  assert.equal(r.aborted, true);
+  assert.match(r.reason, /ProPresenter is running/);
+  assert.ok(r.copied.length < 4, `stopped early, copied ${r.copied.length} of 4`);
+});
+
+test("an aborted sync reports exactly what it managed to copy", async () => {
+  // A partial run that lies about its extent is worse than one that fails:
+  // the operator has to know which files are now newer than the source.
+  const src = await seed("src", ["a.pro", "b.pro", "c.pro"]);
+  const dst = await seed("dst", []);
+  let calls = 0;
+  const r = await syncLibrary({
+    sourceDir: src,
+    destDir: dst,
+    minimumFiles: 1,
+    safeToContinue: async () => ({ safe: ++calls <= 2, reason: "stopped" }),
+    recheckEveryMs: 0,
+    now: () => calls * 1000,
+  });
+  const onDisk = (await readdir(dst)).filter((n) => n.endsWith(".pro")).sort();
+  assert.deepEqual(r.copied.sort(), onDisk, "reported copies match the filesystem");
+});
+
+test("an abort leaves no torn file behind", async () => {
+  // Each file is temp-then-rename, so stopping between files is safe. This is
+  // what makes aborting the right response rather than pressing on.
+  const src = await seed("src", ["a.pro", "b.pro", "c.pro"]);
+  const dst = await seed("dst", []);
+  let calls = 0;
+  await syncLibrary({
+    sourceDir: src,
+    destDir: dst,
+    minimumFiles: 1,
+    safeToContinue: async () => ({ safe: ++calls <= 1, reason: "stopped" }),
+    recheckEveryMs: 0,
+    now: () => calls * 1000,
+  });
+  const left = await readdir(dst);
+  assert.equal(left.filter((n) => n.includes("refrain-tmp")).length, 0, "no temp files");
+  for (const n of left) {
+    assert.equal(await readFile(join(dst, n), "utf-8"), `song ${n}`, `${n} is whole`);
+  }
+});
+
+test("the re-check also guards the backup loop, which reads the live library", async () => {
+  // In `send` direction the folder being read for backups IS the live library,
+  // and a torn read propagates to every other machine.
+  const src = await seed("src", ["a.pro", "b.pro"], "new");
+  const dst = await seed("dst", ["a.pro", "b.pro"], "old");
+  const backup = join(dir, "backup");
+  const r = await syncLibrary({
+    sourceDir: src,
+    destDir: dst,
+    backupDir: backup,
+    minimumFiles: 1,
+    safeToContinue: async () => ({ safe: false, reason: "ProPresenter reopened." }),
+    recheckEveryMs: 0,
+    now: () => 0,
+  });
+  assert.equal(r.aborted, true);
+  assert.equal(r.replaced.length, 0, "nothing was replaced");
+  assert.equal(await readFile(join(dst, "a.pro"), "utf-8"), "old a.pro", "destination untouched");
+});
+
+test("the re-check is throttled, so a short sync does not pay for one per file", async () => {
+  const src = await seed("src", ["a.pro", "b.pro", "c.pro", "d.pro", "e.pro"]);
+  const dst = await seed("dst", []);
+  let calls = 0;
+  const r = await syncLibrary({
+    sourceDir: src,
+    destDir: dst,
+    minimumFiles: 1,
+    safeToContinue: async () => {
+      calls += 1;
+      return { safe: true, reason: null };
+    },
+    recheckEveryMs: 2000,
+    now: () => 0, // time never advances, so only the first check is due
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.copied.length, 5);
+  assert.equal(calls, 0, "no re-check was due within the throttle window");
+});
+
+test("no safeToContinue means the old behaviour, unchanged", async () => {
+  // Every existing caller and test must keep working without opting in.
+  const src = await seed("src", ["a.pro", "b.pro"]);
+  const dst = await seed("dst", []);
+  const r = await syncLibrary({ sourceDir: src, destDir: dst, minimumFiles: 1 });
+  assert.equal(r.ok, true);
+  assert.equal(r.aborted, false);
+  assert.deepEqual(r.copied.sort(), ["a.pro", "b.pro"]);
+});

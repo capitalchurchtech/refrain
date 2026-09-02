@@ -520,6 +520,44 @@ export function getIndexedArrangementNames() {
   return [...names].sort((a, b) => a.localeCompare(b));
 }
 
+/**
+ * Whether the loaded index carries per-slide anchors.
+ *
+ * An older-schema cache still loads and still searches, so nothing looks
+ * wrong -- but its slides have no (groupId, groupOffset), which is the
+ * primary anchor `resolveTriggerIndex` uses to re-find a slide when
+ * ProPresenter is on a different arrangement than the index was built from.
+ * Correction degrades to matching on slide text, and text matching picks the
+ * candidate nearest the *stored* index, so a repeated chorus in a re-lengthened
+ * arrangement can resolve to the wrong repetition.
+ *
+ * That is a quiet accuracy loss on the live path, and the operator could not
+ * see it: `schemaVersion` was not surfaced anywhere. It is now, because a
+ * degradation nobody can observe is one nobody will fix.
+ */
+export function anchorsAvailable(index = currentIndex) {
+  return index?.schemaVersion === SCHEMA_VERSION;
+}
+
+/**
+ * The accuracy notice for a stale-schema index, or null.
+ *
+ * Deliberately worded about what Go Live will do, not about a version number.
+ * "Schema 2 of 3" is true and useless; an operator needs to know the slide
+ * they click might not be the slide that fires, and that reindexing fixes it.
+ * Same remedy as the staleness notice, so it shares the Refresh button.
+ */
+export function indexAccuracyNotice(index = currentIndex) {
+  if (!index?.builtAt) return null;
+  if (anchorsAvailable(index)) return null;
+  return {
+    reason: "schema",
+    message:
+      "Index was built by an older version and is missing slide anchors, " +
+      "so Go Live may fire the wrong slide when a song's arrangement has changed. Refresh.",
+  };
+}
+
 export function shouldAutoRebuild(index) {
   if (!index?.builtAt) return true;
   // An older-schema cache still loads and still searches — slides just lack

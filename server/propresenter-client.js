@@ -136,9 +136,16 @@ export class ProPresenterClient {
     return { items };
   }
 
-  /** Full presentation document, including slide text, for a given id. */
-  async getPresentation(presentationId) {
-    return this.#get(`/v1/presentation/${presentationId}`, { timeoutMs: LIVE_TIMEOUT_MS });
+  /**
+   * Full presentation document, including slide text, for a given id.
+   *
+   * `timeoutMs` is overridable because this call serves two very different
+   * jobs. Indexing can afford to wait out a busy ProPresenter. The Go Live
+   * path cannot: there it is optional pre-work ahead of the actual trigger,
+   * so it gets a short budget and the caller proceeds without it.
+   */
+  async getPresentation(presentationId, { timeoutMs = LIVE_TIMEOUT_MS } = {}) {
+    return this.#get(`/v1/presentation/${presentationId}`, { timeoutMs });
   }
 
   /**
@@ -184,8 +191,8 @@ export class ProPresenterClient {
    * Response shape (PP v1):
    *   { presentation_index: { index, presentation_id: { uuid, name } } }
    */
-  async getCurrentSlide() {
-    const data = await this.#get("/v1/presentation/slide_index");
+  async getCurrentSlide({ timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
+    const data = await this.#get("/v1/presentation/slide_index", { timeoutMs });
     const pi = data?.presentation_index;
     const uuid = pi?.presentation_id?.uuid;
     const index = pi?.index;

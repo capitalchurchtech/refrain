@@ -1047,6 +1047,145 @@ Plus: copy is final copy in the right zone, never placeholder.
 
 ---
 
+## ProPresenter surface review — 2026-09-02
+
+A review of every surface that touches ProPresenter, for production use in a
+real booth. Ranked. What held up is recorded at the end, because "the guard
+works" is a review result too.
+
+### 14. MEDIUM — a stale-schema index degrades Go Live silently — FIXED 2026-09-02
+
+`loadIndexFromDisk` (`server/search-index.js:92`) parses the cache and returns
+it without checking `schemaVersion`. `shouldAutoRebuild` does catch a mismatch,
+but at boot, if `frozen()`, the rebuild is deferred and the log says "The
+existing index still works."
+
+It does work for *finding*. What it does not do is carry `groupId`/`groupOffset`
+per slide, so `resolveTriggerIndex` loses its primary anchor.
+
+**Precise severity, because it is easy to overstate.** The correction does not
+switch off — the guard is `!anchor.groupId && !anchor.slideText`, and
+`slideText` comes from the query-time snippet, which an older index still
+produces. So correction degrades from (group, offset) matching to text
+matching. Text matching then picks the candidate `nearest` the *stale* stored
+index, which for a repeated chorus in a re-lengthened arrangement can select
+the wrong repetition. Degraded and silent, not catastrophic.
+
+The realistic path: upgrade on a Saturday, Sunday morning ProPresenter is live
+or slow, performance mode arms, the rebuild is deferred for the whole service.
+
+Nothing surfaces it — `schemaVersion` appears nowhere in `server/index.js` or
+`public/`. Fix: put `anchorsAvailable` in `indexStatusPayload()` and say it on
+Search in accuracy terms, not staleness terms.
+
+### 15. MEDIUM — the library guard is checked once, for a job that runs minutes — FIXED 2026-09-02
+
+`/api/library-sync/run` calls `checkLibrarySafeToTouch` before starting, and
+then `syncLibrary` copies files sequentially with no re-check. If ProPresenter
+launches mid-sync — a shared booth machine, someone starting the service — the
+remaining writes land under a running ProPresenter, which is the exact
+condition that cost three workspaces.
+
+Mitigating: sync is operator-initiated only. There is no scheduler (verified).
+
+Fix: pass an abort predicate into `syncLibrary`, re-check every N files, abort
+and report a partial run. Safe to abort by construction — each file is
+temp-then-rename and every replacement is backed up first.
+
+### 16. MEDIUM — worst-case Go Live is ~40s with no feedback — FIXED 2026-09-02
+
+`resolveTriggerIndex` fetches the presentation at `LIVE_TIMEOUT_MS` (20s),
+`Promise.all`-ed with `getCurrentSlide` (8s), then `triggerSlide` at 20s. A
+ProPresenter that accepts connections but never answers gives 40s before a 502,
+with the button disabled throughout.
+
+Not hypothetical: measured on this rig on 2026-09-02, where `/v1/version`
+returned in 14ms while `/v1/status/layers`, `/v1/presentation/slide_index` and
+`/v1/looks` all hung past 30s.
+
+Fix: bound the whole request. If the anchor resolve has not returned in ~4s,
+fire the stored index and report `anchorChecked: false` — the fallback is
+already the designed behaviour, it simply is not time-bounded.
+
+### 17. MEDIUM — `propresenter-client.js` has no direct test — PARTLY ADDRESSED 2026-09-02
+
+Eleven of the twelve ProPresenter surfaces have a test file. The client — the
+one every other surface depends on — does not. `macroIcon`/`macroColorHex` are
+covered by `macro-colour.test.js`; the request layer is not, and neither are
+`getCurrentSlide`'s normalisation, `getPlaylistItems`' filtering,
+`extractMessageTokens` or `normalizeIdList`.
+
+`getCurrentSlide` matters most: its `index < 0` and non-number rejections feed
+the return pin, so a regression there arms a return target that goes somewhere
+the operator never was.
+
+These are pure functions of a JSON shape. The file's header comment is
+currently the only record of ProPresenter 21.3's response shapes; a test would
+make that record enforceable instead of aspirational.
+
+### 18. LOW — URL path segments are interpolated unencoded
+
+`presentationId`, `slideIndex`, look/macro/message `id`, `folder.uuid` all go
+into the ProPresenter URL raw. `layer` is correctly allowlisted against
+`CLEAR_LAYERS`; nothing else is.
+
+**Not a live vulnerability**, and the reasons are worth writing down so nobody
+re-litigates it: the server binds `127.0.0.1` (`server/index.js:2673`), only
+`express.json()` is mounted so a cross-origin simple request cannot populate
+`req.body`, and there are no side-effecting GET routes. Fix anyway with
+`encodeURIComponent` in the client — one file, closes the class.
+
+### 19. LOW — `/api/trigger` does not validate `slideIndex`
+
+`Number(slideIndex)` accepts NaN, floats and negatives. Both current callers
+pass an index straight from the index, so it is unreachable today, but the
+route is the contract. Require `Number.isInteger(n) && n >= 0`.
+
+### 20. LOW — library folder matching is case-sensitive and silent
+
+`getLibrary` filters with `folderNames.includes(f.name)`, so `"songs"` in
+config against `"Songs"` in ProPresenter crawls nothing and the operator gets
+an empty index with no explanation. Separately, a folder that throws is
+`console.log`-ed and its presentations are simply absent from search — the
+crawl circuit breaker catches total collapse, not one folder quietly missing.
+
+Fix: compare case-insensitively, and report both unmatched configured names and
+failed folders in index-status.
+
+### 21. NOTE — the disabled-slide assumption is still unverified
+
+`flattenGroups` counts `enabled: false` slides in the flat index; nothing reads
+`slide.enabled` anywhere. The original plan flagged this as unverified and said
+it would go into `docs/propresenter-verification.md`. It did not — grep finds no
+mention of it there.
+
+If ProPresenter skips disabled slides when resolving a trigger index, then for
+every song containing one, every slide after it fires one position off.
+
+Could not be settled on 2026-09-02: the read-only census failed because the API
+was wedged, and settling it properly requires actually firing a slide, which
+puts content on real screens. This needs a rig test on a throwaway workspace
+with outputs off, not a code change.
+
+### What held up
+
+Recorded deliberately. Every safety mechanism was tested against a genuinely
+half-dead ProPresenter and each failed in the safe direction:
+
+- The library guard refuses, and an unreachable API is explicitly not treated
+  as permission — it falls through to `ps`, finds ProPresenter, and says no.
+- Performance mode *arms* on unknown layers rather than standing down, so a
+  wedged ProPresenter freezes Refrain instead of freeing it to crawl.
+- The heartbeat reschedules after each beat completes, so a 20s hang cannot
+  pile beats up behind it.
+- The crawl aborts after ten consecutive read failures.
+- Sync never deletes and never mirrors, refuses a source below the floor,
+  backs up before replacing, snapshots the read side first.
+- `highlightMatch` escapes each slice before joining, so slide text carrying
+  markup cannot execute — the one place ProPresenter content reaches innerHTML.
+- The trigger correction exists and every failure path falls back to the
+  requested index, so it can only improve accuracy, never availability.
+
 ## Status log
 
 `YYYY-MM-DD · <item> · done | partial | blocked · <one line>`
@@ -1186,3 +1325,33 @@ Plus: copy is final copy in the right zone, never placeholder.
   stale-response guard intact under a 600ms/0ms race, marked and unmarked rows
   share a left axis in both lists, 44px touch floor engages. Light-theme gaps in
   `--rf-muted`/`--rf-fault` are pre-existing and app-wide — logged as item 13.
+- 2026-09-02 · ProPresenter surface review · items 14, 15, 16 fixed; 17 partly.
+  Item 14: `anchorsAvailable`/`indexAccuracyNotice` in search-index, surfaced
+  through index-status and rendered on Search, where accuracy outranks age —
+  a week-old index is annoying, a stale-schema one can put the wrong words on
+  the screen, and the two must not read alike. Verified by actually setting the
+  cache to schema 2 and aging it seven days: both notices true, the wrong-slide
+  one shown, one message and one button. Cache restored, shasum verified.
+  Item 15: `syncLibrary` takes `safeToContinue` and re-asks on a throttle, over
+  the backup loop as well as the copy loops, because in `send` direction the
+  folder being read for backups IS the live library. Aborts and reports what it
+  managed. The route re-checks between the snapshot and the first write too, and
+  the initial check and the re-check are now provably the same question — one
+  `librarySafety()` closure feeds both.
+  Item 16: the anchor lookup was on the 20s live budget on top of the trigger's
+  own 20s, so a wedged ProPresenter took ~40s to report a failure with the
+  button disabled. Optional pre-work now gets 4s (anchor) and 3s (return-pin
+  read); the trigger keeps its full 20s, because a slow-but-working
+  ProPresenter must not fail to go live. Response carries `anchorChecked`, which
+  is a different claim from `corrected` and the only honest one on a timeout.
+  Item 17: `test/propresenter-client.test.js` added — the timeout budgets both
+  ways, `getCurrentSlide`'s validation including the slide-0 falsy-zero trap,
+  non-2xx throwing rather than resolving null, and 204 not being parsed as JSON.
+  The rest of the client (playlist filtering, message tokens, normalizeIdList)
+  is still untested.
+  Found and fixed while measuring: this rig's ProPresenter was wedged all
+  session — TCP alive, `/v1/version` in 14ms, every real endpoint hanging past
+  30s. That turned into the test case for the whole review, and every safety
+  mechanism was observed failing safe on it, including performance mode arming
+  itself on unknown layers and correctly deferring the rebuild.
+  254 tests, lint clean.

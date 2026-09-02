@@ -100,17 +100,30 @@ export function initSearch() {
    * Nothing is rendered below the threshold -- an all-clear the operator did
    * not ask for is noise on the screen they use under pressure.
    */
-  function renderStaleness(staleness) {
+  /**
+   * One line for "this index cannot be fully trusted", whichever reason applies.
+   *
+   * Accuracy outranks age. A week-old index misses songs edited since, which is
+   * annoying; a stale-schema one is missing the slide anchors Go Live uses to
+   * correct for an arrangement change, which means the slide that fires may not
+   * be the slide that was clicked. If both are true the operator gets told about
+   * the one that can put the wrong words on the screen.
+   *
+   * Both have the same remedy, so they share the Refresh button rather than
+   * stacking two notices with two buttons over the search field.
+   */
+  function renderStaleness(staleness, accuracy = null) {
     const el = document.getElementById("index-staleness");
     if (!el) return;
-    if (!staleness) {
+    const notice = accuracy ?? staleness;
+    if (!notice) {
       el.classList.add("hidden");
       el.innerHTML = "";
       return;
     }
     el.classList.remove("hidden");
     el.innerHTML = `
-      <span class="rf-flag">${escapeHtml(staleness.message)}</span>
+      <span class="rf-flag">${escapeHtml(notice.message)}</span>
       <button id="index-refresh-btn" class="btn btn-chip ml-2">Refresh</button>`;
     el.querySelector("#index-refresh-btn").addEventListener("click", async (e) => {
       const btn = e.currentTarget;
@@ -159,7 +172,7 @@ export function initSearch() {
     // sits dark for weeks and lights once is not reporting, and the emitter
     // budget is spent. And it carries its own remedy, because telling an
     // operator something is wrong without the fix is half an answer.
-    renderStaleness(indexRes.staleness);
+    renderStaleness(indexRes.staleness, indexRes.accuracy);
     if (window.lucide) window.lucide.createIcons();
 
     if (!connRes.connected) {

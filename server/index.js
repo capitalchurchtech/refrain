@@ -40,6 +40,8 @@ import {
   loadIndexFromDisk,
   rebuildIndex,
   shouldAutoRebuild,
+  anchorsAvailable,
+  indexAccuracyNotice,
   search,
   getIndex,
   getRebuildProgress,
@@ -828,6 +830,11 @@ function indexStatusPayload() {
     },
     fullRebuildSuggestion: fullRebuildSuggestion(daysSinceFullBuild(index)),
     staleness: indexStaleness(index?.builtAt ?? null),
+    // Accuracy is reported separately from age because they are different
+    // problems: a week-old index misses new songs, a stale-schema one can fire
+    // the wrong slide. The second is worse and must not be readable as the first.
+    anchorsAvailable: anchorsAvailable(index),
+    accuracy: indexAccuracyNotice(index),
     crawlAborted: lastCrawlAbort(),
     autoReindex: autoReindexEnabled()
       ? (libraryWatch?.status() ?? { watching: 0, outcome: "not started", pending: null })
@@ -1041,12 +1048,32 @@ let returnPin = null;
  * Every failure path falls back to the requested index, so this can only make
  * Go Live more accurate, never less available.
  */
+/**
+ * How long the anchor lookup gets before Go Live proceeds without it.
+ *
+ * Everything in `resolveTriggerIndex` is optional pre-work: its whole contract
+ * is that any failure falls back to the requested index. It was nonetheless
+ * running on the 20s live budget, on top of the 20s the trigger itself needs,
+ * so a ProPresenter that accepts connections and never answers made Go Live
+ * take about forty seconds to report a failure, with the button disabled
+ * throughout. Observed on a real rig: /v1/version answered in 14ms while
+ * /v1/status/layers, /v1/presentation/slide_index and /v1/looks all hung
+ * past 30s.
+ *
+ * The mandatory action keeps its full budget, because a slow-but-working
+ * ProPresenter must not fail to go live. The nice-to-have gets four seconds
+ * and then gets out of the way.
+ */
+const ANCHOR_RESOLVE_BUDGET_MS = 4000;
+/** Same reasoning for reading where we were: it only feeds the Return bar. */
+const RETURN_PIN_READ_BUDGET_MS = 3000;
+
 async function resolveTriggerIndex(presentationId, requestedIndex, anchor) {
   if (!anchor || (!anchor.groupId && !anchor.slideText)) {
-    return { index: requestedIndex, corrected: false, arrangementName: null };
+    return { index: requestedIndex, corrected: false, arrangementName: null, anchorChecked: false };
   }
   try {
-    const doc = await client.getPresentation(presentationId);
+    const doc = await client.getPresentation(presentationId, { timeoutMs: ANCHOR_RESOLVE_BUDGET_MS });
     // Deliberately the LIVE selection, not preferredArrangements(): ProPresenter
     // will interpret whatever number we send against what it has selected now.
     const live = resolveArrangement(doc, []);
@@ -1057,11 +1084,14 @@ async function resolveTriggerIndex(presentationId, requestedIndex, anchor) {
       text: anchor.slideText ?? "",
     });
     if (found === null) {
-      return { index: requestedIndex, corrected: false, arrangementName: live.arrangementName };
+      return { index: requestedIndex, corrected: false, arrangementName: live.arrangementName, anchorChecked: true };
     }
-    return { index: found, corrected: found !== requestedIndex, arrangementName: live.arrangementName };
+    return { index: found, corrected: found !== requestedIndex, arrangementName: live.arrangementName, anchorChecked: true };
   } catch {
-    return { index: requestedIndex, corrected: false, arrangementName: null };
+    // Timed out, or ProPresenter refused. Fire what was asked for, and report
+    // it as unchecked rather than as "not corrected" -- those are different
+    // claims and only one of them is honest here.
+    return { index: requestedIndex, corrected: false, arrangementName: null, anchorChecked: false };
   }
 }
 
@@ -1080,7 +1110,7 @@ app.post("/api/trigger", async (req, res) => {
     // rather than clobbering a good one.
     const [target, current] = await Promise.all([
       resolveTriggerIndex(presentationId, requested, { groupId, groupOffset, slideText }),
-      client.getCurrentSlide().catch(() => null),
+      client.getCurrentSlide({ timeoutMs: RETURN_PIN_READ_BUDGET_MS }).catch(() => null),
     ]);
 
     // Capture where we were before jumping, so "Return" can bring us back.
@@ -1100,6 +1130,7 @@ app.post("/api/trigger", async (req, res) => {
       ok: true,
       firedIndex: target.index,
       corrected: target.corrected,
+      anchorChecked: target.anchorChecked,
       arrangementName: target.arrangementName,
     });
   } catch (err) {
@@ -1369,17 +1400,20 @@ app.post("/api/library-sync/run", async (_req, res) => {
    * Checked here rather than deeper down so it covers both directions and
    * cannot be reached around, and it refuses rather than warns.
    */
-  const safety = await checkLibrarySafeToTouch({
-    apiProbe: async () => {
-      try {
-        // Cheapest call that proves the app is answering.
-        await client.testConnection();
-        return true;
-      } catch {
-        return false;
-      }
-    },
-  });
+  const librarySafety = () =>
+    checkLibrarySafeToTouch({
+      apiProbe: async () => {
+        try {
+          // Cheapest call that proves the app is answering.
+          await client.testConnection();
+          return true;
+        } catch {
+          return false;
+        }
+      },
+    });
+
+  const safety = await librarySafety();
   if (!safety.safe) {
     return res.status(409).json({
       error: `${safety.reason} Library Sync copies presentation files in and out of the library ` +
@@ -1423,12 +1457,27 @@ app.post("/api/library-sync/run", async (_req, res) => {
       keep: settings.snapshotsToKeep,
     });
 
+    // The snapshot above reads the source folder and takes real time, so ask
+    // again before starting the part that writes.
+    const stillSafeAfterSnapshot = await librarySafety();
+    if (!stillSafeAfterSnapshot.safe) {
+      return res.status(409).json({
+        error: `${stillSafeAfterSnapshot.reason} Nothing was copied. The snapshot was taken, so you can retry safely.`,
+        blockedBy: "propresenter-running",
+        evidence: stillSafeAfterSnapshot.evidence,
+      });
+    }
+
     const result = await syncLibrary({
       sourceDir: ends.from,
       destDir: ends.to,
       // Anything about to be replaced is preserved first, dated.
       backupDir: path.join(settings.sharedFolder, "replaced", new Date().toISOString().slice(0, 10)),
       minimumFiles: settings.minimumFiles,
+      // Re-asked as the copy proceeds. A sync over a network share runs for
+      // minutes, and ProPresenter launching partway through is the corruption
+      // case the up-front check cannot see.
+      safeToContinue: librarySafety,
     });
 
     const record = {
