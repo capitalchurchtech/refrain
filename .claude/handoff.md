@@ -1107,7 +1107,7 @@ Fix: bound the whole request. If the anchor resolve has not returned in ~4s,
 fire the stored index and report `anchorChecked: false` — the fallback is
 already the designed behaviour, it simply is not time-bounded.
 
-### 17. MEDIUM — `propresenter-client.js` has no direct test — PARTLY ADDRESSED 2026-09-02
+### 17. MEDIUM — `propresenter-client.js` has no direct test — DONE 2026-09-02
 
 Eleven of the twelve ProPresenter surfaces have a test file. The client — the
 one every other surface depends on — does not. `macroIcon`/`macroColorHex` are
@@ -1422,3 +1422,14 @@ half-dead ProPresenter and each failed in the safe direction:
   select an explicit class. A bare attribute selector is not a hook.
   267 tests, lint clean. config.json and the index cache were each swapped for
   verification and restored, shasum verified.
+- 2026-09-02 · Item 17 closed. All twenty public methods on the client now have
+  a direct test (281 total, up from 267). The ones worth having: the macro
+  alignment regression, where a single entry without a uuid used to shift every
+  icon after it and mislabel the whole bank; `getMessages` accepting both token
+  shapes ProPresenter has used; `triggerMessage` turning a missing value into an
+  empty string rather than letting "undefined" reach a screen; `getPlaylistItems`
+  dropping headers, which have no uuid to trigger; and `getFileDates` returning
+  nulls on a remote ProPresenter instead of a guess that would narrow every
+  date-filtered search. The two list endpoints are pinned by path, because the
+  two-step library crawl was recorded only in a comment.
+  Remaining on the review: 21 only, and it is blocked rather than pending.

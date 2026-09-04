@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { ProPresenterClient } from "../server/propresenter-client.js";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 /**
  * The live path's time budget, against the failure mode that motivated it: a
@@ -264,4 +267,191 @@ test("getLibrary still returns a bare array, so existing callers are unaffected"
     assert.ok(Array.isArray(items));
     assert.deepEqual(items.map((i) => i.id), ["s1"]);
   });
+});
+
+// --- Looks and Macros: the church's own names, and the alignment guarantee ---
+
+test("getLooks flattens the id wrapper and drops entries with no uuid", async () => {
+  // A malformed entry must not render a button that triggers nothing.
+  await withFetch(jsonFetch([
+    { id: { uuid: "l1", name: "Logo" } },
+    { id: { name: "no uuid" } },
+    { id: { uuid: "l2" } },
+    null,
+  ]), async () => {
+    assert.deepEqual(await client().getLooks(), [
+      { id: "l1", name: "Logo" },
+      { id: "l2", name: "Untitled" },
+    ]);
+  });
+});
+
+test("getMacros carries name, icon and colour off ProPresenter's own shape", async () => {
+  await withFetch(jsonFetch([
+    { id: { uuid: "m1", name: "Countdown" }, image_type: "Timer", color: { red: 1, green: 0, blue: 0, alpha: 1 } },
+  ]), async () => {
+    assert.deepEqual(await client().getMacros(), [
+      { id: "m1", name: "Countdown", icon: "timer", color: "#FF0000" },
+    ]);
+  });
+});
+
+test("a malformed macro cannot shift another macro's icon or colour", async () => {
+  // The regression this pins: the mapping was built by re-indexing a filtered
+  // list, so one entry without a uuid moved every icon after it up by one and
+  // quietly mislabelled the whole bank.
+  await withFetch(jsonFetch([
+    { id: { uuid: "a", name: "Bell one" }, image_type: "Bell", color: { red: 1, green: 1, blue: 1, alpha: 1 } },
+    { id: { name: "dropped, no uuid" }, image_type: "Sun" },
+    { id: { uuid: "c", name: "Timer one" }, image_type: "Timer", color: { red: 0, green: 0, blue: 0, alpha: 1 } },
+  ]), async () => {
+    const macros = await client().getMacros();
+    assert.equal(macros.length, 2, "the malformed one is dropped");
+    assert.deepEqual(macros.map((m) => [m.name, m.icon]), [
+      ["Bell one", "bell"],
+      ["Timer one", "timer"],
+    ], "and the survivors keep their own icons");
+  });
+});
+
+test("an unknown macro icon becomes null rather than a guess", async () => {
+  // A wrong icon is worse than none: it makes the bank look scannable while
+  // lying about what each key does.
+  await withFetch(jsonFetch([{ id: { uuid: "m", name: "X" }, image_type: "SomethingNew" }]), async () => {
+    assert.equal((await client().getMacros())[0].icon, null);
+  });
+});
+
+// --- Messages ---
+
+test("getMessages reads tokens from message_components", async () => {
+  await withFetch(jsonFetch([
+    { id: { uuid: "msg1", name: "Childcare" }, message_components: [
+      "Please come to ",           // a plain static string, not a token
+      { name: "room" },
+      { name: "clock", timer: true },
+    ] },
+  ]), async () => {
+    assert.deepEqual(await client().getMessages(), [
+      { id: "msg1", name: "Childcare", tokens: [
+        { name: "room", kind: "text" },
+        { name: "clock", kind: "timer" },
+      ] },
+    ]);
+  });
+});
+
+test("getMessages also accepts the `tokens` array shape", async () => {
+  // ProPresenter has described tokens both ways; the client accepts either
+  // rather than assuming the shape this rig happened to return.
+  await withFetch(jsonFetch([
+    { id: { uuid: "m", name: "N" }, tokens: [{ id: { name: "who" } }, { name: "t", type: "timer" }] },
+  ]), async () => {
+    assert.deepEqual((await client().getMessages())[0].tokens, [
+      { name: "who", kind: "text" },
+      { name: "t", kind: "timer" },
+    ]);
+  });
+});
+
+test("a token defaults to text, since only text is fillable from Refrain", async () => {
+  await withFetch(jsonFetch([{ id: { uuid: "m", name: "N" }, message_components: [{ name: "x", timer: false }] }]), async () => {
+    assert.equal((await client().getMessages())[0].tokens[0].kind, "text");
+  });
+});
+
+test("triggerMessage sends the token shape ProPresenter expects", async () => {
+  const seen = [];
+  await withFetch(async (url, opts) => {
+    seen.push({ url: String(url), method: opts?.method, body: JSON.parse(opts.body) });
+    return { ok: true, status: 204, json: async () => null };
+  }, async () => {
+    await client().triggerMessage("m1", [{ name: "room", text: "Nursery" }, { name: "blank" }]);
+  });
+  assert.equal(seen[0].method, "POST");
+  assert.match(seen[0].url, /\/v1\/message\/m1\/trigger$/);
+  assert.deepEqual(seen[0].body, [
+    { name: "room", text: { text: "Nursery" } },
+    // A missing value becomes an empty string rather than the literal
+    // "undefined" appearing on a screen in front of the congregation.
+    { name: "blank", text: { text: "" } },
+  ]);
+});
+
+// --- The small ones, pinned because the paths are the contract ---
+
+test("testConnection asks the layers endpoint", async () => {
+  const { urls, stub } = urlRecorder();
+  await withFetch(stub, async () => {
+    assert.equal(await client().testConnection(), true);
+  });
+  assert.match(urls[0], /\/v1\/status\/layers$/);
+});
+
+test("clearLayer hits the layer it was given", async () => {
+  const { urls, stub } = urlRecorder();
+  await withFetch(stub, async () => {
+    await client().clearLayer("slide");
+  });
+  assert.match(urls[0], /\/v1\/clear\/layer\/slide$/);
+});
+
+test("getPlaylistItems keeps presentations and drops headers", async () => {
+  // A playlist mixes headers with presentations, and a header has no uuid to
+  // trigger -- so including it would render a row that cannot go anywhere.
+  await withFetch(jsonFetch({ items: [
+    { type: "header", id: { name: "Pre-service" } },
+    { type: "presentation", id: { name: "Build My Life" }, presentation_info: { presentation_uuid: "u1" } },
+    { type: "presentation", id: { name: "No uuid" }, presentation_info: {} },
+    { type: "presentation", presentation_info: { presentation_uuid: "u2" } },
+  ] }), async () => {
+    assert.deepEqual(await client().getPlaylistItems("pl1"), { items: [
+      { id: "u1", name: "Build My Life" },
+      { id: "u2", name: "Untitled" },
+    ] });
+  });
+});
+
+test("getFileDates returns nulls on a remote ProPresenter rather than guessing", async () => {
+  // On a reader machine the path is not reachable, and a guessed date would
+  // silently narrow every date-filtered search.
+  const remote = new ProPresenterClient({ host: "192.168.1.50", port: 56563 });
+  assert.deepEqual(await remote.getFileDates("/anything.pro"), { createdDate: null, modifiedDate: null });
+});
+
+test("getFileDates reads real dates for a local file, and tolerates a missing one", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "refrain-client-"));
+  try {
+    const f = join(dir, "song.pro");
+    await writeFile(f, "x");
+    const dates = await client().getFileDates(f);
+    assert.match(dates.modifiedDate, /^\d{4}-\d{2}-\d{2}T/);
+    assert.match(dates.createdDate, /^\d{4}-\d{2}-\d{2}T/);
+    // A file the API listed can be gone by the time we stat it.
+    assert.deepEqual(await client().getFileDates(join(dir, "gone.pro")), {
+      createdDate: null,
+      modifiedDate: null,
+    });
+    assert.deepEqual(await client().getFileDates(null), { createdDate: null, modifiedDate: null });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("the two list endpoints are on the paths this file documents", async () => {
+  // Thin passthroughs, but the paths ARE the contract: the header comment
+  // records that the library is a two-step crawl (/v1/libraries then
+  // /v1/library/{uuid}) and that playlists are a tree, and nothing else
+  // enforced that. If a future version moves them, this fails here rather
+  // than as an empty index on a Sunday.
+  for (const [call, path] of [
+    [(c) => c.getLibraryFolders(), "/v1/libraries"],
+    [(c) => c.getPlaylists(), "/v1/playlists"],
+  ]) {
+    const { urls, stub } = urlRecorder();
+    await withFetch(stub, async () => {
+      await call(client());
+    });
+    assert.equal(new URL(urls[0]).pathname, path);
+  }
 });
