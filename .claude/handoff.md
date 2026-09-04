@@ -1186,6 +1186,84 @@ half-dead ProPresenter and each failed in the safe direction:
 - The trigger correction exists and every failure path falls back to the
   requested index, so it can only improve accuracy, never availability.
 
+## Todoist archive — assessed 2026-09-02, and it is an archive
+
+Checked the **IT › Refrain Feature Request** project against the code, because
+CLAUDE.md says to treat it as archive and not to assume a task there is live.
+That instruction was right.
+
+**26 tasks, none of them checked off, and 24 describe work already shipped.**
+Verified against the code rather than by reading titles: the engraved wordmark,
+the segmented LED meter, refresh keeping the current screen, the un-inverted
+performance-mode dot, one chip class, display type, the lit-edge section
+marker, the form language, the latched nav key, the status cluster, global
+grain, reduced-motion handling, focus rings, and labelled inputs are all
+present. So is the whole warm-zone copy task — welcome modal, the
+"Go coil something" first-index line, and the 404 page all exist. Working from
+that list would have meant redoing finished work, which is exactly the failure
+the CLAUDE.md note is there to prevent.
+
+Two were genuinely live, and both are now done. One of them had the wrong fix
+attached to it.
+
+### 23. The search-acknowledgement task prescribed the wrong fix — DONE 2026-09-02
+
+The task ("CRAFT — Input is not acknowledged") measured the backend at 23ms,
+concluded the 200ms debounce was throwing instant away, and prescribed dropping
+it to ~90ms.
+
+The backend measurement still holds -- 19-40ms on today's 445-presentation
+index, even for a query matching 12,205 slides. The conclusion did not.
+Keystroke-to-results was **not** 223ms:
+
+    "grace"  1,072ms    300 rendered rows
+    "the"    2,312ms  7,149 rendered rows
+    "a"      4,766ms 12,205 rendered rows, in a 3.75-million-pixel document
+
+The cost was rendering an unbounded result list, not waiting. Dropping the
+debounce as prescribed would have made it worse, by triggering more of a
+multi-second render while someone types.
+
+Fixed in the order that actually helps: cap the render at whole songs up to
+`MAX_RENDERED_SLIDES` (250), which took "a" from 4,766ms to ~1,200ms and says
+plainly how many songs are not shown; then acknowledge the keystroke
+**synchronously in the handler**, measured at 0.2ms, so acknowledgement cannot
+be late whatever the render costs; then lower the debounce to 90ms, which is
+now safe because the render is bounded.
+
+The acknowledgement is a mono line where the count goes -- no spinner, nothing
+animated, and it deliberately leaves the previous results on screen, because
+mid-service the old list is the best thing available until a better one exists.
+
+### 24. NOTE — a residual ~1s render on large result sets
+
+Uncovered by the above and **not fixed**. With the cap in place, a broad query
+still takes roughly a second from keystroke to painted results, and it is not
+the debounce (90ms), the fetch (16ms), the HTML string (1ms), layout (42ms),
+icons (43ms), or Tailwind generating new rules (the stylesheet does not grow).
+It is the cost of tearing down and rebuilding a few hundred cards in a document
+tens of thousands of pixels tall.
+
+Two things follow. Each slide row is about 450px of document height, which is
+worth questioning on its own -- 250 rows should not be 115,000px. And a real
+fix is windowing (render what is near the viewport), which is a bigger change
+than this item and should be its own piece of work.
+
+The acknowledgement means the operator is no longer left wondering, so this is
+a performance finding rather than a usability one now.
+
+### 25. Health tooltips are on a diet — DONE 2026-09-02
+
+Fourteen rewritten. Mean length is 18 words against the task's target of about
+17, one remains at 29 -- the preferred-arrangements setting, where every clause
+changes a decision (order is priority, empty follows ProPresenter, takes effect
+next rebuild). Verified as rendered `data-tip` values, not as source literals:
+19 tooltips, none empty, no double-escaped entities.
+
+Worth noting for next time: the first pass missed four of them because the scan
+only matched double-quoted `infoIcon("...")` calls and these are single-quoted.
+A source-literal grep is not the population; the rendered attributes are.
+
 ## Status log
 
 `YYYY-MM-DD · <item> · done | partial | blocked · <one line>`
@@ -1433,3 +1511,11 @@ half-dead ProPresenter and each failed in the safe direction:
   date-filtered search. The two list endpoints are pinned by path, because the
   two-step library crawl was recorded only in a comment.
   Remaining on the review: 21 only, and it is blocked rather than pending.
+- 2026-09-02 · Todoist archive assessed and the two live items closed. 24 of 26
+  tasks were already shipped, verified against the code -- the project is an
+  archive with nothing checked off, as CLAUDE.md says. Search now acknowledges a
+  keystroke in 0.2ms and caps its render at whole songs, which took the worst
+  case from 4.8s to ~1.2s; the task's own prescription (drop the debounce) would
+  have made it worse and was not followed. Health's tooltips are down to a mean
+  of 18 words. New finding 24 records the residual ~1s render, which needs
+  windowing and is deliberately left open. 281 tests, lint clean.

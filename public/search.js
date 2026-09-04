@@ -40,6 +40,7 @@ export function initSearch() {
   const queryInput = document.getElementById("query");
   const resultsEl = document.getElementById("results");
   const statusEl = document.getElementById("index-status");
+  const pendingEl = document.getElementById("search-pending");
   const connectionBanner = document.getElementById("connection-banner");
   mountLiveReadout(document.getElementById("search-readout"));
   const dateFilterToggle = document.getElementById("date-filter-toggle");
@@ -229,15 +230,68 @@ export function initSearch() {
     return [...songs.values()];
   }
 
+  /**
+   * How many matching slides are worth putting in the DOM at once.
+   *
+   * The server is not the cost here. `/api/search` answers in 19-40ms even for
+   * 12,205 matches; rendering them was taking **4.8 seconds**, in a document
+   * 3.75 million pixels tall, during which the screen is frozen. On a common
+   * word like "the" it was 2.3s. That is the opposite of the quality floor --
+   * acknowledgement inside 50ms -- and it is worst exactly when someone types
+   * a short word mid-service.
+   *
+   * Whole songs, never a part of one: the operator reads a song's matches
+   * together, so truncating inside a song would hide the third chorus while
+   * showing the second. So this is a floor to stop at, not a hard slice, and
+   * one song always renders however many slides it has.
+   */
+  const MAX_RENDERED_SLIDES = 250;
+
+  /** Takes whole songs until the slide budget is spent. */
+  function capForRender(songs) {
+    const shown = [];
+    let shownSlides = 0;
+    for (const song of songs) {
+      if (shown.length && shownSlides + song.slides.length > MAX_RENDERED_SLIDES) break;
+      shown.push(song);
+      shownSlides += song.slides.length;
+    }
+    return { shown, hiddenSongs: songs.length - shown.length, shownSlides };
+  }
+
+  /**
+   * Instant, synchronous "heard you". Cleared by whatever renders next.
+   *
+   * Deliberately does not blank the outgoing results: during a service the
+   * previous list is still the best thing on screen until a better one exists,
+   * and clearing it would make every keystroke a flash of empty panel.
+   */
+  function acknowledgeInput(value) {
+    if (!pendingEl) return;
+    pendingEl.textContent = value.trim() ? "Searching" : "";
+  }
+
+  function clearPending() {
+    if (pendingEl) pendingEl.textContent = "";
+  }
+
   function renderResults(results, showModifiedDate, query) {
+    clearPending();
     if (results.length === 0) {
       resultsEl.innerHTML = `<div class="opacity-60 text-center py-8">No matches</div>`;
       return;
     }
 
-    const songs = groupResultsBySong(results);
+    const allSongs = groupResultsBySong(results);
+    const { shown: songs, hiddenSongs, shownSlides } = capForRender(allSongs);
 
-    resultsEl.innerHTML = songs
+    // Said plainly, with the number, because a silently truncated result list
+    // is a search that lies about what it found.
+    const cappedNotice = hiddenSongs
+      ? `<div class="rf-hint px-1 pb-2">Showing ${shownSlides} matching slide${shownSlides === 1 ? "" : "s"} in the first ${songs.length} of ${allSongs.length} songs. Add another word to narrow it.</div>`
+      : "";
+
+    resultsEl.innerHTML = cappedNotice + songs
       .map(
         (song) => `
       <div class="card bg-base-200 shadow-sm">
@@ -439,9 +493,31 @@ export function initSearch() {
     }
   });
 
+  /**
+   * The keystroke is acknowledged before anything is searched.
+   *
+   * Measured on the real 445-presentation index: `/api/search` answers in
+   * 19-40ms, but keystroke-to-results was 586ms -- 200ms of debounce, 16ms of
+   * fetch, and the rest spent building and parsing the result list. The
+   * quality floor is visual acknowledgement inside 50ms, and there was none of
+   * any kind: results simply replaced themselves whenever they were ready.
+   *
+   * So two separate things, which were previously conflated:
+   *
+   * - **Acknowledgement** happens synchronously, in the event handler, so it
+   *   cannot be late. No spinner and nothing animated -- the direction rules
+   *   both out, and a spinner is hesitation with a costume on. A mono line
+   *   where the count goes, swapped for the count itself.
+   * - **The search** still waits, but only 90ms now rather than 200. A 19ms
+   *   query does not need protecting from a fast typist, and the render is
+   *   bounded by MAX_RENDERED_SLIDES above.
+   */
+  const SEARCH_DEBOUNCE_MS = 90;
+
   queryInput.addEventListener("input", () => {
     clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => runSearch(queryInput.value), 200);
+    acknowledgeInput(queryInput.value);
+    debounceTimer = setTimeout(() => runSearch(queryInput.value), SEARCH_DEBOUNCE_MS);
   });
 
   dateFilterToggle.addEventListener("click", () => {
@@ -469,6 +545,7 @@ export function initSearch() {
   // Shown before the first keystroke (and whenever the box is cleared), so
   // the empty screen teaches what to do instead of sitting blank.
   function showEmptyHint() {
+    clearPending();
     resultsEl.innerHTML = `
       <div class="opacity-60 text-center py-10 flex flex-col items-center gap-2">
         <i data-lucide="search" class="w-8 h-8 opacity-40"></i>

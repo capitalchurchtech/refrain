@@ -883,7 +883,7 @@ function renderHealth(health, configOptions, versionInfo) {
                 const fullRebuildButton = `
                   <div class="flex items-center gap-2 mt-1">
                     <button id="health-rebuild-btn" class="btn btn-sm btn-outline w-fit"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> <span id="health-rebuild-btn-label">${index.builtAt ? "Rebuild Everything" : "Build Index"}</span></button>
-                    ${infoIcon("Reads every presentation in your library from scratch. Needed for the first build, and after that only if the index looks wrong in a way reindexing does not fix. Never run it before or during a service.")}
+                    ${infoIcon("Reads the whole library from scratch. Only needed for the first build, or if reindexing has not fixed a wrong index. Never during a service.")}
                   </div>`;
 
                 if (!index.builtAt) {
@@ -937,7 +937,7 @@ function renderHealth(health, configOptions, versionInfo) {
                   ${rebuildSuggestion}
                   <div class="flex items-center gap-2">
                     <button id="health-reindex-btn" class="btn btn-sm btn-outline w-fit"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> <span id="health-reindex-btn-label">Reindex changed only</span></button>
-                    ${infoIcon("Checks every presentation file on this machine and re-reads only the ones that changed since the last build. Fingerprinting the whole library takes under a second, so a normal week's worth of edits reindexes in seconds instead of an hour.")}
+                    ${infoIcon("Re-reads only the presentations that changed. Seconds, rather than the hour a full rebuild takes.")}
                   </div>
                   <div id="health-reindex-status" class="text-sm"></div>
                   ${watchLine}
@@ -1019,7 +1019,7 @@ function renderHealth(health, configOptions, versionInfo) {
           </summary>
           <div class="collapse-content flex flex-col gap-3">
             <label class="label py-1" for="config-role">
-              <span class="label-text">Role ${infoIcon('"Logger" runs comparisons and writes drift-tracking data; "reader" is read-only and just displays what the logger machine recorded. Most churches only need one logger, on whichever machine runs during service.')}</span>
+              <span class="label-text">Role ${infoIcon('"Logger" runs the comparisons and writes the data; "reader" only displays it. One logger, on the machine that runs during service.')}</span>
             </label>
             <select id="config-role" class="select select-bordered select-sm">
               <option value="reader" ${role === "reader" ? "selected" : ""}>reader</option>
@@ -1074,12 +1074,12 @@ function renderHealth(health, configOptions, versionInfo) {
           <div class="collapse-content flex flex-col gap-3">
           <label class="label cursor-pointer justify-start gap-2 w-fit">
             <input type="checkbox" id="config-crawl-playlists" class="checkbox checkbox-sm" ${config.librarySync.crawlPlaylists ? "checked" : ""} />
-            <span class="label-text">Crawl playlists (not recommended) ${infoIcon('Also scans every ProPresenter playlist to record "which playlist(s) is this in" for search results. Off by default because it\'s the slowest part of an index rebuild on large libraries.')}</span>
+            <span class="label-text">Crawl playlists (not recommended) ${infoIcon('Also records which playlists each slide is in. Off by default: it is the slowest part of a rebuild.')}</span>
           </label>
           <div>
             <label class="form-control w-full max-w-xs">
               <label class="label py-1 px-0" for="config-preferred-arrangements">
-                <span class="label-text">Preferred arrangements ${infoIcon("A song can hold several arrangements, and the one the library happens to have selected is arbitrary. Name the ones you actually run, most important first, and search will index those. Order is the priority: \"FS, T\" means FS wins when a song has both. Leave empty to just follow whatever ProPresenter has selected. Changing this only takes effect on the next index rebuild, so save it well before a service, never during one.")}</span>
+                <span class="label-text">Preferred arrangements ${infoIcon("Which arrangements to index, most important first: \"FS, T\" means FS wins when a song has both. Empty follows whatever ProPresenter has selected. Takes effect on the next rebuild.")}</span>
               </label>
               <input id="config-preferred-arrangements" type="text" placeholder="FS, T" class="input input-bordered input-sm"
                 value="${escapeHtml((config.preferredArrangements ?? []).join(", "))}" />
@@ -1115,7 +1115,7 @@ function renderHealth(health, configOptions, versionInfo) {
           <div class="collapse-content flex flex-col gap-3">
           <label class="form-control w-full max-w-xs">
             <label class="label py-1" for="config-slide-splitter">
-              <span class="label-text">Lyrics slide splitter ${infoIcon("How pasted lyrics get divided into individual slides on the Lyrics screen. Blank-line-delimited splits on empty lines; section-label-aware also recognizes labels like [Verse] or [Chorus].")}</span>
+              <span class="label-text">Lyrics slide splitter ${infoIcon("How pasted lyrics get cut into slides on the Lyrics screen.")}</span>
             </label>
             <select id="config-slide-splitter" class="select select-bordered select-sm">
               ${selectOptions(configOptions.slideSplitters, config.slideSplitter)}
@@ -1160,13 +1160,13 @@ function renderHealth(health, configOptions, versionInfo) {
           <div class="flex flex-wrap gap-3">
             <label class="form-control w-full max-w-xs">
               <label class="label py-1" for="config-qr-base-url">
-                <span class="label-text">Default base URL ${infoIcon("Pre-fills the URL field on the QR Codes screen (and the Website field on the vCard type) so you're not retyping your church's site every time. Leave blank for no default.")}</span>
+                <span class="label-text">Default base URL ${infoIcon("Pre-fills the URL field on the QR Codes screen. Blank for no default.")}</span>
               </label>
               <input id="config-qr-base-url" type="text" class="input input-bordered input-sm" placeholder="https://yourchurch.org" value="${escapeHtml(config.qrCodeModule?.defaultBaseUrl ?? "")}" />
             </label>
             <label class="form-control w-full max-w-xs">
               <label class="label py-1" for="config-qr-logo-url">
-                <span class="label-text">Default logo ${infoIcon("Pre-loads this image as the QR Codes screen's center logo, so you don't have to re-upload your church's logo every time. Accepts a local path served by Refrain (e.g. img/mylogo.png) or a full URL. You can still replace or clear it per code.", "left")}</span>
+                <span class="label-text">Default logo ${infoIcon("Default centre logo for QR codes. A path Refrain serves (img/logo.png) or a full URL. Replaceable per code.", "left")}</span>
               </label>
               <input id="config-qr-logo-url" type="text" class="input input-bordered input-sm" placeholder="img/mylogo.png" value="${escapeHtml(config.qrCodeModule?.defaultLogoUrl ?? "")}" />
             </label>
@@ -1178,7 +1178,7 @@ function renderHealth(health, configOptions, versionInfo) {
             </label>
             <label class="form-control w-full max-w-xs">
               <label class="label py-1" for="config-qr-default-size">
-                <span class="label-text">Default QR size (px) ${infoIcon("The QR Codes screen starts at this pixel size, so a code you make drops onto your screen layout at the right size with no resizing. Leave blank for the built-in default (512). Still adjustable per code.", "left")}</span>
+                <span class="label-text">Default QR size (px) ${infoIcon("Starting pixel size for new QR codes. Blank for 512. Adjustable per code.", "left")}</span>
               </label>
               <input id="config-qr-default-size" type="number" min="64" max="2000" step="1" class="input input-bordered input-sm w-28" placeholder="512" value="${config.qrCodeModule?.defaultSize ?? ""}" />
             </label>
@@ -1199,13 +1199,13 @@ function renderHealth(health, configOptions, versionInfo) {
           <div class="collapse-content flex flex-col gap-3">
           <label class="label cursor-pointer justify-start gap-2 w-fit">
             <input type="checkbox" id="config-arrangement-enabled" class="checkbox checkbox-sm" ${arrangementModule.enabled ? "checked" : ""} />
-            <span class="label-text">Enable arrangement drift tracking ${infoIcon("Turns on the Arrangement screen, which compares what a song's arrangement was planned to be against what ProPresenter actually played through during service.")}</span>
+            <span class="label-text">Enable arrangement drift tracking ${infoIcon("Turns on the Arrangement screen, which compares a song's planned arrangement against what actually played.")}</span>
           </label>
 
           <div class="flex flex-wrap gap-3">
             <label class="form-control w-full max-w-xs">
               <label class="label py-1" for="config-arrangement-provider">
-                <span class="label-text">Provider ${infoIcon('Where the "planned" arrangement comes from. "manual" means you type it in yourself on the Arrangement screen; other providers pull it from a church-management system automatically.')}</span>
+                <span class="label-text">Provider ${infoIcon('Where the planned arrangement comes from. "manual" means you type it in; a provider pulls it automatically.')}</span>
               </label>
               <select id="config-arrangement-provider" class="select select-bordered select-sm">
                 ${selectOptions(configOptions.providers, arrangementModule.provider ?? "manual")}
@@ -1213,7 +1213,7 @@ function renderHealth(health, configOptions, versionInfo) {
             </label>
             <label class="form-control w-full max-w-xs">
               <label class="label py-1" for="config-arrangement-storage">
-                <span class="label-text">Storage backend ${infoIcon('Where drift-tracking history is saved. "local-folder" keeps it on this machine only; the others share it between a logger and reader machines and need matching .env credentials below.', "left")}</span>
+                <span class="label-text">Storage backend ${infoIcon('Where history is saved. "local-folder" is this machine only; the others share it between machines and need .env credentials below.', "left")}</span>
               </label>
               <select id="config-arrangement-storage" class="select select-bordered select-sm">
                 ${selectOptions(configOptions.storageBackends, arrangementModule.storageBackend ?? "local-folder")}
@@ -1224,7 +1224,7 @@ function renderHealth(health, configOptions, versionInfo) {
           <div id="config-planning-center-service-type-wrap" class="${arrangementModule.provider === "planning-center" ? "" : "hidden"}">
             <label class="form-control w-full max-w-xs">
               <label class="label py-1" for="config-planning-center-service-type">
-                <span class="label-text">Planning Center Service Type ID ${infoIcon("Which service type to pull plans from. Refrain always takes the most recent plan that already happened, so this never needs updating. Paste the full URL or just the number.")}</span>
+                <span class="label-text">Planning Center Service Type ID ${infoIcon("Which service type to pull plans from. Always takes the most recent past plan, so it never needs updating.")}</span>
               </label>
               <input id="config-planning-center-service-type" type="text" class="input input-bordered input-sm" placeholder="574087 or https://services.planningcenteronline.com/service_types/574087" value="${escapeHtml(arrangementModule.planningCenterServiceTypeId ?? "")}" />
             </label>
@@ -1233,7 +1233,7 @@ function renderHealth(health, configOptions, versionInfo) {
           <div id="config-storage-path-wrap" class="${["local-folder", "synced-folder"].includes(arrangementModule.storageBackend ?? "local-folder") ? "" : "hidden"}">
             <label class="form-control w-full max-w-md">
               <label class="label py-1" for="config-storage-path">
-                <span class="label-text">Folder path ${infoIcon("Where drift-tracking history gets saved on disk. Leave blank for the default (a folder inside this app). For \"synced-folder\", point this at your Google Drive/Dropbox/OneDrive folder so a reader machine sees the same files once it syncs.")}</span>
+                <span class="label-text">Folder path ${infoIcon("Where arrangement history is saved. Blank for a folder inside this app. For a synced folder, point it at your Drive or Dropbox folder.")}</span>
               </label>
               <div class="flex gap-2">
                 <input id="config-storage-path" type="text" class="input input-bordered input-sm flex-1" placeholder="./data/arrangements" value="${escapeHtml(arrangementModule.localFolderPath ?? "")}" />
