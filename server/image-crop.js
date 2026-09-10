@@ -84,6 +84,35 @@ export function foldersOverlap(a, b) {
   return inside(ra, rb) || inside(rb, ra);
 }
 
+/**
+ * Refuses a watch folder that looks like it belongs to ProPresenter.
+ *
+ * This module **moves every file it handles out of the input folder** -- that
+ * is the drop-box behaviour it is designed around, and it is exactly wrong if
+ * the folder is not a drop box. Pointed at a ProPresenter media folder,
+ * "crop my images automatically" would relocate the artwork out from under
+ * every presentation that references it, silently, one file at a time.
+ *
+ * A `.pro` file would fail to crop and so never be moved, which makes the
+ * library folder itself relatively safe by accident. Media folders are not,
+ * and they are the ones someone would actually point this at.
+ *
+ * Refuses on the path shape rather than asking ProPresenter, because this runs
+ * at startup when the API may not be up, and because a wrong answer here costs
+ * a service.
+ */
+const PROPRESENTER_PATH_MARKERS = [
+  `${path.sep}ProPresenter`,
+  `${path.sep}RenewedVision`,
+];
+
+export function looksLikeProPresenterFolder(dir) {
+  if (!dir) return false;
+  const resolved = path.resolve(String(dir));
+  const withSep = resolved.endsWith(path.sep) ? resolved : resolved + path.sep;
+  return PROPRESENTER_PATH_MARKERS.some((marker) => withSep.includes(marker + path.sep));
+}
+
 async function processImage(filePath, config) {
   const ext = path.extname(filePath).toLowerCase();
   if (!IMAGE_EXTENSIONS.has(ext)) return; // ignore non-images (e.g. .DS_Store) silently
@@ -180,6 +209,17 @@ export async function startWatcher(config) {
 
   if (foldersOverlap(config.inputFolder, config.outputFolder)) {
     throw new Error("Input and output folders must not be the same folder or nested inside one another — outputs would be re-cropped in a loop.");
+  }
+  // Every processed file is MOVED out of the input folder, so an input folder
+  // belonging to ProPresenter would strip a presentation of its media.
+  for (const [label, folder] of [["Input", config.inputFolder], ["Output", config.outputFolder]]) {
+    if (looksLikeProPresenterFolder(folder)) {
+      throw new Error(
+        `${label} folder looks like it belongs to ProPresenter (${folder}). ` +
+          `Image Crop moves every file it processes out of the input folder, which would take media away from ` +
+          `your presentations. Point it at a separate drop folder instead.`
+      );
+    }
   }
 
   await mkdir(config.inputFolder, { recursive: true });

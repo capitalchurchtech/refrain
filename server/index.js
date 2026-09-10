@@ -621,6 +621,35 @@ app.get("/api/arrangement/detect-storage-paths", async (_req, res) => {
 // stale index with no explanation.
 // Why Refrain skipped index work it would otherwise have done, or null.
 let indexWorkDeferred = null;
+/**
+ * Set while the operator has asked a running rebuild to stand down.
+ *
+ * Cleared when the next rebuild starts, so a stop applies to the run it was
+ * aimed at and never silently blocks the next one.
+ */
+let rebuildStopRequested = false;
+
+/**
+ * Every rebuild goes through here, so none of them can forget the stop hook.
+ *
+ * `operatorInitiated` is the important half. Performance mode's promise is
+ * that Refrain stops doing things *on its own* -- "anything the operator
+ * presses still works; they are in charge". So a crawl Refrain started by
+ * itself stands down when something goes live, and a crawl someone pressed a
+ * button for does not: that one stops only when they say so.
+ *
+ * Without the distinction this would have quietly broken both Health rebuild
+ * buttons, because performance mode also arms whenever ProPresenter is
+ * unreachable -- which is exactly when someone is most likely to be pressing
+ * Rebuild to fix things.
+ */
+function startRebuild({ incremental = false, operatorInitiated = false } = {}) {
+  rebuildStopRequested = false;
+  return rebuildIndex(client, config.librarySync, preferredArrangements(), {
+    incremental,
+    shouldStop: operatorInitiated ? () => rebuildStopRequested : () => rebuildStopRequested || frozen(),
+  });
+}
 
 /**
  * Performance mode: while it is armed, Refrain does nothing on its own.
@@ -801,7 +830,7 @@ function startWatching() {
   libraryWatch = startLibraryWatch({
     dirs: () => dirs,
     plan: () => planReindex(client, config.librarySync, preferredArrangements()),
-    reindex: () => rebuildIndex(client, config.librarySync, preferredArrangements(), { incremental: true }),
+    reindex: () => startRebuild({ incremental: true }),
     // Performance mode is a hard stop, not a preference: while it is on, the
     // watcher does not even check, so Refrain makes no unsolicited API calls.
     frozen,
@@ -903,7 +932,7 @@ app.post("/api/library-folders", async (req, res) => {
   // build (Section 5.3). The caller polls /api/index/status for
   // progress rather than this request staying open for what could be
   // a slow full-library crawl.
-  rebuildIndex(client, config.librarySync, preferredArrangements(), { incremental: true })
+  startRebuild({ incremental: true })
     .then(startWatching)
     .catch((err) => {
       console.error("Library-scope rebuild failed:", err.message);
@@ -928,10 +957,26 @@ function indexBuildError(err) {
 
 // An explicit rebuild is always honored, service day or not — the whole
 // point of the deferral is that the operator decides.
+/**
+ * Stand a running rebuild down.
+ *
+ * The Health screen used to tell operators to quit Refrain to stop a rebuild,
+ * because that was true. It takes effect at the next document boundary and
+ * leaves a usable index: everything not re-read keeps what it had.
+ */
+app.post("/api/index/stop", (_req, res) => {
+  if (!getRebuildProgress().inProgress) {
+    return res.status(409).json({ error: "No rebuild is running." });
+  }
+  rebuildStopRequested = true;
+  console.log("Rebuild stop requested — standing down at the next presentation.");
+  res.json({ ok: true });
+});
+
 app.post("/api/index/rebuild", async (_req, res) => {
   try {
     indexWorkDeferred = null; // the operator has taken it in hand
-    const index = await rebuildIndex(client, config.librarySync, preferredArrangements());
+    const index = await startRebuild({ operatorInitiated: true });
     startWatching();
     res.json({ builtAt: index.builtAt, presentationCount: Object.keys(index.presentations).length });
   } catch (err) {
@@ -947,7 +992,7 @@ app.post("/api/index/rebuild", async (_req, res) => {
 app.post("/api/index/reindex-changed", async (_req, res) => {
   try {
     indexWorkDeferred = null; // the operator has taken it in hand
-    const index = await rebuildIndex(client, config.librarySync, preferredArrangements(), { incremental: true });
+    const index = await startRebuild({ incremental: true, operatorInitiated: true });
     res.json({
       builtAt: index.builtAt,
       presentationCount: Object.keys(index.presentations).length,
@@ -2628,11 +2673,21 @@ app.post("/api/setup", async (req, res) => {
   // First-run always needs a full build (Section 5.3) — kick it off after
   // responding so the setup screen can poll /api/index/status for progress
   // rather than holding the request open.
-  rebuildIndex(client, config.librarySync, preferredArrangements())
-    .then(startWatching)
-    .catch((err) => {
-      console.error("Setup index build failed:", err.message);
-    });
+  //
+  // Unless something is already on the screens. This path had no performance
+  // check at all, where the boot path has always had one, and the gap is worst
+  // on exactly the machine this route exists for: a fresh install set up during
+  // load-in would start crawling the whole library with nobody choosing it.
+  if (frozen()) {
+    indexWorkDeferred = "performance mode is on";
+    console.log(`Setup finished, but something is live — not building the index yet. ${describePerformance(performance)}`);
+  } else {
+    startRebuild()
+      .then(startWatching)
+      .catch((err) => {
+        console.error("Setup index build failed:", err.message);
+      });
+  }
 });
 
 // --- Health / status screen (Section 7) ---
@@ -2761,7 +2816,7 @@ app.listen(port, "127.0.0.1", async () => {
     } else {
       console.log("No search index cache found — building initial index...");
       try {
-        await rebuildIndex(client, config.librarySync, preferredArrangements());
+        await startRebuild();
         console.log("Initial index build complete.");
       } catch (err) {
         console.error("Initial index build failed:", err.message);
@@ -2775,7 +2830,7 @@ app.listen(port, "127.0.0.1", async () => {
       console.log("The existing index still works; it will catch up once performance mode ends.");
     } else {
       console.log("Cached index is stale (older than a day, or built by a previous version) — reindexing changed presentations in background...");
-      rebuildIndex(client, config.librarySync, preferredArrangements(), { incremental: true })
+      startRebuild({ incremental: true })
         .then(startWatching)
         .catch((err) => console.error("Background rebuild failed:", err.message));
     }

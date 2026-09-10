@@ -1,4 +1,4 @@
-import { test, before, after } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -8,13 +8,15 @@ import { loadIndexFromDisk, search } from "../server/search-index.js";
 // search() reads the module's loaded index, and loadIndexFromDisk reads
 // ./cache relative to the working directory, so build a throwaway cache in a
 // temp cwd rather than touching the real one.
-let origCwd, dir;
-before(async () => {
-  origCwd = process.cwd();
-  dir = await mkdtemp(join(tmpdir(), "refrain-idx-"));
-  process.chdir(dir);
-  await mkdir("cache", { recursive: true });
-  await writeFile(
+// Set up at module scope rather than in a `before` hook: on Node 20 a
+// top-level `before` does not run ahead of the test bodies, so these tests
+// silently searched the REAL 445-presentation index instead of the fixture
+// and reported zero matches. Top-level await runs at import, on every version.
+const origCwd = process.cwd();
+const dir = await mkdtemp(join(tmpdir(), "refrain-idx-"));
+process.chdir(dir);
+await mkdir("cache", { recursive: true });
+await writeFile(
     join("cache", "search-index.json"),
     JSON.stringify({
       schemaVersion: 2,
@@ -40,9 +42,9 @@ before(async () => {
         },
       },
     })
-  );
-  await loadIndexFromDisk();
-});
+);
+await loadIndexFromDisk();
+
 after(async () => {
   process.chdir(origCwd);
   await rm(dir, { recursive: true, force: true });

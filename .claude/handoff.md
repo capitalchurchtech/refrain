@@ -1300,6 +1300,108 @@ rather than lucky -- instrumented so the assertion only holds when the earlier
 query genuinely resolves after the later one (`["love", "grace"]`), which it
 did, while only "love" rendered.
 
+## Concert-eve pass — 2026-09-10, fresh machine
+
+Asked for one more sweep of ways Refrain can break a ProPresenter workspace,
+with a concert tomorrow on a machine that has never run this before. A fresh
+machine has a different risk profile: first boot does things it never does
+again.
+
+### 27. BLOCKER — first-run setup started a full crawl with no live check — FIXED
+
+`POST /api/setup` fired `rebuildIndex` unconditionally the moment config was
+saved. The boot path has always had a performance-mode check; this one had
+none, and it is the path a fresh machine actually takes.
+
+The concert-day shape: Refrain is installed during load-in, setup finishes, a
+full crawl of the whole library begins with nobody choosing it, and it is
+already running when doors open. Guarded now, the same way boot is.
+
+### 28. BLOCKER — a running rebuild could not be stopped — FIXED
+
+Performance mode could refuse to *start* index work, but nothing checked it
+once a crawl was under way. `rebuildIndex` took no stop signal at all and the
+crawl loop never consulted `frozen()`, so a rebuild begun before a service ran
+straight through it — making ProPresenter sluggish exactly when it must not be.
+The Health screen told operators to quit Refrain, which was the only true
+advice available.
+
+`rebuildIndex` now takes an injected `shouldStop` predicate, checked before
+each document. Injected rather than imported, because core search must not
+depend on the app's performance-mode state. Stopping reuses the abort path the
+consecutive-failure breaker already had, so everything not re-read keeps what
+it had: a stopped rebuild leaves a usable index. There is a Stop button on
+Health and a `POST /api/index/stop`.
+
+**The distinction that nearly went wrong.** My first version stopped on
+`frozen()` for every rebuild, which would have broken both Health rebuild
+buttons — performance mode also arms when ProPresenter is simply unreachable,
+which is precisely when someone is pressing Rebuild to fix things. Performance
+mode's promise is that Refrain stops acting *on its own*; an operator pressing
+a button is still in charge. Automatic rebuilds stop when something goes live;
+operator-initiated ones stop only when the operator says so. Verified live
+against an armed performance mode.
+
+### 29. CRAFT — Image Crop moves files out of the folder it watches — FIXED
+
+`processImage` finishes with `rename(filePath, processedDir)`. That is correct
+for a drop box and destructive for anything else, and nothing stopped the input
+folder being one of ProPresenter's. Pointed at a media folder — a very natural
+reading of "crop my images automatically" — it would relocate artwork out from
+under every presentation referencing it, one file at a time, silently.
+
+A `.pro` file happens to be safe: `sharp` throws before the rename, so it is
+never moved. Media folders are not safe, and they are the ones someone would
+point this at. Both folders are now refused if they sit inside a ProPresenter
+or RenewedVision path, matched segment-wise so `ProPresenterBackups` still works.
+
+### 30. BLOCKER — the test suite was red, and wrote into the project root — FIXED
+
+Not a workspace risk directly, but it is the guard rail everything else here
+depends on, and it was broken.
+
+The Node in this environment is now **v20.14.0**; earlier in this project's
+history it was v22.21.1. On Node 20 a top-level `before()` hook does not run
+ahead of the test bodies. Two test files used one to `process.chdir` into a
+temp directory, so on Node 20 they operated on the **real project root**:
+
+- `search-collapse.test.js` loaded the real 445-presentation index instead of
+  its fixture and reported zero matches — three failures that look like a
+  search bug and are not.
+- `config.test.js` called the real `saveConfig`, leaving `config.json.tmp` in
+  the repo and sitting one successful rename away from overwriting a church's
+  actual `config.json`. It survived only because the rename happened to fail.
+
+Both now do their setup at module scope with top-level await, which runs at
+import on every version. `engines.node` is `>=20.0.0` and there is a `.nvmrc`.
+291 tests green on Node 20. **Not cross-checked on 22 or 24 — no other Node is
+installed on this machine.**
+
+### What was checked and is sound
+
+- Library Sync refuses in both directions while ProPresenter runs, re-checks
+  mid-run, never deletes, never mirrors, refuses a too-small source, backs up
+  before replacing. No scheduler — it is operator-initiated only.
+- The doctor only ever reads. It hands over a `pkill` command; it never runs it.
+- Nothing anywhere reads or writes `.pro` file *contents*. The only access is
+  `stat` for dates.
+- Every optional module is off by default in `config.example.json`, so a fresh
+  machine has Library Sync and Image Crop switched off until someone chooses.
+- The only writers to user-configurable paths are Image Crop (now guarded),
+  arrangement storage, and Library Sync (guarded).
+
+### Still open for tomorrow, and not fixable in code
+
+- **Build the index before the day**, with ProPresenter open and idle. It is
+  the one heavy operation, and on a fresh machine it is unavoidable — the cache
+  starts empty. Everything above makes it interruptible; none of it makes it
+  free.
+- **Item 21 is still unverified**: whether ProPresenter counts disabled slides
+  in its flat trigger index. If it does not, songs containing one fire one
+  slide off. Unchanged from 2026-09-02 and still needs a rig.
+- This machine's ProPresenter API was unreachable again during this pass
+  (`localhost:56563` refusing), as it was on 2026-09-02.
+
 ## Status log
 
 `YYYY-MM-DD · <item> · done | partial | blocked · <one line>`
@@ -1563,3 +1665,11 @@ did, while only "love" rendered.
   out of order -- pre-existing, but the 200ms-to-90ms debounce change made it
   much more likely. All four fixed and exercised against a running server.
   281 tests, lint clean.
+- 2026-09-10 · Concert-eve pass on ProPresenter workspace risk. Four fixed:
+  first-run setup crawling with no live check (the fresh-machine one), a
+  rebuild that could not be stopped once started, Image Crop moving files out
+  of a folder that could be ProPresenter's, and a test suite that was red on
+  Node 20 while writing into the real project root. The stop mechanism nearly
+  shipped with a bug of its own -- stopping on `frozen()` for every rebuild
+  would have broken the Health rebuild buttons, since performance mode arms
+  when ProPresenter is merely unreachable. 291 tests green on Node 20.

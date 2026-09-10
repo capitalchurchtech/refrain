@@ -123,6 +123,24 @@ async function persistIndex(index) {
  *     by default. Search still covers every presentation in the synced
  *     folders either way.
  */
+/**
+ * Crawls the library and builds the index.
+ *
+ * `options.shouldStop` is an optional predicate, checked before each
+ * presentation. It exists because a rebuild used to be unstoppable: performance
+ * mode could refuse to *start* one, but a crawl already running carried on
+ * straight through a service, and the only way to end it was to quit Refrain --
+ * which the Health screen said out loud, being the only honest advice available
+ * at the time.
+ *
+ * Stopping is safe by construction: the abort path is the one the
+ * consecutive-failure breaker already used, so every presentation not re-read
+ * keeps whatever the previous index had for it. A stopped rebuild leaves a
+ * usable index, not a half-built one.
+ *
+ * The predicate is injected rather than imported, because core search must not
+ * depend on the app's performance-mode state.
+ */
 export async function rebuildIndex(client, syncOptions = {}, preferredArrangements = [], options = {}) {
   // Joining an in-flight run is only sound when it does at least as much work
   // as the caller asked for. A full rebuild is a superset of an incremental
@@ -277,6 +295,19 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
     await runWithConcurrency(idsNeedingSlides, PRESENTATION_FETCH_CONCURRENCY, async (id) => {
       // Once ProPresenter has stopped answering, stop asking. Remaining
       // presentations keep whatever the previous index had for them.
+      // Asked before each document, so a service starting mid-crawl ends it
+      // at the next boundary rather than at the end of the library.
+      if (!crawlAborted && options.shouldStop?.()) {
+        crawlAborted = {
+          after: fetched,
+          of: idsNeedingSlides.length,
+          reason: "stopped",
+          message:
+            `Indexing stopped after ${fetched} of ${idsNeedingSlides.length} presentations. ` +
+            `The rest kept what the previous index had. Run it again when nothing is live.`,
+        };
+        console.log(`Indexing stopped at ${fetched}/${idsNeedingSlides.length} — asked to stand down.`);
+      }
       if (crawlAborted) {
         const prev = previousPresentations[id];
         if (prev?.slides?.length) Object.assign(presentations[id], carriedEntryFields(prev));
@@ -332,6 +363,11 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
             after: fetched + 1,
             of: idsNeedingSlides.length,
             consecutiveFailures,
+            reason: "unresponsive",
+            message:
+              `Stopped indexing after ${consecutiveFailures} reads in a row failed. ` +
+              `Kept the previous index for the remaining ${idsNeedingSlides.length - fetched - 1} presentation(s). ` +
+              `Give ProPresenter a few minutes and try again.`,
           };
           console.log(
             `Stopped indexing after ${consecutiveFailures} reads in a row failed — ProPresenter is not keeping up. ` +

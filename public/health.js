@@ -231,6 +231,24 @@ export function initHealth() {
       );
     }
 
+    // "Quit Refrain" used to be the only way to end a running crawl, which is
+    // a poor thing to tell someone ten minutes before doors.
+    const stopBtn = document.getElementById("health-stop-rebuild-btn");
+    if (stopBtn) {
+      stopBtn.addEventListener("click", async () => {
+        const status = document.getElementById("health-stop-rebuild-status");
+        stopBtn.disabled = true;
+        try {
+          const res = await fetch("/api/index/stop", { method: "POST" });
+          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? res.statusText);
+          if (status) status.textContent = "Standing down at the next presentation.";
+        } catch (err) {
+          stopBtn.disabled = false;
+          if (status) status.textContent = `Couldn't stop it: ${err.message}`;
+        }
+      });
+    }
+
     const reindexBtn = document.getElementById("health-reindex-btn");
     if (reindexBtn) {
       const label = document.getElementById("health-reindex-btn-label");
@@ -857,11 +875,14 @@ function renderHealth(health, configOptions, versionInfo) {
                  <span id="health-rebuild-count" class="rf-meter-count"></span>
                </div>
                <div class="text-sm mt-2">Reading every slide you own. Go coil something.</div>
+               <button id="health-stop-rebuild-btn" class="btn btn-brand btn-sm w-fit mt-2">Stop indexing</button>
+               <div id="health-stop-rebuild-status" class="rf-hint"></div>
                <div class="alert alert-warning py-2 text-sm mt-2 items-start">
                  <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
                  <span><strong>A rebuild is running, so ProPresenter will be sluggish until it finishes.</strong>
                  Go Live, Clear, and macros may be slow or not respond. It can take an hour or more on a large
-                 library. If a service is about to start, quit Refrain to stop it and rebuild later.</span>
+                 library. Stop it if a service is about to start — everything already read is kept, and the rest
+                 keeps what it had.</span>
                </div>`
             : (() => {
                 // The scary warning belongs to whichever button is actually
