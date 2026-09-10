@@ -1264,6 +1264,42 @@ Worth noting for next time: the first pass missed four of them because the scan
 only matched double-quoted `infoIcon("...")` calls and these are single-quoted.
 A source-literal grep is not the population; the rendered attributes are.
 
+## 26. The search path had no error handling at all — FIXED 2026-09-02
+
+Found by review of the acknowledgement change, and the reported symptom was
+the smallest of four problems on one function.
+
+`runSearch` had no `try`, no `catch`, and never checked `res.ok`. That was
+survivable while a failed search merely did nothing visible. Adding the
+"Searching" acknowledgement turned it into a stuck state: an unreachable
+server left that line on screen for the rest of the session, with nothing
+saying the search had failed.
+
+Four things, all on the same function:
+
+- **A rejected fetch** left "Searching" up forever. This is the one the review
+  caught, and it is mine -- the acknowledgement created it.
+- **A non-2xx response** was never checked, so a 500 returning an HTML error
+  page threw inside `res.json()`, somewhere much less obvious than the call.
+- **Nothing was ever reported to the operator.** `showFailure` was already
+  imported for Go Live; search never used it.
+- **Responses could land out of order.** Two searches can be in flight at once
+  -- the debounce only spaces out their *starts*, and a broad query takes about
+  a second to render -- so a slower earlier query could paint over a faster
+  later one, leaving results that do not match the box. Pre-existing, but
+  lowering the debounce from 200ms to 90ms made it materially more likely, so
+  it counts as mine too.
+
+All four fixed with a token guard plus try/catch. The previous results
+deliberately stay on screen through a failure: mid-service they are still the
+best thing available, and blanking them would punish the operator for a
+network blip.
+
+Verified against a running server, including that the race test is meaningful
+rather than lucky -- instrumented so the assertion only holds when the earlier
+query genuinely resolves after the later one (`["love", "grace"]`), which it
+did, while only "love" rendered.
+
 ## Status log
 
 `YYYY-MM-DD · <item> · done | partial | blocked · <one line>`
@@ -1519,3 +1555,11 @@ A source-literal grep is not the population; the rendered attributes are.
   have made it worse and was not followed. Health's tooltips are down to a mean
   of 18 words. New finding 24 records the residual ~1s render, which needs
   windowing and is deliberately left open. 281 tests, lint clean.
+- 2026-09-02 · Review finding fixed, and it was the visible corner of a larger
+  one: `runSearch` had no error handling of any kind. A rejected fetch left the
+  new "Searching" line up permanently (mine), a 500 threw inside `res.json()`
+  because `res.ok` was never checked, failures were never reported despite
+  `showFailure` already being imported, and two in-flight searches could render
+  out of order -- pre-existing, but the 200ms-to-90ms debounce change made it
+  much more likely. All four fixed and exercised against a running server.
+  281 tests, lint clean.

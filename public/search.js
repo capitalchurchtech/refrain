@@ -54,6 +54,11 @@ export function initSearch() {
   const libraryFilterPanel = document.getElementById("library-filter-panel");
 
   let debounceTimer = null;
+  // Which search is the current one. Two can be in flight at once -- the
+  // debounce only spaces out their *starts*, and a broad query takes about a
+  // second to render -- so without this a slower earlier query can paint over
+  // a faster later one and leave results that do not match the box.
+  let latestSearchToken = 0;
   let allLibraryFolders = [];
 
   // Slide "modified"/"created" dates can never be in the future — avoid
@@ -185,6 +190,7 @@ export function initSearch() {
   }
 
   async function runSearch(query) {
+    const token = ++latestSearchToken;
     const hasDateFilter = Boolean(dateFromInput.value || dateToInput.value);
     // A date range with no text is a valid "what did we use in this
     // timeframe" browse mode — only bail out when there's truly nothing
@@ -201,9 +207,26 @@ export function initSearch() {
     }
     const folders = selectedFolders();
     if (folders) params.set("folders", folders.join(","));
-    const res = await fetch(`/api/search?${params}`);
-    const { results } = await res.json();
-    renderResults(results, hasDateFilter, query);
+
+    try {
+      const res = await fetch(`/api/search?${params}`);
+      // A 500 returns an HTML error page, and parsing that as JSON throws
+      // somewhere less obvious than here.
+      if (!res.ok) throw new Error(`the server answered ${res.status}`);
+      const { results } = await res.json();
+      // Superseded by a newer keystroke: that search owns the screen now,
+      // including the "Searching" line, so leave both alone.
+      if (token !== latestSearchToken) return;
+      renderResults(results, hasDateFilter, query);
+    } catch (err) {
+      if (token !== latestSearchToken) return;
+      // Without this the acknowledgement was permanent: "Searching" stayed on
+      // screen for the rest of the session, and nothing said the search had
+      // failed at all. The previous results stay up, because they are still
+      // the best thing available.
+      clearPending();
+      showFailure(`Search didn't run: ${err.message}. Type again to retry.`);
+    }
   }
 
   // Search matches are per-slide, but a song can have several matching
