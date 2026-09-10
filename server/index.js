@@ -59,7 +59,11 @@ import {
 } from "./search-index.js";
 import { startLibraryWatch, fullRebuildSuggestion,
   indexStaleness,
+  WATCH_DEFAULTS,
 } from "./library-watch.js";
+
+/** The same settle window the watcher uses, applied to the first build too. */
+const WATCH_SETTLE_MS = WATCH_DEFAULTS.settleAfterReadyMs;
 import {
   isLive,
   initialState as initialPerformanceState,
@@ -808,6 +812,40 @@ async function propresenterReadyForMs() {
   } catch {
     propresenterReadySince = null;
     return null;
+  }
+}
+
+/**
+ * Waits for ProPresenter to finish starting up before the first crawl.
+ *
+ * The watcher has always refused to reindex until ProPresenter has been
+ * answering for `settleAfterReadyMs`, for a measured reason recorded in
+ * library-watch.js: reads fail en masse while ProPresenter is still indexing
+ * its own media after launch -- 221 of 445 lost.
+ *
+ * The **first** build had no such gate, on either the boot path or setup, and
+ * that is the one build a fresh machine cannot avoid. Worse, it is the build
+ * whose failure is invisible: an index silently missing half the library looks
+ * exactly like a complete one.
+ *
+ * Waiting rather than skipping, because with no index there is no watcher to
+ * come back later -- `startWatching` derives its folders from indexed
+ * presentations, so a skipped first build never happens at all.
+ *
+ * It also means Refrain stops issuing hundreds of document reads at a
+ * just-launched ProPresenter, which is the heaviest and least necessary load
+ * it ever puts on the app.
+ */
+async function awaitProPresenterSettled({ settleMs = WATCH_SETTLE_MS, pollMs = 10_000, onWait = null } = {}) {
+  let announced = false;
+  for (;;) {
+    const readyFor = await propresenterReadyForMs();
+    if (readyFor != null && readyFor >= settleMs) return true;
+    if (!announced) {
+      announced = true;
+      onWait?.(readyFor);
+    }
+    await new Promise((r) => setTimeout(r, pollMs));
   }
 }
 
@@ -2682,7 +2720,18 @@ app.post("/api/setup", async (req, res) => {
     indexWorkDeferred = "performance mode is on";
     console.log(`Setup finished, but something is live — not building the index yet. ${describePerformance(performance)}`);
   } else {
-    startRebuild()
+    // Same settle gate as boot. On a fresh machine this is *the* first build,
+    // and it usually runs minutes after someone launched ProPresenter.
+    awaitProPresenterSettled({
+      onWait: () => {
+        indexWorkDeferred = "ProPresenter is still starting up";
+        console.log("Setup finished — waiting for ProPresenter to settle before the first build.");
+      },
+    })
+      .then(() => {
+        indexWorkDeferred = null;
+        return startRebuild();
+      })
       .then(startWatching)
       .catch((err) => {
         console.error("Setup index build failed:", err.message);
@@ -2814,6 +2863,18 @@ app.listen(port, "127.0.0.1", async () => {
       console.log(`No search index cache found, but performance mode is on — not building. ${describePerformance(performance)}`);
       console.log("Search will be empty until you build it from the Health screen.");
     } else {
+      await awaitProPresenterSettled({
+        onWait: (readyFor) => {
+          indexWorkDeferred = "ProPresenter is still starting up";
+          console.log(
+            readyFor == null
+              ? "No index yet, and ProPresenter is not answering — waiting for it before the first build."
+              : `No index yet — waiting for ProPresenter to settle before the first build (it has been up ${Math.round(readyFor / 1000)}s of ${WATCH_SETTLE_MS / 1000}s).`
+          );
+          console.log("Crawling a just-launched ProPresenter loses about half the library, silently.");
+        },
+      });
+      indexWorkDeferred = null;
       console.log("No search index cache found — building initial index...");
       try {
         await startRebuild();

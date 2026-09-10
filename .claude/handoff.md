@@ -1402,6 +1402,82 @@ installed on this machine.**
 - This machine's ProPresenter API was unreachable again during this pass
   (`localhost:56563` refusing), as it was on 2026-09-02.
 
+## 31. BLOCKER — the first index build had no settle gate — FIXED 2026-09-10
+
+The watcher has always refused to reindex until ProPresenter has been
+answering for three minutes, for a measured reason recorded in
+library-watch.js: *"Reads fail en masse while ProPresenter is still indexing
+its own media after launch — measured at 221 of 445 lost."*
+
+The **first** build had no such gate, on either the boot path or setup. That
+is the one build a fresh machine cannot avoid, and its failure is invisible:
+an index silently missing half the library looks exactly like a complete one.
+
+Both paths now wait rather than skip — with no index there is no watcher to
+come back later, because `startWatching` derives its folders from indexed
+presentations, so a skipped first build never happens at all.
+
+It also stops Refrain issuing hundreds of document reads at a just-launched
+ProPresenter, which is the heaviest and least necessary load it ever puts on
+the app. That matters beyond index quality; see 33.
+
+## 32. NOTE — disabled-slide exposure, finally measured
+
+Item 21's read-only half, done against a healthy ProPresenter on 2026-09-10.
+184 of 184 Songs presentations read, zero failures, 3,284 slides.
+
+**Four songs contain disabled slides (six in total):**
+
+    All Hail King Jesus - [ T ]                    2 disabled, first at flat 22 of 30  (7 after)
+    Gratitude - [ Ver 1 ]                          1 disabled, first at flat 36 of 39  (2 after)
+    Jireh (FS) - [ Ver 5 ]                         2 disabled, first at flat 12 of 35  (22 after)
+    Promises - [ T - Great Is Thy Faithfulness ]   1 disabled, first at flat 37 of 42  (4 after)
+
+If ProPresenter skips disabled slides when resolving a flat trigger index,
+every slide after the first disabled one in these four songs fires one
+position off — two after the second. Jireh is the worst case at 22 slides.
+
+Still not settled, because settling it needs a slide actually fired. **There
+is a read-only way that does not require Refrain to trigger anything:** open
+one of these four in ProPresenter, click the slide immediately *after* the
+disabled one by hand, and read `GET /v1/presentation/slide_index`. If the
+reported index counts the disabled slide, Refrain's assumption is right and
+nothing needs changing.
+
+## 33. The bootstrap failure on this machine — what is and is not established
+
+Brandon reports that this machine hit a ProPresenter **bootstrap** failure,
+that it was what blocked the Network API (the network settings were correct
+throughout), and that Refrain caused it.
+
+**Ruled out with evidence: Library Sync.** It is `enabled: false`, its
+`sharedFolder` is the string `"null"`, and there is no
+`cache/library-sync-last-run.json` at all — it has never completed a run on
+this machine. So whatever happened here is *not* the vector that took the
+three earlier workspaces, and not the one library-guard.js was built for.
+
+**No usable record.** ProPresenter keeps no application log directory on this
+machine, and the workspace RocksDB's own `LOG` files are all zero bytes.
+
+**What Refrain does that could plausibly bear on it**, ranked, none proven:
+
+1. A full crawl issues `/v1/presentation/{uuid}` for every presentation. Each
+   one makes ProPresenter load a document and touch its catalog, so a crawl
+   drives a heavy, sustained RocksDB write load the UI would never produce —
+   and until item 31 above, the first crawl could land squarely on a
+   just-launched app already rebuilding that catalog. A RocksDB left
+   mid-write by a quit or a kill is a classic unrecoverable-on-next-open case.
+2. `fs.watch` on library folders. Read-only by nature; no mechanism known.
+3. Nothing else touches ProPresenter's own directories except the doctor,
+   which only reads. It offers a `pkill` command but only when the main app is
+   already gone, so it cannot be a kill-during-write.
+
+**Not established.** I could not reproduce it, and I have no direct evidence
+tying Refrain to this machine's failure. There is a `Bisect` workspace and a
+`test` workspace here, which suggests the cause was investigated separately —
+whatever that bisection showed is better evidence than anything above, and
+should be written into this file.
+
 ## Status log
 
 `YYYY-MM-DD · <item> · done | partial | blocked · <one line>`
@@ -1673,3 +1749,11 @@ installed on this machine.**
   shipped with a bug of its own -- stopping on `frozen()` for every rebuild
   would have broken the Health rebuild buttons, since performance mode arms
   when ProPresenter is merely unreachable. 291 tests green on Node 20.
+- 2026-09-10 · ProPresenter came back (its Network API had been off, then the
+  app settled). First build now waits for ProPresenter to settle, on both boot
+  and setup — the watcher always had that gate and the one build a fresh
+  machine cannot avoid did not. Disabled-slide exposure measured at last: 4 of
+  184 songs, worst case 22 slides behind the first disabled one. On the
+  bootstrap failure Brandon attributes to Refrain: Library Sync is ruled out
+  with evidence (never ran here), no logs survive, and nothing else is proven —
+  recorded honestly in item 33 rather than guessed at. 291 tests, lint clean.
