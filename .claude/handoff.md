@@ -1152,7 +1152,7 @@ crawl circuit breaker catches total collapse, not one folder quietly missing.
 Fix: compare case-insensitively, and report both unmatched configured names and
 failed folders in index-status.
 
-### 21. NOTE — the disabled-slide assumption is still unverified
+### 21. NOTE — the disabled-slide assumption — SETTLED 2026-09-10, assumption was correct
 
 `flattenGroups` counts `enabled: false` slides in the flat index; nothing reads
 `slide.enabled` anywhere. The original plan flagged this as unverified and said
@@ -1421,7 +1421,7 @@ It also stops Refrain issuing hundreds of document reads at a just-launched
 ProPresenter, which is the heaviest and least necessary load it ever puts on
 the app. That matters beyond index quality; see 33.
 
-## 32. NOTE — disabled-slide exposure, finally measured
+## 32. NOTE — disabled-slide exposure, and the answer — SETTLED 2026-09-10
 
 Item 21's read-only half, done against a healthy ProPresenter on 2026-09-10.
 184 of 184 Songs presentations read, zero failures, 3,284 slides.
@@ -1477,6 +1477,50 @@ tying Refrain to this machine's failure. There is a `Bisect` workspace and a
 `test` workspace here, which suggests the cause was investigated separately —
 whatever that bisection showed is better evidence than anything above, and
 should be written into this file.
+
+## 34. SETTLED — ProPresenter counts disabled slides. Refrain was right.
+
+The open question since the original arrangement plan: does ProPresenter skip
+`enabled: false` slides when resolving a flat trigger index? If it did, every
+slide after a disabled one would fire one position off, in four of the 184
+songs measured in item 32.
+
+**It counts them.** Settled on 2026-09-10 against the live rig, read-only,
+with Refrain firing nothing.
+
+Method, because it is reusable and cost nothing: Brandon opened
+`Jireh (FS) - [ Ver 5 ]` and clicked the slide immediately after its disabled
+one by hand. Under that arrangement the flat list is 39 slides counting the
+disabled one and 38 without it, with the disabled slide at counting-index 28.
+
+    ProPresenter reported index                     29
+    Counting disabled, index 29 is                  "That is enough"
+    Skipping  disabled, index 29 would be           "You are enough"
+
+`GET /v1/status/slide` — an endpoint we had not used — then reported the live
+slide's actual text as **"That is enough"**, and "You are enough" as the
+*next* slide. So the reported index counts the disabled slide, and Refrain's
+`flattenGroups`, which also counts them, agrees with ProPresenter.
+
+**One residual assumption, stated rather than buried.** This proves the
+*reporting* index counts disabled slides. Refrain's correctness depends on the
+*trigger* index sharing that space, which propresenter-client.js records as
+previously verified ("the pair round-trips straight back through
+triggerSlide"). Both halves would have to be wrong in the same direction for
+the conclusion to fail. If someone wants it airtight, triggering the index
+that is already live is a safe check: it re-fires the slide already on screen
+and changes nothing if this is right.
+
+**No code change. `flattenGroups` stays as it is.** Recorded so nobody
+re-opens it.
+
+### Opportunity spotted while doing this
+
+`GET /v1/status/slide` returns `{current: {text, notes, uuid}, next: {...}}`.
+The live readout currently shows a presentation name and an index; it could
+show the words that are actually on the screen, and what is coming next.
+Not urgent, not tonight, but it is the single most useful endpoint found in a
+while and nothing in the app uses it.
 
 ## Status log
 
@@ -1757,3 +1801,11 @@ should be written into this file.
   bootstrap failure Brandon attributes to Refrain: Library Sync is ruled out
   with evidence (never ran here), no logs survive, and nothing else is proven —
   recorded honestly in item 33 rather than guessed at. 291 tests, lint clean.
+- 2026-09-10 · Item 21 settled after standing open since the original plan:
+  ProPresenter COUNTS disabled slides in its flat index, so Refrain's
+  flattenGroups was right all along and no change is needed. Proved read-only
+  against the live rig — Brandon clicked the slide after the disabled one, and
+  `/v1/status/slide` (an endpoint nothing in the app uses) confirmed the live
+  text matched the counting interpretation. Four songs that looked at risk are
+  not. Also noted: that endpoint reports current AND next slide text, which the
+  live readout could use.
