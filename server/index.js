@@ -2842,6 +2842,11 @@ app.get("/api/health", async (_req, res) => {
     role: config.role ?? null,
     propresenter,
     index: indexStatusPayload(),
+    // Where Refrain actually lives and which port it answers on, so the
+    // Health screen can hand over a command that works on this machine rather
+    // than one with a placeholder path in it.
+    installDir: process.cwd(),
+    port,
     shareLibrary: {
       status: getLibrarySyncModuleStatus(config),
       ...librarySyncSettings(),

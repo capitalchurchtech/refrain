@@ -2340,6 +2340,29 @@ html.blackroom .rf-hero {
 .rf-control-row > .rf-field {
   flex: 1 1 auto;
 }
+/**
+ * ...except when there genuinely is not enough width, which is the case this
+ * app is built for: a window docked beside ProPresenter at about 455px, of
+ * which the content gets 399 to 435 depending on the rail.
+ *
+ * `nowrap` above exists so an accidental reflow at normal widths shows up
+ * immediately rather than quietly rearranging a row. It was never meant to
+ * hold a three-field row inside a 400px column, where it pushed the Health
+ * cards 135px past the edge of the window. Stacking is the right answer at
+ * this width, and the nowrap still guards every width above it.
+ *
+ * Co-located with the rule it relaxes, same specificity, later position --
+ * the habit this file's own cascade note asks for.
+ */
+@media (max-width: 560px) {
+  .rf-control-row {
+    flex-wrap: wrap;
+  }
+  .rf-control-row > .rf-field,
+  .rf-control-row > .rf-field-fixed {
+    flex: 1 1 12rem;
+  }
+}
 
 /* A checkbox and its legend, sized to sit in a control row without becoming
    the tallest thing in it. */

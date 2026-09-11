@@ -52,6 +52,25 @@ export function initHealth() {
 
     if (window.lucide) window.lucide.createIcons();
 
+    document.querySelectorAll(".terminal-copy").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const label = btn.innerHTML;
+        try {
+          await navigator.clipboard.writeText(btn.dataset.command);
+          btn.innerHTML = `<i data-lucide="check" class="w-3 h-3"></i> Copied`;
+        } catch {
+          // Clipboard access can be refused; the command is on screen anyway,
+          // so say so rather than pretending it worked.
+          btn.innerHTML = `<i data-lucide="x" class="w-3 h-3"></i> Select it`;
+        }
+        if (window.lucide) window.lucide.createIcons();
+        setTimeout(() => {
+          btn.innerHTML = label;
+          if (window.lucide) window.lucide.createIcons();
+        }, 1800);
+      });
+    });
+
     const shareSaveBtn = document.getElementById("share-library-save");
     if (shareSaveBtn) {
       shareSaveBtn.addEventListener("click", async (e) => {
@@ -840,6 +859,42 @@ function renderIndexShortfall(index) {
  * else entirely — which folders get indexed for search. That collision is the
  * reason this feature was misunderstood every time it came up.
  */
+/**
+ * Commands the operator runs in Terminal, as one-click copies.
+ *
+ * Both of these are things Refrain cannot do for itself. It cannot open a
+ * browser window without Chrome's own chrome, and it cannot restart itself
+ * mid-update. What it can do is stop making somebody retype a command from a
+ * README on another screen.
+ *
+ * Shown rather than hidden behind a toggle: the command IS the instruction, and
+ * a copy button beside a command you can read is more trustworthy than a button
+ * that promises to do something to your machine.
+ */
+function renderTerminalActions(port, installDir) {
+  const appMode = `open -na "Google Chrome" --args --app=http://localhost:${port}`;
+  const update = `cd "${installDir}" && git pull --ff-only && npm install --silent && echo "Updated — restart Refrain"`;
+  const row = (id, label, help, cmd) => `
+    <div class="flex flex-col gap-1">
+      <div class="rf-silkscreen">${label}</div>
+      <div class="text-xs opacity-60 rf-measure">${help}</div>
+      <div class="flex items-center gap-2 min-w-0">
+        <code class="text-xs bg-base-300 rounded px-2 py-1 flex-1 min-w-0 overflow-x-auto whitespace-nowrap">${escapeHtml(cmd)}</code>
+        <button class="btn btn-chip shrink-0 terminal-copy" data-command="${escapeHtml(cmd)}" title="Copy this command">
+          <i data-lucide="copy" class="w-3 h-3"></i> Copy
+        </button>
+      </div>
+    </div>`;
+  return `
+    <div class="card bg-base-200">
+      <div class="card-body p-3 gap-3">
+        <h2 class="card-title text-base"><i data-lucide="terminal" class="w-4 h-4 opacity-70"></i> Terminal shortcuts</h2>
+        ${row("appmode", "Open in its own window", "Chrome without tabs or an address bar, which also lets the window go far narrower than a normal one — the point when it is docked beside ProPresenter.", appMode)}
+        ${row("update", "Update Refrain", "Fetches the latest code and installs anything new. Restart Refrain afterwards. Your settings are never touched.", update)}
+      </div>
+    </div>`;
+}
+
 function renderShareLibraryCard(share) {
   if (!share) return "";
   const status = share.status ?? "off";
@@ -901,6 +956,7 @@ function renderShareLibraryCard(share) {
 function renderHealth(health, configOptions, versionInfo, libraryCard = "") {
   const { propresenter, index, arrangementModule, role, version, config, envRequirements } = health;
   const shareLibraryCard = renderShareLibraryCard(health.shareLibrary);
+  const terminalCard = renderTerminalActions(health.port ?? window.location.port ?? 3000, health.installDir ?? "$HOME/Refrain");
 
   const propresenterCard = `
     <div class="card bg-base-200">
@@ -1495,6 +1551,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "") {
       ${configCard}
       ${libraryCard}
       ${shareLibraryCard}
+      ${terminalCard}
       ${updatesCard}
       ${envCard}
       <div class="text-xs opacity-50 text-center mt-2 flex flex-col items-center gap-1">
