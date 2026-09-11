@@ -30,7 +30,7 @@
 
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
-import { findOrphanedHelpers } from "./propresenter-doctor.js";
+import { findOrphanedHelpers, parseLaunchdManaged } from "./propresenter-doctor.js";
 
 const execAsync = promisify(exec);
 
@@ -46,7 +46,7 @@ const execAsync = promisify(exec);
  * @param {string|null} evidence.psOutput  `ps -Ao pid,ppid,comm`, or null if it could not be read
  * @param {boolean|null} evidence.apiReachable  whether ProPresenter's API answered, or null if unknown
  */
-export function libraryWriteSafety({ psOutput = null, apiReachable = null } = {}) {
+export function libraryWriteSafety({ psOutput = null, apiReachable = null, launchctlOutput = null } = {}) {
   // The API answering is proof the app is up, whatever the process list says.
   // Checked first because it is the least ambiguous signal available.
   if (apiReachable === true) {
@@ -67,7 +67,15 @@ export function libraryWriteSafety({ psOutput = null, apiReachable = null } = {}
     };
   }
 
-  const { rows, mainAppRunning } = findOrphanedHelpers(psOutput);
+  const managedPids = parseLaunchdManaged(launchctlOutput);
+  const { rows, mainAppRunning, managed } = findOrphanedHelpers(psOutput, { managedPids });
+  // launchd keeps `com.renewedvision.propresenter.workspaces-helper` running
+  // whenever ProPresenter is installed, app open or not. Counting it as "not
+  // fully closed" made this guard refuse every sync forever -- a safety check
+  // that blocks the feature in all cases is not a safety check, it is an
+  // outage, and it hid itself behind a plausible message.
+  const managedPidSet = new Set((managed ?? []).map((h) => h.pid));
+  const blocking = rows.filter((r) => !managedPidSet.has(r.pid));
 
   if (mainAppRunning) {
     return {
@@ -79,17 +87,21 @@ export function libraryWriteSafety({ psOutput = null, apiReachable = null } = {}
 
   // Helpers alone still count. They are the processes that hold the workspace
   // open, and a main app that has just quit can leave them writing for a while.
-  if (rows.length > 0) {
+  if (blocking.length > 0) {
     return {
       safe: false,
       reason:
-        `ProPresenter is not fully closed — ${rows.length} of its processes are still running. ` +
+        `ProPresenter is not fully closed — ${blocking.length} of its processes are still running. ` +
         "Wait a few seconds, or clear them from the Health screen, then try again.",
-      evidence: { mainAppRunning: false, processes: rows.length },
+      evidence: { mainAppRunning: false, processes: blocking.length, launchdManaged: managedPidSet.size },
     };
   }
 
-  return { safe: true, reason: null, evidence: { mainAppRunning: false, processes: 0 } };
+  return {
+    safe: true,
+    reason: null,
+    evidence: { mainAppRunning: false, processes: 0, launchdManaged: managedPidSet.size },
+  };
 }
 
 /**
@@ -108,6 +120,18 @@ export async function checkLibrarySafeToTouch({ apiProbe = null, timeoutMs = 400
     psOutput = null; // refused below
   }
 
+  // Which of those processes launchd is keeping alive on purpose. If this
+  // cannot be read we simply learn nothing, and every helper counts as
+  // blocking -- the conservative direction, consistent with the rest of this
+  // file.
+  let launchctlOutput = null;
+  try {
+    const { stdout } = await execAsync("launchctl list", { timeout: timeoutMs });
+    launchctlOutput = stdout;
+  } catch {
+    launchctlOutput = null;
+  }
+
   let apiReachable = null;
   if (typeof apiProbe === "function") {
     try {
@@ -119,5 +143,5 @@ export async function checkLibrarySafeToTouch({ apiProbe = null, timeoutMs = 400
     }
   }
 
-  return libraryWriteSafety({ psOutput, apiReachable });
+  return libraryWriteSafety({ psOutput, apiReachable, launchctlOutput });
 }

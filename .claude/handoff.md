@@ -1522,6 +1522,64 @@ show the words that are actually on the screen, and what is coming next.
 Not urgent, not tonight, but it is the single most useful endpoint found in a
 while and nothing in the app uses it.
 
+## 35. BLOCKER — Refrain did not know ProPresenter has a launchd service
+
+Found live on 2026-09-11 while walking Brandon through a workspace repair. He
+ran the doctor's own remedy three times and the helpers came straight back
+each time, with new PIDs.
+
+    launchctl list
+    27829  -15  com.renewedvision.propresenter.workspaces-helper
+
+`ProPresenter Helper (Workspaces)` is a **launchd service**. It has PPID 1 by
+design, runs whenever ProPresenter is installed — app open or not — and launchd
+restarts it within seconds of being killed. `ProPresenter Helper (Snapshots)`
+is its child and inherits that legitimacy.
+
+`findOrphanedHelpers` called any helper with PPID 1 orphaned whenever the main
+app was absent. So this was not an edge case: it fired on every normal Mac,
+every time ProPresenter was closed. Two consequences, and the second is worse
+than the first.
+
+### The doctor told operators to kill a service, with a dangerous command
+
+Severity `problem`, the text "Until these are cleared, every launch attempt
+fails the same way", and this remedy:
+
+    pkill -f ProPresenter; sleep 2; pgrep -fl ProPresenter || echo "all clear"
+
+That pattern matches `/Applications/ProPresenter.app/Contents/MacOS/
+ProPresenter` — **the main app**. An operator who runs it while ProPresenter is
+up force-kills it. A RocksDB workspace killed mid-write is precisely the
+unopenable-on-next-launch case this screen exists to diagnose, so the doctor's
+advice could produce the fault the doctor reports. Brandon ran it with the app
+running this morning and ProPresenter went down with the helpers.
+
+Whether that is what cost the workspaces is **not established** — but it is the
+first concrete mechanism found by which Refrain could cause one, and it was
+being recommended in a `problem`-severity banner.
+
+The remedy is now targeted at the specific orphaned PIDs, never a pattern
+kill, and launchd-managed helpers are not reported at all.
+
+### The library guard refused every sync, forever
+
+Worse in practice. `libraryWriteSafety` refused when `rows.length > 0` — any
+ProPresenter process at all. The Workspaces helper is always one of them, so
+with ProPresenter **fully quit** the guard still said:
+
+    safe: false
+    "ProPresenter is not fully closed — 2 of its processes are still running."
+
+Library Sync could therefore never run on any normal machine. A safety check
+that blocks the feature in all cases is not a safety check, it is an outage,
+and this one hid behind an entirely plausible message. Verified live: the guard
+now returns `safe: true` with the app closed, and still refuses when the main
+app runs, when a genuine orphan remains, and when the API answers.
+
+**Fail-closed is preserved**: if `launchctl list` cannot be read, nothing is
+excused and every helper counts as blocking.
+
 ## Status log
 
 `YYYY-MM-DD · <item> · done | partial | blocked · <one line>`
@@ -1809,3 +1867,10 @@ while and nothing in the app uses it.
   text matched the counting interpretation. Four songs that looked at risk are
   not. Also noted: that endpoint reports current AND next slide text, which the
   live readout could use.
+- 2026-09-11 · Refrain did not know `ProPresenter Helper (Workspaces)` is a
+  launchd service. It was reported as an orphan on every machine whenever
+  ProPresenter was closed, with a `pkill -f ProPresenter` remedy that also
+  matches the main app — so the doctor could talk an operator into force-killing
+  ProPresenter mid-write. And the library guard, counting the same helper,
+  refused every sync forever while claiming ProPresenter was "not fully closed".
+  Both fixed, launchd-aware, fail-closed preserved. 303 tests.

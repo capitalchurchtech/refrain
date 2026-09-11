@@ -74,7 +74,34 @@ export function parseCrashReport(name, text) {
  * adopted them after their parent died. Takes `ps -Ao pid,ppid,comm` output so
  * the logic is testable without spawning anything.
  */
-export function findOrphanedHelpers(psOutput) {
+/**
+ * PIDs launchd is deliberately keeping alive for ProPresenter.
+ *
+ * `launchctl list` prints `PID<TAB>STATUS<TAB>LABEL`. ProPresenter registers
+ * `com.renewedvision.propresenter.workspaces-helper`, which runs with PPID 1
+ * and **is supposed to be running while the app is closed** -- launchd restarts
+ * it within seconds of being killed.
+ *
+ * Without this, every helper looked orphaned the moment ProPresenter quit.
+ */
+export function parseLaunchdManaged(launchctlOutput) {
+  const pids = new Set();
+  for (const line of String(launchctlOutput ?? "").split("\n")) {
+    const m = line.match(/^(\d+)\s+(-?\d+)\s+(\S+)\s*$/);
+    if (!m) continue;
+    const [, pid, , label] = m;
+    if (!/renewedvision|propresenter/i.test(label)) continue;
+    pids.add(Number(pid));
+  }
+  return pids;
+}
+
+/**
+ * @param {string} psOutput
+ * @param {{managedPids?: Set<number>}} [opts] - PIDs launchd owns; these are
+ *   running on purpose and must not be reported as leftovers or killed.
+ */
+export function findOrphanedHelpers(psOutput, { managedPids = new Set() } = {}) {
   const rows = [];
   for (const line of String(psOutput ?? "").split("\n")) {
     const m = line.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/);
@@ -85,14 +112,38 @@ export function findOrphanedHelpers(psOutput) {
   }
   const isHelper = (r) => /helper/i.test(r.comm);
   const mainApp = rows.find((r) => !isHelper(r));
-  // Orphaned only when nothing is parenting them: either PPID 1, or their
-  // parent is another helper that is itself orphaned.
   const helpers = rows.filter(isHelper);
   const helperPids = new Set(helpers.map((h) => h.pid));
+
+  // Anything launchd owns, plus anything it spawned. The Snapshots helper is a
+  // child of the Workspaces helper, so it inherits its parent's legitimacy --
+  // killing it just makes launchd's service restart it.
+  const managed = new Set();
+  for (const h of helpers) if (managedPids.has(h.pid)) managed.add(h.pid);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const h of helpers) {
+      if (!managed.has(h.pid) && managed.has(h.ppid)) {
+        managed.add(h.pid);
+        grew = true;
+      }
+    }
+  }
+
+  // Orphaned only when nothing is parenting them: either PPID 1, or their
+  // parent is another helper that is itself orphaned -- and never when
+  // launchd is keeping them alive on purpose.
   const orphaned = mainApp
     ? []
-    : helpers.filter((h) => h.ppid === 1 || helperPids.has(h.ppid));
-  return { rows, mainAppRunning: Boolean(mainApp), helpers, orphaned };
+    : helpers.filter((h) => !managed.has(h.pid) && (h.ppid === 1 || helperPids.has(h.ppid)));
+  return {
+    rows,
+    mainAppRunning: Boolean(mainApp),
+    helpers,
+    orphaned,
+    managed: helpers.filter((h) => managed.has(h.pid)),
+  };
 }
 
 /**
@@ -321,7 +372,13 @@ export function buildFindings({ connected, host, port, isLocalHost, processes, w
         detail:
           `ProPresenter itself is not running, but its helper processes are (PID ${pids}). ` +
           `Until these are cleared, every launch attempt fails the same way, which makes a recoverable problem look permanent. Clearing them is safe: they hold no unsaved work and come back with the app.`,
-        command: `pkill -f ProPresenter; sleep 2; pgrep -fl ProPresenter || echo "all clear"`,
+        // Targeted at these PIDs, never `pkill -f ProPresenter`. That pattern
+        // also matches /Applications/ProPresenter.app/.../ProPresenter, so it
+        // force-kills the app itself -- and a RocksDB workspace killed
+        // mid-write is exactly the unopenable-on-next-launch case this screen
+        // exists to diagnose. It also fought launchd and lost, repeatedly,
+        // because the managed helpers are restarted within seconds.
+        command: `kill ${pids}; sleep 2; ps -Ao pid,command | grep -i "ProPresenter Helper" | grep -v grep || echo "all clear"`,
         prompt:
           `ProPresenter will not launch on my Mac. Refrain found ${orphaned.length} orphaned ProPresenter helper process(es) ` +
           `(PID ${pids}) still running with the main app gone (reparented to launchd). ` +

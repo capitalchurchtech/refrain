@@ -32,6 +32,7 @@ import {
   buildFindings,
   deriveSupportRoot,
   findOrphanedHelpers,
+  parseLaunchdManaged,
   readWorkspaceState,
   readCrashReports,
   readLibraryConsistency,
@@ -2609,7 +2610,19 @@ app.get("/api/propresenter/diagnose", async (_req, res) => {
   if (isLocalHost) {
     try {
       const { stdout } = await execFileAsync("ps", ["-Ao", "pid,ppid,comm"], { timeout: 5000 });
-      processes = { available: true, ...findOrphanedHelpers(stdout) };
+      // Which helpers launchd is keeping alive deliberately. Without this the
+      // Workspaces helper looked orphaned every time ProPresenter was closed,
+      // and the screen told the operator to kill a service launchd restarts
+      // within seconds.
+      let managedPids = new Set();
+      try {
+        const { stdout: lc } = await execFileAsync("launchctl", ["list"], { timeout: 5000 });
+        managedPids = parseLaunchdManaged(lc);
+      } catch {
+        // Nothing learned; every helper stays a candidate, which over-reports
+        // rather than under-reports.
+      }
+      processes = { available: true, ...findOrphanedHelpers(stdout, { managedPids }) };
     } catch {
       processes = { available: false };
     }
