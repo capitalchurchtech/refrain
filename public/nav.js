@@ -130,6 +130,20 @@ export async function initNav({ onNavigate, viewIds }) {
   let navMode =
     prefs.navMode ?? (prefs.navPinned == null ? "full" : prefs.navPinned ? "full" : "icons");
   if (!["full", "icons", "sliver"].includes(navMode)) navMode = "full";
+  /**
+   * The sliver does not survive a reload; it comes back as icons.
+   *
+   * Every other preference here is a setting, and settings should persist. The
+   * sliver is closer to a gesture — you push the rail out of the way for the
+   * thing you are doing right now. Reloading is usually what someone does when
+   * they are unsure what state they are in, and coming back to a 20px strip is
+   * the least helpful answer to that.
+   *
+   * Only from sliver, and only in this session: the stored value is left alone,
+   * so the preference is not quietly rewritten on every page load, and one
+   * press of the toggle puts it back.
+   */
+  if (navMode === "sliver") navMode = "icons";
 
   function renderItems() {
     let prevGroup = null;
