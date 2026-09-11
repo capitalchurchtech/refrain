@@ -247,6 +247,49 @@ On a Mac the simplest route is the `.pkg` installer from that page: double click
 
 Take Node 20 or newer — that is what Refrain declares it needs, so an older one makes npm complain during setup. If you're installing fresh, just take the newest LTS, which is well past that. You can confirm it worked by opening Terminal and running `node -v`.
 
+#### No administrator password? Install Node into your home folder
+
+The `.pkg` and `.msi` installers write to system locations, so they ask for an
+administrator password. On a borrowed or locked-down machine you may not have
+one, and you do not need one: Node ships as a plain archive that runs perfectly
+well from your own home folder.
+
+On a Mac, open Terminal and paste this. It works out whether the machine is
+Apple Silicon or Intel, fetches the current LTS, checks the download against
+Node's published checksum, and installs it to `~/.local/node`:
+
+```bash
+set -e
+ARCH=$([ "$(uname -m)" = "arm64" ] && echo arm64 || echo x64)
+VER=$(curl -fsSL https://nodejs.org/dist/index.json | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>console.log(JSON.parse(d).find(r=>r.lts).version))' 2>/dev/null \
+      || curl -fsSL https://nodejs.org/dist/index.json | sed -n 's/.*"version":"\(v[0-9.]*\)".*"lts":"[A-Za-z]*".*/\1/p' | head -1)
+TAR="node-$VER-darwin-$ARCH.tar.gz"
+cd "$(mktemp -d)"
+curl -fsSLO "https://nodejs.org/dist/$VER/$TAR"
+curl -fsSL "https://nodejs.org/dist/$VER/SHASUMS256.txt" | grep " $TAR\$" | shasum -a 256 -c -
+mkdir -p "$HOME/.local"
+rm -rf "$HOME/.local/node"
+tar -xzf "$TAR"
+mv "node-$VER-darwin-$ARCH" "$HOME/.local/node"
+echo 'export PATH="$HOME/.local/node/bin:$PATH"' >> "$HOME/.zshrc"
+export PATH="$HOME/.local/node/bin:$PATH"
+node -v
+```
+
+The checksum line is the part worth keeping: if the download were corrupt or
+tampered with, it stops there rather than installing it.
+
+Open a **new** Terminal window afterwards so the `PATH` line takes effect, and
+check `node -v` again. Nothing was written outside your home folder, and
+removing it later is `rm -rf ~/.local/node` plus deleting that one line from
+`~/.zshrc`.
+
+`scripts/start.command` looks in `~/.local/node/bin` (and in nvm, Volta, fnm and
+Homebrew locations) as well as the system path, so double-clicking the launcher
+still works with a home-folder Node. That matters because a double-clicked
+script does not read `~/.zshrc`: without that search, Node would work in
+Terminal and the launcher would still insist it was missing.
+
 ### Where to put Refrain
 
 Put the folder somewhere stable that belongs to the same user account that runs ProPresenter, so the login item in the next section can start it. A plain folder in your home directory is the easy answer:
