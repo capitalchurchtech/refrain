@@ -261,19 +261,20 @@ Node's published checksum, and installs it to `~/.local/node`:
 ```bash
 set -e
 ARCH=$([ "$(uname -m)" = "arm64" ] && echo arm64 || echo x64)
-VER=$(curl -fsSL https://nodejs.org/dist/index.json | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>console.log(JSON.parse(d).find(r=>r.lts).version))' 2>/dev/null \
-      || curl -fsSL https://nodejs.org/dist/index.json | sed -n 's/.*"version":"\(v[0-9.]*\)".*"lts":"[A-Za-z]*".*/\1/p' | head -1)
+VER=$(curl -fsSL https://nodejs.org/dist/index.json | tr '}' '\n' \
+      | grep -m1 '"lts":"[A-Za-z]' | sed -n 's/.*"version":"\(v[0-9][0-9.]*\)".*/\1/p')
 TAR="node-$VER-darwin-$ARCH.tar.gz"
+echo "Installing Node $VER ($ARCH)"
 cd "$(mktemp -d)"
 curl -fsSLO "https://nodejs.org/dist/$VER/$TAR"
-curl -fsSL "https://nodejs.org/dist/$VER/SHASUMS256.txt" | grep " $TAR\$" | shasum -a 256 -c -
+curl -fsSL "https://nodejs.org/dist/$VER/SHASUMS256.txt" | grep " $TAR$" | shasum -a 256 -c -
+tar -xzf "$TAR"
 mkdir -p "$HOME/.local"
 rm -rf "$HOME/.local/node"
-tar -xzf "$TAR"
 mv "node-$VER-darwin-$ARCH" "$HOME/.local/node"
-echo 'export PATH="$HOME/.local/node/bin:$PATH"' >> "$HOME/.zshrc"
+grep -qs 'HOME/.local/node/bin' "$HOME/.zshrc" || echo 'export PATH="$HOME/.local/node/bin:$PATH"' >> "$HOME/.zshrc"
 export PATH="$HOME/.local/node/bin:$PATH"
-node -v
+node -v && npm -v
 ```
 
 The checksum line is the part worth keeping: if the download were corrupt or
