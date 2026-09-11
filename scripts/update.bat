@@ -14,6 +14,11 @@ if not exist ".git" (
 )
 
 echo Fetching the latest version...
+REM npm rewrites package-lock.json when it syncs the lockfile to package.json,
+REM and a modified lockfile makes git pull refuse. Discarding it is safe: it is
+REM generated, and npm install below rebuilds it.
+call git checkout -- package-lock.json 2>nul
+
 call git pull --ff-only
 if errorlevel 1 (
   echo.

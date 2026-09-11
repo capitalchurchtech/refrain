@@ -873,7 +873,11 @@ function renderIndexShortfall(index) {
  */
 function renderTerminalActions(port, installDir) {
   const appMode = `open -na "Google Chrome" --args --app=http://localhost:${port}`;
-  const update = `cd "${installDir}" && git pull --ff-only && npm install --silent && echo "Updated — restart Refrain"`;
+  // `git checkout -- package-lock.json` first: npm rewrites the lockfile
+  // whenever it syncs it to package.json, and a modified lockfile makes
+  // `git pull` refuse. Discarding it loses nothing -- it is generated, and the
+  // npm install here rebuilds it.
+  const update = `cd "${installDir}" && git checkout -- package-lock.json 2>/dev/null; git pull --ff-only && npm install --silent && echo "Updated — restart Refrain"`;
   const row = (id, label, help, cmd) => `
     <div class="flex flex-col gap-1">
       <div class="rf-silkscreen">${label}</div>

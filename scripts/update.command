@@ -14,6 +14,12 @@ if [ ! -d .git ]; then
 fi
 
 echo "Fetching the latest version..."
+# npm rewrites package-lock.json whenever it syncs the lockfile to
+# package.json, and a modified lockfile makes `git pull` refuse outright.
+# Discarding it is safe and is not a data loss: it is generated from
+# package.json and node_modules, and `npm install` below rebuilds it.
+git checkout -- package-lock.json 2>/dev/null || true
+
 git pull --ff-only
 
 echo "Installing any new dependencies..."
