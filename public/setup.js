@@ -178,7 +178,14 @@ export function initSetup({ onComplete }) {
         // The longest wait in the product, and the one moment the operator is
         // curious rather than under pressure. Warm zone: it can have a pulse,
         // as long as the count underneath it stays honest.
-        progressText.textContent = "Reading every slide you own. Go coil something.";
+        // Warm zone, but it now carries the two facts an operator needs while
+        // watching a progress bar for a quarter of an hour: keep ProPresenter
+        // open, because this is read THROUGH it, and nothing is going to the
+        // screens. Both were things Refrain knew and never said.
+        progressText.textContent =
+          "Reading every slide you own. Go coil something. " +
+          "Leave ProPresenter open — Refrain reads the library through it, and it will feel sluggish while this runs. " +
+          "Nothing is being sent to the screens.";
       } else if (status.builtAt) {
         createMeter(progressMeter);
         updateMeter(progressMeter, 1, 1);

@@ -165,6 +165,11 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
   rebuildInFlight = (async () => {
     const presentations = {};
 
+    console.log("");
+    console.log("  Building the search index. Leave ProPresenter open — every presentation is");
+    console.log("  read through it, so closing it stops this. Nothing goes to the screens.");
+    console.log("  ProPresenter will feel sluggish until it finishes.");
+    console.log("");
     console.log(`Fetching library${folders ? ` (folders: ${folders.join(", ")})` : ""}...`);
     const crawl = await client.getLibraryDetailed(folders);
     const library = crawl.items;

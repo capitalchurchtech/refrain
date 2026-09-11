@@ -891,9 +891,10 @@ function renderHealth(health, configOptions, versionInfo) {
                <div class="alert alert-warning py-2 text-sm mt-2 items-start">
                  <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
                  <span><strong>A rebuild is running, so ProPresenter will be sluggish until it finishes.</strong>
-                 Go Live, Clear, and macros may be slow or not respond. It can take an hour or more on a large
-                 library. Stop it if a service is about to start — everything already read is kept, and the rest
-                 keeps what it had.</span>
+                 Leave ProPresenter open: Refrain reads every presentation through it, so closing it stops the
+                 build. Nothing is sent to the screens — these are reads only. Go Live, Clear, and macros may be
+                 slow or not respond. It can take an hour or more on a large library. Stop it if a service is
+                 about to start — everything already read is kept, and the rest keeps what it had.</span>
                </div>`
             : (() => {
                 // The scary warning belongs to whichever button is actually

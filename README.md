@@ -92,6 +92,33 @@ ProPresenter, with its local network API turned on (Preferences, then Network). 
 
 Everything else (a church management integration, shared storage, image cropping, QR codes) is optional and set up separately, and none of it asks you to change or restart ProPresenter.
 
+## When Refrain indexes, and why ProPresenter has to be open
+
+Refrain has no separate copy of your library. It reads every presentation
+**through ProPresenter's own API**, which means two things that are easy to get
+backwards:
+
+- **ProPresenter has to be open for indexing to happen at all.** Closing it
+  stops a build. Refrain never touches your presentation files directly; the
+  only thing it reads off disk is each file's size and timestamp, to work out
+  which ones changed.
+- **What stops Refrain working is something being live, not ProPresenter being
+  open.** That is performance mode: while anything is on the screens, Refrain
+  does nothing of its own accord. ProPresenter open with clear screens is the
+  ideal moment to index, not a problem.
+
+Indexing is reads only. Nothing is ever sent to the screens by a build.
+
+It does make ProPresenter sluggish while it runs — Go Live, Clear and macros
+can be slow to respond — so the time to do it is before a service, not during
+one. A full build takes about a quarter of an hour on a nine hundred
+presentation library. After the first one, Refrain only re-reads presentations
+whose file changed, which takes seconds.
+
+If a build is running and a service is about to start, the Health screen has a
+**Stop indexing** button. Everything already read is kept, and the rest keeps
+what it had.
+
 ## Large libraries
 
 **Never rebuild the index near a service.** A rebuild reads every presentation in your library one at a time, and on a real library that means anything from several minutes to well over an hour. For the whole time it runs, ProPresenter itself gets sluggish and can stop answering at all, which means Go Live, Clear, and macros may not respond. Measured on a real setup: sermon-length presentations took ten to fifteen seconds each to read, and ProPresenter stopped reacting to slide triggers entirely while it was being crawled. Only start a rebuild when you are sure nothing crucial is happening for the next hour or two, and then let it finish rather than killing it partway.
