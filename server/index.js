@@ -837,15 +837,34 @@ async function propresenterReadyForMs() {
  * just-launched ProPresenter, which is the heaviest and least necessary load
  * it ever puts on the app.
  */
-async function awaitProPresenterSettled({ settleMs = WATCH_SETTLE_MS, pollMs = 10_000, onWait = null } = {}) {
-  let announced = false;
+async function awaitProPresenterSettled({
+  settleMs = WATCH_SETTLE_MS,
+  pollMs = 10_000,
+  giveUpAfterMs = 10 * 60_000,
+  onWait = null,
+} = {}) {
+  const startedAt = Date.now();
+  let announced = null;
   for (;;) {
     const readyFor = await propresenterReadyForMs();
     if (readyFor != null && readyFor >= settleMs) return true;
-    if (!announced) {
-      announced = true;
-      onWait?.(readyFor);
+
+    // "Still starting up" and "not there at all" are different situations and
+    // need different words: one resolves itself, the other needs somebody to
+    // open ProPresenter or switch its Network API on.
+    const state = readyFor == null ? "absent" : "settling";
+    if (state !== announced) {
+      announced = state;
+      onWait?.(state, readyFor);
     }
+
+    // Bounded, because the first version was not. On a fresh machine -- the
+    // one case this gate exists for -- ProPresenter being unavailable is the
+    // *likely* state, not the exception, and an uncapped wait meant Refrain
+    // sat there indefinitely looking like it had hung. Giving up is safe: the
+    // index is built on demand from Health, and saying so beats waiting
+    // silently for something that may never happen.
+    if (Date.now() - startedAt >= giveUpAfterMs) return false;
     await new Promise((r) => setTimeout(r, pollMs));
   }
 }
@@ -2738,12 +2757,20 @@ app.post("/api/setup", async (req, res) => {
     // Same settle gate as boot. On a fresh machine this is *the* first build,
     // and it usually runs minutes after someone launched ProPresenter.
     awaitProPresenterSettled({
-      onWait: () => {
-        indexWorkDeferred = "ProPresenter is still starting up";
-        console.log("Setup finished — waiting for ProPresenter to settle before the first build.");
+      onWait: (state) => {
+        indexWorkDeferred =
+          state === "absent"
+            ? "waiting for ProPresenter — it is not answering yet"
+            : "waiting for ProPresenter to finish starting up";
+        console.log(`Setup finished — ${state === "absent" ? "ProPresenter is not answering; waiting" : "waiting for ProPresenter to settle"} before the first build.`);
       },
     })
-      .then(() => {
+      .then((settled) => {
+        if (!settled) {
+          indexWorkDeferred = "ProPresenter never became available — build the index from the Health screen";
+          console.log("Gave up waiting for ProPresenter. Build the index from the Health screen once it is up.");
+          return null;
+        }
         indexWorkDeferred = null;
         return startRebuild();
       })
@@ -2878,17 +2905,24 @@ app.listen(port, "127.0.0.1", async () => {
       console.log(`No search index cache found, but performance mode is on — not building. ${describePerformance(performance)}`);
       console.log("Search will be empty until you build it from the Health screen.");
     } else {
-      await awaitProPresenterSettled({
-        onWait: (readyFor) => {
-          indexWorkDeferred = "ProPresenter is still starting up";
+      const settled = await awaitProPresenterSettled({
+        onWait: (state, readyFor) => {
+          indexWorkDeferred =
+            state === "absent"
+              ? "waiting for ProPresenter — it is not answering yet"
+              : "waiting for ProPresenter to finish starting up";
           console.log(
-            readyFor == null
-              ? "No index yet, and ProPresenter is not answering — waiting for it before the first build."
-              : `No index yet — waiting for ProPresenter to settle before the first build (it has been up ${Math.round(readyFor / 1000)}s of ${WATCH_SETTLE_MS / 1000}s).`
+            state === "absent"
+              ? "No index yet, and ProPresenter is not answering. Waiting. Open it, and check its Network API is on (Preferences > Network)."
+              : `No index yet — waiting for ProPresenter to settle before the first build (up ${Math.round(readyFor / 1000)}s of ${WATCH_SETTLE_MS / 1000}s). Crawling a just-launched ProPresenter loses about half the library, silently.`
           );
-          console.log("Crawling a just-launched ProPresenter loses about half the library, silently.");
         },
       });
+      if (!settled) {
+        indexWorkDeferred = "ProPresenter never became available — build the index from the Health screen";
+        console.log("Gave up waiting for ProPresenter. Search will stay empty until you build the index from the Health screen.");
+        return;
+      }
       indexWorkDeferred = null;
       console.log("No search index cache found — building initial index...");
       try {
