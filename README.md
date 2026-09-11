@@ -55,6 +55,8 @@ Working today:
 - Reindexing only the presentations whose file changed, automatically a few seconds after you save one.
 - Performance mode, which stops Refrain doing anything of its own accord while something is on the screens.
 - A segmented meter for index progress, in first-run setup and on the Health screen.
+- Stopping a running index build from the Health screen. A crawl makes ProPresenter sluggish, and until v0.14.0 the only way to end one was to quit Refrain. Anything already read is kept and the rest keeps what it had.
+- Waiting for ProPresenter to finish starting before the first index build. Reads fail en masse while ProPresenter is still indexing its own media after launch — measured at 221 of 445 lost — and a silently half-built index looks exactly like a complete one.
 
 Wired up but not finished (the interface exists, the methods currently refuse to run):
 
@@ -71,6 +73,8 @@ One church lost three workspaces in the months after adopting Refrain, having lo
 
 Refrain now refuses to run a sync while ProPresenter is running — in either direction, because reading the library while ProPresenter writes to it captures a torn file that then propagates to every other machine. If it cannot tell whether ProPresenter is running, it refuses.
 
+**If you are on v0.13.0, that guard refused everything.** ProPresenter registers a launchd service, `com.renewedvision.propresenter.workspaces-helper`, which keeps running whenever ProPresenter is installed — app open or not. The v0.13.0 guard counted any ProPresenter process as "still running", so with ProPresenter fully quit it still refused, saying two of its processes were live. Library Sync could therefore never run at all on a normal Mac. v0.14.0 knows which helpers launchd owns and ignores those; a running main app, a genuine leftover helper, and a reachable API all still refuse, and if the process list cannot be read nothing is excused.
+
 Two related changes came with it. Sync no longer back-dates the timestamps of files it writes, so a file that lands in a library says when it arrived. And Refrain no longer opens presentation files at all: the index fingerprints them from `stat()` metadata, where it used to read all of them in full on every reindex.
 
 Not independently checked:
@@ -78,6 +82,7 @@ Not independently checked:
 - **Light theme is secondary.** Refrain is designed for a dark booth and starts in dark; light and system are there if you want them, and light gets the same colours, contrast, hit areas and indicators, but not the machined material — no cap gradients, lit collars or panel junctions, because a warm-graphite object does not really have a light mode. It is also the theme we look at least, and a run of defects that only appeared there (a primary action below AA contrast, a touch target under 44px, a status lamp that was invisible, a progress meter that did not render) were all found and fixed late. Those are fixed, but if you run light theme and something looks wrong, it is more likely to be real than a misreading, and worth reporting.
 - Only tested against ProPresenter 7.x on the machines that built it. Other versions may need small path adjustments. See Compatibility below.
 - The live-output features (Return bar, the Live page's Looks, Macros, and message poster) were built to ProPresenter's documented API but confirmed only against fake servers during development. If you run a live rig, [docs/propresenter-verification.md](docs/propresenter-verification.md) is a twenty-minute checklist to confirm them, with the exact response to capture if any endpoint differs on your version.
+- Confirmed against a real ProPresenter, twice and by two different methods: that ProPresenter counts disabled slides in the flat index it triggers against, which is what Refrain assumes. Once by firing a slide (2026-08-30) and once read-only, with nothing put on the screens (2026-09-11). It matters more than it sounds: disabled slides are common, and had the assumption been wrong, every slide after one would have fired a position off.
 - Confirmed against a real ProPresenter: the library crawl, incremental reindexing (445 presentations carried over, 0 re-read, 68ms), the layer-status heartbeat, performance mode both arming itself from real screen output and holding a manual arm, the Return history across multiple jumps, and the arrangement correction — a deliberately stale slide index was re-pointed 39 slides and put the right slide on the screens. Sections 2b to 2d of [the verification checklist](docs/propresenter-verification.md) record the measurements.
 - Still not seen working on a live rig: the watcher picking up a presentation you have just saved (ProPresenter's API can't edit a slide, so this needs a person), performance mode standing down on its own after twenty minutes, and its behaviour when ProPresenter quits outright. The checklist says which is which.
 

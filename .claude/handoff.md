@@ -1478,7 +1478,16 @@ tying Refrain to this machine's failure. There is a `Bisect` workspace and a
 whatever that bisection showed is better evidence than anything above, and
 should be written into this file.
 
-## 34. SETTLED — ProPresenter counts disabled slides. Refrain was right.
+## 34. SETTLED — ProPresenter counts disabled slides (and it already was)
+
+**Correction first.** This was already resolved on 2026-08-30 by a trigger test
+and written into `docs/propresenter-verification.md`. Item 21 claimed it was
+still open, and I repeated that to Brandon as "the last unknown on the live
+path". It was not. Before reopening a question, check the verification doc --
+that is what it is for, and it had the answer.
+
+What follows is independent corroboration by a different method, which is worth
+keeping because it needs nothing on the screens.
 
 The open question since the original arrangement plan: does ProPresenter skip
 `enabled: false` slides when resolving a flat trigger index? If it did, every

@@ -112,6 +112,33 @@ at least one disabled slide, one of them six. So the behaviour matters far more
 than "a few slides" implied, which is why it is now measured rather than left
 open.
 
+**Confirmed again 2026-09-11, independently and without firing anything.** The
+2026-08-30 test required putting a slide on the screens, which is not always
+available -- a booth machine an hour before a concert is not a test rig. There
+is a read-only method that reaches the same answer:
+
+1. Open a song containing a disabled slide and click, by hand, the slide
+   immediately after it.
+2. `GET /v1/presentation/slide_index` gives the flat index ProPresenter thinks
+   is live.
+3. `GET /v1/status/slide` gives the live slide's actual `text`, and the next
+   slide's.
+
+If the reported index counts the disabled slide, the text at that index in the
+counting interpretation matches what `/v1/status/slide` says is live. Measured on
+`Jireh (FS) - [ Ver 5 ]`: 39 slides counting the disabled one and 38 without it,
+the disabled slide at counting-index 28, ProPresenter reporting index 29, and
+`/v1/status/slide` returning "That is enough" -- index 29 only if the disabled
+slide is counted. "You are enough", index 29 under the skipping interpretation,
+came back as the *next* slide.
+
+This proves it for the *reporting* index; the 2026-08-30 trigger test proves it
+for the *trigger* index. Together they close it from both ends.
+
+`GET /v1/status/slide` is worth knowing about for its own sake: it returns
+`{current: {text, notes, uuid}, next: {...}}`, and nothing in Refrain uses it
+yet.
+
 **A note on speed.** On the machine this was tested against, ProPresenter took
 2 to 5 seconds to answer a trigger, focus, or status call, and appeared to
 serialize requests. Refrain allows 20 seconds for live-output calls and no
