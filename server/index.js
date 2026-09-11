@@ -284,15 +284,28 @@ app.get("/api/preferences", (_req, res) => {
   res.json({
     theme: config.theme ?? "dark",
     navPinned: config.navPinned ?? null,
+    // Null when never chosen, so the frontend can fall back to navPinned for
+    // an install that predates the third state.
+    navMode: config.navMode ?? null,
     welcomeDismissed: Boolean(config.welcomeDismissed),
   });
 });
 
 app.post("/api/preferences", async (req, res) => {
-  const { theme, navPinned, welcomeDismissed } = req.body ?? {};
+  const { theme, navPinned, navMode, welcomeDismissed } = req.body ?? {};
   const newConfig = { ...config };
   if (theme !== undefined) newConfig.theme = theme;
   if (navPinned !== undefined) newConfig.navPinned = Boolean(navPinned);
+  // Three rail widths rather than two. `navPinned` is still written alongside
+  // it so an older Refrain reading this config still gets a sensible rail
+  // instead of a missing key.
+  if (navMode !== undefined) {
+    if (!["full", "icons", "sliver"].includes(navMode)) {
+      return res.status(400).json({ error: "navMode must be full, icons or sliver" });
+    }
+    newConfig.navMode = navMode;
+    newConfig.navPinned = navMode === "full";
+  }
   if (welcomeDismissed !== undefined) newConfig.welcomeDismissed = Boolean(welcomeDismissed);
 
   try {

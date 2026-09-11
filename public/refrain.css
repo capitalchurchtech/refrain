@@ -783,8 +783,10 @@ html.blackroom #results:has(.go-live-btn:focus-visible) .go-live-btn.rf-armed:no
  */
 #nav-rail.w-14 { width: 3.5rem; }
 #nav-rail.w-36 { width: 9rem; }
+#nav-rail.w-5 { width: 1.25rem; }
 #main-content.ml-14 { margin-left: 3.5rem; }
 #main-content.ml-36 { margin-left: 9rem; }
+#main-content.ml-5 { margin-left: 1.25rem; }
 
 /* Same class of bug, smaller blast radius: image-crop.js toggles these from JS
    to make the config fields inert while the module is off. Without a static
@@ -3384,4 +3386,72 @@ html.blackroom .rf-record-row:hover {
    without spending an emitter on something that moves every few seconds. */
 .rf-current {
   box-shadow: inset 0 0 0 1px var(--rf-plum-lit);
+}
+
+/* ============================================================
+   38. THE SLIVER
+
+   A third rail width, for the case this app is actually used in: a
+   window docked beside ProPresenter, where the rail is the only thing
+   between the content and the edge of the screen. Full is 144px and
+   icons is 56px; this is 20px, and it holds nothing but the control
+   that brings the rail back.
+
+   The idea is not new here -- an automatic version already existed
+   under 449px. What is new is that the operator chooses it, at any
+   width, by cycling the same button.
+
+   **Hover-to-peek is not decoration, it is the way back.** A 20px rail
+   with no route out is a trap, which is why the automatic version was
+   gated to pointer devices and why the cycle skips this state entirely
+   when there is no hover. Both guards, because either alone fails: the
+   gate stops touch reaching it, the peek rescues a pointer user who
+   lands here by accident.
+   ============================================================ */
+#nav-rail.sliver {
+  overflow-x: hidden;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* Everything goes except the toggle. Enumerated against the real markup
+   rather than guessed: `#nav-brand` and `.nav-secondary` do not exist, and a
+   selector that matches nothing fails silently and leaves the rail full of
+   content it is too narrow to show. */
+#nav-rail.sliver #brand-row,
+#nav-rail.sliver #nav-items,
+#nav-rail.sliver #status-cluster,
+#nav-rail.sliver .rf-status-break,
+#nav-rail.sliver #nav-help-toggle,
+#nav-rail.sliver #theme-toggle,
+#nav-rail.sliver .nav-label,
+#nav-rail.sliver .rf-group-label {
+  display: none;
+}
+
+#nav-rail.sliver #nav-pin-toggle {
+  display: flex;
+  justify-content: center;
+  padding: 0;
+  min-height: 44px; /* the touch floor still applies to the one control left */
+}
+
+/* Peek. Widening on hover restores the icon rail, so the way back is always
+   one movement away rather than a thing you have to know about. */
+#nav-rail.sliver:hover,
+#nav-rail.sliver:focus-within {
+  width: 3.5rem;
+  overflow-x: visible;
+}
+#nav-rail.sliver:hover #brand-row,
+#nav-rail.sliver:focus-within #brand-row,
+#nav-rail.sliver:hover #nav-items,
+#nav-rail.sliver:focus-within #nav-items,
+#nav-rail.sliver:hover #status-cluster,
+#nav-rail.sliver:focus-within #status-cluster,
+#nav-rail.sliver:hover #nav-help-toggle,
+#nav-rail.sliver:focus-within #nav-help-toggle,
+#nav-rail.sliver:hover #theme-toggle,
+#nav-rail.sliver:focus-within #theme-toggle {
+  display: flex;
 }

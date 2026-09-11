@@ -125,7 +125,11 @@ export async function initNav({ onNavigate, viewIds }) {
   // is unset (null), so a first-time user sees labels rather than a wall of
   // unlabeled icons. Once they collapse or expand, that choice (true/false)
   // is stored and respected.
-  let pinned = prefs.navPinned == null ? true : Boolean(prefs.navPinned);
+  // Three states now. An install that predates them has only navPinned, so map
+  // it rather than resetting someone's rail to the default.
+  let navMode =
+    prefs.navMode ?? (prefs.navPinned == null ? "full" : prefs.navPinned ? "full" : "icons");
+  if (!["full", "icons", "sliver"].includes(navMode)) navMode = "full";
 
   function renderItems() {
     let prevGroup = null;
@@ -161,7 +165,7 @@ export async function initNav({ onNavigate, viewIds }) {
         title="${item.navLabel}"
       >
         <i data-lucide="${item.icon}" class="shrink-0 w-4 h-4"></i>
-        <span class="nav-label whitespace-nowrap ${pinned ? "" : "hidden"}">${item.navLabel}</span>
+        <span class="nav-label whitespace-nowrap ${navMode === "full" ? "" : "hidden"}">${item.navLabel}</span>
         ${keyBadge}
       </button>
     `;
@@ -311,25 +315,61 @@ export async function initNav({ onNavigate, viewIds }) {
     if (window.lucide) window.lucide.createIcons();
   }
 
+  /**
+   * Three rail widths, cycled by one button: full, icons, sliver.
+   *
+   * The sliver is for a docked booth window, where the rail is the only thing
+   * between Refrain's content and the edge of the screen. It keeps nothing but
+   * the toggle, and it keeps hover-to-peek — a 20px rail with no way back is a
+   * trap, which is why the pre-existing auto-sliver under 449px was gated to
+   * pointer devices.
+   *
+   * That gate matters here too: with no hover there is no peek, so on touch the
+   * cycle is two states rather than three. Losing a state is better than losing
+   * the way back.
+   */
   function applyPinnedState() {
-    rail.classList.toggle("w-14", !pinned);
-    rail.classList.toggle("w-36", pinned);
-    rail.classList.toggle("collapsed", !pinned);
+    const mode = navMode;
+    const isFull = mode === "full";
+    const isSliver = mode === "sliver";
+    const pinned = isFull;
+    rail.classList.toggle("w-14", mode === "icons");
+    rail.classList.toggle("w-36", isFull);
+    rail.classList.toggle("w-5", isSliver);
+    rail.classList.toggle("sliver", isSliver);
+    rail.classList.toggle("collapsed", !isFull);
     // The rail is `fixed` (Section 13.1: `sticky` detached from the top
     // near the bottom of a tall page, since a sticky element can't stay
     // pinned past its own container's bottom edge) — taking it out of
     // flow means main has to carry a matching margin instead of the
     // flex layout doing it automatically.
     const mainContent = document.getElementById("main-content");
-    mainContent.classList.toggle("ml-14", !pinned);
-    mainContent.classList.toggle("ml-36", pinned);
+    mainContent.classList.toggle("ml-14", mode === "icons");
+    mainContent.classList.toggle("ml-36", isFull);
+    mainContent.classList.toggle("ml-5", isSliver);
     document.querySelectorAll(".nav-label").forEach((el) => el.classList.toggle("hidden", !pinned));
     // Collapsed: just the mark. Expanded: swap in the full wordmark
     // logo, same as expanding replaces every other icon-only nav item
     // with an icon+label.
     brandMark.classList.toggle("hidden", pinned);
     brandLogo.classList.toggle("hidden", !pinned);
-    setIcon(pinIcon, pinned ? "chevrons-left" : "chevrons-right");
+    setIcon(pinIcon, isFull ? "chevrons-left" : "chevrons-right");
+    pinToggle.title = isFull
+      ? "Collapse to icons"
+      : mode === "icons"
+        ? "Collapse to a sliver"
+        : "Show the full menu";
+  }
+
+  /** Hover-to-peek is the sliver's way back, so without it the sliver is a trap. */
+  function canHover() {
+    return window.matchMedia?.("(hover: hover)")?.matches ?? true;
+  }
+
+  function nextNavMode(current) {
+    const cycle = canHover() ? ["full", "icons", "sliver"] : ["full", "icons"];
+    const i = cycle.indexOf(current);
+    return cycle[(i + 1) % cycle.length];
   }
 
   function applyThemeUI() {
@@ -341,12 +381,12 @@ export async function initNav({ onNavigate, viewIds }) {
   brandRow.addEventListener("click", () => setActive("search"));
 
   pinToggle.addEventListener("click", async () => {
-    pinned = !pinned;
+    navMode = nextNavMode(navMode);
     applyPinnedState();
     await fetch("/api/preferences", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ navPinned: pinned }),
+      body: JSON.stringify({ navMode }),
     });
   });
 
