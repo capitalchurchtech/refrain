@@ -135,6 +135,35 @@ export function initSetup({ onComplete }) {
     onComplete();
   });
 
+  /**
+   * Watches the first index build, and says what is happening when it is not
+   * building yet.
+   *
+   * That last part was missing, and it is the state a fresh machine sits in
+   * most often. With no index, nothing in progress, and nothing having failed,
+   * this loop used to poll every 500ms and change nothing on screen -- so
+   * Refrain waiting sensibly for ProPresenter was indistinguishable from
+   * Refrain having hung. The server has always known why it was waiting; the
+   * screen simply never asked.
+   */
+  /** Turns the server's reason for waiting into something to act on. */
+  function describeWait(reason) {
+    const r = String(reason);
+    if (/not answering/i.test(r)) {
+      return "Waiting for ProPresenter. Open it, and check its Network API is on under Preferences, then Network.";
+    }
+    if (/starting up/i.test(r)) {
+      return "ProPresenter is still starting up. Refrain waits a few minutes before reading the library, because a library read too early comes back half empty.";
+    }
+    if (/never became available/i.test(r)) {
+      return "Gave up waiting for ProPresenter. You can finish setup and build the index later from the Health screen.";
+    }
+    if (/performance mode/i.test(r)) {
+      return "Something is on the screens, so Refrain is holding off. It will build the index once nothing is live.";
+    }
+    return r;
+  }
+
   async function pollBuildProgress() {
     let sawInProgress = false;
     while (true) {
@@ -162,6 +191,14 @@ export function initSetup({ onComplete }) {
         // where the health screen explains what's wrong.
         progressText.textContent = "Index build failed. Check the server logs, then retry from the Health screen.";
         return;
+      } else if (status.indexWorkDeferred) {
+        // Not started yet, and the server knows why. Say it, and say what to
+        // do about it — a silent screen is the one thing this moment cannot
+        // afford, because it is also the moment the operator has no idea
+        // whether the product works at all.
+        progressText.textContent = describeWait(status.indexWorkDeferred);
+      } else {
+        progressText.textContent = "Getting ready…";
       }
 
       await new Promise((r) => setTimeout(r, 500));

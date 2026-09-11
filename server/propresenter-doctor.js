@@ -84,6 +84,46 @@ export function parseCrashReport(name, text) {
  *
  * Without this, every helper looked orphaned the moment ProPresenter quit.
  */
+/**
+ * Seconds from a `ps` `etime` field, or null.
+ *
+ * BSD `ps` on macOS has no `etimes`, so the elapsed time only comes as a
+ * formatted string: `MM:SS`, `HH:MM:SS`, or `D-HH:MM:SS` once past a day.
+ */
+export function parsePsEtime(etime) {
+  const t = String(etime ?? "").trim();
+  const m = t.match(/^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+)$/);
+  if (!m) return null;
+  const [, d, h, mins, secs] = m;
+  return (
+    Number(d ?? 0) * 86400 + Number(h ?? 0) * 3600 + Number(mins) * 60 + Number(secs)
+  );
+}
+
+/**
+ * How long ProPresenter's main application has actually been running, in
+ * seconds, from `ps -Ao pid,etime,comm`. Null when it is not running.
+ *
+ * This exists because "how long has ProPresenter been up" and "how long has
+ * Refrain been able to reach it" are different numbers, and only the first one
+ * answers the question the settle gate is asking. Refrain measuring from its
+ * own first successful probe meant an operator who opened ProPresenter, waited,
+ * and then started Refrain was told to wait another three minutes from zero.
+ */
+export function propresenterUptimeSeconds(psOutput) {
+  let best = null;
+  for (const line of String(psOutput ?? "").split("\n")) {
+    const m = line.trim().match(/^(\d+)\s+(\S+)\s+(.*)$/);
+    if (!m) continue;
+    const [, , etime, comm] = m;
+    if (!/propresenter/i.test(comm)) continue;
+    if (/helper/i.test(comm)) continue; // helpers outlive and predate the app
+    const secs = parsePsEtime(etime);
+    if (secs != null && (best == null || secs > best)) best = secs;
+  }
+  return best;
+}
+
 export function parseLaunchdManaged(launchctlOutput) {
   const pids = new Set();
   for (const line of String(launchctlOutput ?? "").split("\n")) {

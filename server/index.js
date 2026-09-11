@@ -33,6 +33,7 @@ import {
   deriveSupportRoot,
   findOrphanedHelpers,
   parseLaunchdManaged,
+  propresenterUptimeSeconds,
   readWorkspaceState,
   readCrashReports,
   readLibraryConsistency,
@@ -805,15 +806,41 @@ function frozen() {
 // uses this to hold off right after a launch, when reads fail en masse while
 // ProPresenter is still indexing its own media.
 let propresenterReadySince = null;
+/**
+ * How long ProPresenter has been up and answering, in milliseconds, or null.
+ *
+ * Two clocks, and the difference matters. Refrain can only observe from its own
+ * first successful probe, which is fine when Refrain starts first -- and wrong
+ * the moment it does not. An operator who opens ProPresenter, waits ten
+ * minutes, then starts Refrain was being told "up 0s of 180s" and made to wait
+ * again for a settling period that had long since passed.
+ *
+ * So prefer ProPresenter's real process uptime, which is the number the settle
+ * gate is actually asking about. The observed window stays as the fallback for
+ * when the process list cannot be read.
+ *
+ * The API still has to answer: a process that is up with its Network API off is
+ * not ready for anything.
+ */
 async function propresenterReadyForMs() {
   try {
     await client.testConnection();
-    if (propresenterReadySince == null) propresenterReadySince = Date.now();
-    return Date.now() - propresenterReadySince;
   } catch {
     propresenterReadySince = null;
     return null;
   }
+  if (propresenterReadySince == null) propresenterReadySince = Date.now();
+  const observed = Date.now() - propresenterReadySince;
+
+  if (!client.isLocalHost) return observed; // its processes are on another machine
+  try {
+    const { stdout } = await execFileAsync("ps", ["-Ao", "pid,etime,comm"], { timeout: 5000 });
+    const secs = propresenterUptimeSeconds(stdout);
+    if (secs != null) return Math.max(observed, secs * 1000);
+  } catch {
+    // Fall through to what we observed ourselves.
+  }
+  return observed;
 }
 
 /**
@@ -2887,12 +2914,38 @@ app.use((req, res) => {
 });
 
 app.listen(port, "127.0.0.1", async () => {
-  console.log(`Refrain running at http://localhost:${port}`);
+  /**
+   * The launcher window is the only interface some operators ever see, and it
+   * used to open with a URL and then go quiet. Everything Refrain decides at
+   * boot -- whether ProPresenter is there, whether it is going to index, why it
+   * is not -- was decided silently. When something then took minutes, there was
+   * no way to tell waiting from broken.
+   *
+   * So: say what this is, say whether ProPresenter is reachable, and if it is
+   * not, say the one thing that is nearly always wrong.
+   */
+  console.log("");
+  console.log(`  Refrain is running.  Open  http://localhost:${port}`);
+  console.log("  Leave this window open while you use it. Closing it stops Refrain.");
+  console.log("");
 
   if (!configFileExists()) {
-    console.log("No config.json found — waiting for first-run setup before indexing.");
+    console.log("  First run: finish setup in the browser and Refrain will index after that.");
+    console.log("");
     return;
   }
+
+  // Say this before anything slow happens, so a long first build is not the
+  // first time the operator learns ProPresenter cannot be reached.
+  try {
+    await client.testConnection();
+    console.log(`  ProPresenter: connected at ${config.propresenter.host}:${config.propresenter.port}`);
+  } catch {
+    console.log(`  ProPresenter: NOT reachable at ${config.propresenter.host}:${config.propresenter.port}`);
+    console.log("    Open ProPresenter, then check Preferences > Network is switched on.");
+    console.log("    Refrain will keep trying, and search still works from the index it has.");
+  }
+  console.log("");
 
   // Establish whether anything is on the screens before deciding to do work.
   await pollPerformance();
