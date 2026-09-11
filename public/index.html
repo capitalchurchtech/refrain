@@ -4,6 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Refrain</title>
+  <!-- Installable as its own window. An installed window has no tabs and no
+       address bar, and is not bound by the minimum width Chrome enforces on a
+       tabbed window - which is the point when this is docked beside
+       ProPresenter at about 455px. -->
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#0C0A11" />
+  <link rel="apple-touch-icon" href="img/icon-192.png" />
   <link rel="icon" type="image/svg+xml" href="img/favicon.svg" />
   <link rel="alternate icon" type="image/png" href="img/favicon.png" />
   <!-- Vendored, not fetched: a booth machine with no internet used to render

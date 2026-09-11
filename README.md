@@ -374,6 +374,28 @@ Two notes. The launcher opens a Terminal window and the server runs inside it, s
 
 On Windows the equivalent is a shortcut to `scripts/start.bat` placed in the Startup folder (press Win+R, type `shell:startup`, and drop the shortcut there).
 
+### Giving it its own window
+
+Refrain is meant to sit docked beside ProPresenter, and a browser tab is a poor
+shape for that: tabs and an address bar eat vertical space, and Chrome will not
+let a tabbed window get as narrow as the dock wants.
+
+Open Refrain in Chrome and use the install button in the address bar (or the
+three-dot menu, then Cast, save and share, then Install page as app). You get a
+window with no tabs and no address bar, its own icon in the Dock, and no minimum
+width to fight. On a 13" MacBook that lets it sit at about 455px beside
+ProPresenter, which is what the layout is built around.
+
+If you would rather not install anything, the Health screen has a one-click copy
+of the equivalent command:
+
+```bash
+open -na "Google Chrome" --args --app=http://localhost:3000
+```
+
+Both give the same window. The installed version keeps its icon and reopens from
+the Dock; the command is a one-off.
+
 ### Running it with no Terminal window (macOS)
 
 If you'd rather not have a Terminal window sitting open at all, run Refrain as a background service with `launchd`. It stays running with nothing to keep open or close by accident, starts at login, and relaunches itself if it ever crashes.

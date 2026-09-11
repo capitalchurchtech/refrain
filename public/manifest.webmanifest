@@ -1,0 +1,16 @@
+{
+  "name": "Refrain",
+  "short_name": "Refrain",
+  "description": "Find any slide in your ProPresenter library and put it on the screens.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0C0A11",
+  "theme_color": "#0C0A11",
+  "orientation": "any",
+  "icons": [
+    { "src": "img/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "img/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "img/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
