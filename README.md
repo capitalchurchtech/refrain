@@ -245,7 +245,7 @@ Get it from [nodejs.org](https://nodejs.org) and pick the **LTS** build, the one
 
 On a Mac the simplest route is the `.pkg` installer from that page: double click it and click through, no terminal involved. (If the machine already uses Homebrew, `brew install node` works too, but the installer is easier for a shared booth machine.) On Windows, use the `.msi` installer from the same page.
 
-Any LTS release from Node 18 onward works. If you're installing fresh, just take the newest LTS. You can confirm it worked by opening Terminal and running `node -v`.
+Take Node 20 or newer — that is what Refrain declares it needs, so an older one makes npm complain during setup. If you're installing fresh, just take the newest LTS, which is well past that. You can confirm it worked by opening Terminal and running `node -v`.
 
 ### Where to put Refrain
 
