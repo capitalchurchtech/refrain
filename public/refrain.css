@@ -3459,22 +3459,37 @@ html.blackroom .rf-record-row:hover {
   min-height: 44px; /* the touch floor still applies to the one control left */
 }
 
-/* Peek. Widening on hover restores the icon rail, so the way back is always
-   one movement away rather than a thing you have to know about. */
-#nav-rail.sliver:hover,
+/**
+ * Peek. Widening restores the icon rail, so the way back is always one
+ * movement away rather than a thing you have to know about.
+ *
+ * Hover is deliberately NOT the selector here. The sliver sits against the
+ * edge of the screen, which is exactly where a pointer travels on its way to
+ * somewhere else, so a bare `:hover` made the rail flash open every time you
+ * crossed it. nav.js adds `.peek` after the pointer has dwelt for a moment.
+ *
+ * `display` cannot be transitioned, so a CSS-only delay would have slid the
+ * width open while the contents appeared instantly -- the width being late is
+ * worse than it being early. One class moves both together.
+ *
+ * `:focus-within` stays immediate and stays separate. A keyboard user tabbing
+ * into the rail has already committed; making them wait would be hostile, and
+ * it is also the accessible route back from a state a pointer user chose.
+ */
+#nav-rail.sliver.peek,
 #nav-rail.sliver:focus-within {
   width: 3.5rem;
   overflow-x: visible;
 }
-#nav-rail.sliver:hover #brand-row,
+#nav-rail.sliver.peek #brand-row,
 #nav-rail.sliver:focus-within #brand-row,
-#nav-rail.sliver:hover #nav-items,
+#nav-rail.sliver.peek #nav-items,
 #nav-rail.sliver:focus-within #nav-items,
-#nav-rail.sliver:hover #status-cluster,
+#nav-rail.sliver.peek #status-cluster,
 #nav-rail.sliver:focus-within #status-cluster,
-#nav-rail.sliver:hover #nav-help-toggle,
+#nav-rail.sliver.peek #nav-help-toggle,
 #nav-rail.sliver:focus-within #nav-help-toggle,
-#nav-rail.sliver:hover #theme-toggle,
+#nav-rail.sliver.peek #theme-toggle,
 #nav-rail.sliver:focus-within #theme-toggle {
   display: flex;
 }

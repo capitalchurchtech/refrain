@@ -351,6 +351,7 @@ export async function initNav({ onNavigate, viewIds }) {
     rail.classList.toggle("w-36", isFull);
     rail.classList.toggle("w-5", isSliver);
     rail.classList.toggle("sliver", isSliver);
+    if (!isSliver) cancelPeek();
     rail.classList.toggle("collapsed", !isFull);
     // The rail is `fixed` (Section 13.1: `sticky` detached from the top
     // near the bottom of a tall page, since a sticky element can't stay
@@ -374,6 +375,38 @@ export async function initNav({ onNavigate, viewIds }) {
         ? "Collapse to a sliver"
         : "Show the full menu";
   }
+
+  /**
+   * How long the pointer has to rest on the sliver before it opens.
+   *
+   * The sliver lives against the edge of the screen, which is precisely the
+   * path a pointer takes on its way somewhere else, so opening on contact made
+   * it flash every time you crossed it. Long enough to mean "I meant that",
+   * short enough not to feel broken.
+   */
+  const PEEK_DELAY_MS = 1500;
+  let peekTimer = null;
+
+  function cancelPeek() {
+    clearTimeout(peekTimer);
+    peekTimer = null;
+    rail.classList.remove("peek");
+  }
+
+  rail.addEventListener("pointerenter", (e) => {
+    // Touch reports as a pointerenter that never leaves, which would pin the
+    // rail open with no way to dismiss it. The cycle already skips the sliver
+    // without hover; this makes the peek agree.
+    if (e.pointerType === "touch") return;
+    if (!rail.classList.contains("sliver")) return;
+    clearTimeout(peekTimer);
+    peekTimer = setTimeout(() => rail.classList.add("peek"), PEEK_DELAY_MS);
+  });
+
+  // Leaving cancels immediately, whether it opened or was still counting down.
+  // The delay is for opening; closing promptly is what makes it feel deliberate
+  // rather than sticky.
+  rail.addEventListener("pointerleave", cancelPeek);
 
   /** Hover-to-peek is the sliver's way back, so without it the sliver is a trap. */
   function canHover() {
