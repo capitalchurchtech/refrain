@@ -416,7 +416,18 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
         plan.mode === "full"
           ? new Date().toISOString()
           : (currentIndex?.lastFullBuildAt ?? currentIndex?.builtAt ?? null),
+      /**
+       * What the run PLANNED to do, and what it actually managed.
+       *
+       * `plan.counts` alone was being reported to the operator as fact, so an
+       * aborted crawl still announced "871 changed, 101 re-checked" -- the
+       * whole plan -- directly above a notice saying 843 presentations had
+       * been left alone. Both lines were generated from the same run and
+       * contradicted each other, and the reassuring one was the lie.
+       */
       reindexCounts: plan.counts ?? null,
+      reindexAttempted: idsNeedingSlides.length,
+      reindexCompleted: crawlAborted ? fetched : idsNeedingSlides.length,
       presentations,
     };
     currentIndex = newIndex;

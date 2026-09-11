@@ -80,3 +80,23 @@ test("a predicate that never fires does not stop anything", async () => {
   await rebuildIndex(client(10, { onFetch: () => n++ }), {}, [], { shouldStop: () => false });
   assert.equal(n, 10);
 });
+
+test("an aborted crawl reports what it read, not what it planned to read", async () => {
+  // The bug this pins: `reindexCounts` carried the PLAN, so an aborted run
+  // announced "871 changed, 101 re-checked" directly above a notice saying 843
+  // presentations had been left untouched. Two lines from one run, contradicting
+  // each other, and the reassuring one was the lie.
+  let n = 0;
+  const idx = await rebuildIndex(client(40, { onFetch: () => n++ }), {}, [], {
+    shouldStop: () => n >= 6,
+  });
+  assert.equal(idx.reindexAttempted, 40, "it planned to read all 40");
+  assert.ok(idx.reindexCompleted < 40, `it actually read ${idx.reindexCompleted}`);
+  assert.equal(idx.reindexCompleted, n - 1 >= 0 ? idx.reindexCompleted : 0);
+});
+
+test("a run that finishes reports attempted and completed as equal", async () => {
+  const idx = await rebuildIndex(client(15), {}, []);
+  assert.equal(idx.reindexAttempted, 15);
+  assert.equal(idx.reindexCompleted, 15, "nothing was skipped, so they match");
+});

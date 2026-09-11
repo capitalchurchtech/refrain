@@ -888,6 +888,8 @@ function indexStatusPayload() {
     crawledPlaylists: Boolean(index.crawledPlaylists),
     buildMode: index.buildMode ?? null,
     reindexCounts: index.reindexCounts ?? null,
+    reindexAttempted: index.reindexAttempted ?? null,
+    reindexCompleted: index.reindexCompleted ?? null,
     lastFullBuildAt: index.lastFullBuildAt ?? null,
     performanceMode: {
       armed: performance.armed,

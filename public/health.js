@@ -834,8 +834,19 @@ function renderHealth(health, configOptions, versionInfo) {
                     ? "Duration unknown. Built before this was tracked. Rebuild once to see it."
                     : `Last ${index.buildMode === "incremental" ? "reindex" : "full rebuild"} took ${formatDuration(index.buildDurationMs)}${
                         index.buildMode === "incremental" && index.reindexCounts
-                          ? `. Re-read ${
+                          ? // What it actually re-read, not what it set out to.
+                            // The planned figure was printed as fact directly
+                            // above a notice saying most of the library had been
+                            // skipped, and the reassuring number was the wrong one.
+                            `. Re-read ${
+                              index.reindexCompleted ??
                               index.reindexCounts.changed + index.reindexCounts.added + index.reindexCounts.unverifiable
+                            }${
+                              index.reindexCompleted != null &&
+                              index.reindexAttempted != null &&
+                              index.reindexCompleted < index.reindexAttempted
+                                ? ` of ${index.reindexAttempted} planned — it stopped early`
+                                : ""
                             }, reused ${index.reindexCounts.carriedOver}`
                           : index.crawledPlaylists
                             ? " (included a playlist crawl)"
