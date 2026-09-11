@@ -27,7 +27,7 @@ export function initHealth() {
     // silently re-collapse it right after the user opens it to click
     // Save inside — capture and restore its open/closed state across
     // the re-render.
-    const wasLibrarySyncOpen = document.getElementById("library-sync-details")?.open ?? false;
+    const wasLibraryFoldersOpen = document.getElementById("library-folders-details")?.open ?? false;
     const scrollY = window.scrollY;
 
     const [health, libraryFolders, configOptions, versionInfo] = await Promise.all([
@@ -43,15 +43,44 @@ export function initHealth() {
     container.innerHTML = `
       <div class="flex flex-col gap-4 max-w-3xl">
         <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="heart-pulse" class="w-5 h-5"></i> Health</h1>
-        ${renderHealth(health, configOptions, versionInfo)}
-        ${renderLibraryCard(libraryFolders, arrangementFolders)}
+        ${renderHealth(health, configOptions, versionInfo, renderLibraryCard(libraryFolders, arrangementFolders))}
       </div>`;
 
-    const librarySyncDetails = document.getElementById("library-sync-details");
-    if (librarySyncDetails) librarySyncDetails.open = wasLibrarySyncOpen;
+    const libraryFoldersDetails = document.getElementById("library-folders-details");
+    if (libraryFoldersDetails) libraryFoldersDetails.open = wasLibraryFoldersOpen;
     window.scrollTo(0, scrollY);
 
     if (window.lucide) window.lucide.createIcons();
+
+    const shareSaveBtn = document.getElementById("share-library-save");
+    if (shareSaveBtn) {
+      shareSaveBtn.addEventListener("click", async (e) => {
+        const btn = e.currentTarget; // captured before the await
+        const statusEl = document.getElementById("share-library-status");
+        btn.disabled = true;
+        if (statusEl) statusEl.textContent = "Saving…";
+        try {
+          const res = await fetch("/api/library-sync/config", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              enabled: document.getElementById("share-library-enabled").checked,
+              sharedFolder: document.getElementById("share-library-folder").value,
+              libraryName: document.getElementById("share-library-name").value,
+              direction: document.getElementById("share-library-direction").value,
+            }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error ?? res.statusText);
+          // Re-render so the badge and the nav entry both catch up: turning
+          // this on is what makes the Share Library screen appear at all.
+          await render();
+        } catch (err) {
+          if (btn.isConnected) btn.disabled = false;
+          if (statusEl) statusEl.textContent = `Couldn't save: ${err.message}`;
+        }
+      });
+    }
 
     const updateNowBtn = document.getElementById("update-now-btn");
     if (updateNowBtn) {
@@ -608,8 +637,8 @@ function infoIcon(tip, direction = "top") {
 function renderLibraryCard({ folders, selected, error }, arrangementFolders) {
   if (error) {
     return `
-      <details id="library-sync-details" class="collapse collapse-arrow bg-base-200">
-        <summary class="collapse-title text-base font-semibold flex items-center gap-2"><i data-lucide="folder-sync" class="w-4 h-4 opacity-70"></i> Library Sync</summary>
+      <details id="library-folders-details" class="collapse collapse-arrow bg-base-200">
+        <summary class="collapse-title text-base font-semibold flex items-center gap-2"><i data-lucide="folder-search" class="w-4 h-4 opacity-70"></i> Library folders</summary>
         <div class="collapse-content">
           <div class="text-sm opacity-70">Can't reach ProPresenter to list Library folders right now.</div>
         </div>
@@ -619,9 +648,10 @@ function renderLibraryCard({ folders, selected, error }, arrangementFolders) {
 
   const allSelected = selected === null;
   return `
-    <details id="library-sync-details" class="collapse collapse-arrow bg-base-200">
-      <summary class="collapse-title text-base font-semibold">Library Sync</summary>
+    <details id="library-folders-details" class="collapse collapse-arrow bg-base-200">
+      <summary class="collapse-title text-base font-semibold">Library folders</summary>
       <div class="collapse-content">
+        <div class="text-sm opacity-70 mb-2 rf-measure">Which of ProPresenter's Library folders Refrain reads. Nothing here copies or moves anything — that is Share Library, on its own screen.</div>
         <div class="text-sm font-semibold mt-1">Searchable</div>
         <div class="text-sm opacity-70 mb-1 rf-measure">Which Library folders to index and search. A smaller scope indexes much faster. Includes anything you want to find slides in, songs or otherwise (e.g. sermons).</div>
         <label class="label cursor-pointer justify-start gap-2 w-fit">
@@ -796,8 +826,81 @@ function renderIndexShortfall(index) {
           </div>`;
 }
 
-function renderHealth(health, configOptions, versionInfo) {
+/**
+ * Share Library — the feature formerly reachable only by hand-editing
+ * config.json.
+ *
+ * It shipped with a nav entry, a screen, a server route and a safety guard, and
+ * no way to switch it on from inside the product. Off by default plus a nav
+ * that hides disabled modules meant the only route in was a text editor, so in
+ * practice nobody could find it and nobody ran it.
+ *
+ * Called "Share Library" here rather than "Library Sync" because a Health
+ * accordion titled "Library Sync" already existed and configured something
+ * else entirely — which folders get indexed for search. That collision is the
+ * reason this feature was misunderstood every time it came up.
+ */
+function renderShareLibraryCard(share) {
+  if (!share) return "";
+  const status = share.status ?? "off";
+  const badge =
+    status === "active"
+      ? `<div class="badge badge-success gap-1">On</div>`
+      : status === "misconfigured"
+        ? `<div class="badge badge-warning gap-1">Needs setup</div>`
+        : `<div class="badge badge-ghost gap-1">Off</div>`;
+  return `
+    <div class="card bg-base-200">
+      <div class="card-body p-3 gap-2">
+        <h2 class="card-title text-base flex items-center justify-between gap-2">
+          <span class="flex items-center gap-2"><i data-lucide="folder-sync" class="w-4 h-4 opacity-70"></i> Share Library</span>
+          ${badge}
+        </h2>
+        <div class="text-sm opacity-70 rf-measure">
+          Copies one ProPresenter library between two machines through a folder they both see
+          (Dropbox, Google Drive, OneDrive). Add-and-update only — it never deletes.
+          Off unless you run two machines.
+          ${infoIcon("This is the only part of Refrain that writes presentation files. Everything else reads through ProPresenter's API. That is why it refuses to run while ProPresenter is open.")}
+        </div>
+        <div class="alert alert-warning py-2 text-sm items-start">
+          <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
+          <span><strong>ProPresenter must be closed when this runs.</strong> It writes presentation files
+          into a library folder, and doing that underneath a running ProPresenter is how a workspace gets
+          corrupted. Refrain refuses to sync while ProPresenter is open, in either direction.</span>
+        </div>
+        <label class="rf-check w-fit">
+          <input type="checkbox" id="share-library-enabled" class="checkbox checkbox-xs" ${share.enabled ? "checked" : ""} />
+          Turn Share Library on
+        </label>
+        <div class="rf-control-row">
+          <div class="rf-field">
+            <label for="share-library-folder">Shared folder</label>
+            <input type="text" id="share-library-folder" class="input input-bordered"
+              placeholder="/Users/you/Dropbox/RefrainLibrary" value="${escapeHtml(share.sharedFolder ?? "")}" />
+          </div>
+        </div>
+        <div class="rf-control-row">
+          <div class="rf-field rf-field-fixed">
+            <label for="share-library-name">Library</label>
+            <input type="text" id="share-library-name" class="input input-bordered" value="${escapeHtml(share.libraryName ?? "Songs")}" />
+          </div>
+          <div class="rf-field rf-field-fixed">
+            <label for="share-library-direction">This machine</label>
+            <select id="share-library-direction" class="select select-bordered">
+              <option value="send" ${share.direction === "send" ? "selected" : ""}>Sends its library</option>
+              <option value="receive" ${share.direction === "receive" ? "selected" : ""}>Receives the library</option>
+            </select>
+          </div>
+          <button id="share-library-save" class="btn btn-brand btn-sm">Save</button>
+        </div>
+        <div id="share-library-status" class="rf-hint"></div>
+      </div>
+    </div>`;
+}
+
+function renderHealth(health, configOptions, versionInfo, libraryCard = "") {
   const { propresenter, index, arrangementModule, role, version, config, envRequirements } = health;
+  const shareLibraryCard = renderShareLibraryCard(health.shareLibrary);
 
   const propresenterCard = `
     <div class="card bg-base-200">
@@ -1390,6 +1493,8 @@ function renderHealth(health, configOptions, versionInfo) {
       ${indexCard}
       ${arrangementCard}
       ${configCard}
+      ${libraryCard}
+      ${shareLibraryCard}
       ${updatesCard}
       ${envCard}
       <div class="text-xs opacity-50 text-center mt-2 flex flex-col items-center gap-1">

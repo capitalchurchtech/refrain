@@ -9,7 +9,7 @@
  */
 export default {
   id: "library-sync",
-  navLabel: "Library Sync",
+  navLabel: "Share Library",
   icon: "folder-sync",
   route: "/library-sync",
   component: null,

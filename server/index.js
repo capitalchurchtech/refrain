@@ -2829,6 +2829,10 @@ app.get("/api/health", async (_req, res) => {
     role: config.role ?? null,
     propresenter,
     index: indexStatusPayload(),
+    shareLibrary: {
+      status: getLibrarySyncModuleStatus(config),
+      ...librarySyncSettings(),
+    },
     arrangementModule: {
       status: getArrangementModuleStatus(config),
       enabled: Boolean(config.arrangementModule?.enabled),
@@ -2841,6 +2845,11 @@ app.get("/api/health", async (_req, res) => {
       pendingUploads: await getPendingUploadCount(),
     },
     config: {
+      // NOTE: `librarySync` here is the SEARCH SCOPE — which Library folders
+      // get indexed. The feature that copies files between machines is
+      // `librarySyncModule` below, surfaced as "Share Library". Two keys a
+      // character apart meaning unrelated things; the names are historical and
+      // the UI no longer repeats the confusion.
       librarySync: {
         folders: config.librarySync?.folders ?? null,
         crawlPlaylists: Boolean(config.librarySync?.crawlPlaylists),

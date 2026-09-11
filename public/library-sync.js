@@ -1,5 +1,5 @@
 /**
- * Library Sync screen — keeps one ProPresenter library in step with another
+ * Share Library screen — keeps one ProPresenter library in step with another
  * machine or account through a shared folder, one direction at a time.
  *
  * Deliberately shows what a sync WOULD do before you run one, because this
@@ -14,7 +14,7 @@ export function initLibrarySync() {
     container.innerHTML = `
       <div class="flex flex-col gap-4 max-w-3xl">
         <div>
-          <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="folder-sync" class="w-5 h-5"></i> Library Sync</h1>
+          <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="folder-sync" class="w-5 h-5"></i> Share Library</h1>
           <p class="text-sm opacity-70">
             Copies one library between two machines or macOS accounts through a shared folder.
             It only ever adds and updates, never deletes, and keeps dated snapshots you can restore from.
@@ -33,7 +33,7 @@ export function initLibrarySync() {
     try {
       data = await fetch("/api/library-sync/status").then((r) => r.json());
     } catch (err) {
-      body.textContent = `Couldn't load Library Sync: ${err.message}`;
+      body.textContent = `Couldn't load Share Library: ${err.message}`;
       return;
     }
     body.innerHTML = renderBody(data);
@@ -58,7 +58,7 @@ export function initLibrarySync() {
           <h2 class="card-title text-base">Settings</h2>
           <label class="label cursor-pointer justify-start gap-2 py-0">
             <input type="checkbox" id="ls-enabled" class="checkbox checkbox-sm" ${s.enabled ? "checked" : ""} />
-            <span class="label-text">Turn Library Sync on for this machine</span>
+            <span class="label-text">Turn Share Library on for this machine</span>
           </label>
           <div class="flex flex-wrap gap-3">
             <label class="form-control">
