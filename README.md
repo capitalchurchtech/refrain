@@ -109,6 +109,22 @@ backwards:
 
 Indexing is reads only. Nothing is ever sent to the screens by a build.
 
+### What needs ProPresenter open, and the one thing that needs it closed
+
+| | |
+|---|---|
+| **Needs it open** | Building or refreshing the search index, Go Live, Show in Editor, the Live page (Looks, Macros, Clear, messages), the live readout and Return bar, Spell Check, and Arrangement comparisons. All of these go through ProPresenter's API. |
+| **Does not care** | QR codes, image cropping, splitting pasted lyrics into slides, and Scripture lookup. Searching an index you already have works too — only *building* it needs ProPresenter. |
+| **Needs it closed** | **Library Sync, and only Library Sync.** |
+
+Library Sync is the exception because it is the one feature that writes
+presentation files into a library folder rather than reading through the API.
+ProPresenter builds a private catalog of each workspace at startup and holds it
+while the app runs, so files appearing or being replaced underneath it is how
+that catalog and the disk stop agreeing — which is what a corrupted workspace
+is. Refrain refuses to sync in either direction while ProPresenter is running,
+and refuses if it cannot tell.
+
 It does make ProPresenter sluggish while it runs — Go Live, Clear and macros
 can be slow to respond — so the time to do it is before a service, not during
 one. A full build takes about a quarter of an hour on a nine hundred
