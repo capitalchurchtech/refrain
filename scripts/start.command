@@ -6,32 +6,9 @@ set -e
 cd "$(dirname "$0")/.."
 
 # Find Node, including installs that are not on the default PATH.
-#
-# A double-clicked .command does not read ~/.zshrc or ~/.bash_profile, so a
-# `command -v node` alone only finds Node in the system PATH. That is fine for
-# the .pkg installer, which needs an administrator password -- and not everyone
-# has one. On a locked-down or borrowed machine the usual answer is a
-# user-space Node in the home folder, which worked perfectly in Terminal and
-# then made this launcher claim Node was not installed at all.
-#
-# So look where a user-space install actually lands before giving up.
-if ! command -v node >/dev/null 2>&1; then
-  for candidate in \
-    "$HOME/.local/node/bin" \
-    "$HOME/node/bin" \
-    "$HOME/.volta/bin" \
-    "$HOME/.fnm/aliases/default/bin" \
-    "$HOME"/.nvm/versions/node/*/bin \
-    /opt/homebrew/bin \
-    /usr/local/bin
-  do
-    if [ -x "$candidate/node" ]; then
-      PATH="$candidate:$PATH"
-      export PATH
-      break
-    fi
-  done
-fi
+# The search list lives in find-node.sh, shared with the LaunchAgent installer.
+# shellcheck source=find-node.sh
+. "$(dirname "$0")/find-node.sh"
 
 if ! command -v node >/dev/null 2>&1; then
   echo "Node.js is required but wasn't found on this machine."

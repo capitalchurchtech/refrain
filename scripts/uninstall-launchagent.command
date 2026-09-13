@@ -1,9 +1,17 @@
 #!/bin/bash
 # Stops and removes the Refrain background service installed by
-# install-launchagent.command. Double-click to run. This does not touch
-# your config.json, .env, or any data; it only removes the launchd entry.
+# install-launchagent.command (or by the Health screen's button). Double-click
+# to run. This does not touch your config.json, .env, or any data; it only
+# removes the launchd entry.
 set -e
+cd "$(dirname "$0")/.."
 
+# shellcheck source=find-node.sh
+. "$(dirname "$0")/find-node.sh"
+
+# Removing the agent must not depend on Node being findable -- the reason
+# someone is uninstalling may well be that Node moved. So do it directly, and
+# only fall back to the module for anything more than deleting a file.
 LABEL="com.refrain.server"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 

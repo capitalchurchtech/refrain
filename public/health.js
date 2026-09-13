@@ -53,6 +53,33 @@ export function initHealth() {
 
     if (window.lucide) window.lucide.createIcons();
 
+    const autostartBtn = document.getElementById("autostart-toggle");
+    if (autostartBtn) {
+      autostartBtn.addEventListener("click", async () => {
+        // Captured now: the click handler awaits, and re-rendering the card
+        // replaces this node, so reading it back afterwards finds nothing.
+        const btn = autostartBtn;
+        const statusEl = document.getElementById("autostart-status");
+        const turningOn = btn.dataset.enabled !== "1";
+        btn.disabled = true;
+        if (statusEl) statusEl.textContent = turningOn ? "Turning on..." : "Turning off...";
+        try {
+          const res = await fetch("/api/autostart", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ enabled: turningOn }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || res.statusText);
+          await render();
+        } catch (err) {
+          btn.disabled = false;
+          if (statusEl) statusEl.textContent = "";
+          showFailure(`Couldn't ${turningOn ? "turn on" : "turn off"} start at login: ${err.message}`);
+        }
+      });
+    }
+
     document.querySelectorAll(".terminal-copy").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const label = btn.innerHTML;
@@ -958,10 +985,56 @@ function renderShareLibraryCard(share) {
     </div>`;
 }
 
+/**
+ * Start at login.
+ *
+ * This is the answer to the thing every operator hits first: Refrain lives in
+ * a Terminal window, and closing that window stops it. A LaunchAgent runs the
+ * same server with no window and brings it back at the next login.
+ *
+ * Not shown at all off macOS -- an explanation of a button that cannot exist
+ * is worse than silence.
+ */
+function renderAutostartCard(state) {
+  if (!state || !state.supported) return "";
+  const on = state.installed;
+  const badge = on
+    ? `<div class="badge badge-success gap-1">On</div>`
+    : `<div class="badge badge-ghost gap-1">Off</div>`;
+  // "installed but not loaded" is the one state worth calling out: the plist is
+  // there and launchd is not running it, which a plain On/Off would hide.
+  const warn =
+    on && !state.loaded
+      ? `<div class="rf-hint">Installed, but launchd isn't running it. Turn it off and on again, or check <code>logs/refrain.err.log</code>.</div>`
+      : "";
+  return `
+    <div class="card bg-base-200">
+      <div class="card-body p-3 gap-2">
+        <h2 class="card-title text-base flex items-center justify-between gap-2">
+          <span class="flex items-center gap-2"><i data-lucide="power" class="w-4 h-4 opacity-70"></i> Start at login</span>
+          ${badge}
+        </h2>
+        <div class="text-sm opacity-70 rf-measure">
+          Runs Refrain in the background with no Terminal window, and starts it again
+          whenever this account logs in. Turning it off removes it completely and
+          changes nothing else.
+        </div>
+        ${warn}
+        <div class="rf-control-row">
+          <button type="button" id="autostart-toggle" class="btn btn-outline btn-xs" data-enabled="${on ? "1" : "0"}">
+            <i data-lucide="${on ? "power-off" : "power"}" class="w-3.5 h-3.5"></i> ${on ? "Turn off" : "Turn on"}
+          </button>
+          <span id="autostart-status" class="text-xs opacity-60"></span>
+        </div>
+      </div>
+    </div>`;
+}
+
 function renderHealth(health, configOptions, versionInfo, libraryCard = "") {
   const { propresenter, index, arrangementModule, role, version, config, envRequirements } = health;
   const shareLibraryCard = renderShareLibraryCard(health.shareLibrary);
   const terminalCard = renderTerminalActions(health.port ?? window.location.port ?? 3000, health.installDir ?? "$HOME/Refrain");
+  const autostartCard = renderAutostartCard(health.autostart);
 
   const propresenterCard = `
     <div class="card bg-base-200">
@@ -1556,6 +1629,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "") {
       ${configCard}
       ${libraryCard}
       ${shareLibraryCard}
+      ${autostartCard}
       ${terminalCard}
       ${updatesCard}
       ${envCard}

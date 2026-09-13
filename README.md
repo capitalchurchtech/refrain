@@ -400,9 +400,9 @@ the Dock; the command is a one-off.
 
 If you'd rather not have a Terminal window sitting open at all, run Refrain as a background service with `launchd`. It stays running with nothing to keep open or close by accident, starts at login, and relaunches itself if it ever crashes.
 
-Double-click `scripts/install-launchagent.command`. It finds your Node install, writes a LaunchAgent pointed at wherever you put Refrain, and starts it. From then on Refrain runs quietly in the background, and its output goes to `logs/refrain.out.log` and `logs/refrain.err.log` in the Refrain folder if you ever need to check on it. To undo it, double-click `scripts/uninstall-launchagent.command`.
+The easiest way is the **Start at login** card on the Health screen: turn it on, and that is the whole job. Turning it off removes it completely and changes nothing else. If you would rather set it up before anyone opens the app, double-click `scripts/install-launchagent.command` instead — it does exactly the same thing, and `scripts/uninstall-launchagent.command` undoes it. Either way Refrain's output goes to `logs/refrain.out.log` and `logs/refrain.err.log` in the Refrain folder if you ever need to check on it.
 
-Two things to know. If you'd already set Refrain up with `start.command` or a Login Item, remove that after installing the service so two copies don't run at once. And a LaunchAgent still only starts once the account logs in, so for a hands-free recovery after a full reboot, turn on automatic login for the booth account as described above.
+Two things to know. If you'd already set Refrain up with `start.command` or a Login Item, remove that so two copies aren't started at once — though if one does start while another is already running, it says so and stands down rather than fighting over the port, and takes over at the next login. And a LaunchAgent still only starts once the account logs in, so for a hands-free recovery after a full reboot, turn on automatic login for the booth account as described above.
 
 ## Updating
 

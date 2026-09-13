@@ -97,6 +97,7 @@ import { startWatcher as startImageCropWatcher, getImageCropStatus, foldersOverl
 import { generateQr, getQrHistoryList, getQrHistoryEntry, addQrHistoryEntry, clearQrHistory, QR_LIMITS } from "./qr-code.js";
 import { loadSpeller, findTypos, tokenize, addToAllowlist, removeFromAllowlist, parseWordList } from "./spellcheck.js";
 import { normalizeSongTitle } from "../providers/planning-center.js";
+import * as autostart from "./autostart.js";
 
 const { version } = JSON.parse(readFileSync("./package.json", "utf-8"));
 
@@ -2823,6 +2824,39 @@ app.post("/api/setup", async (req, res) => {
 
 // --- Health / status screen (Section 7) ---
 
+/**
+ * Start at login — read, then set.
+ *
+ * A button rather than a double-clicked script, because the script asked the
+ * operator to find a file in a folder and trust it, which is the step that
+ * does not happen. The work is identical; this one is where they already are.
+ */
+app.get("/api/autostart", async (_req, res) => {
+  try {
+    res.json(await autostart.status());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/autostart", async (req, res) => {
+  const enabled = req.body?.enabled;
+  if (typeof enabled !== "boolean") {
+    return res.status(400).json({ error: "enabled must be true or false" });
+  }
+  if (!autostart.isSupported()) {
+    return res.status(400).json({ error: "Starting at login is a macOS feature." });
+  }
+  try {
+    const result = enabled
+      ? await autostart.install({ appDir: process.cwd(), port })
+      : await autostart.uninstall();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/api/health", async (_req, res) => {
   let propresenter;
   try {
@@ -2847,6 +2881,10 @@ app.get("/api/health", async (_req, res) => {
     // than one with a placeholder path in it.
     installDir: process.cwd(),
     port,
+    // Whether Refrain starts itself at login. Read on every Health load rather
+    // than cached: the operator can also install or remove it with the
+    // double-click scripts, and a stale toggle would lie about which.
+    autostart: await autostart.status().catch(() => ({ supported: false })),
     shareLibrary: {
       status: getLibrarySyncModuleStatus(config),
       ...librarySyncSettings(),
@@ -2940,7 +2978,7 @@ app.use((req, res) => {
 </html>`);
 });
 
-app.listen(port, "127.0.0.1", async () => {
+const server = app.listen(port, "127.0.0.1", async () => {
   /**
    * The launcher window is the only interface some operators ever see, and it
    * used to open with a URL and then go quiet. Everything Refrain decides at
@@ -3067,4 +3105,28 @@ app.listen(port, "127.0.0.1", async () => {
       console.error("Failed to start image-crop watcher:", err.message);
     }
   }
+});
+
+/**
+ * Two copies of Refrain, one port.
+ *
+ * This became reachable the moment starting at login became a button: the
+ * operator enables it while Refrain is already running in a Terminal window,
+ * and a second copy launches immediately. Unhandled, `listen` throws
+ * EADDRINUSE, the process dies non-zero, and a KeepAlive LaunchAgent restarts
+ * it forever -- a crash loop caused by turning on a convenience.
+ *
+ * So the second copy stands down, says why, and exits 0. The LaunchAgent's
+ * KeepAlive is `SuccessfulExit: false`, so a deliberate exit is left alone
+ * while a real crash still restarts. Nothing is lost either way: the copy that
+ * holds the port is a complete Refrain.
+ */
+server.on("error", (err) => {
+  if (err.code !== "EADDRINUSE") throw err;
+  console.log("");
+  console.log(`  Refrain is already running on port ${port}, so this copy is standing down.`);
+  console.log(`  Open http://localhost:${port} — that one is the live copy.`);
+  console.log("  (To hand over to this copy instead, quit the other one first.)");
+  console.log("");
+  process.exit(0);
 });
