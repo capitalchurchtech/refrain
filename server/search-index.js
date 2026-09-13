@@ -58,6 +58,47 @@ const CRAWL_ABORT_AFTER_CONSECUTIVE_FAILURES = 10;
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 let currentIndex = { builtAt: null, presentations: {} };
+
+/**
+ * Per-slide strings derived from the index, keyed by presentation id.
+ *
+ * Every search used to lowercase every slide it looked at, and the apostrophe
+ * handling added a second pass on top -- 4.5ms to 9.3ms per search on a
+ * 445-presentation library, paid again on every keystroke. None of that work
+ * depends on the query, and the index only changes when it is rebuilt or
+ * reloaded, so it belongs here instead: derived once, thrown away wholesale
+ * whenever `currentIndex` is replaced.
+ *
+ * Kept beside the index rather than written onto the slide objects, because
+ * those get serialized to the on-disk cache and this is not cache content.
+ */
+let derived = new Map();
+
+function setCurrentIndex(next) {
+  currentIndex = next;
+  derived = new Map();
+}
+
+/** Lowercased, unified and folded forms for one presentation's slides. */
+function derivedFor(presentationId, entry) {
+  let rows = derived.get(presentationId);
+  if (rows) return rows;
+  rows = (entry.slides ?? []).map((slide) => {
+    const lower = slide.text.toLowerCase();
+    const hasApostrophe = HAS_APOSTROPHE.test(lower);
+    return {
+      lower,
+      // Only lines that actually carry a mark need the other two forms, and
+      // they are the minority -- 3,808 slides of 13,000 in this library.
+      unified: hasApostrophe ? unifyApostrophes(lower) : lower,
+      folded: hasApostrophe ? foldApostrophes(lower) : lower,
+      hasApostrophe,
+    };
+  });
+  derived.set(presentationId, rows);
+  return rows;
+}
+
 let rebuildInFlight = null;
 // Which kind of run is in flight, so a later caller can tell whether joining it
 // would actually satisfy them. See the guard in rebuildIndex.
@@ -95,7 +136,7 @@ export function getPresentationName(presentationId) {
 export async function loadIndexFromDisk() {
   try {
     const raw = await readFile(CACHE_PATH, "utf-8");
-    currentIndex = JSON.parse(raw);
+    setCurrentIndex(JSON.parse(raw));
     return currentIndex;
   } catch {
     return null;
@@ -435,7 +476,7 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
       reindexCompleted: crawlAborted ? fetched : idsNeedingSlides.length,
       presentations,
     };
-    currentIndex = newIndex;
+    setCurrentIndex(newIndex);
     await persistIndex(newIndex);
     return newIndex;
   })();
@@ -669,8 +710,45 @@ export function shouldAutoRebuild(index) {
  * than one folder in its sync scope (config.json's librarySync.folders).
  * @param {{ query: string, playlistId?: string, dateField?: "created"|"modified", dateFrom?: string, dateTo?: string, folders?: string[] }} opts
  */
+/**
+ * Apostrophes are the one punctuation mark a volunteer reliably drops. "Ive",
+ * "dont" and "youre" are typed at speed on a Sunday and, until now, matched
+ * nothing at all -- the lyric reads "I've" and a substring search is a
+ * substring search.
+ *
+ * Two separate normalizations, and the difference between them matters:
+ *
+ * - `unifyApostrophes` maps the curly and modifier-letter forms onto the
+ *   straight one, on **both** sides. A lyric pasted from a word processor
+ *   carries U+2019 while the operator's keyboard sends U+0027; that is a
+ *   difference in encoding, not in what was meant, so it is safe to erase.
+ * - `foldApostrophes` removes the mark entirely, and is applied to the
+ *   **slide text only**. Folding the query as well was tried and is wrong:
+ *   searching "i've" then folds to "ive" and matches "give" and "important",
+ *   returning 1,599 results against this library where 56 were wanted. A typed
+ *   apostrophe is deliberate. A missing one is the thing being forgiven, so
+ *   the forgiveness runs one way.
+ */
+const CURLY_APOSTROPHES = /[\u2018\u2019\u02BC]/g;
+const APOSTROPHES = /['\u2018\u2019\u02BC]/g;
+// Non-global twin for the cheap "is there one at all" test: a /g regex carries
+// `lastIndex` across `.test()` calls and would skip every other match.
+const HAS_APOSTROPHE = /['\u2018\u2019\u02BC]/;
+
+export function unifyApostrophes(text) {
+  return String(text ?? "").replace(CURLY_APOSTROPHES, "'");
+}
+
+export function foldApostrophes(text) {
+  return String(text ?? "").replace(APOSTROPHES, "");
+}
+
 export function search({ query, playlistId, dateField, dateFrom, dateTo, folders }) {
   const q = normalizeText(query).toLowerCase();
+  const unifiedQ = unifyApostrophes(q);
+  // A query that carries an apostrophe is matched literally -- see the note on
+  // foldApostrophes for why the forgiveness only runs one way.
+  const queryHasApostrophe = HAS_APOSTROPHE.test(unifiedQ);
   const fromTime = dateFrom ? new Date(dateFrom).getTime() : null;
   const toTime = dateTo ? new Date(`${dateTo}T23:59:59.999`).getTime() : null;
   if (!q && !fromTime && !toTime) return [];
@@ -697,9 +775,19 @@ export function search({ query, playlistId, dateField, dateFrom, dateTo, folders
     // and over. The anchor kept is the earliest one, so Go Live still lands on
     // the first time that line is sung.
     const seen = new Map();
-    for (const slide of entry.slides) {
-      if (!slide.text.toLowerCase().includes(q)) continue;
-      const key = slide.text.toLowerCase();
+    const slides = entry.slides ?? [];
+    const rows = derivedFor(presentationId, entry);
+    for (let i = 0; i < slides.length; i += 1) {
+      const slide = slides[i];
+      const { lower, unified, folded, hasApostrophe } = rows[i];
+      // Ordered cheapest-first. A plain hit settles it; a line carrying no
+      // mark at all can never become one by folding, so most slides are
+      // decided by the one `includes` this loop always did.
+      if (!unified.includes(unifiedQ)) {
+        if (!hasApostrophe || queryHasApostrophe) continue;
+        if (!folded.includes(unifiedQ)) continue;
+      }
+      const key = lower;
       const already = seen.get(key);
       if (already) {
         already.repeatCount += 1;

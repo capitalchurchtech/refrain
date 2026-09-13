@@ -3493,3 +3493,77 @@ html.blackroom .rf-record-row:hover {
 #nav-rail.sliver:focus-within #theme-toggle {
   display: flex;
 }
+
+/* ============================================================
+   39. CLEAR, INSIDE THE FIELD
+
+   An affordance on the field rather than a control in a row, so it sits
+   below Tier 3 deliberately: flat, no rim, no material. A chip here
+   would out-punch the filter chips underneath it, which are the real
+   controls on this screen.
+
+   The field is recessed because it reports. Nothing inside it may look
+   raised, so this brightens on hover instead of lifting.
+   ============================================================ */
+
+.rf-field-clearable {
+  position: relative;
+  display: flex;
+}
+
+/* Room for the button, so a long query scrolls under it rather than
+   sitting beneath it. Applies to the input, not the wrapper, because the
+   wrapper has no padding of its own to give. */
+.rf-field-clearable > .input {
+  padding-right: 2.25rem;
+}
+
+.rf-field-clear {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 2.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  color: var(--rf-muted);
+  opacity: 0.7;
+  transition: opacity 140ms cubic-bezier(0, 0, 0.2, 1), color 140ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+/* `.rf-field-clear` sets `display: flex`, which is the same specificity as
+   the preflight's `[hidden] { display: none }` and sits later in the sheet --
+   so it would win and the button would show on an empty box. Stated here,
+   next to the display it has to beat, rather than trusted to the reset. */
+.rf-field-clear[hidden] {
+  display: none;
+}
+
+.rf-field-clear:hover {
+  opacity: 1;
+  color: var(--rf-text);
+}
+
+.rf-field-clear svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* The floor for a control the operator taps rather than clicks. Stated
+   here, beside the width it relaxes, rather than in a media block
+   elsewhere -- a media query carries no specificity, so a rule written
+   somewhere else would have to win the cascade on its own. */
+@media (hover: none) {
+  .rf-field-clear {
+    width: 2.75rem;
+    opacity: 1;
+  }
+  .rf-field-clearable > .input {
+    padding-right: 2.75rem;
+  }
+}

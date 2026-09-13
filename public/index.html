@@ -443,8 +443,17 @@
              operator's eyeline on the path to live. -->
         <div id="search-readout" class="rf-readout mb-4" data-mode="standby"></div>
 
+        <!-- The clear sits inside the field rather than beside it: it acts on
+             the field, so putting it in the row would read as a third control
+             competing with the filter chips below. It is hidden while the box
+             is empty, so the resting state is the plain field it always was. -->
         <div class="flex gap-2 mb-3">
-          <input id="query" type="text" placeholder="Search any slide..." aria-label="Search all slides" class="input input-bordered w-full" autofocus />
+          <div class="rf-field-clearable w-full">
+            <input id="query" type="text" placeholder="Search any slide..." aria-label="Search all slides" class="input input-bordered w-full" autofocus />
+            <button id="query-clear" class="rf-field-clear" type="button" hidden title="Clear search (Alt+X)" aria-label="Clear search">
+              <i data-lucide="x"></i>
+            </button>
+          </div>
         </div>
 
         <div class="rf-chip-row mb-4" id="search-filter-chips">
@@ -506,6 +515,10 @@
           <div class="flex items-center justify-between gap-4">
             <span>Jump to Search from any screen</span>
             <span class="shrink-0"><kbd class="kbd kbd-sm">/</kbd> <span class="opacity-50">or</span> <kbd class="kbd kbd-sm">⌘/Ctrl</kbd><kbd class="kbd kbd-sm">K</kbd></span>
+          </div>
+          <div class="flex items-center justify-between gap-4">
+            <span>Clear the search and start over</span>
+            <span class="shrink-0"><kbd class="kbd kbd-sm">Alt/⌥</kbd><kbd class="kbd kbd-sm">X</kbd> <span class="opacity-50">or</span> <kbd class="kbd kbd-sm">Esc</kbd></span>
           </div>
           <div class="flex items-center justify-between gap-4">
             <span>Show this help</span>

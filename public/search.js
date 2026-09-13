@@ -49,6 +49,7 @@ export function initSearch() {
   const dateFromInput = document.getElementById("date-from");
   const dateToInput = document.getElementById("date-to");
   const dateFilterClear = document.getElementById("date-filter-clear");
+  const queryClear = document.getElementById("query-clear");
   const libraryFilterWrap = document.getElementById("library-filter-wrap");
   const libraryFilterToggle = document.getElementById("library-filter-toggle");
   const libraryFilterPanel = document.getElementById("library-filter-panel");
@@ -416,23 +417,54 @@ export function initSearch() {
   // since escaping could otherwise shift character offsets or make an
   // exact substring match miss.
   function highlightMatch(text, query) {
-    const q = (query ?? "").trim();
+    // Collapse whitespace runs, not just the ends. The server matches through
+    // normalizeText(), which turns "dont  let" into "dont let" -- so a doubled
+    // space or a stray tab returned four results here and marked none of them,
+    // because this side was still looking for the literal two spaces. Slide
+    // text is normalized at index time, so only the query needs it.
+    const q = (query ?? "").replace(/\s+/g, " ").trim();
     if (!q) return escapeHtml(text);
 
     const source = String(text ?? "");
-    const lowerSource = source.toLowerCase();
     const lowerQuery = q.toLowerCase();
 
+    // The server forgives a dropped apostrophe -- "ive" is a hit on "I've" --
+    // and it unifies the curly forms onto the straight one on both sides. Both
+    // have to be mirrored here, or a line comes back as a result with no mark
+    // on it and the operator cannot tell why it matched.
+    //
+    // So build the same normalized copy the server matched against, and carry
+    // an index map back to the original: `map[i]` is the offset in `source` of
+    // normalized character `i`, which turns a match span in the copy into the
+    // real span to wrap, apostrophes and all.
+    const CURLY = /[\u2018\u2019\u02BC]/g;
+    const unifiedQuery = lowerQuery.replace(CURLY, "'");
+    const queryHasApostrophe = unifiedQuery.includes("'");
+
+    const map = [];
+    let normalized = "";
+    for (let i = 0; i < source.length; i += 1) {
+      const ch = source[i].replace(CURLY, "'");
+      // Only the text side folds, matching the server. A query that carries an
+      // apostrophe is matched literally.
+      if (ch === "'" && !queryHasApostrophe) continue;
+      normalized += ch.toLowerCase();
+      map.push(i);
+    }
+    map.push(source.length);
+
     let cursor = 0;
-    let matchStart = lowerSource.indexOf(lowerQuery, cursor);
+    let matchStart = normalized.indexOf(unifiedQuery, cursor);
     if (matchStart === -1) return escapeHtml(source);
 
     const parts = [];
     while (matchStart !== -1) {
-      parts.push(escapeHtml(source.slice(cursor, matchStart)));
-      parts.push(`<mark class="rf-match">${escapeHtml(source.slice(matchStart, matchStart + q.length))}</mark>`);
-      cursor = matchStart + q.length;
-      matchStart = lowerSource.indexOf(lowerQuery, cursor);
+      const start = map[matchStart];
+      const end = map[matchStart + unifiedQuery.length];
+      parts.push(escapeHtml(source.slice(cursor, start)));
+      parts.push(`<mark class="rf-match">${escapeHtml(source.slice(start, end))}</mark>`);
+      cursor = end;
+      matchStart = normalized.indexOf(unifiedQuery, matchStart + unifiedQuery.length);
     }
     parts.push(escapeHtml(source.slice(cursor)));
     return parts.join("");
@@ -539,6 +571,7 @@ export function initSearch() {
 
   queryInput.addEventListener("input", () => {
     clearTimeout(debounceTimer);
+    syncClearButton();
     acknowledgeInput(queryInput.value);
     debounceTimer = setTimeout(() => runSearch(queryInput.value), SEARCH_DEBOUNCE_MS);
   });
@@ -555,6 +588,124 @@ export function initSearch() {
     el.addEventListener("change", () => runSearch(queryInput.value));
   });
 
+  /**
+   * Clearing the search, from the button in the field or from Alt+X.
+   *
+   * One function for both, so the two routes cannot drift into clearing
+   * different things -- the date range is the part that would quietly be left
+   * behind, and a stale filter on an empty box is invisible.
+   */
+  function clearSearch() {
+    clearTimeout(debounceTimer);
+    queryInput.value = "";
+    dateFromInput.value = "";
+    dateToInput.value = "";
+    syncClearButton();
+    showEmptyHint();
+    queryInput.focus({ preventScroll: true });
+  }
+
+  /** The button exists only while there is something to clear. */
+  function syncClearButton() {
+    if (queryClear) queryClear.hidden = queryInput.value.length === 0;
+  }
+
+  queryClear?.addEventListener("click", clearSearch);
+
+  /**
+   * Alt+X does the same thing from any screen.
+   *
+   * Matched on `e.code === "KeyX"` rather than `e.key`, because on macOS
+   * Option+X produces the character "\u2248" -- `e.key` would never be "x" and the
+   * shortcut would silently do nothing on exactly the machines this runs on.
+   * `e.code` is the physical key, so it holds on both platforms.
+   *
+   * It is a document-level listener because initSearch() runs once at boot and
+   * the screens are shown and hidden rather than mounted, so this stays live
+   * wherever the operator is. When they are elsewhere, the hash sends them back
+   * to Search first -- clearing a box you cannot see would look like nothing
+   * happened.
+   */
+  document.addEventListener("keydown", (e) => {
+    if (!e.altKey || e.metaKey || e.ctrlKey || e.code !== "KeyX") return;
+    e.preventDefault();
+    if (location.hash !== "#search") location.hash = "#search";
+    clearSearch();
+  });
+
+  /**
+   * Clicking into a field that already holds a query selects the whole thing,
+   * the way a browser's address bar does. One click and type replaces the
+   * search instead of click, select, type -- which is the gesture an operator
+   * mid-service actually makes.
+   *
+   * Nothing is destroyed: the text is visibly selected, still there, and one
+   * more click puts the cursor where it was aimed.
+   *
+   * The mouse needs more than a `focus` handler, and the reason is worth
+   * writing down because it is not what you would guess.
+   *
+   * Measured on the running app, a click on an unfocused field fires
+   * `focus`, `mousedown`, `mouseup` -- in that order, with focus FIRST -- and
+   * then places the caret, collapsing the selection, after every one of those
+   * handlers has run. So selecting on `focus` is undone, and a flag that asks
+   * "was the field already focused?" at `mousedown` time reads true, because
+   * focus already happened. The first version of this did exactly that and
+   * selected nothing.
+   *
+   * What holds for both orderings is the focus event itself: it fires once,
+   * only when focus is actually gained. So `focus` raises the flag, and the
+   * selection is made from a timeout after `mouseup` -- after the browser has
+   * placed its caret, rather than before it. A timeout and not
+   * requestAnimationFrame: rAF does not reliably fire in a hidden pane, which
+   * is a trap this repo has hit before.
+   *
+   * A second click finds the flag down, so the caret lands where it was
+   * aimed, and double-click keeps the browser's own word-select.
+   */
+  let justFocused = false;
+
+  queryInput.addEventListener("focus", () => {
+    if (!queryInput.value) return;
+    justFocused = true;
+    queryInput.select();
+  });
+
+  queryInput.addEventListener("blur", () => {
+    justFocused = false;
+  });
+
+  queryInput.addEventListener("mouseup", () => {
+    if (!justFocused) return;
+    justFocused = false;
+    setTimeout(() => {
+      // Only if the click did not leave a selection of its own -- a
+      // click-and-drag across part of the text is a deliberate selection and
+      // must survive.
+      if (queryInput.selectionStart === queryInput.selectionEnd) queryInput.select();
+    }, 0);
+  });
+
+  /**
+   * Esc clears the box while the box has focus, which is what a macOS search
+   * field has always done -- the operator who reaches for it already knows it
+   * works, and the one who does not loses nothing by never pressing it.
+   *
+   * Scoped to the field rather than the document, unlike Alt+X: Esc means
+   * "back out of this" everywhere else in the app, and an overlay's Esc must
+   * keep closing the overlay. The guard is both conditions, not just focus,
+   * because a dialog can open while the field still holds focus behind it.
+   */
+  queryInput.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (!queryInput.value) return;
+    if (!document.getElementById("shortcuts-modal")?.classList.contains("hidden")) return;
+    if (!document.getElementById("welcome-modal")?.classList.contains("hidden")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    clearSearch();
+  });
+
   dateFilterClear.addEventListener("click", () => {
     dateFromInput.value = "";
     dateToInput.value = "";
@@ -563,6 +714,7 @@ export function initSearch() {
 
   refreshStatus();
   initLibraryFilter();
+  syncClearButton();
   showEmptyHint();
 
   // Shown before the first keystroke (and whenever the box is cleared), so
