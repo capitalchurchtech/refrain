@@ -1,3 +1,5 @@
+import { showFailure } from "./notice.js";
+
 /**
  * Image Crop screen — watched-folder smart cropping. Fully
  * self-contained (no external credentials needed), so unlike the
@@ -149,8 +151,8 @@ export function initImageCrop() {
             body: JSON.stringify({ which: btn.dataset.which }),
           });
           if (!res.ok) {
-            const { error } = await res.json();
-            alert(error);
+            const { error } = await res.json().catch(() => ({}));
+            showFailure(error || "Couldn't open that folder. Check the path on this screen.");
           }
         } finally {
           btn.disabled = false;

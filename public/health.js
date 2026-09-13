@@ -1,4 +1,5 @@
 import { COPY_FAILED, noProPresenterFound } from "./strings.js";
+import { showFailure } from "./notice.js";
 import { createMeter, updateMeter, meterCount } from "./led-meter.js";
 const ARRANGEMENT_STATUS_LABEL = {
   off: null, // hidden entirely per Section 4.1
@@ -515,7 +516,7 @@ export function initHealth() {
           const res = await fetch("/api/config/export");
           if (!res.ok) {
             const data = await res.json().catch(() => ({}));
-            alert(data.error || "Failed to back up config.json.");
+            showFailure(data.error || "Couldn't back up config.json. Nothing was changed.");
             return;
           }
           const blob = await res.blob();

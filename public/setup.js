@@ -1,4 +1,5 @@
 import { noProPresenterFound } from "./strings.js";
+import { showFailure } from "./notice.js";
 import { createMeter, updateMeter, meterCount } from "./led-meter.js";
 
 /**
@@ -119,13 +120,13 @@ export function initSetup({ onComplete }) {
         }),
       });
       if (!res.ok) {
-        const { error } = await res.json();
-        alert(`Setup failed: ${error}`);
+        const { error } = await res.json().catch(() => ({}));
+        showFailure(`Setup failed: ${error ?? res.statusText}. Your answers are still in the fields.`);
         saveBtn.disabled = false;
         return;
       }
     } catch (err) {
-      alert(`Setup failed: ${err.message}`);
+      showFailure(`Setup failed: ${err.message}. Your answers are still in the fields.`);
       saveBtn.disabled = false;
       return;
     }
