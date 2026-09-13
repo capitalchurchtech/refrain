@@ -694,23 +694,6 @@ export function shouldAutoRebuild(index) {
 }
 
 /**
- * Case-insensitive substring search across all slide text, optionally
- * narrowed by a created/modified date range (Section 5.1). `dateField`
- * picks which timestamp to filter on — both are real filesystem dates
- * (see propresenter-client.js's getFileDates), so unlike the doc's
- * original "unverified" concern, this isn't a fallback/proxy: a
- * presentation with no resolvable date (e.g. crawled from a remote
- * reader machine) is excluded whenever a date filter is active, since
- * there's nothing to honestly compare against.
- * An empty query with a date range set is a valid "what did we use in
- * this timeframe" browse mode — every slide in range matches, since an
- * empty string is a substring of anything.
- * `folders`, when given, narrows results to presentations synced from
- * one of those Library folders — only useful once a church has more
- * than one folder in its sync scope (config.json's librarySync.folders).
- * @param {{ query: string, playlistId?: string, dateField?: "created"|"modified", dateFrom?: string, dateTo?: string, folders?: string[] }} opts
- */
-/**
  * Apostrophes are the one punctuation mark a volunteer reliably drops. "Ive",
  * "dont" and "youre" are typed at speed on a Sunday and, until now, matched
  * nothing at all -- the lyric reads "I've" and a substring search is a
@@ -743,6 +726,23 @@ export function foldApostrophes(text) {
   return String(text ?? "").replace(APOSTROPHES, "");
 }
 
+/**
+ * Case-insensitive substring search across all slide text, optionally
+ * narrowed by a created/modified date range (Section 5.1). `dateField`
+ * picks which timestamp to filter on — both are real filesystem dates
+ * (see propresenter-client.js's getFileDates), so unlike the doc's
+ * original "unverified" concern, this isn't a fallback/proxy: a
+ * presentation with no resolvable date (e.g. crawled from a remote
+ * reader machine) is excluded whenever a date filter is active, since
+ * there's nothing to honestly compare against.
+ * An empty query with a date range set is a valid "what did we use in
+ * this timeframe" browse mode — every slide in range matches, since an
+ * empty string is a substring of anything.
+ * `folders`, when given, narrows results to presentations synced from
+ * one of those Library folders — only useful once a church has more
+ * than one folder in its sync scope (config.json's librarySync.folders).
+ * @param {{ query: string, playlistId?: string, dateField?: "created"|"modified", dateFrom?: string, dateTo?: string, folders?: string[] }} opts
+ */
 export function search({ query, playlistId, dateField, dateFrom, dateTo, folders }) {
   const q = normalizeText(query).toLowerCase();
   const unifiedQ = unifyApostrophes(q);

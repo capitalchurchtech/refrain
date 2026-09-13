@@ -1883,3 +1883,43 @@ excused and every helper counts as blocking.
   ProPresenter mid-write. And the library guard, counting the same helper,
   refused every sync forever while claiming ProPresenter was "not fully closed".
   Both fixed, launchd-aware, fail-closed preserved. 303 tests.
+- 2026-09-13 · Search forgives a dropped apostrophe · done · b2f0e06 · "dont"
+  matched 0 slides and now matches 192; "youre" 150, "cant" 95. The fold runs
+  ONE way on purpose: folding the query too made "i've" match "give" and
+  "important", 1,599 results against a 445-presentation library where 56 were
+  wanted. Curly/straight is unified on both sides (encoding, not meaning);
+  removing the mark applies to slide text only. Doing it per keystroke doubled
+  search time (4.5ms → 9.3ms), so the lowercased and folded forms are now
+  derived once per index load and dropped whenever the index is replaced —
+  2.7ms, faster than before the feature existed. Verified through a real
+  incremental reindex: same counts, same speed, no stale text. Fuzzed with 593
+  real phrases from the 3,808 apostrophe-bearing slides in four forms each,
+  zero misses; every result from 27 queries proven justified.
+- 2026-09-13 · Three ways out of a stale query · done · b2f0e06 · a clear button
+  inside the field, Esc while the field has focus, Alt+X from any screen, all
+  through one clearSearch(). Alt+X matches on `e.code`: Option+X on macOS
+  produces "≈", so an `e.key === "x"` check does nothing on exactly the machines
+  this runs on. Asked about double-click-to-clear and declined it — double-click
+  already selects the word under the cursor, which is the better gesture for
+  refining a query, and binding it to clear would destroy a half-typed search on
+  the reflexive double-click of a rushing operator.
+- 2026-09-13 · Click-to-select-all in the search box · done · b2f0e06 · one click
+  and type replaces the query, address-bar style. **The obvious implementation
+  does not work**: a click on an unfocused field fires `focus` BEFORE
+  `mousedown` (so "was it focused at mousedown?" always reads true) and places
+  its caret AFTER `mouseup` (so anything selected in those handlers is
+  collapsed). Measured, not guessed. The flag is raised on `focus` and the
+  selection made from a timeout after `mouseup`, skipped when the click left a
+  selection of its own so click-and-drag survives.
+- 2026-09-13 · Highlighter re-synced to the matcher · done · b2f0e06 · it mirrors
+  both apostrophe rules through an index map back to the original string, and
+  now collapses whitespace the way normalizeText does — a doubled space returned
+  four results and marked none of them, which predates this work. The standing
+  check is "every result the server returns must be highlighted": 46 queries,
+  4,544 rendered rows, zero unmarked.
+- 2026-09-13 · Todoist "Refrain App" triaged against the code · 25 of 27 already
+  shipped, including the too-wide callout (`maybeShowDockNudge`, 900px, once per
+  session, Search only). The render-cost finding no longer reproduces: 124–219ms
+  including the 90ms debounce, bounded by MAX_RENDERED_SLIDES. Two left, both
+  needing Brandon: the ambiguous "History allows going back to a song but not
+  then going forward into an item just used", and whether to close the 25.
