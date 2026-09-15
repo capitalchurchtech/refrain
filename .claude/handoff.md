@@ -1937,12 +1937,38 @@ excused and every helper counts as blocking.
   with a line saying which copy is live. Proven on this machine end to end:
   launchd loaded it, the second copy stood down, `LastExitStatus = 0`, no PID,
   no restart — then removed, and `~/Library/LaunchAgents` left clean.
-- 2026-09-13 · NOTE · `npm test` is flaky while a dev server runs against the
-  same checkout — it rewrites `cache/search-index.json` under the tests that
-  read it (2 failures in 5 runs with a server up; 10 clean runs with none).
-  Not a product bug. Stop the server before trusting a red run.
+- 2026-09-13 · NOTE · ~~`npm test` is flaky while a dev server runs against the
+  same checkout~~ — **CORRECTED 2026-09-15.** That diagnosis was wrong. The
+  flake reproduced with no server running. The real cause was
+  `library-watch.test.js`'s "a real .pro file change triggers a debounced
+  reindex", which used a 40ms debounce: creating and writing one file can
+  surface as two fsevents more than 40ms apart on macOS, so one save landed in
+  two debounce windows and reported two reindexes. Raised to 120ms, matching
+  the sibling burst test that has never flaked; the assertion is still exactly
+  one, because collapsing events is the property under test. 8 clean runs of
+  that file, 5 clean full suites.
 - 2026-09-13 · NOTE · on this machine a Next.js dev server also binds port
   3000. Refrain binds `127.0.0.1` explicitly and Next appears to take the IPv6
   localhost, so `http://localhost:3000` can reach the wrong one while
   `http://127.0.0.1:3000` reliably reaches Refrain. Worth knowing before
   debugging a "Refrain is serving someone else's site" report.
+- 2026-09-15 · The index could not finish on the 973-presentation library, and
+  the reason was not load · done · bcae100 + this change. Probing ProPresenter
+  directly: HTTP 500 on 25 of 120 documents, and **all 25 succeeded when asked
+  again**. Reads were already sequential (concurrency 1), so nothing was going
+  too fast, and nothing is corrupt — it stops answering in bursts and recovers.
+  Refrain had no retry at all, those failures cluster, and a run of ten ended
+  the crawl: two operator-initiated attempts stopped at 25 and 38 of 864,
+  leaving 826 presentations on four-day-old slide text.
+  **Two fixes, and the second matters more than the first.** A read is retried
+  once after 750ms; and everything that still failed is swept once at the END
+  of the crawl, when the burst is over. The sweep is the one that catches the
+  hard case — a burst can outlast both the read and its retry, which is exactly
+  how 7 presentations (734 slides, whole message decks) were dropped from
+  search while reading perfectly a minute later. Retrying harder inline is the
+  wrong shape: it lengthens every failure during a genuine outage, which is
+  precisely when the crawl should be ending.
+  First complete crawl of that library: **843 of 843, no abort, 41.7 min,
+  37,899 slides, anchors on all 952 non-empty presentations.** The other 21 are
+  genuinely empty in ProPresenter (outlines, notes, "Temp") — verified by
+  probing each one twice, not assumed.

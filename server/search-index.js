@@ -76,6 +76,11 @@ const CRAWL_ABORT_AFTER_CONSECUTIVE_FAILURES = 10;
  */
 const PRESENTATION_RETRY_DELAY_MS = 750;
 
+// Between documents in the end-of-crawl sweep. Longer than the inline pacing:
+// these already failed once, so there is no hurry and ProPresenter has just
+// finished a long crawl.
+const SWEEP_PACING_MS = 400;
+
 export async function readPresentationOnce(client, id, { shouldStop, delayMs } = {}) {
   const wait = delayMs ?? PRESENTATION_RETRY_DELAY_MS;
   try {
@@ -371,7 +376,54 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
     let failedAndEmpty = 0;
     let consecutiveFailures = 0;
     let crawlAborted = null;
+    const sweepLater = [];
     rebuildProgress = { inProgress: true, stage: "presentations", current: 0, total: idsNeedingSlides.length };
+
+    /**
+     * Read one presentation and store it. Returns whether it worked.
+     *
+     * Lifted out of the loop so the sweep below can reuse it -- the failure
+     * bookkeeping (consecutive counts, the abort, carrying the previous entry
+     * over) stays with the caller, because the two passes want different
+     * answers to a failure.
+     */
+    async function readAndStore(id) {
+      const fetchStartedAt = Date.now();
+  try {
+    const doc = await readPresentationOnce(client, id, {
+      shouldStop: options.shouldStop,
+      // Injectable so the tests can exercise the retry without paying the
+      // real pause 20 times over.
+      delayMs: options.retryDelayMs,
+    });
+    // Record which arrangement produced these indices, so the UI can show
+    // it and the trigger path can tell when the live one has since changed.
+    const resolved = resolveArrangement(doc, preferredArrangements);
+    presentations[id].slides = flattenGroups(resolved.groups);
+    presentations[id].groupSequence = resolved.groups.map((g) => g.name ?? "Untitled");
+    presentations[id].arrangementName = resolved.arrangementName;
+    presentations[id].arrangementId = resolved.arrangementId;
+    presentations[id].arrangementSource = resolved.source;
+    const presentationPath = doc?.presentation?.presentation_path ?? null;
+    const { createdDate, modifiedDate } = await client.getFileDates(presentationPath);
+    presentations[id].createdDate = createdDate;
+    presentations[id].modifiedDate = modifiedDate;
+    presentations[id].presentationPath = presentationPath;
+    // Prefer the fingerprint taken BEFORE this fetch, when we had one.
+    // If the operator saves this presentation while we are reading it,
+    // the pre-fetch fingerprint describes older content than the slides
+    // we just indexed, so the next reindex re-reads it. Fingerprinting
+    // afterwards would do the opposite and leave stale slides looking
+    // current.
+    presentations[id].fingerprint =
+      carriedFingerprints[id] ??
+      (client.isLocalHost ? await readFingerprintUnchangedSince(presentationPath, fetchStartedAt) : null);
+      return true;
+      } catch {
+        return false;
+      }
+    }
+
     await runWithConcurrency(idsNeedingSlides, PRESENTATION_FETCH_CONCURRENCY, async (id) => {
       // Once ProPresenter has stopped answering, stop asking. Remaining
       // presentations keep whatever the previous index had for them.
@@ -395,38 +447,9 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
       }
       // Used to tell "the file is as we read it" from "the operator saved it
       // while we were reading it" for presentations we had no prior path for.
-      const fetchStartedAt = Date.now();
-      try {
-        const doc = await readPresentationOnce(client, id, {
-          shouldStop: options.shouldStop,
-          // Injectable so the tests can exercise the retry without paying the
-          // real pause 20 times over.
-          delayMs: options.retryDelayMs,
-        });
-        // Record which arrangement produced these indices, so the UI can show
-        // it and the trigger path can tell when the live one has since changed.
-        const resolved = resolveArrangement(doc, preferredArrangements);
-        presentations[id].slides = flattenGroups(resolved.groups);
-        presentations[id].groupSequence = resolved.groups.map((g) => g.name ?? "Untitled");
-        presentations[id].arrangementName = resolved.arrangementName;
-        presentations[id].arrangementId = resolved.arrangementId;
-        presentations[id].arrangementSource = resolved.source;
-        const presentationPath = doc?.presentation?.presentation_path ?? null;
-        const { createdDate, modifiedDate } = await client.getFileDates(presentationPath);
-        presentations[id].createdDate = createdDate;
-        presentations[id].modifiedDate = modifiedDate;
-        presentations[id].presentationPath = presentationPath;
-        // Prefer the fingerprint taken BEFORE this fetch, when we had one.
-        // If the operator saves this presentation while we are reading it,
-        // the pre-fetch fingerprint describes older content than the slides
-        // we just indexed, so the next reindex re-reads it. Fingerprinting
-        // afterwards would do the opposite and leave stale slides looking
-        // current.
-        presentations[id].fingerprint =
-          carriedFingerprints[id] ??
-          (client.isLocalHost ? await readFingerprintUnchangedSince(presentationPath, fetchStartedAt) : null);
+      if (await readAndStore(id)) {
         consecutiveFailures = 0;
-      } catch {
+      } else {
         // The presentation may have been deleted since the library listing was
         // fetched, or the call may have failed transiently.
         //
@@ -442,6 +465,9 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
         } else {
           failedAndEmpty += 1;
         }
+        // Swept once more at the end, when ProPresenter has had time to
+        // recover. Both the read and its retry can land inside one bad patch.
+        sweepLater.push(id);
         consecutiveFailures += 1;
         if (consecutiveFailures >= CRAWL_ABORT_AFTER_CONSECUTIVE_FAILURES) {
           crawlAborted = {
@@ -470,6 +496,44 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
         console.log(`Indexing... ${fetched}/${idsNeedingSlides.length} presentations`);
       }
     });
+
+    /**
+     * One sweep over everything that failed, after the crawl rather than during it.
+     *
+     * Measured on a 973-presentation library: ProPresenter returns HTTP 500 in
+     * bursts, and a burst can outlast both a read and its 750ms retry. Seven
+     * presentations -- 734 slides, whole message decks -- were dropped from
+     * search that way while reading perfectly a minute later.
+     *
+     * Retrying harder inside the loop is the wrong answer: it lengthens every
+     * failure during a genuine outage, which is exactly when the crawl should
+     * be ending. Sweeping afterwards costs one read per failure, and by then
+     * the burst is over.
+     *
+     * Skipped entirely when the crawl was aborted -- the remaining documents
+     * were never attempted, so there is nothing here worth sweeping and
+     * ProPresenter has already said it is struggling.
+     */
+    if (!crawlAborted && sweepLater.length > 0) {
+      rebuildProgress.stage = "sweep";
+      console.log(`Re-reading ${sweepLater.length} presentation(s) that failed the first time...`);
+      let recovered = 0;
+      for (const id of sweepLater) {
+        if (options.shouldStop?.()) break;
+        await pause(SWEEP_PACING_MS);
+        const hadSlides = (presentations[id].slides ?? []).length > 0;
+        if (await readAndStore(id)) {
+          recovered += 1;
+          if (hadSlides) failedButKept -= 1;
+          else failedAndEmpty -= 1;
+        }
+      }
+      console.log(
+        recovered === sweepLater.length
+          ? `Recovered all ${recovered} on the second pass.`
+          : `Recovered ${recovered} of ${sweepLater.length} on the second pass.`
+      );
+    }
 
     if (failedButKept > 0) {
       console.log(`${failedButKept} presentation(s) could not be re-read — kept the slides from the previous index.`);

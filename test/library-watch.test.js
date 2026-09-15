@@ -219,14 +219,20 @@ test("overlapping checks do not run twice at once", async () => {
 test("a real .pro file change triggers a debounced reindex, and other files do not", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "refrain-watch-"));
   const { deps, calls } = harness({ dirs: () => [dir] });
-  const w = startLibraryWatch(deps, { debounceMs: 40, safetyNetMs: 60_000 });
+  // 120ms, not 40: creating and writing one file can surface as two fsevents
+  // more than 40ms apart on macOS, so the old window let a single save land in
+  // two debounce periods and report two reindexes. That is the filesystem
+  // being the filesystem, not the watcher failing to collapse -- which is why
+  // the assertion below is still exactly one. The sibling burst test has used
+  // 120ms all along and has never flaked.
+  const w = startLibraryWatch(deps, { debounceMs: 120, safetyNetMs: 60_000 });
   try {
     await writeFile(path.join(dir, "notes.txt"), "ignore me");
     await new Promise((r) => setTimeout(r, 150));
     assert.equal(calls.reindexes, 0, "a non-presentation file must not trigger anything");
 
     await writeFile(path.join(dir, "song.pro"), "AAA");
-    await new Promise((r) => setTimeout(r, 400));
+    await new Promise((r) => setTimeout(r, 500));
     assert.equal(calls.reindexes, 1, "a .pro write should trigger exactly one reindex");
   } finally {
     w.stop();

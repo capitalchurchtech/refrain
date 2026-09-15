@@ -416,3 +416,37 @@ test("a transient failure on every document no longer ends the crawl", async () 
     assert.equal(withSlides, 25, "every presentation was indexed on its retry");
   });
 });
+
+test("a document that fails both its read and its retry is recovered by the end-of-crawl sweep", async () => {
+  // The production case exactly. ProPresenter returns HTTP 500 in bursts, and a
+  // burst can outlast both the read and its 750ms retry -- seven presentations,
+  // 734 slides of whole message decks, were dropped from search that way while
+  // reading perfectly a minute later. Retrying harder inside the loop is the
+  // wrong answer, because that lengthens every failure during a real outage.
+  // Sweeping afterwards costs one read per failure, once the burst is over.
+  await withTempCwd(async (dir) => {
+    const specs = {};
+    for (let i = 0; i < 12; i++) specs[`s${i}`] = { name: `Song ${i}`, text: "words", body: `body-${i}` };
+    const songs = await makeSongs(dir, specs);
+
+    const client = fakeProPresenter(songs);
+    const realGet = client.getPresentation.bind(client);
+    const doomed = new Set(["s3", "s7"]);
+    const attempts = new Map();
+    client.getPresentation = async (id) => {
+      const n = (attempts.get(id) ?? 0) + 1;
+      attempts.set(id, n);
+      // Fails the read AND the retry -- the burst outlasts both -- then
+      // recovers, which is what the sweep is there to catch.
+      if (doomed.has(id) && n <= 2) throw new Error("HTTP 500");
+      return realGet(id);
+    };
+
+    const index = await rebuildIndex(client, {}, [], { retryDelayMs: 0 });
+
+    assert.equal(lastCrawlAbort(), null);
+    const withSlides = Object.values(index.presentations).filter((p) => p.slides?.length).length;
+    assert.equal(withSlides, 12, "the two that outlasted their retry came back on the sweep");
+    assert.equal(attempts.get("s3"), 3, "read, retry, then one sweep read");
+  });
+});
