@@ -55,6 +55,40 @@ const FETCH_PACING_MS = 120;
  */
 const CRAWL_ABORT_AFTER_CONSECUTIVE_FAILURES = 10;
 
+/**
+ * One retry per presentation, after a pause.
+ *
+ * Measured against a 973-presentation workspace: ProPresenter returns HTTP 500
+ * for roughly a fifth of reads, and **every one of 25 such failures succeeded
+ * on an immediate retry**. Nothing is corrupt; it simply stops answering for a
+ * moment and recovers. Reads are already sequential (concurrency 1), so this is
+ * not Refrain asking too fast.
+ *
+ * Without a retry those transient 500s counted as real failures, and a bad
+ * patch of ten in a row ended the crawl. That is why that library could not
+ * finish an index: two attempts stopped at 25 and 38 of 864, leaving 826
+ * presentations holding slide text four days old.
+ *
+ * One retry, not many: a genuinely absent ProPresenter should still end the
+ * crawl promptly rather than being asked 864 times twice. The abort guard is
+ * what handles that, and it still counts a failure only after the retry has
+ * also failed.
+ */
+const PRESENTATION_RETRY_DELAY_MS = 750;
+
+export async function readPresentationOnce(client, id, { shouldStop, delayMs } = {}) {
+  const wait = delayMs ?? PRESENTATION_RETRY_DELAY_MS;
+  try {
+    return await client.getPresentation(id);
+  } catch (err) {
+    // Do not spend the pause when the crawl is already being told to stop --
+    // a service starting mid-crawl should not wait on a retry per song.
+    if (shouldStop?.()) throw err;
+    await pause(wait);
+    return client.getPresentation(id);
+  }
+}
+
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 let currentIndex = { builtAt: null, presentations: {} };
@@ -363,7 +397,12 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
       // while we were reading it" for presentations we had no prior path for.
       const fetchStartedAt = Date.now();
       try {
-        const doc = await client.getPresentation(id);
+        const doc = await readPresentationOnce(client, id, {
+          shouldStop: options.shouldStop,
+          // Injectable so the tests can exercise the retry without paying the
+          // real pause 20 times over.
+          delayMs: options.retryDelayMs,
+        });
         // Record which arrangement produced these indices, so the UI can show
         // it and the trigger path can tell when the live one has since changed.
         const resolved = resolveArrangement(doc, preferredArrangements);

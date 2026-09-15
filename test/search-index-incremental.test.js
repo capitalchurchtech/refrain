@@ -337,18 +337,23 @@ test("a crawl stops asking once ProPresenter has clearly stopped answering", asy
     const client = fakeProPresenter(songs);
     const realGet = client.getPresentation.bind(client);
     let calls = 0;
+    // Distinct presentations, not raw calls: a failed read is retried once, so
+    // raw calls count the retries too and say nothing about how far the crawl
+    // got. How many documents it walked is the thing being asserted.
+    const attempted = new Set();
     client.getPresentation = async (id) => {
       calls += 1;
+      attempted.add(id);
       // Healthy for a few, then ProPresenter falls over and stays down.
       if (calls > 3) throw new Error("ProPresenter is not responding");
       return realGet(id);
     };
 
-    await rebuildIndex(client, {}, []);
+    await rebuildIndex(client, {}, [], { retryDelayMs: 0 });
 
-    // It must give up well short of asking all forty.
-    assert.ok(calls < 20, `kept asking ${calls} times after it started failing`);
-    assert.ok(calls >= 10, `gave up after only ${calls} — one slow document must not abandon a rebuild`);
+    // It must give up well short of walking all forty.
+    assert.ok(attempted.size < 20, `kept asking for ${attempted.size} documents after it started failing`);
+    assert.ok(attempted.size >= 10, `gave up after only ${attempted.size} — one slow document must not abandon a rebuild`);
 
     const abort = lastCrawlAbort();
     assert.ok(abort, "the abort is recorded rather than reported as a clean build");
@@ -367,14 +372,47 @@ test("a few scattered failures do not abandon a rebuild", async () => {
     const client = fakeProPresenter(songs);
     const realGet = client.getPresentation.bind(client);
     let calls = 0;
+    const attempted = new Set();
     client.getPresentation = async (id) => {
       calls += 1;
+      attempted.add(id);
       if (calls % 5 === 0) throw new Error("transient");
       return realGet(id);
     };
 
-    await rebuildIndex(client, {}, []);
-    assert.equal(calls, 20, "every presentation was still attempted");
+    await rebuildIndex(client, {}, [], { retryDelayMs: 0 });
+    assert.equal(attempted.size, 20, "every presentation was still attempted");
     assert.equal(lastCrawlAbort(), null, "scattered failures are not an abort");
+  });
+});
+
+test("a transient failure on every document no longer ends the crawl", async () => {
+  // The production case, in miniature. ProPresenter returned HTTP 500 for about
+  // a fifth of reads on a 973-presentation workspace and every one of them
+  // succeeded when asked again -- but with no retry, a bad patch of ten in a row
+  // ended the crawl at 38 of 864, leaving 826 presentations holding four-day-old
+  // slide text. Here every document fails once and succeeds on the retry, which
+  // is the worst version of that, and the rebuild still finishes.
+  await withTempCwd(async (dir) => {
+    const specs = {};
+    for (let i = 0; i < 25; i++) specs[`s${i}`] = { name: `Song ${i}`, text: "words", body: `body-${i}` };
+    const songs = await makeSongs(dir, specs);
+
+    const client = fakeProPresenter(songs);
+    const realGet = client.getPresentation.bind(client);
+    const failedOnce = new Set();
+    client.getPresentation = async (id) => {
+      if (!failedOnce.has(id)) {
+        failedOnce.add(id);
+        throw new Error("HTTP 500");
+      }
+      return realGet(id);
+    };
+
+    const index = await rebuildIndex(client, {}, [], { retryDelayMs: 0 });
+    assert.equal(lastCrawlAbort(), null, "a failure on every single read is survivable when the retry works");
+    assert.equal(Object.keys(index.presentations).length, 25);
+    const withSlides = Object.values(index.presentations).filter((p) => p.slides?.length).length;
+    assert.equal(withSlides, 25, "every presentation was indexed on its retry");
   });
 });
