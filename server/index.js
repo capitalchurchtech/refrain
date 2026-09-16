@@ -1289,6 +1289,26 @@ app.post("/api/trigger", async (req, res) => {
     }
 
     await client.triggerSlide(presentationId, target.index);
+
+    /**
+     * Record where we just went, not only where we came from.
+     *
+     * The heartbeat already puts everything on the screens into the history,
+     * but it runs every 4 seconds -- so a jump followed by Return inside that
+     * window left no trace of the song that was just used. That is not an edge
+     * case, it is the shape of the whole feature: find it, send it, go back.
+     * The operator could return to the plan and then had no way forward to the
+     * thing they had just sent.
+     *
+     * Pushed after the pin so it lands in front of it, which is the truth: this
+     * is what is live now, and the pin is what it replaced.
+     */
+    returnHistory = pushLiveItem(returnHistory, {
+      presentationId,
+      slideIndex: target.index,
+      name: getPresentationName(presentationId),
+      leftAt: new Date().toISOString(),
+    });
     // Deliberately not awaited: the slide is already live, and focusing the
     // editor measured ~3s on a real machine. It's a nice-to-have, so it must
     // not hold up the operator's response.

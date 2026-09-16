@@ -116,3 +116,25 @@ test("sameSlide is exact", () => {
   assert.ok(!sameSlide(slide("a", 1), slide("b", 1)));
   assert.ok(!sameSlide(null, slide("a", 1)));
 });
+
+test("the place you jumped TO is in the history, not only the place you left", () => {
+  // The heartbeat records whatever is on the screens, but it runs every 4
+  // seconds. Find it, send it, go back -- the shape of the whole feature --
+  // fits inside that window, so the song just used left no trace and there was
+  // no way forward to it. The trigger records the destination itself now.
+  let history = [];
+  // On the plan.
+  history = pushLiveItem(history, { presentationId: "plan", slideIndex: 4, name: "Announcements" });
+  // Jump to a song: the pin goes in first, then where we landed.
+  history = pushLiveItem(history, { presentationId: "plan", slideIndex: 4, name: "Announcements" });
+  history = pushLiveItem(history, { presentationId: "song", slideIndex: 12, name: "Amazing Grace" });
+
+  assert.equal(history[0].presentationId, "song", "what is live now sits in front");
+  assert.equal(history[1].presentationId, "plan", "and the place it replaced is right behind it");
+
+  // Return to the plan, still inside the heartbeat window.
+  history = pushLiveItem(history, { presentationId: "plan", slideIndex: 4, name: "Announcements" });
+  const forward = findReturnEntry(history, "song", 12);
+  assert.ok(forward, "the song just used is still reachable, which is the whole point");
+  assert.equal(forward.slideIndex, 12, "and it goes back to the slide that was sent");
+});
