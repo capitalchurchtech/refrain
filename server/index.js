@@ -232,28 +232,49 @@ app.get("/api/build", (_req, res) => {
   res.json(BUILD);
 });
 
-app.get("/api/version-check", async (_req, res) => {
+/**
+ * Is there a newer Refrain?
+ *
+ * A plain GET of a public `package.json`. Nothing about this machine goes with
+ * it -- no identifier, no version, no usage -- which is what keeps it on the
+ * right side of the project's "no telemetry, ever" line. It asks a question; it
+ * does not report an answer.
+ *
+ * Cached, because the nav now shows a dot from this and a poll must not turn
+ * one question a day into thousands. Six hours: a church updates on a weekday,
+ * not on a timer, and a stale-by-an-afternoon answer costs nothing.
+ *
+ * Skipped entirely while performance mode is armed. Nothing Refrain does
+ * unasked should reach the network during a service, and an update is the least
+ * urgent thing in the building at that moment.
+ */
+const VERSION_CHECK_TTL_MS = 6 * 60 * 60_000;
+let versionCheckCache = null;
+
+async function checkForUpdate({ force = false } = {}) {
+  const fresh = versionCheckCache && Date.now() - versionCheckCache.at < VERSION_CHECK_TTL_MS;
+  if (fresh && !force) return versionCheckCache.value;
+  if (performance.armed && versionCheckCache) return versionCheckCache.value;
+
+  const base = { currentVersion: version, repoUrl: GITHUB_REPO_URL, gitInstall: existsSync(".git") };
+  let value;
   try {
     const ghRes = await fetch(GITHUB_PACKAGE_JSON_URL, { signal: AbortSignal.timeout(5000) });
     if (!ghRes.ok) throw new Error(`GitHub responded ${ghRes.status}`);
     const { version: latestVersion } = await ghRes.json();
-    res.json({
-      currentVersion: version,
-      latestVersion,
-      updateAvailable: isNewerVersion(latestVersion, version),
-      repoUrl: GITHUB_REPO_URL,
-      gitInstall: existsSync(".git"),
-    });
+    value = { ...base, latestVersion, updateAvailable: isNewerVersion(latestVersion, version) };
   } catch (err) {
-    res.json({
-      currentVersion: version,
-      latestVersion: null,
-      updateAvailable: false,
-      repoUrl: GITHUB_REPO_URL,
-      gitInstall: existsSync(".git"),
-      error: err.message,
-    });
+    // Offline is the normal state for a booth machine on a locked-down network,
+    // so this is not an error the operator needs to see -- it just means "no
+    // news", and the Health screen says so quietly.
+    value = { ...base, latestVersion: null, updateAvailable: false, error: err.message };
   }
+  versionCheckCache = { at: Date.now(), value };
+  return value;
+}
+
+app.get("/api/version-check", async (req, res) => {
+  res.json(await checkForUpdate({ force: req.query.force === "1" }));
 });
 
 /**
@@ -3040,6 +3061,23 @@ const server = app.listen(port, "127.0.0.1", async () => {
     console.log("    Refrain will keep trying, and search still works from the index it has.");
   }
   console.log("");
+
+  /**
+   * Say so, once, if there is a newer Refrain.
+   *
+   * Deliberately not awaited: this is the launcher window a volunteer watches
+   * while waiting for the app, and holding boot for up to five seconds on a
+   * network call to tell them about an update they will install on Tuesday is
+   * the wrong trade. It prints a line or two later, or it never prints.
+   */
+  checkForUpdate()
+    .then((u) => {
+      if (!u.updateAvailable) return;
+      console.log(`  An update is available: v${u.latestVersion} (this is v${u.currentVersion}).`);
+      console.log("  Nothing is required — update from the Health screen when it suits you.");
+      console.log("");
+    })
+    .catch(() => {});
 
   // Establish whether anything is on the screens before deciding to do work.
   await pollPerformance();

@@ -191,6 +191,7 @@ export async function initNav({ onNavigate, viewIds }) {
     });
 
     applyImageCropDot(); // re-apply after every rebuild (innerHTML reset wipes it)
+    applyUpdateDot();
     if (window.lucide) window.lucide.createIcons();
   }
 
@@ -225,6 +226,44 @@ export async function initNav({ onNavigate, viewIds }) {
       imageCropWatching = false;
     }
     applyImageCropDot();
+  }
+
+  /**
+   * A dot on Health when a newer Refrain exists.
+   *
+   * The version check has been there all along, but only on the Health screen
+   * -- which an operator opens roughly never, so an update could sit unnoticed
+   * for months. This is the same quiet LED the Image Crop watcher uses: a
+   * change in the rail they already look at, carrying no urgency and blocking
+   * nothing. The detail, and the button, stay on Health where they belong.
+   *
+   * Never on the Search or Live items. Nothing about a software update belongs
+   * in the operator's eyeline on the path to going live.
+   */
+  let updateAvailable = false;
+  function applyUpdateDot() {
+    const btn = navItemsEl.querySelector('[data-id="health"]');
+    if (!btn) return;
+    let dot = btn.querySelector(".update-dot");
+    if (updateAvailable && !dot) {
+      dot = document.createElement("span");
+      dot.className = "update-dot rf-led lit absolute top-1 right-1";
+      dot.title = "An update is available";
+      btn.appendChild(dot);
+    } else if (!updateAvailable && dot) {
+      dot.remove();
+    }
+  }
+
+  async function pollUpdateDot() {
+    try {
+      const u = await fetch("/api/version-check").then((r) => r.json());
+      updateAvailable = Boolean(u.updateAvailable);
+    } catch {
+      // Offline is the normal state for a booth machine. No news is not news.
+      updateAvailable = false;
+    }
+    applyUpdateDot();
   }
 
   /**
@@ -636,4 +675,11 @@ export async function initNav({ onNavigate, viewIds }) {
     pollImageCropDot();
     setInterval(pollImageCropDot, 8000);
   }
+
+  // Hourly, and the server caches the answer for six hours, so this is a
+  // question GitHub is asked about four times a day per machine rather than
+  // once a minute. It is checked at all because the alternative -- only on
+  // Health -- is what let updates go unnoticed.
+  pollUpdateDot();
+  setInterval(pollUpdateDot, 60 * 60_000);
 }
