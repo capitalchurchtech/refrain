@@ -25,7 +25,7 @@ if [ ! -d node_modules ]; then
   npm install
 fi
 
-PORT="${PORT:-3000}"
+PORT="${PORT:-9999}"
 
 # Open the browser once the server actually responds, without blocking
 # the server's own log output in this window.

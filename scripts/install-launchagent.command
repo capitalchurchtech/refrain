@@ -34,7 +34,7 @@ fi
 # that XML here is how the two would drift apart.
 node --input-type=module -e '
   import { install } from "./server/autostart.js";
-  const port = process.env.PORT || 3000;
+  const port = process.env.PORT || 9999;
   const state = await install({ appDir: process.cwd(), port });
   console.log("");
   console.log("Done. Refrain now runs in the background and starts at login.");

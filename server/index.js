@@ -2924,7 +2924,16 @@ app.get("/api/health", async (_req, res) => {
   });
 });
 
-const port = process.env.PORT || 3000;
+/**
+ * 9999, not 3000.
+ *
+ * 3000 is the busiest port on a developer's machine -- this very repo found a
+ * Next.js server already holding it, which made `http://localhost:3000` reach
+ * the wrong app while Refrain sat on 127.0.0.1. A booth Mac is less crowded,
+ * but the number also has to be remembered by a volunteer under time pressure,
+ * and four of the same digit is the one they will not have to think about.
+ */
+const port = process.env.PORT || 9999;
 /**
  * Anything that reached here matched no static file and no route.
  *

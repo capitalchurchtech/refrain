@@ -390,7 +390,7 @@ If you would rather not install anything, the Health screen has a one-click copy
 of the equivalent command:
 
 ```bash
-open -na "Google Chrome" --args --app=http://localhost:3000
+open -na "Google Chrome" --args --app=http://localhost:9999
 ```
 
 Both give the same window. The installed version keeps its icon and reopens from

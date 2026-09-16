@@ -1033,7 +1033,7 @@ function renderAutostartCard(state) {
 function renderHealth(health, configOptions, versionInfo, libraryCard = "") {
   const { propresenter, index, arrangementModule, role, version, config, envRequirements } = health;
   const shareLibraryCard = renderShareLibraryCard(health.shareLibrary);
-  const terminalCard = renderTerminalActions(health.port ?? window.location.port ?? 3000, health.installDir ?? "$HOME/Refrain");
+  const terminalCard = renderTerminalActions(health.port ?? window.location.port ?? 9999, health.installDir ?? "$HOME/Refrain");
   const autostartCard = renderAutostartCard(health.autostart);
 
   const propresenterCard = `

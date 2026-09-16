@@ -18,7 +18,7 @@ if not exist node_modules (
   call npm install
 )
 
-if "%PORT%"=="" set PORT=3000
+if "%PORT%"=="" set PORT=9999
 
 rem Open the browser once the server actually responds, without blocking
 rem the server's own log output in this window.
