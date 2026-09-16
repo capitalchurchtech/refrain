@@ -290,6 +290,13 @@ app.post("/api/update", async (_req, res) => {
     });
   }
   try {
+    // npm rewrites package-lock.json whenever it syncs it to package.json, and
+    // a modified lockfile makes `git pull` refuse outright -- which is exactly
+    // how an update got blocked in the field. Discarding it loses nothing: it
+    // is generated, and the npm install below rebuilds it. The copy-paste
+    // command on Health has done this for a while; the one-click route, which
+    // is the one a volunteer actually presses, did not.
+    await execFileAsync("git", ["checkout", "--", "package-lock.json"], { timeout: 30000 }).catch(() => {});
     const pull = await execFileAsync("git", ["pull", "--ff-only"], { timeout: 120000 });
     const install = await execFileAsync("npm", ["install"], { timeout: 300000 });
     const output = [pull.stdout, pull.stderr, install.stdout, install.stderr].filter(Boolean).join("\n").trim();

@@ -438,6 +438,21 @@
              Search and Live are the booth surface -- docked, narrow, during a
              service -- so this is where width actually matters, and the ask is
              to dock before a service rather than that the setup is wrong. -->
+        <!-- Update prompt. Above the dock nudge because it is the one that
+             asks for a decision; both are dismissible and neither overlays
+             anything. It only ever appears when nothing is live -- see
+             public/update-nudge.js. -->
+        <div id="update-nudge" class="hidden mb-3 text-sm rf-call" role="note">
+          <div class="flex flex-col gap-2">
+            <span id="update-nudge-text" class="rf-measure"></span>
+            <div class="rf-control-row">
+              <button id="update-nudge-go" class="btn btn-outline btn-xs" type="button">Update now</button>
+              <button id="update-nudge-dismiss" class="btn btn-chip" type="button">Not now</button>
+              <span id="update-nudge-status" class="text-xs opacity-60"></span>
+            </div>
+          </div>
+        </div>
+
         <div id="dock-nudge" class="hidden mb-3 text-sm rf-call" role="note">
           <span class="rf-lede">Window</span>
           <span id="dock-nudge-text" class="rf-measure"></span>

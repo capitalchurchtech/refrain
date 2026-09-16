@@ -1,6 +1,7 @@
 import { initSetup } from "./setup.js";
 import { initSearch } from "./search.js";
 import { initTooltipFit } from "./tooltip-fit.js";
+import { initUpdateNudge } from "./update-nudge.js";
 import { initHealth } from "./health.js";
 import { initLyricsAssist } from "./lyrics-assist.js";
 import { initArrangement } from "./arrangement.js";
@@ -58,6 +59,7 @@ function startApp() {
   installGlobalErrorBoundary();
   viewApp.classList.remove("hidden");
   initTooltipFit();
+  initUpdateNudge();
   initSearch();
   const health = initHealth();
   const lyricsAssist = initLyricsAssist();
