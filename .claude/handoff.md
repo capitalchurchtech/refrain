@@ -1972,3 +1972,40 @@ excused and every helper counts as blocking.
   37,899 slides, anchors on all 952 non-empty presentations.** The other 21 are
   genuinely empty in ProPresenter (outlines, notes, "Temp") — verified by
   probing each one twice, not assumed.
+- 2026-09-16 · DaisyUI responsive audit · done · a8b3349 · nothing overflows the
+  viewport on any of the nine screens at 380px or 455px — the `.alert` and
+  radius fixes did generalise. What it caught was the wide info tooltips: at
+  380px, 10 of Health's 20 ran off the right edge (worst 91px) and
+  `body { overflow-x: hidden }` was swallowing it, so the operator read a
+  sentence that stopped. The per-field `direction` argument was the wrong
+  altitude and had already fallen behind the layout — its four hand-placed
+  `tooltip-left` ones ran off the OTHER edge. One measurement replaces it.
+  **Two traps worth keeping.** `transform: translateX(calc(-50% + shift))`
+  LOSES to DaisyUI's own transform on `.tooltip:before` even at higher
+  specificity, because the vendored Tailwind JIT injects its sheet at runtime
+  after the page's own — the property was set, ignored, and everything read as
+  fixed while still clipping. The shift is a `margin-left`, which DaisyUI never
+  sets here, so it composes instead of competing. And **I verified a model
+  rather than the render**: it reported 0 off-screen while 17 were, because the
+  box is not always centred on its icon (`tooltip-left` places it entirely to
+  one side) and because collapsed `<details>` return meaningless computed
+  values. Measure the used `left` + `margin-left` + transform, and filter to
+  elements with an `offsetParent`.
+  Not changed, worth an eye someday: Arrangement's 53 "clipped" elements are
+  all deliberate `text-overflow: ellipsis`, but a song name truncated by 368px
+  at docked width shows very little.
+- 2026-09-16 · Default port is now 9999 · done · fbd4226 · 3000 is the busiest
+  port on any machine that has run a dev server, and this one proved it: a
+  Next.js server already held 3000 on the booth Mac, so `localhost:3000`
+  reached the wrong app while Refrain answered on 127.0.0.1. 9999 is quiet and
+  a volunteer can remember it. Everything downstream reads the port rather than
+  hardcoding it. **Existing installs move on their next restart**, so a
+  bookmark or Chrome app-mode window pinned to 3000 needs repointing once.
+- 2026-09-16 · Forward into the item just used · done · 004be30 · the last of
+  the three "Important Feature requests" bullets. The heartbeat records
+  everything on the screens, but every 4 seconds — and "find it, send it, go
+  back" fits inside that window, so the song just used left no trace and there
+  was no way forward to it. Intermittent by nature, which is why it was hard to
+  describe. The trigger now records its own destination, pushed after the pin
+  so it lands in front of it. **Not verified end to end**: that means putting a
+  slide on the church's screens. One minute at the booth settles it.
