@@ -97,11 +97,28 @@
        would render far wider than the visible page, getting silently
        clipped by the viewport edge so only the first few words show.
        Wrap onto multiple lines within a fixed, readable width instead. */
-    .tooltip-info-wide:before {
+    /* `.tooltip.tooltip-info-wide`, not `.tooltip-info-wide`: DaisyUI's own
+       `.tooltip:before { transform: translateX(-50%) }` has the same
+       specificity (0,1,1) and is loaded after this block, so the single-class
+       version of this rule lost the cascade silently -- the custom property
+       below was being set and ignored, and the tooltips carried on running off
+       the edge while reading as fixed. Two classes takes it to 0,2,1. */
+    .tooltip.tooltip-info-wide:before {
       white-space: normal;
       width: max-content;
-      max-width: 20rem;
+      /* Never wider than the panel itself, which a fixed 20rem is on a
+         narrow dock. The shift below then keeps it inside the edges;
+         see public/tooltip-fit.js. */
+      max-width: min(20rem, calc(100vw - 1.5rem));
       text-align: left;
+      /* The keep-it-on-screen nudge, as a margin rather than a transform.
+         DaisyUI sets `transform: translateX(-50%)` on `.tooltip:before` and
+         kept winning it even at higher specificity -- the vendored Tailwind
+         JIT injects its sheet at runtime, after this block. Margin is a
+         property DaisyUI never sets here, so there is no cascade to win:
+         it composes with the vendor's centring instead of replacing it.
+         Set by public/tooltip-fit.js. */
+      margin-left: var(--rf-tip-shift, 0px);
     }
 
     /* A DaisyUI tooltip's :before is absolutely positioned and stays in

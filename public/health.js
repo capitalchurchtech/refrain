@@ -666,19 +666,19 @@ export function initHealth() {
   return { render };
 }
 
-// Default position is top-centered (DaisyUI's plain .tooltip, no
-// direction class) — the tooltip's horizontal center matches the
-// icon's, so it only risks overflowing the viewport if the icon itself
-// is within ~half the tooltip's max-width of an edge. tooltip-right
-// (the previous default) shifts the entire wide box rightward from the
-// icon, guaranteeing overflow for anything already close to the right
-// edge — confirmed live: the Port field's tooltip clipped with no way
-// to scroll to the rest of it. Pass "left" for fields known to sit in
-// a layout's right-hand column (Port, Storage backend), so their
-// tooltip opens toward the open space instead of off the edge.
-function infoIcon(tip, direction = "top") {
-  const directionClass = { top: "", left: "tooltip-left", right: "tooltip-right", bottom: "tooltip-bottom" }[direction] ?? "";
-  return `<span class="tooltip ${directionClass} tooltip-info-wide" data-tip="${escapeHtml(tip)}"><i data-lucide="info" class="w-3.5 h-3.5 opacity-50 cursor-help align-text-top"></i></span>`;
+/**
+ * The little (i) beside a field label.
+ *
+ * These used to take a direction, hand-picked per field for the ones "known to
+ * sit in a layout's right-hand column". That is the wrong altitude: it asks
+ * every call site to know where it will be laid out, and it had already fallen
+ * behind the layout -- measured at 380px, 10 of Health's 20 tooltips ran off
+ * the edge anyway, and the four hand-placed `tooltip-left` ones ran off the
+ * OTHER edge. public/tooltip-fit.js measures and nudges instead, once, for all
+ * of them, so there is one direction and nothing to keep in sync.
+ */
+function infoIcon(tip) {
+  return `<span class="tooltip tooltip-info-wide" data-tip="${escapeHtml(tip)}"><i data-lucide="info" class="w-3.5 h-3.5 opacity-50 cursor-help align-text-top"></i></span>`;
 }
 
 function renderLibraryCard({ folders, selected, error }, arrangementFolders) {
@@ -1306,7 +1306,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "") {
             </label>
             <label class="form-control w-full max-w-[10rem]">
               <label class="label py-1" for="config-port">
-                <span class="label-text">Port ${infoIcon("ProPresenter's Network API port, set in ProPresenter's own Preferences > Network pane.", "left")}</span>
+                <span class="label-text">Port ${infoIcon("ProPresenter's Network API port, set in ProPresenter's own Preferences > Network pane.")}</span>
               </label>
               <input id="config-port" type="number" min="1" max="65535" class="input input-bordered input-sm" value="${propresenter.port}" />
             </label>
@@ -1436,19 +1436,19 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "") {
             </label>
             <label class="form-control w-full max-w-xs">
               <label class="label py-1" for="config-qr-logo-url">
-                <span class="label-text">Default logo ${infoIcon("Default centre logo for QR codes. A path Refrain serves (img/logo.png) or a full URL. Replaceable per code.", "left")}</span>
+                <span class="label-text">Default logo ${infoIcon("Default centre logo for QR codes. A path Refrain serves (img/logo.png) or a full URL. Replaceable per code.")}</span>
               </label>
               <input id="config-qr-logo-url" type="text" class="input input-bordered input-sm" placeholder="img/mylogo.png" value="${escapeHtml(config.qrCodeModule?.defaultLogoUrl ?? "")}" />
             </label>
             <label class="form-control w-full max-w-xs">
               <label class="label py-1" for="config-qr-recent-limit">
-                <span class="label-text">Recent codes to keep ${infoIcon("How many recently-downloaded codes the QR Codes screen keeps for one-click restore. 0 turns the recent list off; max 100.", "left")}</span>
+                <span class="label-text">Recent codes to keep ${infoIcon("How many recently-downloaded codes the QR Codes screen keeps for one-click restore. 0 turns the recent list off; max 100.")}</span>
               </label>
               <input id="config-qr-recent-limit" type="number" min="0" max="100" step="1" class="input input-bordered input-sm w-28" value="${config.qrCodeModule?.recentLimit ?? 20}" />
             </label>
             <label class="form-control w-full max-w-xs">
               <label class="label py-1" for="config-qr-default-size">
-                <span class="label-text">Default QR size (px) ${infoIcon("Starting pixel size for new QR codes. Blank for 512. Adjustable per code.", "left")}</span>
+                <span class="label-text">Default QR size (px) ${infoIcon("Starting pixel size for new QR codes. Blank for 512. Adjustable per code.")}</span>
               </label>
               <input id="config-qr-default-size" type="number" min="64" max="2000" step="1" class="input input-bordered input-sm w-28" placeholder="512" value="${config.qrCodeModule?.defaultSize ?? ""}" />
             </label>
@@ -1483,7 +1483,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "") {
             </label>
             <label class="form-control w-full max-w-xs">
               <label class="label py-1" for="config-arrangement-storage">
-                <span class="label-text">Storage backend ${infoIcon('Where history is saved. "local-folder" is this machine only; the others share it between machines and need .env credentials below.', "left")}</span>
+                <span class="label-text">Storage backend ${infoIcon('Where history is saved. "local-folder" is this machine only; the others share it between machines and need .env credentials below.')}</span>
               </label>
               <select id="config-arrangement-storage" class="select select-bordered select-sm">
                 ${selectOptions(configOptions.storageBackends, arrangementModule.storageBackend ?? "local-folder")}
