@@ -24,6 +24,8 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { access } from "node:fs/promises";
+import { getIndex } from "./search-index.js";
+import { buildSongCorpus, rankCandidates, tokenize } from "./follow-match.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SIDECAR_PATH = path.join(HERE, "..", "modules", "follow", "stt_sidecar.py");
@@ -60,6 +62,39 @@ function newSession() {
 
 // Running transcript, as words, for overlap dedup across windows.
 let emittedWords = [];
+
+// --- candidate song matching (Phase 1 readout only; never triggers) -------
+// A rolling window of the most recent transcript words is scored against the
+// song library so the screen can answer "could this have found the song?".
+// Capped because evidence has to expire: a window long enough to span two
+// songs would keep voting for the one that just ended.
+const MATCH_WINDOW_WORDS = 40;
+const CANDIDATE_THROTTLE_MS = 700;
+let matchWords = [];
+let corpus = null;
+let corpusKey = null;
+let lastCandidatesAt = 0;
+let matchFolders = null;
+
+/** (Re)build the song corpus when the search index or the folder scope changes. */
+function ensureCorpus(folders) {
+  const index = getIndex();
+  const key = `${index?.builtAt ?? "none"}|${(folders ?? []).join(",")}`;
+  if (corpus && corpusKey === key) return corpus;
+  corpus = buildSongCorpus(index?.presentations ?? {}, folders ?? null);
+  corpusKey = key;
+  return corpus;
+}
+
+function broadcastCandidates(folders, { force = false } = {}) {
+  const now = Date.now();
+  if (!force && now - lastCandidatesAt < CANDIDATE_THROTTLE_MS) return;
+  lastCandidatesAt = now;
+  const built = ensureCorpus(folders);
+  if (!built?.docs?.length) return;
+  const candidates = rankCandidates(matchWords, built, { limit: 5 });
+  broadcast({ type: "candidates", candidates, windowWords: matchWords.length, songCount: built.totalDocs });
+}
 
 let depCache = null;
 let depCacheAt = 0;
@@ -187,6 +222,10 @@ export async function startCapture(settings) {
   session.mode = settings.mode === "wav" ? "wav" : "live";
   session.model = model;
   emittedWords = [];
+  matchWords = [];
+  // Which Library folders count as songs. Scoping to them is what stops a
+  // transcript latching onto a sermon slide that shares a phrase.
+  matchFolders = Array.isArray(settings.folders) && settings.folders.length ? settings.folders : null;
   currentLevel = 0;
 
   // Sidecar first, so it's ready to consume as soon as audio flows.
@@ -264,6 +303,11 @@ function handleSidecarLine(line) {
   const chunk = { t: obj.t, text: added, conf: obj.conf ?? null };
   session.chunks.push(chunk);
   broadcast({ type: "transcript", chunk });
+
+  // Score the library against what we've heard recently. Read-only: this
+  // reports what Phase 2 *would* have concluded, and triggers nothing.
+  matchWords = matchWords.concat(tokenize(added)).slice(-MATCH_WINDOW_WORDS);
+  broadcastCandidates(matchFolders);
 }
 
 function updateLevel(buf) {

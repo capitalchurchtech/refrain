@@ -41,9 +41,38 @@ os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 
 SAMPLE_RATE = 16000          # must match the ffmpeg resample on the Node side
 BYTES_PER_SAMPLE = 2         # s16le
-WINDOW_SECONDS = 4.0         # how much audio each transcription sees
-HOP_SECONDS = 1.0            # how often we transcribe
+
+# Whisper was trained only on 30 s segments, and accuracy improves as input
+# length approaches that — a bare 4 s slice sits near the worst point on the
+# length curve and invites the decoder to invent speech into the padding.
+# Every production streaming Whisper (whisper.cpp `stream`, WhisperKit) uses a
+# long accumulating buffer with a short hop instead, so we do too: the window
+# is what each transcription SEES, the hop is how often we run.
+WINDOW_SECONDS = float(os.environ.get("REFRAIN_FOLLOW_WINDOW", "10.0"))
+HOP_SECONDS = float(os.environ.get("REFRAIN_FOLLOW_HOP", "1.0"))
 READ_SECONDS = 0.25          # stdin read granularity
+
+# Language is pinned rather than detected. Whisper's per-window language
+# detection on sung audio is unreliable and costs real accuracy (on the
+# Jam-ALT lyrics benchmark, simply declaring the language moved large-v2 from
+# 37.8 to 27.9 WER). It also removes a class of "decided this was Welsh and
+# hallucinated" failures. Override for a non-English service.
+LANGUAGE = os.environ.get("REFRAIN_FOLLOW_LANGUAGE", "en") or None
+
+# Whisper hallucinates confidently on non-speech audio — instrumental pads,
+# reverb tails and room noise all read as singing, and a blank slide can fire
+# repeatedly off pure invention. A cheap RMS gate in front of the decoder is
+# the single most effective mitigation here, and RMS thresholding is MORE
+# reliable on an isolated vocal aux than on a full mix. Below this level the
+# window is treated as silence and never reaches the model at all.
+SILENCE_RMS = float(os.environ.get("REFRAIN_FOLLOW_SILENCE_RMS", "0.005"))
+
+# A degenerate, looping transcription compresses far better than real text.
+# Whisper's own fallback uses this signal, but only when a temperature TUPLE
+# is supplied — a scalar temperature disables the fallback loop entirely, so
+# we both pass the tuple and check the ratio ourselves.
+MAX_COMPRESSION_RATIO = 2.2
+TEMPERATURE_FALLBACK = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
 
 WINDOW_SAMPLES = int(WINDOW_SECONDS * SAMPLE_RATE)
 HOP_SAMPLES = int(HOP_SECONDS * SAMPLE_RATE)
@@ -97,6 +126,19 @@ def mean_confidence(result):
         return None
 
 
+def looks_degenerate(result):
+    """
+    True when a window's segments look like a repetition loop rather than
+    real singing. Whisper's text compresses unusually well when it has gotten
+    stuck repeating a phrase, which is the classic music-hallucination shape.
+    """
+    for seg in result.get("segments") or []:
+        ratio = seg.get("compression_ratio")
+        if ratio is not None and ratio > MAX_COMPRESSION_RATIO:
+            return True
+    return False
+
+
 def main():
     model_name = sys.argv[1] if len(sys.argv) > 1 else "small"
     model_repo = resolve_model(model_name)
@@ -110,8 +152,8 @@ def main():
         log("Install with: pip3 install mlx-whisper numpy")
         return 3
 
-    log(f"Ready. model={model_name} ({model_repo}), "
-        f"window={WINDOW_SECONDS}s hop={HOP_SECONDS}s, offline=1")
+    log(f"Ready. model={model_name} ({model_repo}), lang={LANGUAGE or 'auto'}, "
+        f"window={WINDOW_SECONDS}s hop={HOP_SECONDS}s, silence_rms={SILENCE_RMS}, offline=1")
 
     # Rolling buffer of the most recent WINDOW_SAMPLES samples, as int16.
     buffer = np.zeros(0, dtype=np.int16)
@@ -124,12 +166,23 @@ def main():
             return
         # mlx-whisper expects float32 in [-1, 1].
         audio = window.astype(np.float32) / 32768.0
+
+        # Silence gate, before the model sees anything. Whisper will happily
+        # transcribe a reverb tail or an instrumental pad into confident
+        # nonsense, so a window with no real signal is simply never decoded.
+        rms = float(np.sqrt(np.mean(np.square(audio)))) if audio.size else 0.0
+        if rms < SILENCE_RMS:
+            return
+
         try:
             result = mlx_whisper.transcribe(
                 audio,
                 path_or_hf_repo=model_repo,
-                # Deterministic, low-latency settings for short windows.
-                temperature=0.0,
+                language=LANGUAGE,
+                # A temperature TUPLE (not a scalar) is what arms Whisper's
+                # fallback loop, which is what makes its compression-ratio and
+                # logprob hallucination checks fire at all.
+                temperature=TEMPERATURE_FALLBACK,
                 condition_on_previous_text=False,
                 fp16=True,
             )
@@ -142,8 +195,16 @@ def main():
             return
 
         text = (result.get("text") or "").strip()
-        if text:
-            emit({"t": int(time.time() * 1000), "text": text, "conf": mean_confidence(result)})
+        if not text:
+            return
+        # Drop a degenerate window rather than feeding a repetition loop
+        # downstream. Confidence is NOT a usable filter here: hallucinated
+        # segments frequently carry high avg_logprob and low no_speech_prob,
+        # so the compression ratio is the signal that actually separates them.
+        if looks_degenerate(result):
+            log(f"Dropped a degenerate window (compression ratio): {text[:60]!r}")
+            return
+        emit({"t": int(time.time() * 1000), "text": text, "conf": mean_confidence(result)})
 
     stdin = sys.stdin.buffer
     try:

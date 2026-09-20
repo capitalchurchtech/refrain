@@ -114,10 +114,21 @@ export function initFollow() {
                 <div class="opacity-50" id="follow-transcript-empty">Nothing yet — start capture to see the transcript here.</div>
               </div>
             </div>
-            <div class="md:w-72 shrink-0">
-              <span class="text-sm font-semibold">Live in ProPresenter</span>
-              <div id="follow-livestate" class="bg-base-200 rounded p-2 h-72 overflow-y-auto text-sm">
-                <div class="opacity-50">Checking…</div>
+            <div class="md:w-80 shrink-0 flex flex-col gap-3">
+              <div>
+                <span class="text-sm font-semibold">Live in ProPresenter</span>
+                <div id="follow-livestate" class="bg-base-200 rounded p-2 h-28 overflow-y-auto text-sm">
+                  <div class="opacity-50">Checking…</div>
+                </div>
+              </div>
+              <div>
+                <div class="flex items-baseline justify-between">
+                  <span class="text-sm font-semibold">Best guess <span class="opacity-50 font-normal">from the transcript</span></span>
+                  <span id="follow-candidates-meta" class="text-xs opacity-40"></span>
+                </div>
+                <div id="follow-candidates" class="bg-base-200 rounded p-2 h-40 overflow-y-auto text-sm">
+                  <div class="opacity-50">Nothing heard yet.</div>
+                </div>
               </div>
             </div>
           </div>
@@ -222,6 +233,7 @@ export function initFollow() {
       let msg;
       try { msg = JSON.parse(ev.data); } catch { return; }
       if (msg.type === "level") setLevel(msg.value);
+      else if (msg.type === "candidates") paintCandidates(msg);
       else if (msg.type === "transcript") appendTranscript(msg.chunk);
       else if (msg.type === "started") setRunning(true);
       else if (msg.type === "stopped") setRunning(false);
@@ -247,6 +259,35 @@ export function initFollow() {
     };
     paint();
     liveTimer = setInterval(paint, 2000);
+  }
+
+  // The Phase 1 verdict: given what Whisper heard, which song would this have
+  // picked? Compare the top row against the "Live in ProPresenter" box above —
+  // agreement means the transcript was good enough, even if it reads badly.
+  function paintCandidates({ candidates, windowWords, songCount }) {
+    const box = byId("follow-candidates");
+    const meta = byId("follow-candidates-meta");
+    if (!box) return;
+    if (meta) meta.textContent = `${windowWords ?? 0} words · ${songCount ?? 0} songs`;
+    if (!candidates?.length) {
+      box.innerHTML = `<div class="opacity-50">Nothing distinctive enough yet.</div>`;
+      return;
+    }
+    const top = candidates[0].weight || 1;
+    box.innerHTML = candidates
+      .map((c, i) => {
+        const bar = Math.max(4, Math.round((c.weight / top) * 100));
+        return `
+        <div class="mb-1">
+          <div class="flex items-baseline justify-between gap-2">
+            <span class="truncate ${i === 0 ? "font-semibold" : "opacity-70"}">${esc(c.name ?? "—")}</span>
+            <span class="text-xs opacity-40 shrink-0">${Math.round((c.score ?? 0) * 100)}%</span>
+          </div>
+          <div class="h-1 bg-base-300 rounded overflow-hidden"><div class="h-full ${i === 0 ? "bg-success" : "bg-base-content/30"}" style="width:${bar}%"></div></div>
+          <div class="text-xs opacity-40 truncate">${esc((c.matchedWords ?? []).join(" "))}</div>
+        </div>`;
+      })
+      .join("");
   }
 
   function setLevel(v) {

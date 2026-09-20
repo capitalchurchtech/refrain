@@ -62,13 +62,14 @@
     "biblegatewayVersion": "NIV",
     "blueletterTranslation": "KJV"
   },
-  "_followModule": "Experimental, macOS + Apple Silicon only, and off by default. Auto-advance groundwork: transcribes a live vocal feed on-device with Whisper. Needs python3 + mlx-whisper and ffmpeg installed separately (see modules/follow/README.md). Phase 1 only transcribes; it does not advance slides.",
+  "_followModule": "Experimental, macOS + Apple Silicon only, and off by default. Auto-advance groundwork: transcribes a live vocal feed on-device with Whisper and shows which song that transcript would have identified. Needs python3 + mlx-whisper and ffmpeg installed separately (see modules/follow/README.md). Phase 1 only transcribes and guesses; it does not advance slides. \"folders\" limits song matching to those Library folders (null = every indexed folder) so a transcript can't match a sermon slide.",
   "followModule": {
     "enabled": false,
     "mode": "live",
     "deviceIndex": null,
     "channel": null,
     "model": "small",
-    "wavPath": null
+    "wavPath": null,
+    "folders": null
   }
 }
