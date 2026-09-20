@@ -607,6 +607,9 @@ export function initHealth() {
         arrangementLocalFolderPath: document.getElementById("config-storage-path").value,
         planningCenterServiceTypeId: document.getElementById("config-planning-center-service-type").value,
       }),
+      follow: () => ({
+        followEnabled: document.getElementById("config-follow-enabled").checked,
+      }),
     };
 
     document.querySelectorAll(".config-save").forEach((btn) => {
@@ -1032,6 +1035,7 @@ function renderAutostartCard(state) {
 
 function renderHealth(health, configOptions, versionInfo, libraryCard = "") {
   const { propresenter, index, arrangementModule, role, version, config, envRequirements } = health;
+  const followModule = health.followModule ?? { enabled: false, supported: true, status: "off" };
   const shareLibraryCard = renderShareLibraryCard(health.shareLibrary);
   const terminalCard = renderTerminalActions(health.port ?? window.location.port ?? 9999, health.installDir ?? "$HOME/Refrain");
   const autostartCard = renderAutostartCard(health.autostart);
@@ -1517,6 +1521,29 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "") {
             <div class="flex items-center gap-2 pt-1">
               <button type="button" class="btn btn-outline btn-sm config-save" data-scope="arrangement">Save</button>
               <span class="text-sm config-save-status" data-scope="arrangement"></span>
+            </div>
+          </div>
+        </details>
+        <details class="collapse collapse-arrow bg-base-200 rounded">
+          <summary class="collapse-title min-h-0 py-2">
+            <span class="flex items-center gap-2 text-sm font-medium">
+              <i data-lucide="radio" class="w-4 h-4 opacity-70 shrink-0"></i> Follow
+              <span class="badge badge-warning badge-xs">experimental</span>
+            </span>
+          </summary>
+          <div class="collapse-content flex flex-col gap-3">
+            <label class="label cursor-pointer justify-start gap-2 w-fit">
+              <input type="checkbox" id="config-follow-enabled" class="checkbox checkbox-sm" ${followModule.enabled ? "checked" : ""} />
+              <span class="label-text">Enable Follow ${infoIcon("Adds the Follow screen, which transcribes a live vocal feed on-device with Whisper. Groundwork for auto-advancing slides — Phase 1 only transcribes, it does not advance slides yet. macOS + Apple Silicon only, and needs python3 with mlx-whisper plus ffmpeg installed separately (the Follow screen shows what's missing).")}</span>
+            </label>
+            ${
+              followModule.supported
+                ? ""
+                : `<div class="text-xs text-warning">Whisper-on-MLX is macOS + Apple Silicon only, so Follow can't run on this machine. The toggle is here for reference; enabling it does nothing.</div>`
+            }
+            <div class="flex items-center gap-2 pt-1">
+              <button type="button" class="btn btn-outline btn-sm config-save" data-scope="follow">Save</button>
+              <span class="text-sm config-save-status" data-scope="follow"></span>
             </div>
           </div>
         </details>

@@ -22,6 +22,7 @@ import {
   getArrangementModuleStatus,
   getImageCropModuleStatus,
   getLibrarySyncModuleStatus,
+  getFollowModuleStatus,
   getEnvRequirements,
   ensureMachineId,
   readConfigFileRaw,
@@ -95,6 +96,18 @@ import { discoverModules, discoverSlideSplitters, discoverProviders, discoverSto
 import { runComparison, suggestMapping, getPendingUploadCount, retryPendingUploads } from "./arrangement-diff.js";
 import { startWatcher as startImageCropWatcher, getImageCropStatus, foldersOverlap, websafeToken } from "./image-crop.js";
 import { generateQr, getQrHistoryList, getQrHistoryEntry, addQrHistoryEntry, clearQrHistory, QR_LIMITS } from "./qr-code.js";
+import {
+  FOLLOW_MODELS,
+  isPlatformSupported as followPlatformSupported,
+  checkDeps as checkFollowDeps,
+  listDevices as listFollowDevices,
+  startCapture as startFollowCapture,
+  stopCapture as stopFollowCapture,
+  addSseClient as addFollowSseClient,
+  getFollowRuntimeStatus,
+  getFollowSession,
+  fileExists as followFileExists,
+} from "./follow.js";
 import { loadSpeller, findTypos, tokenize, addToAllowlist, removeFromAllowlist, parseWordList } from "./spellcheck.js";
 import { normalizeSongTitle } from "../providers/planning-center.js";
 import * as autostart from "./autostart.js";
@@ -174,6 +187,7 @@ app.use(express.json());
 function navEnabledFor(m) {
   if (m.id === "arrangement") return getArrangementModuleStatus(config) !== "off";
   if (m.id === "library-sync") return getLibrarySyncModuleStatus(config) !== "off";
+  if (m.id === "follow") return getFollowModuleStatus(config) !== "off";
   return m.enabledByDefault;
 }
 
@@ -414,6 +428,7 @@ app.post("/api/config", async (req, res) => {
       librarySync: { ...config.librarySync },
       arrangementModule: { ...config.arrangementModule },
       qrCodeModule: { ...config.qrCodeModule },
+      followModule: { ...config.followModule },
     };
 
     if (body.role !== undefined) {
@@ -460,6 +475,12 @@ app.post("/api/config", async (req, res) => {
 
     if (body.arrangementEnabled !== undefined) {
       newConfig.arrangementModule.enabled = Boolean(body.arrangementEnabled);
+    }
+
+    if (body.followEnabled !== undefined) {
+      newConfig.followModule.enabled = Boolean(body.followEnabled);
+      // Turning it off must stop any capture immediately — no orphan sidecar.
+      if (!newConfig.followModule.enabled) await stopFollowCapture();
     }
 
     if (body.arrangementProvider !== undefined) {
@@ -2675,6 +2696,120 @@ app.delete("/api/qr/history", async (_req, res) => {
   }
 });
 
+// --- Follow module (experimental: on-device speech-to-text harness) ---
+//
+// Phase 1 only transcribes a live/recorded vocal feed so we can judge
+// whether on-device Whisper is good enough to drive slide-following later.
+// It advances no slides. Enable is on the Health config form (like the
+// arrangement module); the operational pickers live on the Follow screen.
+// python3 + mlx-whisper and ffmpeg are this module's own dependencies,
+// checked lazily here — never at startup, never in package.json.
+
+const FOLLOW_PLATFORM_MESSAGE =
+  "Follow needs macOS on Apple Silicon (M-series) — it uses Apple's MLX to run Whisper locally, " +
+  "which isn't available on this platform. Enabling it here does nothing on this machine.";
+
+/** Reject a request unless Follow is enabled and runnable on this machine. */
+function requireFollowActive(res) {
+  const status = getFollowModuleStatus(config);
+  if (status === "active") return true;
+  res.status(409).json({
+    error: status === "off" ? "Follow is turned off — enable it on the Health screen first." : FOLLOW_PLATFORM_MESSAGE,
+    status,
+  });
+  return false;
+}
+
+/** Merge validated picker values into config.followModule and persist. */
+async function saveFollowSettings(body) {
+  const mod = { ...config.followModule };
+  if (body.mode !== undefined) {
+    if (!["live", "wav"].includes(body.mode)) throw new Error('mode must be "live" or "wav"');
+    mod.mode = body.mode;
+  }
+  if (body.deviceIndex !== undefined) mod.deviceIndex = body.deviceIndex === null || body.deviceIndex === "" ? null : Number(body.deviceIndex);
+  if (body.channel !== undefined) mod.channel = body.channel === null || body.channel === "" ? null : Number(body.channel);
+  if (body.model !== undefined) {
+    if (!FOLLOW_MODELS.includes(body.model)) throw new Error(`Unknown model "${body.model}"`);
+    mod.model = body.model;
+  }
+  if (body.wavPath !== undefined) mod.wavPath = body.wavPath ? String(body.wavPath).trim() : null;
+  const newConfig = { ...config, followModule: mod };
+  await saveConfig(newConfig);
+  config = newConfig;
+  return mod;
+}
+
+app.get("/api/follow/status", async (_req, res) => {
+  try {
+    const status = getFollowModuleStatus(config);
+    const supported = followPlatformSupported();
+    const payload = {
+      status,
+      supported,
+      models: FOLLOW_MODELS,
+      settings: config.followModule ?? {},
+      runtime: getFollowRuntimeStatus(),
+    };
+    if (!supported) payload.platformMessage = FOLLOW_PLATFORM_MESSAGE;
+    if (supported && status !== "off") payload.deps = await checkFollowDeps();
+    res.json(payload);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/follow/devices", async (_req, res) => {
+  if (!requireFollowActive(res)) return;
+  try {
+    const deps = await checkFollowDeps();
+    if (!deps.ffmpeg) return res.status(422).json({ error: "ffmpeg isn't installed — can't list input devices.", deps });
+    res.json({ devices: await listFollowDevices() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/follow/settings", async (req, res) => {
+  if (!requireFollowActive(res)) return;
+  try {
+    res.json({ ok: true, settings: await saveFollowSettings(req.body ?? {}) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post("/api/follow/start", async (req, res) => {
+  if (!requireFollowActive(res)) return;
+  try {
+    const settings = await saveFollowSettings(req.body ?? {});
+    if (settings.mode === "wav" && settings.wavPath && !(await followFileExists(settings.wavPath))) {
+      return res.status(400).json({ error: `WAV file not found: ${settings.wavPath}` });
+    }
+    await startFollowCapture(settings);
+    res.json({ ok: true, runtime: getFollowRuntimeStatus() });
+  } catch (err) {
+    res.status(err.deps ? 422 : 400).json({ error: err.message, deps: err.deps });
+  }
+});
+
+app.post("/api/follow/stop", async (_req, res) => {
+  await stopFollowCapture();
+  res.json({ ok: true });
+});
+
+app.get("/api/follow/stream", (req, res) => {
+  if (!requireFollowActive(res)) return;
+  addFollowSseClient(res);
+});
+
+app.get("/api/follow/session", (_req, res) => {
+  if (!requireFollowActive(res)) return;
+  res.setHeader("Content-Type", "application/json");
+  res.setHeader("Content-Disposition", `attachment; filename="follow-session-${Date.now()}.json"`);
+  res.send(JSON.stringify(getFollowSession(), null, 2));
+});
+
 // --- First-run setup (Section 6) ---
 
 app.get("/api/setup/status", (_req, res) => {
@@ -2947,6 +3082,11 @@ app.get("/api/health", async (_req, res) => {
       providerDisplayName: await getArrangementProviderDisplayName(),
       planningCenterServiceTypeId: config.arrangementModule?.planningCenterServiceTypeId ?? null,
       pendingUploads: await getPendingUploadCount(),
+    },
+    followModule: {
+      status: getFollowModuleStatus(config),
+      enabled: Boolean(config.followModule?.enabled),
+      supported: followPlatformSupported(),
     },
     config: {
       // NOTE: `librarySync` here is the SEARCH SCOPE — which Library folders

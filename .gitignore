@@ -37,3 +37,7 @@ npm-debug.log*
 # Build output (if a bundler is added later)
 dist/
 build/
+
+# Python bytecode cache (the Follow module ships a Python sidecar)
+__pycache__/
+*.pyc

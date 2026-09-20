@@ -61,5 +61,14 @@
   "scriptureModule": {
     "biblegatewayVersion": "NIV",
     "blueletterTranslation": "KJV"
+  },
+  "_followModule": "Experimental, macOS + Apple Silicon only, and off by default. Auto-advance groundwork: transcribes a live vocal feed on-device with Whisper. Needs python3 + mlx-whisper and ffmpeg installed separately (see modules/follow/README.md). Phase 1 only transcribes; it does not advance slides.",
+  "followModule": {
+    "enabled": false,
+    "mode": "live",
+    "deviceIndex": null,
+    "channel": null,
+    "model": "small",
+    "wavPath": null
   }
 }
