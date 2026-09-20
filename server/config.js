@@ -122,16 +122,17 @@ export function getLibrarySyncModuleStatus(config) {
 
 /**
  * Follow (experimental) — on-device speech-to-text auto-advance. Off until
- * deliberately enabled. Whisper-on-MLX is Apple-Silicon-only (see
- * isPlatformSupported in server/follow.js), so an enabled-but-unrunnable
- * platform resolves to "misconfigured" with a clear Health message rather
- * than crashing or pretending to work. The ffmpeg/python/mlx-whisper tools
- * are checked lazily on the Follow screen, not here (that's async).
+ * deliberately enabled.
+ *
+ * No platform gate: the sidecar picks MLX on Apple Silicon and
+ * faster-whisper (CUDA or CPU) everywhere else, so macOS, Windows and Linux
+ * can all run it. What varies is whether the external tools are installed,
+ * and that's checked lazily on the Follow screen rather than here — those
+ * probes are async, and this has to stay a cheap synchronous read.
  * @returns {"off" | "misconfigured" | "active"}
  */
 export function getFollowModuleStatus(config) {
   if (!config.followModule?.enabled) return "off";
-  if (!(process.platform === "darwin" && process.arch === "arm64")) return "misconfigured";
   return "active";
 }
 

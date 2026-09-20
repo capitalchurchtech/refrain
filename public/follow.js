@@ -27,12 +27,11 @@ export function initFollow() {
     const models = s.models ?? ["small"];
     const running = Boolean(s.runtime?.running);
 
-    // Non-Apple-Silicon (or otherwise unrunnable): explain and stop here.
-    if (s.status === "misconfigured" || s.supported === false) {
+    if (s.status !== "active") {
       container.innerHTML = `
         <div class="flex flex-col gap-4 max-w-2xl">
           ${header()}
-          <div class="alert alert-warning py-2 text-sm">${esc(s.platformMessage ?? "Follow can't run on this machine.")}</div>
+          <div class="alert alert-warning py-2 text-sm">${esc(s.error ?? "Follow is turned off — enable it under Health → Configuration → Follow.")}</div>
         </div>`;
       if (window.lucide) window.lucide.createIcons();
       return;
@@ -42,7 +41,7 @@ export function initFollow() {
       <div class="flex flex-col gap-4 max-w-3xl">
         ${header()}
         <p class="text-sm opacity-70">
-          Listens to a live vocal feed and transcribes it on-device with Whisper (Apple&nbsp;Silicon / MLX).
+          Listens to a live vocal feed and transcribes it on-device with Whisper${s.engine ? ` (${esc(s.engine)})` : ""}.
           This is the Phase&nbsp;1 harness: watch the transcript against what ProPresenter has live to judge
           whether the text is good enough to drive slide-following later. It does <strong>not</strong> advance slides yet.
         </p>
@@ -158,7 +157,7 @@ export function initFollow() {
       if (mode === "live") loadDevices();
     });
     byId("follow-model")?.addEventListener("change", (e) => saveSettings({ model: e.target.value }));
-    byId("follow-device")?.addEventListener("change", (e) => saveSettings({ deviceIndex: e.target.value === "" ? null : Number(e.target.value) }));
+    byId("follow-device")?.addEventListener("change", (e) => saveSettings({ deviceId: e.target.value === "" ? null : e.target.value }));
     byId("follow-channel")?.addEventListener("change", (e) => saveSettings({ channel: e.target.value === "" ? null : Number(e.target.value) }));
     byId("follow-wav-path")?.addEventListener("change", (e) => saveSettings({ wavPath: e.target.value }));
     byId("follow-refresh-devices")?.addEventListener("click", loadDevices);
@@ -183,9 +182,13 @@ export function initFollow() {
         sel.innerHTML = `<option value="">${esc(data.error ?? "No devices")}</option>`;
         return;
       }
-      const current = statusData?.settings?.deviceIndex;
+      const current = statusData?.settings?.deviceId;
       sel.innerHTML = [`<option value="">Select a device…</option>`]
-        .concat(data.devices.map((d) => `<option value="${d.index}" ${d.index === current ? "selected" : ""}>[${d.index}] ${esc(d.name)}</option>`))
+        .concat(
+          data.devices.map(
+            (d) => `<option value="${esc(d.id)}" ${String(d.id) === String(current) ? "selected" : ""}>${esc(d.name)}</option>`
+          )
+        )
         .join("");
     } catch {
       sel.innerHTML = `<option value="">Couldn't list devices</option>`;
@@ -197,7 +200,7 @@ export function initFollow() {
     const body = {
       mode: byId("follow-mode")?.value,
       model: byId("follow-model")?.value,
-      deviceIndex: byId("follow-device")?.value === "" ? null : Number(byId("follow-device")?.value),
+      deviceId: byId("follow-device")?.value === "" ? null : byId("follow-device")?.value,
       channel: byId("follow-channel")?.value === "" ? null : Number(byId("follow-channel")?.value),
       wavPath: byId("follow-wav-path")?.value,
     };
@@ -340,10 +343,13 @@ function depsBanner(deps) {
   // Only the engine the SELECTED model actually needs is listed — Whisper and
   // Qwen3-ASR are separate Python installs, and demanding both would send you
   // installing something you'll never run.
-  const qwen = deps.backend === "qwen3";
-  const engine = qwen
-    ? ["mlx-audio", deps.mlxAudio, "pip3 install -U mlx-audio"]
-    : ["mlx-whisper", deps.mlxWhisper, "pip3 install mlx-whisper numpy"];
+  const ENGINES = {
+    "mlx-whisper": ["mlx-whisper", deps.mlxWhisper, "pip3 install mlx-whisper numpy"],
+    "qwen3-mlx": ["mlx-audio", deps.mlxAudio, "pip3 install -U mlx-audio"],
+    "faster-whisper": ["faster-whisper", deps.fasterWhisper, "pip3 install faster-whisper"],
+  };
+  const qwen = deps.backend === "qwen3-mlx";
+  const engine = ENGINES[deps.backend] ?? ENGINES["faster-whisper"];
   const rows = [
     ["ffmpeg", deps.ffmpeg, "Homebrew: brew install ffmpeg"],
     ["python3", deps.python, "Homebrew: brew install python (or the system python3)"],

@@ -9,11 +9,15 @@ newline-delimited JSON transcript objects to stdout:
 
 Design notes (see modules/follow/README.md):
 
-- Whisper (via Apple-Silicon MLX) handles sung vocals over a band far
-  better than cloud streaming STT, but it's batch-only. We approximate
-  "live" by transcribing a rolling ~4 s window every ~1 s, so a phrase
-  is never split across a hard chunk boundary. Consecutive windows
-  overlap heavily on purpose; the Node side dedupes that overlap.
+- Whisper handles sung vocals over a band far better than cloud streaming
+  STT, but it's batch-only. We approximate "live" by transcribing a
+  rolling ~10 s window every ~1 s, so a phrase is never split across a
+  hard chunk boundary. Consecutive windows overlap heavily on purpose;
+  the Node side dedupes that overlap.
+- Three interchangeable backends, chosen by resolve_engine(): mlx-whisper
+  (fastest on Apple Silicon), faster-whisper (CUDA or CPU, and what makes
+  this run on Windows and Linux), and mlx-audio for Qwen3-ASR. Each is
+  imported only if selected, so you install one stack, not all three.
 - No network, ever. Hugging Face hub access is forced offline below, so
   the model must be present in the local cache before first use (the
   module's dependency check and README cover that one-time download).
@@ -36,8 +40,13 @@ import time
 # touches it, so a missing model fails fast and locally instead of
 # silently reaching out to the network. This is what lets the module
 # honestly claim "no network calls, ever" at runtime.
-os.environ.setdefault("HF_HUB_OFFLINE", "1")
-os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+# The one exception is a deliberate, opt-in first-run model fetch: set
+# REFRAIN_FOLLOW_ALLOW_DOWNLOAD=1 once to pull the weights, then never again.
+# Runtime stays offline regardless of that flag's value on later runs, so the
+# "no network during a service" guarantee is unaffected.
+if os.environ.get("REFRAIN_FOLLOW_ALLOW_DOWNLOAD", "") not in ("1", "true", "yes"):
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+    os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 
 SAMPLE_RATE = 16000          # must match the ffmpeg resample on the Node side
 BYTES_PER_SAMPLE = 2         # s16le
@@ -100,10 +109,28 @@ MODEL_REPOS = {
 }
 
 
-def backend_for(model_name, repo):
-    """Which Python stack a model needs: mlx-whisper, or mlx-audio for Qwen3-ASR."""
+# Which inference stack to use. "auto" picks MLX on Apple Silicon (where it's
+# the fastest Whisper path) and faster-whisper everywhere else — faster-whisper
+# runs on Windows and Linux, on CUDA or CPU, which is what makes this module
+# cross-platform rather than Mac-only.
+ENGINE = (os.environ.get("REFRAIN_FOLLOW_ENGINE", "auto") or "auto").strip().lower()
+
+# CUDA if it's there, CPU otherwise; override when you want to force one.
+DEVICE = (os.environ.get("REFRAIN_FOLLOW_DEVICE", "auto") or "auto").strip().lower()
+
+
+def resolve_engine(model_name, repo, requested=ENGINE):
+    """Which Python stack a model needs, honouring an explicit override."""
     probe = f"{model_name} {repo}".lower()
-    return "qwen3" if "qwen3-asr" in probe else "whisper"
+    if "qwen3-asr" in probe:
+        return "qwen3-mlx"  # Qwen3-ASR is MLX-only here for now
+    if requested in ("mlx-whisper", "faster-whisper", "qwen3-mlx"):
+        return requested
+    import platform as _platform
+
+    if sys.platform == "darwin" and _platform.machine() == "arm64":
+        return "mlx-whisper"
+    return "faster-whisper"
 
 
 def log(msg):
@@ -120,16 +147,18 @@ def resolve_model(name):
     return MODEL_REPOS.get(name, name)
 
 
-def mean_confidence(result):
+def mean_confidence(segments):
     """
     Rough 0..1 confidence from Whisper's per-segment average log-prob.
     Whisper doesn't expose a calibrated probability, so this is only a
     relative signal (useful later for Phase 2 gating), not a guarantee.
-    Returns None when there are no segments to derive it from.
+    Takes the normalized segment dicts each backend produces; returns None
+    when there's nothing to derive it from (e.g. Qwen3-ASR, which exposes
+    no per-segment scores at all).
     """
     import math
 
-    segments = result.get("segments") or []
+    segments = segments or []
     logprobs = [s.get("avg_logprob") for s in segments if s.get("avg_logprob") is not None]
     if not logprobs:
         return None
@@ -140,13 +169,13 @@ def mean_confidence(result):
         return None
 
 
-def looks_degenerate(result):
+def looks_degenerate(segments):
     """
     True when a window's segments look like a repetition loop rather than
     real singing. Whisper's text compresses unusually well when it has gotten
     stuck repeating a phrase, which is the classic music-hallucination shape.
     """
-    for seg in result.get("segments") or []:
+    for seg in segments or []:
         ratio = seg.get("compression_ratio")
         if ratio is not None and ratio > MAX_COMPRESSION_RATIO:
             return True
@@ -157,7 +186,8 @@ def main():
     model_name = sys.argv[1] if len(sys.argv) > 1 else "small"
     model_repo = resolve_model(model_name)
 
-    backend = backend_for(model_name, model_repo)
+    backend = resolve_engine(model_name, model_repo)
+    model_target = model_repo
 
     try:
         import numpy as np
@@ -168,7 +198,53 @@ def main():
 
     # Each backend is imported only if it's the one selected, so trying Qwen3
     # never requires mlx-whisper and vice versa.
-    if backend == "qwen3":
+    if backend == "faster-whisper":
+        try:
+            from faster_whisper import WhisperModel
+        except Exception as err:  # noqa: BLE001
+            emit({"t": int(time.time() * 1000), "error": f"import_failed: faster-whisper ({err})"})
+            log(f"Failed to import faster-whisper: {err}")
+            log("Install with: pip3 install faster-whisper")
+            return 3
+
+        # float16 on a GPU, int8 on CPU — int8 is several times faster there
+        # and the accuracy cost is small next to what singing already costs us.
+        device = DEVICE if DEVICE in ("cuda", "cpu") else "auto"
+        size = model_name if model_name in MODEL_REPOS else model_repo
+        fw_model = None
+        for attempt_device, compute in (("cuda", "float16"), ("cpu", "int8")):
+            if device != "auto" and attempt_device != device:
+                continue
+            try:
+                fw_model = WhisperModel(size, device=attempt_device, compute_type=compute)
+                model_target = size
+                log(f"faster-whisper on {attempt_device} ({compute})")
+                break
+            except Exception as err:  # noqa: BLE001
+                log(f"faster-whisper {attempt_device}/{compute} unavailable: {err}")
+        if fw_model is None:
+            emit({"t": int(time.time() * 1000), "error": "model_load_failed: no usable faster-whisper device"})
+            return 4
+
+        def run_model(audio_f32):
+            segments, _info = fw_model.transcribe(
+                audio_f32,
+                language=LANGUAGE,
+                temperature=TEMPERATURE_FALLBACK,
+                condition_on_previous_text=False,
+                beam_size=5,
+            )
+            # `segments` is a lazily-evaluated generator — the transcription
+            # doesn't actually run until it's consumed, and it can only be
+            # consumed once, so collect text and scores in a single pass.
+            parts = []
+            segs = []
+            for s in segments:
+                parts.append(s.text)
+                segs.append({"avg_logprob": s.avg_logprob, "compression_ratio": s.compression_ratio})
+            return " ".join(p.strip() for p in parts).strip(), mean_confidence(segs), segs
+
+    elif backend == "qwen3-mlx":
         try:
             import mlx.core as mx
             from mlx_audio.stt.utils import load_model
@@ -219,9 +295,10 @@ def main():
                 condition_on_previous_text=False,
                 fp16=True,
             )
-            return (result.get("text") or "").strip(), mean_confidence(result), result
+            segs = result.get("segments") or []
+            return (result.get("text") or "").strip(), mean_confidence(segs), segs
 
-    log(f"Ready. model={model_name} ({model_repo}) backend={backend}, lang={LANGUAGE or 'auto'}, "
+    log(f"Ready. model={model_name} ({model_target}) backend={backend}, lang={LANGUAGE or 'auto'}, "
         f"window={WINDOW_SECONDS}s hop={HOP_SECONDS}s, silence_rms={SILENCE_RMS}, offline=1")
 
     # Rolling buffer of the most recent WINDOW_SAMPLES samples, as int16.
@@ -244,7 +321,7 @@ def main():
             return
 
         try:
-            text, conf, result = run_model(audio)
+            text, conf, segs = run_model(audio)
         except Exception as err:  # noqa: BLE001
             # Most likely: model not in the local cache while offline.
             emit({"t": int(time.time() * 1000), "error": f"transcribe_failed: {err}"})
@@ -260,7 +337,7 @@ def main():
         # segments frequently carry high avg_logprob and low no_speech_prob,
         # so the compression ratio is the signal that actually separates them.
         # Whisper-only: Qwen3-ASR returns no segments to measure.
-        if result is not None and looks_degenerate(result):
+        if segs and looks_degenerate(segs):
             log(f"Dropped a degenerate window (compression ratio): {text[:60]!r}")
             return
         emit({"t": int(time.time() * 1000), "text": text, "conf": conf})

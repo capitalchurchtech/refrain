@@ -53,17 +53,33 @@ export const FOLLOW_MODELS = [
 ];
 export const FOLLOW_DEFAULT_MODEL = "small";
 
-/** Which Python stack a model needs. Mirrors backend_for() in stt_sidecar.py. */
+/**
+ * Which Python stack a model needs here. Qwen3-ASR is MLX-only for now, so
+ * it pins the engine; anything else follows the platform default.
+ * Mirrors resolve_engine() in stt_sidecar.py.
+ */
 export function backendForModel(model) {
-  return String(model ?? "").toLowerCase().includes("qwen3-asr") ? "qwen3" : "whisper";
+  if (String(model ?? "").toLowerCase().includes("qwen3-asr")) return "qwen3-mlx";
+  return defaultEngine();
 }
+
+/** The pip package each engine needs, for the setup checklist. */
+export const ENGINE_PACKAGES = {
+  "mlx-whisper": { key: "mlxWhisper", label: "mlx-whisper", install: "pip3 install mlx-whisper numpy" },
+  "qwen3-mlx": { key: "mlxAudio", label: "mlx-audio", install: "pip3 install -U mlx-audio" },
+  "faster-whisper": { key: "fasterWhisper", label: "faster-whisper", install: "pip3 install faster-whisper" },
+};
 
 const SAMPLE_RATE = 16000;
 const DEP_CACHE_MS = 15000;
 
-/** Whisper-on-MLX is Apple-Silicon-only. Cheap, side-effect-free check. */
-export function isPlatformSupported() {
-  return process.platform === "darwin" && process.arch === "arm64";
+/**
+ * Which inference stack this machine defaults to. MLX is the fastest Whisper
+ * path on Apple Silicon; faster-whisper runs everywhere else, on CUDA or CPU.
+ * Cheap, side-effect-free. Mirrors resolve_engine() in stt_sidecar.py.
+ */
+export function defaultEngine() {
+  return process.platform === "darwin" && process.arch === "arm64" ? "mlx-whisper" : "faster-whisper";
 }
 
 // ---- module-singleton runtime state (mirrors server/image-crop.js) ------
@@ -163,40 +179,80 @@ export async function checkDeps(force = false, model = FOLLOW_DEFAULT_MODEL) {
   const [ffmpegOk, pythonOk] = await Promise.all([canRun(FFMPEG_CMD, ["-version"]), canRun(PYTHON_CMD, ["--version"])]);
   let whisperOk = false;
   let audioOk = false;
+  let fasterOk = false;
   let mlxError = null;
   if (pythonOk) {
-    const [whisperProbe, audioProbe] = await Promise.all([
+    const [whisperProbe, audioProbe, fasterProbe] = await Promise.all([
       run(PYTHON_CMD, ["-c", "import mlx_whisper, numpy"]),
       run(PYTHON_CMD, ["-c", "import mlx_audio, numpy"]),
+      run(PYTHON_CMD, ["-c", "import faster_whisper, numpy"]),
     ]);
     whisperOk = whisperProbe.ok;
     audioOk = audioProbe.ok;
-    const failing = backend === "qwen3" ? audioProbe : whisperProbe;
-    if (!failing.ok) mlxError = (failing.stderr || "").trim().split("\n").pop() || "import failed";
+    fasterOk = fasterProbe.ok;
+    const probes = { "mlx-whisper": whisperProbe, "qwen3-mlx": audioProbe, "faster-whisper": fasterProbe };
+    const failing = probes[backend];
+    if (failing && !failing.ok) mlxError = (failing.stderr || "").trim().split("\n").pop() || "import failed";
   }
-  depCache = { ffmpeg: ffmpegOk, python: pythonOk, mlxWhisper: whisperOk, mlxAudio: audioOk, mlxError };
+  depCache = { ffmpeg: ffmpegOk, python: pythonOk, mlxWhisper: whisperOk, mlxAudio: audioOk, fasterWhisper: fasterOk, mlxError };
   depCacheAt = Date.now();
   return { ...depCache, backend, ready: readyFor(depCache, backend) };
 }
 
 function readyFor(deps, backend) {
-  const engine = backend === "qwen3" ? deps.mlxAudio : deps.mlxWhisper;
-  return Boolean(deps.ffmpeg && deps.python && engine);
+  const pkg = ENGINE_PACKAGES[backend];
+  return Boolean(deps.ffmpeg && deps.python && pkg && deps[pkg.key]);
 }
 
-// ---- audio device enumeration (macOS / avfoundation) --------------------
+// ---- audio capture, per platform ---------------------------------------
+// ffmpeg takes a different input format on each OS, and identifies devices
+// differently too: avfoundation uses a numeric index, dshow uses the device's
+// name. So a device is carried as an opaque string id, whatever that means
+// on this platform.
+export function captureFormat() {
+  if (process.platform === "darwin") return "avfoundation";
+  if (process.platform === "win32") return "dshow";
+  return "pulse";
+}
+
 export async function listDevices() {
-  const { stderr } = await run(FFMPEG_CMD, ["-hide_banner", "-f", "avfoundation", "-list_devices", "true", "-i", ""]);
-  const devices = [];
-  let inAudio = false;
-  for (const line of (stderr || "").split("\n")) {
-    if (/AVFoundation audio devices/i.test(line)) { inAudio = true; continue; }
-    if (/AVFoundation video devices/i.test(line)) { inAudio = false; continue; }
-    if (!inAudio) continue;
-    const m = line.match(/\[(\d+)\]\s+(.+?)\s*$/);
-    if (m) devices.push({ index: Number(m[1]), name: m[2] });
+  const format = captureFormat();
+
+  if (format === "avfoundation") {
+    const { stderr } = await run(FFMPEG_CMD, ["-hide_banner", "-f", "avfoundation", "-list_devices", "true", "-i", ""]);
+    const devices = [];
+    let inAudio = false;
+    for (const line of (stderr || "").split("\n")) {
+      if (/AVFoundation audio devices/i.test(line)) { inAudio = true; continue; }
+      if (/AVFoundation video devices/i.test(line)) { inAudio = false; continue; }
+      if (!inAudio) continue;
+      const m = line.match(/\[(\d+)\]\s+(.+?)\s*$/);
+      if (m) devices.push({ id: m[1], name: m[2] });
+    }
+    return devices;
   }
-  return devices;
+
+  if (format === "dshow") {
+    // dshow lists devices on stderr and exits non-zero by design. Audio
+    // devices appear as:  [dshow @ ...] "Line In (X-USB)" (audio)
+    const { stderr } = await run(FFMPEG_CMD, ["-hide_banner", "-list_devices", "true", "-f", "dshow", "-i", "dummy"]);
+    const devices = [];
+    for (const line of (stderr || "").split("\n")) {
+      const m = line.match(/"([^"]+)"\s*\(audio\)/i);
+      if (m) devices.push({ id: m[1], name: m[1] });
+    }
+    return devices;
+  }
+
+  // PulseAudio: name in column 2 of `pactl list short sources`.
+  const { ok, stdout } = await run("pactl", ["list", "short", "sources"]);
+  if (!ok) return [{ id: "default", name: "Default (PulseAudio)" }];
+  const devices = (stdout || "")
+    .split("\n")
+    .map((l) => l.split("\t")[1])
+    .filter(Boolean)
+    .map((name) => ({ id: name, name }));
+  return devices.length ? devices : [{ id: "default", name: "Default (PulseAudio)" }];
 }
 
 // ---- SSE ----------------------------------------------------------------
@@ -222,8 +278,13 @@ function buildFfmpegArgs(settings) {
     if (!settings.wavPath) throw new Error("No WAV file selected for offline mode.");
     args.push("-re", "-i", settings.wavPath);
   } else {
-    if (settings.deviceIndex == null) throw new Error("No input device selected.");
-    args.push("-f", "avfoundation", "-i", `:${settings.deviceIndex}`);
+    const device = settings.deviceId ?? (settings.deviceIndex == null ? null : String(settings.deviceIndex));
+    if (device == null || device === "") throw new Error("No input device selected.");
+    const format = captureFormat();
+    // avfoundation addresses audio inputs as ":<index>"; dshow wants
+    // "audio=<device name>"; pulse takes the source name directly.
+    const input = format === "avfoundation" ? `:${device}` : format === "dshow" ? `audio=${device}` : device;
+    args.push("-f", format, "-i", input);
   }
   if (settings.channel != null && Number.isInteger(settings.channel)) {
     args.push("-af", `pan=mono|c0=c${settings.channel}`);
@@ -249,8 +310,8 @@ export async function startCapture(settings) {
     const missing = [];
     if (!deps.ffmpeg) missing.push("ffmpeg");
     if (!deps.python) missing.push("python3");
-    if (deps.python && backend === "qwen3" && !deps.mlxAudio) missing.push("mlx-audio (Python package)");
-    if (deps.python && backend === "whisper" && !deps.mlxWhisper) missing.push("mlx-whisper (Python package)");
+    const pkg = ENGINE_PACKAGES[backend];
+    if (deps.python && pkg && !deps[pkg.key]) missing.push(`${pkg.label} (Python package)`);
     const err = new Error(`Missing dependencies for ${model}: ${missing.join(", ")}. See the setup notes on the Follow screen.`);
     err.deps = deps;
     throw err;

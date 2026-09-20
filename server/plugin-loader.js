@@ -8,13 +8,28 @@
  */
 import { readdir } from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
+
+/**
+ * Dynamic import of an absolute path, as a file:// URL.
+ *
+ * A bare absolute path works on macOS but throws on Windows, where Node's
+ * ESM loader reads the drive letter as a URL scheme ("Received protocol
+ * 'c:'"). That made every discovery call here return nothing on Windows:
+ * no providers, no storage backends, no splitters, and no module nav
+ * entries at all, with /api/config-options failing and taking the Health
+ * screen's whole Configuration card down with it.
+ */
+function importAbsolute(absPath) {
+  return import(pathToFileURL(absPath).href);
+}
 
 async function discoverIn(dirPath) {
   const files = await readdir(dirPath).catch(() => []);
   const modules = [];
   for (const file of files) {
     if (file === "base.js" || !file.endsWith(".js")) continue;
-    const mod = await import(path.resolve(dirPath, file));
+    const mod = await importAbsolute(path.resolve(dirPath, file));
     modules.push(mod.default ?? mod);
   }
   return modules;
@@ -39,7 +54,7 @@ export async function discoverModules() {
     if (!dir.isDirectory()) continue;
     const modPath = path.resolve("./modules", dir.name, "module.js");
     try {
-      const mod = await import(modPath);
+      const mod = await importAbsolute(modPath);
       modules.push(mod.default ?? mod);
     } catch {
       // A module folder without a valid module.js shouldn't take down

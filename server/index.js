@@ -98,7 +98,7 @@ import { startWatcher as startImageCropWatcher, getImageCropStatus, foldersOverl
 import { generateQr, getQrHistoryList, getQrHistoryEntry, addQrHistoryEntry, clearQrHistory, QR_LIMITS } from "./qr-code.js";
 import {
   FOLLOW_MODELS,
-  isPlatformSupported as followPlatformSupported,
+  defaultEngine as followDefaultEngine,
   checkDeps as checkFollowDeps,
   listDevices as listFollowDevices,
   startCapture as startFollowCapture,
@@ -2705,16 +2705,12 @@ app.delete("/api/qr/history", async (_req, res) => {
 // python3 + mlx-whisper and ffmpeg are this module's own dependencies,
 // checked lazily here — never at startup, never in package.json.
 
-const FOLLOW_PLATFORM_MESSAGE =
-  "Follow needs macOS on Apple Silicon (M-series) — it uses Apple's MLX to run Whisper locally, " +
-  "which isn't available on this platform. Enabling it here does nothing on this machine.";
-
 /** Reject a request unless Follow is enabled and runnable on this machine. */
 function requireFollowActive(res) {
   const status = getFollowModuleStatus(config);
   if (status === "active") return true;
   res.status(409).json({
-    error: status === "off" ? "Follow is turned off — enable it on the Health screen first." : FOLLOW_PLATFORM_MESSAGE,
+    error: "Follow is turned off — enable it on the Health screen first.",
     status,
   });
   return false;
@@ -2727,7 +2723,7 @@ async function saveFollowSettings(body) {
     if (!["live", "wav"].includes(body.mode)) throw new Error('mode must be "live" or "wav"');
     mod.mode = body.mode;
   }
-  if (body.deviceIndex !== undefined) mod.deviceIndex = body.deviceIndex === null || body.deviceIndex === "" ? null : Number(body.deviceIndex);
+  if (body.deviceId !== undefined) mod.deviceId = body.deviceId === null || body.deviceId === "" ? null : String(body.deviceId);
   if (body.channel !== undefined) mod.channel = body.channel === null || body.channel === "" ? null : Number(body.channel);
   if (body.model !== undefined) {
     if (!FOLLOW_MODELS.includes(body.model)) throw new Error(`Unknown model "${body.model}"`);
@@ -2743,16 +2739,14 @@ async function saveFollowSettings(body) {
 app.get("/api/follow/status", async (_req, res) => {
   try {
     const status = getFollowModuleStatus(config);
-    const supported = followPlatformSupported();
     const payload = {
       status,
-      supported,
+      engine: followDefaultEngine(),
       models: FOLLOW_MODELS,
       settings: config.followModule ?? {},
       runtime: getFollowRuntimeStatus(),
     };
-    if (!supported) payload.platformMessage = FOLLOW_PLATFORM_MESSAGE;
-    if (supported && status !== "off") payload.deps = await checkFollowDeps(false, config.followModule?.model);
+    if (status !== "off") payload.deps = await checkFollowDeps(false, config.followModule?.model);
     res.json(payload);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -3086,7 +3080,7 @@ app.get("/api/health", async (_req, res) => {
     followModule: {
       status: getFollowModuleStatus(config),
       enabled: Boolean(config.followModule?.enabled),
-      supported: followPlatformSupported(),
+      engine: followDefaultEngine(),
     },
     config: {
       // NOTE: `librarySync` here is the SEARCH SCOPE — which Library folders
