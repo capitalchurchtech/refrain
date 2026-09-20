@@ -2752,7 +2752,7 @@ app.get("/api/follow/status", async (_req, res) => {
       runtime: getFollowRuntimeStatus(),
     };
     if (!supported) payload.platformMessage = FOLLOW_PLATFORM_MESSAGE;
-    if (supported && status !== "off") payload.deps = await checkFollowDeps();
+    if (supported && status !== "off") payload.deps = await checkFollowDeps(false, config.followModule?.model);
     res.json(payload);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2762,7 +2762,7 @@ app.get("/api/follow/status", async (_req, res) => {
 app.get("/api/follow/devices", async (_req, res) => {
   if (!requireFollowActive(res)) return;
   try {
-    const deps = await checkFollowDeps();
+    const deps = await checkFollowDeps(false, config.followModule?.model);
     if (!deps.ffmpeg) return res.status(422).json({ error: "ffmpeg isn't installed — can't list input devices.", deps });
     res.json({ devices: await listFollowDevices() });
   } catch (err) {

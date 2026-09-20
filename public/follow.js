@@ -337,15 +337,23 @@ function renderLiveState(ls) {
 
 function depsBanner(deps) {
   if (!deps || deps.ready) return "";
+  // Only the engine the SELECTED model actually needs is listed — Whisper and
+  // Qwen3-ASR are separate Python installs, and demanding both would send you
+  // installing something you'll never run.
+  const qwen = deps.backend === "qwen3";
+  const engine = qwen
+    ? ["mlx-audio", deps.mlxAudio, "pip3 install -U mlx-audio"]
+    : ["mlx-whisper", deps.mlxWhisper, "pip3 install mlx-whisper numpy"];
   const rows = [
     ["ffmpeg", deps.ffmpeg, "Homebrew: brew install ffmpeg"],
     ["python3", deps.python, "Homebrew: brew install python (or the system python3)"],
-    ["mlx-whisper", deps.mlxWhisper, "pip3 install mlx-whisper numpy"],
+    engine,
   ];
+  const repo = qwen ? "mlx-community/Qwen3-ASR-1.7B-8bit" : "mlx-community/whisper-small-mlx";
   const modelNote =
-    deps.python && deps.mlxWhisper
-      ? `<div class="mt-2">The Whisper model loads fully offline, so download it once first, e.g.:
-           <div class="font-mono text-xs bg-base-100 rounded p-1 mt-1">huggingface-cli download mlx-community/whisper-small-mlx</div></div>`
+    deps.python && engine[1]
+      ? `<div class="mt-2">Models load fully offline, so download the one you picked once first, e.g.:
+           <div class="font-mono text-xs bg-base-100 rounded p-1 mt-1">huggingface-cli download ${esc(repo)}</div></div>`
       : "";
   return `
     <div class="alert alert-warning py-2 text-sm flex-col items-start">

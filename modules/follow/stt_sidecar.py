@@ -87,9 +87,23 @@ MODEL_REPOS = {
     "small": "mlx-community/whisper-small-mlx",
     "medium": "mlx-community/whisper-medium-mlx",
     "large": "mlx-community/whisper-large-v3-mlx",
+    "large-v2": "mlx-community/whisper-large-v2-mlx",
     "large-v3": "mlx-community/whisper-large-v3-mlx",
     "large-v3-turbo": "mlx-community/whisper-large-v3-turbo",
+    # Qwen3-ASR is the only mainstream open ASR model that lists singing as a
+    # supported audio type, and it beats Whisper on every published singing
+    # benchmark. Those benchmarks are mostly Mandarin, so treat it as the
+    # experiment worth running on real worship vocals, not a settled upgrade.
+    # Runs through mlx-audio rather than mlx-whisper (a separate install).
+    "qwen3-asr-0.6b": "mlx-community/Qwen3-ASR-0.6B-8bit",
+    "qwen3-asr-1.7b": "mlx-community/Qwen3-ASR-1.7B-8bit",
 }
+
+
+def backend_for(model_name, repo):
+    """Which Python stack a model needs: mlx-whisper, or mlx-audio for Qwen3-ASR."""
+    probe = f"{model_name} {repo}".lower()
+    return "qwen3" if "qwen3-asr" in probe else "whisper"
 
 
 def log(msg):
@@ -143,16 +157,71 @@ def main():
     model_name = sys.argv[1] if len(sys.argv) > 1 else "small"
     model_repo = resolve_model(model_name)
 
+    backend = backend_for(model_name, model_repo)
+
     try:
         import numpy as np
-        import mlx_whisper
-    except Exception as err:  # noqa: BLE001 - surface any import failure to Node
-        emit({"t": int(time.time() * 1000), "error": f"import_failed: {err}"})
-        log(f"Failed to import dependencies: {err}")
-        log("Install with: pip3 install mlx-whisper numpy")
+    except Exception as err:  # noqa: BLE001
+        emit({"t": int(time.time() * 1000), "error": f"import_failed: numpy ({err})"})
+        log("Failed to import numpy. Install with: pip3 install numpy")
         return 3
 
-    log(f"Ready. model={model_name} ({model_repo}), lang={LANGUAGE or 'auto'}, "
+    # Each backend is imported only if it's the one selected, so trying Qwen3
+    # never requires mlx-whisper and vice versa.
+    if backend == "qwen3":
+        try:
+            import mlx.core as mx
+            from mlx_audio.stt.utils import load_model
+        except Exception as err:  # noqa: BLE001
+            emit({"t": int(time.time() * 1000), "error": f"import_failed: mlx-audio ({err})"})
+            log(f"Failed to import mlx-audio: {err}")
+            log("Install with: pip3 install -U mlx-audio")
+            return 3
+        try:
+            qwen_model = load_model(model_repo)
+        except Exception as err:  # noqa: BLE001
+            emit({"t": int(time.time() * 1000), "error": f"model_load_failed: {err}"})
+            log(f"Failed to load {model_repo}: {err}")
+            log(f"Is it downloaded? One-time: huggingface-cli download {model_repo}")
+            return 4
+
+        def run_model(audio_f32):
+            """
+            mlx-audio's generate_transcription() accepts `audio` as a path OR an
+            mx.array and simply forwards it to model.generate(), so we hand it
+            samples directly rather than writing a WAV every hop. Qwen3-ASR
+            exposes no per-segment logprobs, so confidence is unavailable.
+            """
+            out = qwen_model.generate(mx.array(audio_f32))
+            # Streaming-capable models yield; batch ones return a single result.
+            if hasattr(out, "__iter__") and not hasattr(out, "text"):
+                out = "".join(getattr(part, "text", "") or "" for part in out)
+            text = out if isinstance(out, str) else (getattr(out, "text", "") or "")
+            return text.strip(), None, None
+    else:
+        try:
+            import mlx_whisper
+        except Exception as err:  # noqa: BLE001
+            emit({"t": int(time.time() * 1000), "error": f"import_failed: mlx-whisper ({err})"})
+            log(f"Failed to import mlx-whisper: {err}")
+            log("Install with: pip3 install mlx-whisper numpy")
+            return 3
+
+        def run_model(audio_f32):
+            result = mlx_whisper.transcribe(
+                audio_f32,
+                path_or_hf_repo=model_repo,
+                language=LANGUAGE,
+                # A temperature TUPLE (not a scalar) is what arms Whisper's
+                # fallback loop, which is what makes its compression-ratio and
+                # logprob hallucination checks fire at all.
+                temperature=TEMPERATURE_FALLBACK,
+                condition_on_previous_text=False,
+                fp16=True,
+            )
+            return (result.get("text") or "").strip(), mean_confidence(result), result
+
+    log(f"Ready. model={model_name} ({model_repo}) backend={backend}, lang={LANGUAGE or 'auto'}, "
         f"window={WINDOW_SECONDS}s hop={HOP_SECONDS}s, silence_rms={SILENCE_RMS}, offline=1")
 
     # Rolling buffer of the most recent WINDOW_SAMPLES samples, as int16.
@@ -175,17 +244,7 @@ def main():
             return
 
         try:
-            result = mlx_whisper.transcribe(
-                audio,
-                path_or_hf_repo=model_repo,
-                language=LANGUAGE,
-                # A temperature TUPLE (not a scalar) is what arms Whisper's
-                # fallback loop, which is what makes its compression-ratio and
-                # logprob hallucination checks fire at all.
-                temperature=TEMPERATURE_FALLBACK,
-                condition_on_previous_text=False,
-                fp16=True,
-            )
+            text, conf, result = run_model(audio)
         except Exception as err:  # noqa: BLE001
             # Most likely: model not in the local cache while offline.
             emit({"t": int(time.time() * 1000), "error": f"transcribe_failed: {err}"})
@@ -194,17 +253,17 @@ def main():
                 f"(one-time: huggingface-cli download {model_repo}).")
             return
 
-        text = (result.get("text") or "").strip()
         if not text:
             return
         # Drop a degenerate window rather than feeding a repetition loop
         # downstream. Confidence is NOT a usable filter here: hallucinated
         # segments frequently carry high avg_logprob and low no_speech_prob,
         # so the compression ratio is the signal that actually separates them.
-        if looks_degenerate(result):
+        # Whisper-only: Qwen3-ASR returns no segments to measure.
+        if result is not None and looks_degenerate(result):
             log(f"Dropped a degenerate window (compression ratio): {text[:60]!r}")
             return
-        emit({"t": int(time.time() * 1000), "text": text, "conf": mean_confidence(result)})
+        emit({"t": int(time.time() * 1000), "text": text, "conf": conf})
 
     stdin = sys.stdin.buffer
     try:

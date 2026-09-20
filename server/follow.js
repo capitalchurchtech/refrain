@@ -36,8 +36,27 @@ const FFMPEG_CMD = process.env.REFRAIN_FOLLOW_FFMPEG || "ffmpeg";
 // UI model choices; keep in step with MODEL_REPOS in stt_sidecar.py.
 // "small" is the smallest model that handles sung vocals over a band
 // decently while staying real-time on Apple Silicon.
-export const FOLLOW_MODELS = ["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"];
+export const FOLLOW_MODELS = [
+  "tiny",
+  "base",
+  "small",
+  "medium",
+  "large-v2",
+  "large-v3",
+  "large-v3-turbo",
+  // Qwen3-ASR is the only mainstream open ASR model that lists singing as a
+  // supported audio type. It runs through mlx-audio rather than mlx-whisper,
+  // so it's a separate install — the Follow screen reports which one the
+  // selected model needs.
+  "qwen3-asr-0.6b",
+  "qwen3-asr-1.7b",
+];
 export const FOLLOW_DEFAULT_MODEL = "small";
+
+/** Which Python stack a model needs. Mirrors backend_for() in stt_sidecar.py. */
+export function backendForModel(model) {
+  return String(model ?? "").toLowerCase().includes("qwen3-asr") ? "qwen3" : "whisper";
+}
 
 const SAMPLE_RATE = 16000;
 const DEP_CACHE_MS = 15000;
@@ -131,19 +150,38 @@ function normalizeWord(w) {
 }
 
 // ---- dependency detection (lazy, cached) --------------------------------
-export async function checkDeps(force = false) {
-  if (!force && depCache && Date.now() - depCacheAt < DEP_CACHE_MS) return depCache;
+/**
+ * Probe the module's external tools. `ready` is answered for the SELECTED
+ * model, since the two backends need different Python packages — a Whisper
+ * run doesn't need mlx-audio, and a Qwen3 run doesn't need mlx-whisper.
+ */
+export async function checkDeps(force = false, model = FOLLOW_DEFAULT_MODEL) {
+  const backend = backendForModel(model);
+  if (!force && depCache && Date.now() - depCacheAt < DEP_CACHE_MS) {
+    return { ...depCache, backend, ready: readyFor(depCache, backend) };
+  }
   const [ffmpegOk, pythonOk] = await Promise.all([canRun(FFMPEG_CMD, ["-version"]), canRun(PYTHON_CMD, ["--version"])]);
-  let mlxOk = false;
+  let whisperOk = false;
+  let audioOk = false;
   let mlxError = null;
   if (pythonOk) {
-    const probe = await run(PYTHON_CMD, ["-c", "import mlx_whisper, numpy"]);
-    mlxOk = probe.ok;
-    if (!probe.ok) mlxError = (probe.stderr || "").trim().split("\n").pop() || "import failed";
+    const [whisperProbe, audioProbe] = await Promise.all([
+      run(PYTHON_CMD, ["-c", "import mlx_whisper, numpy"]),
+      run(PYTHON_CMD, ["-c", "import mlx_audio, numpy"]),
+    ]);
+    whisperOk = whisperProbe.ok;
+    audioOk = audioProbe.ok;
+    const failing = backend === "qwen3" ? audioProbe : whisperProbe;
+    if (!failing.ok) mlxError = (failing.stderr || "").trim().split("\n").pop() || "import failed";
   }
-  depCache = { ffmpeg: ffmpegOk, python: pythonOk, mlxWhisper: mlxOk, mlxError, ready: ffmpegOk && pythonOk && mlxOk };
+  depCache = { ffmpeg: ffmpegOk, python: pythonOk, mlxWhisper: whisperOk, mlxAudio: audioOk, mlxError };
   depCacheAt = Date.now();
-  return depCache;
+  return { ...depCache, backend, ready: readyFor(depCache, backend) };
+}
+
+function readyFor(deps, backend) {
+  const engine = backend === "qwen3" ? deps.mlxAudio : deps.mlxWhisper;
+  return Boolean(deps.ffmpeg && deps.python && engine);
 }
 
 // ---- audio device enumeration (macOS / avfoundation) --------------------
@@ -203,18 +241,20 @@ function buildFfmpegArgs(settings) {
 export async function startCapture(settings) {
   if (running) await stopCapture();
 
-  const deps = await checkDeps(true);
+  const model = FOLLOW_MODELS.includes(settings.model) ? settings.model : FOLLOW_DEFAULT_MODEL;
+  const backend = backendForModel(model);
+
+  const deps = await checkDeps(true, model);
   if (!deps.ready) {
     const missing = [];
     if (!deps.ffmpeg) missing.push("ffmpeg");
     if (!deps.python) missing.push("python3");
-    if (deps.python && !deps.mlxWhisper) missing.push("mlx-whisper (Python package)");
-    const err = new Error(`Missing dependencies: ${missing.join(", ")}. See the setup notes on the Follow screen.`);
+    if (deps.python && backend === "qwen3" && !deps.mlxAudio) missing.push("mlx-audio (Python package)");
+    if (deps.python && backend === "whisper" && !deps.mlxWhisper) missing.push("mlx-whisper (Python package)");
+    const err = new Error(`Missing dependencies for ${model}: ${missing.join(", ")}. See the setup notes on the Follow screen.`);
     err.deps = deps;
     throw err;
   }
-
-  const model = FOLLOW_MODELS.includes(settings.model) ? settings.model : FOLLOW_DEFAULT_MODEL;
   const args = buildFfmpegArgs(settings); // throws before spawning on bad settings
 
   session = newSession();
