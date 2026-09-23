@@ -56,7 +56,8 @@
     "direction": "send",
     "sharedFolder": null,
     "minimumFiles": 25,
-    "snapshotsToKeep": 30
+    "snapshotsToKeep": 30,
+    "autoWhenClosed": false
   },
   "scriptureModule": {
     "biblegatewayVersion": "NIV",

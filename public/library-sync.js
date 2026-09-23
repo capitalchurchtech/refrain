@@ -78,6 +78,14 @@ export function initLibrarySync() {
             <input id="ls-shared" class="input input-bordered input-sm" value="${escapeHtml(s.sharedFolder ?? "")}"
               placeholder="/Users/Shared/ProPresenter-Songs-Sync-DO-NOT-DELETE" />
           </label>
+          <label class="label cursor-pointer justify-start gap-2 py-0">
+            <input type="checkbox" id="ls-auto" class="checkbox checkbox-sm" ${s.autoWhenClosed ? "checked" : ""} />
+            <span class="label-text">Sync automatically once ProPresenter is closed</span>
+          </label>
+          <p class="text-xs opacity-60 -mt-2">
+            Checked about once a minute. Runs at most once per close -- quitting ProPresenter for the
+            night triggers one sync, not one every minute until it reopens.
+          </p>
           <div class="flex flex-wrap gap-3">
             <label class="form-control">
               <div class="label py-1"><span class="label-text">Refuse below this many files</span></div>
@@ -149,6 +157,7 @@ export function initLibrarySync() {
           <h2 class="card-title text-base">Last run</h2>
           <div class="text-sm ${failed ? "text-warning" : "opacity-70"}">
             ${new Date(r.at).toLocaleString()} &middot; ${escapeHtml(r.label ?? "")}
+            ${r.trigger === "auto" ? `&middot; ran on its own, once ProPresenter closed` : ""}
             ${failed ? `&middot; refused` : ""}
           </div>
           ${failed ? `<div class="text-sm text-warning">${escapeHtml(r.reason ?? "")}</div>` : ""}
@@ -176,6 +185,7 @@ export function initLibrarySync() {
         sharedFolder: document.getElementById("ls-shared").value,
         minimumFiles: Number(document.getElementById("ls-minimum").value),
         snapshotsToKeep: Number(document.getElementById("ls-snapshots").value),
+        autoWhenClosed: document.getElementById("ls-auto").checked,
       };
       try {
         const res = await fetch("/api/library-sync/config", {

@@ -145,3 +145,39 @@ export async function checkLibrarySafeToTouch({ apiProbe = null, timeoutMs = 400
 
   return libraryWriteSafety({ psOutput, apiReachable, launchctlOutput });
 }
+
+/**
+ * Whether to run Library Sync on its own right now, and the arm state to
+ * carry into the next poll.
+ *
+ * Pure, for the same reason `libraryWriteSafety` is: the failure mode here is
+ * silent either way it breaks -- never firing, or firing on every poll
+ * forever -- and a state machine like that stops being obviously correct the
+ * moment someone edits it without a test watching.
+ *
+ * `armed` means "ProPresenter has not been confirmed closed since this last
+ * ran (or since boot)". It goes back to true the instant ProPresenter is seen
+ * running again, so the very next close fires once more -- and it does NOT
+ * reset on every poll while ProPresenter stays closed, so a quiet evening
+ * runs the sync once, not forty times.
+ *
+ * Deliberately independent of performance mode. Performance mode arms
+ * defensively the instant ProPresenter's API goes quiet -- which is exactly
+ * the moment this becomes both possible and useful, so gating on it would
+ * have meant an auto-sync almost never fires. `checkLibrarySafeToTouch`'s
+ * process-level evidence is the real authority on whether ProPresenter is
+ * running; this only interprets it.
+ */
+export function shouldAutoRunLibrarySync({ safety, armed }) {
+  const evidence = safety.evidence ?? {};
+  // ProPresenter is back, however we know it: re-arm for its next close.
+  if (evidence.mainAppRunning === true || evidence.apiReachable === true) {
+    return { run: false, armed: true };
+  }
+  // Not yet provably closed -- helpers still winding down, or the process
+  // list could not be read. Wait, and keep whatever arm state we already had.
+  if (!safety.safe) return { run: false, armed };
+  // Provably closed, but this episode already ran (or never armed).
+  if (!armed) return { run: false, armed: false };
+  return { run: true, armed: false };
+}

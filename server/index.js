@@ -76,7 +76,7 @@ import {
 } from "./performance-mode.js";
 import { resolveArrangement, flattenGroups, findLiveIndex, parseSlideIndex } from "./arrangements.js";
 import { pushLiveItem, findReturnEntry } from "./return-history.js";
-import { checkLibrarySafeToTouch } from "./library-guard.js";
+import { checkLibrarySafeToTouch, shouldAutoRunLibrarySync } from "./library-guard.js";
 import { heartbeatInterval } from "./heartbeat-pacing.js";
 import { buildInfo } from "./build-info.js";
 import {
@@ -1511,6 +1511,11 @@ function librarySyncSettings() {
     sharedFolder: mod.sharedFolder ?? null,
     minimumFiles: Number.isInteger(mod.minimumFiles) ? mod.minimumFiles : DEFAULT_MINIMUM_FILES,
     snapshotsToKeep: Number.isInteger(mod.snapshotsToKeep) ? mod.snapshotsToKeep : DEFAULT_SNAPSHOTS_TO_KEEP,
+    // Off by default even once the rest of this is configured -- turning it on
+    // is a separate, explicit decision to let Refrain touch the filesystem
+    // with nobody watching, not something a library name and a folder path
+    // should imply.
+    autoWhenClosed: Boolean(mod.autoWhenClosed),
   };
 }
 
@@ -1595,12 +1600,21 @@ app.get("/api/library-sync/status", async (_req, res) => {
   res.json(payload);
 });
 
-app.post("/api/library-sync/run", async (_req, res) => {
+/**
+ * Runs (or refuses to run) a Library Sync, for both the button and the
+ * automatic trigger below -- one implementation of the safety-critical part,
+ * so the two callers cannot drift into disagreeing about what "safe" means.
+ *
+ * Returns rather than responds, so it has no Express dependency and the
+ * automatic trigger can call it directly; `trigger` only affects what gets
+ * written into the last-run record, never the safety decision itself.
+ */
+async function runLibrarySync({ trigger = "manual" } = {}) {
   if (getLibrarySyncModuleStatus(config) !== "active") {
-    return res.status(400).json({ error: "Library Sync is not switched on and configured yet." });
+    return { statusCode: 400, body: { error: "Library Sync is not switched on and configured yet." } };
   }
   if (librarySyncInFlight) {
-    return res.status(409).json({ error: "A sync is already running. Wait for it to finish." });
+    return { statusCode: 409, body: { error: "A sync is already running. Wait for it to finish." } };
   }
   const settings = librarySyncSettings();
 
@@ -1630,12 +1644,15 @@ app.post("/api/library-sync/run", async (_req, res) => {
 
   const safety = await librarySafety();
   if (!safety.safe) {
-    return res.status(409).json({
-      error: `${safety.reason} Library Sync copies presentation files in and out of the library ` +
-        `folder, and doing that while ProPresenter has the workspace open can corrupt it.`,
-      blockedBy: "propresenter-running",
-      evidence: safety.evidence,
-    });
+    return {
+      statusCode: 409,
+      body: {
+        error: `${safety.reason} Library Sync copies presentation files in and out of the library ` +
+          `folder, and doing that while ProPresenter has the workspace open can corrupt it.`,
+        blockedBy: "propresenter-running",
+        evidence: safety.evidence,
+      },
+    };
   }
 
   librarySyncInFlight = true;
@@ -1653,12 +1670,15 @@ app.post("/api/library-sync/run", async (_req, res) => {
       }
     }
     if (!dir) {
-      return res.status(409).json({
-        error:
-          `Refrain does not know where the "${settings.libraryName}" library lives on disk yet. ` +
-          `Open the Library Sync screen once with ProPresenter running so it can learn the path, ` +
-          `then quit ProPresenter and sync.`,
-      });
+      return {
+        statusCode: 409,
+        body: {
+          error:
+            `Refrain does not know where the "${settings.libraryName}" library lives on disk yet. ` +
+            `Open the Library Sync screen once with ProPresenter running so it can learn the path, ` +
+            `then quit ProPresenter and sync.`,
+        },
+      };
     }
 
     const ends = syncEndpoints(settings, dir);
@@ -1676,11 +1696,14 @@ app.post("/api/library-sync/run", async (_req, res) => {
     // again before starting the part that writes.
     const stillSafeAfterSnapshot = await librarySafety();
     if (!stillSafeAfterSnapshot.safe) {
-      return res.status(409).json({
-        error: `${stillSafeAfterSnapshot.reason} Nothing was copied. The snapshot was taken, so you can retry safely.`,
-        blockedBy: "propresenter-running",
-        evidence: stillSafeAfterSnapshot.evidence,
-      });
+      return {
+        statusCode: 409,
+        body: {
+          error: `${stillSafeAfterSnapshot.reason} Nothing was copied. The snapshot was taken, so you can retry safely.`,
+          blockedBy: "propresenter-running",
+          evidence: stillSafeAfterSnapshot.evidence,
+        },
+      };
     }
 
     const result = await syncLibrary({
@@ -1703,16 +1726,78 @@ app.post("/api/library-sync/run", async (_req, res) => {
       to: ends.to,
       snapshot: snapshot.name,
       snapshotLinked: snapshot.linked,
+      trigger,
       ...result,
     };
     await writeLastRun(LIBRARY_SYNC_STATE, record);
-    res.status(result.ok ? 200 : 409).json(record);
+    return { statusCode: result.ok ? 200 : 409, body: record };
   } catch (err) {
-    res.status(502).json({ error: err.message });
+    return { statusCode: 502, body: { error: err.message } };
   } finally {
     librarySyncInFlight = false;
   }
+}
+
+app.post("/api/library-sync/run", async (_req, res) => {
+  const { statusCode, body } = await runLibrarySync({ trigger: "manual" });
+  res.status(statusCode).json(body);
 });
+
+/**
+ * Runs Library Sync on its own once ProPresenter is confirmed closed --
+ * "the operator packed up and went home" is exactly the moment this is both
+ * safe and useful, and the one moment nobody is at the Health screen to press
+ * the button.
+ *
+ * Polls locally (`ps`, `launchctl list`) rather than piggybacking on the
+ * heartbeat's network reachability, and deliberately does not gate on
+ * performance mode -- see shouldAutoRunLibrarySync's comment for why that
+ * would have meant this almost never fires. A minute's delay in noticing
+ * costs nothing here; nobody is waiting on it.
+ */
+let librarySyncAutoArmed = true;
+const LIBRARY_SYNC_AUTO_POLL_MS = 60_000;
+
+async function pollAutoLibrarySync() {
+  const settings = librarySyncSettings();
+  // Cheap exit before spawning ps/launchctl on every install that has not
+  // turned this on -- most of them, including every core-search-only user.
+  if (getLibrarySyncModuleStatus(config) !== "active" || !settings.autoWhenClosed) return;
+  if (librarySyncInFlight) return;
+
+  const safety = await checkLibrarySafeToTouch({
+    apiProbe: async () => {
+      try {
+        await client.testConnection();
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  });
+
+  const decision = shouldAutoRunLibrarySync({ safety, armed: librarySyncAutoArmed });
+  librarySyncAutoArmed = decision.armed;
+  if (!decision.run) return;
+
+  console.log("ProPresenter is closed — running the scheduled Share Library sync...");
+  const { body } = await runLibrarySync({ trigger: "auto" }).catch((err) => ({ body: { error: err.message } }));
+  if (body?.ok) {
+    console.log(
+      `Share Library sync complete — added ${body.copied?.length ?? 0}, updated ${body.replaced?.length ?? 0}, ` +
+        `${body.unchanged ?? 0} already matched.`
+    );
+  } else {
+    console.log(`Share Library sync did not run: ${body?.error ?? "unknown error"}`);
+  }
+}
+
+function startAutoLibrarySyncPolling() {
+  setInterval(() => {
+    pollAutoLibrarySync().catch((err) => console.log(`Share Library auto-check failed: ${err.message}`));
+  }, LIBRARY_SYNC_AUTO_POLL_MS).unref?.();
+}
+
 
 app.post("/api/library-sync/config", async (req, res) => {
   const body = req.body ?? {};
@@ -1720,6 +1805,7 @@ app.post("/api/library-sync/config", async (req, res) => {
   const next = { ...current };
 
   if (body.enabled !== undefined) next.enabled = Boolean(body.enabled);
+  if (body.autoWhenClosed !== undefined) next.autoWhenClosed = Boolean(body.autoWhenClosed);
   if (body.libraryName !== undefined) next.libraryName = String(body.libraryName).trim() || null;
   if (body.direction !== undefined) {
     if (body.direction !== "send" && body.direction !== "receive") {
@@ -3089,6 +3175,7 @@ const server = app.listen(port, "127.0.0.1", async () => {
   // Establish whether anything is on the screens before deciding to do work.
   await pollPerformance();
   startPerformancePolling();
+  startAutoLibrarySyncPolling();
 
   const existing = await loadIndexFromDisk();
   if (!existing) {

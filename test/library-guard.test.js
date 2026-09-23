@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { libraryWriteSafety } from "../server/library-guard.js";
+import { libraryWriteSafety, shouldAutoRunLibrarySync } from "../server/library-guard.js";
 
 // `ps -Ao pid,ppid,comm` shapes, taken from the real thing.
 const PS_RUNNING = `  501     1 /Applications/ProPresenter.app/Contents/MacOS/ProPresenter
@@ -73,4 +73,65 @@ test("unparseable process output is treated as running, not as clean", () => {
 test("the refusal explains what to do, not just that it refused", () => {
   const r = libraryWriteSafety({ psOutput: PS_RUNNING, apiReachable: true });
   assert.ok(r.reason.length > 20, "a bare 'refused' leaves the operator stuck");
+});
+
+// --- shouldAutoRunLibrarySync -----------------------------------------------
+//
+// The state machine behind "sync once ProPresenter is closed". Pure, so these
+// cover the failure modes that matter most (never firing, or firing forever)
+// without spawning `ps`.
+
+const SAFE = { safe: true, reason: null, evidence: { mainAppRunning: false, processes: 0 } };
+const RUNNING = { safe: false, reason: "running", evidence: { mainAppRunning: true, processes: 1 } };
+const API_REACHABLE = { safe: false, reason: "running", evidence: { apiReachable: true } };
+const HELPERS_ONLY = { safe: false, reason: "helpers", evidence: { mainAppRunning: false, processes: 1 } };
+const UNKNOWN = { safe: false, reason: "unreadable", evidence: { processListAvailable: false } };
+
+test("fires the first time it is confirmed closed", () => {
+  const d = shouldAutoRunLibrarySync({ safety: SAFE, armed: true });
+  assert.equal(d.run, true);
+  assert.equal(d.armed, false, "disarmed so it does not fire again next poll");
+});
+
+test("does not fire again while ProPresenter stays closed", () => {
+  // A quiet evening: still safe, but already ran this episode.
+  const d = shouldAutoRunLibrarySync({ safety: SAFE, armed: false });
+  assert.equal(d.run, false);
+  assert.equal(d.armed, false);
+});
+
+test("re-arms the moment the main app is seen running again", () => {
+  const d = shouldAutoRunLibrarySync({ safety: RUNNING, armed: false });
+  assert.equal(d.run, false);
+  assert.equal(d.armed, true, "ready to fire once more on the NEXT close");
+});
+
+test("a reachable API re-arms it too, even if the process list disagrees", () => {
+  const d = shouldAutoRunLibrarySync({ safety: API_REACHABLE, armed: false });
+  assert.equal(d.run, false);
+  assert.equal(d.armed, true);
+});
+
+test("waits while only helpers remain, without touching the arm state", () => {
+  // Not yet provably closed. Whatever the arm state was, leave it -- this is
+  // still the same close in progress, not a new one and not a finished one.
+  assert.deepEqual(shouldAutoRunLibrarySync({ safety: HELPERS_ONLY, armed: true }), { run: false, armed: true });
+  assert.deepEqual(shouldAutoRunLibrarySync({ safety: HELPERS_ONLY, armed: false }), { run: false, armed: false });
+});
+
+test("an unreadable process list waits rather than guessing either way", () => {
+  assert.deepEqual(shouldAutoRunLibrarySync({ safety: UNKNOWN, armed: true }), { run: false, armed: true });
+  assert.deepEqual(shouldAutoRunLibrarySync({ safety: UNKNOWN, armed: false }), { run: false, armed: false });
+});
+
+test("a full close-reopen-close cycle fires exactly twice, not once and not forever", () => {
+  let armed = true;
+  const fired = [];
+  const cycle = [SAFE, SAFE, SAFE, RUNNING, HELPERS_ONLY, SAFE, SAFE];
+  for (const safety of cycle) {
+    const d = shouldAutoRunLibrarySync({ safety, armed });
+    armed = d.armed;
+    if (d.run) fired.push(safety);
+  }
+  assert.equal(fired.length, 2, "once for the first close, once for the second — not per poll");
 });
