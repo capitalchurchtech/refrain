@@ -1,6 +1,7 @@
 import { COPY_FAILED, noProPresenterFound } from "./strings.js";
 import { showFailure } from "./notice.js";
 import { createMeter, updateMeter, meterCount } from "./led-meter.js";
+import { formatAge, STALE_AFTER_MS } from "./library-sync.js";
 const ARRANGEMENT_STATUS_LABEL = {
   off: null, // hidden entirely per Section 4.1
   misconfigured: "Misconfigured",
@@ -927,6 +928,24 @@ function renderTerminalActions(port, installDir) {
     </div>`;
 }
 
+function renderShareLibraryFreshness(share) {
+  if (share?.status !== "active") return "";
+  const r = share.lastRun;
+  if (!r) {
+    return `<div class="text-sm opacity-70">Never synced yet.</div>`;
+  }
+  const ageMs = Date.now() - new Date(r.at).getTime();
+  const stale = ageMs > STALE_AFTER_MS;
+  if (r.ok === false) {
+    return `<div class="text-sm ${stale ? "rf-flag" : "opacity-70"}">Last attempt ${formatAge(ageMs)} was refused${r.reason ? `: ${escapeHtml(r.reason)}` : "."}</div>`;
+  }
+  return `
+    <div class="text-sm ${stale ? "rf-flag" : "opacity-70"}">
+      ${stale ? "Backup stale" : "Backup current"} — last synced ${formatAge(ageMs)}.
+      ${stale ? `<a href="#library-sync" class="link">Check Library Sync</a>` : ""}
+    </div>`;
+}
+
 function renderShareLibraryCard(share) {
   if (!share) return "";
   const status = share.status ?? "off";
@@ -949,6 +968,7 @@ function renderShareLibraryCard(share) {
           Off unless you run two machines.
           ${infoIcon("This is the only part of Refrain that writes presentation files. Everything else reads through ProPresenter's API. That is why it refuses to run while ProPresenter is open.")}
         </div>
+        ${renderShareLibraryFreshness(share)}
         <div class="alert alert-warning py-2 text-sm items-start">
           <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
           <span><strong>ProPresenter must be closed when this runs.</strong> It writes presentation files

@@ -3022,6 +3022,14 @@ app.get("/api/health", async (_req, res) => {
     shareLibrary: {
       status: getLibrarySyncModuleStatus(config),
       ...librarySyncSettings(),
+      // Just the age/outcome, not the full record -- the Library Sync screen
+      // has the rest. A cheap file read, and only ever attempted once the
+      // module is actually configured, so an install that has never touched
+      // this feature never pays for it.
+      lastRun:
+        getLibrarySyncModuleStatus(config) === "active"
+          ? await readLastRun(LIBRARY_SYNC_STATE).then((r) => (r ? { at: r.at, ok: r.ok, reason: r.reason ?? null } : null))
+          : null,
     },
     arrangementModule: {
       status: getArrangementModuleStatus(config),

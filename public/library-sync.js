@@ -7,6 +7,76 @@
  * a presentation: the worst it does is add files and replace changed ones, and
  * it keeps the previous version of anything it replaces.
  */
+
+/**
+ * "3 hours ago", "2 days ago" -- how stale the last sync is, in the words a
+ * volunteer would actually use. Exported so the compact card on Health can
+ * show the same age in the same words rather than inventing a second phrasing
+ * of the same number.
+ *
+ * Caps out at weeks rather than growing months/years logic nobody needs here:
+ * a Library Sync nobody has run in six weeks has a bigger problem than the
+ * exact word for how long, and "6 weeks ago" already says that plainly.
+ */
+export function formatAge(ms) {
+  if (!Number.isFinite(ms) || ms < 0) return "just now";
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return "moments ago";
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 14) return `${days} day${days === 1 ? "" : "s"} ago`;
+  const weeks = Math.floor(days / 7);
+  return `${weeks} week${weeks === 1 ? "" : "s"} ago`;
+}
+
+// Past this, a backup is flagged as stale rather than just timestamped. Two
+// days, not one: the auto-sync (see server/library-guard.js) fires on every
+// ProPresenter close, so a healthy install re-syncs most days it is used --
+// but a day with no service at all is normal and should not read as trouble.
+export const STALE_AFTER_MS = 48 * 60 * 60_000;
+
+/**
+ * The one sentence this whole feature is for: is the backup here current, and
+ * does it actually match what is live right now.
+ *
+ * Two independent questions, because they can disagree in either direction --
+ * a sync from ten minutes ago is current but could still be wrong if
+ * something else touched the library since, and a sync from three days ago
+ * might still happen to match if nothing has changed. `preview` (today's live
+ * diff, by content hash -- see planSync) answers "does it match"; `lastRun.at`
+ * answers "how current". Only ever available together while ProPresenter is
+ * open, since checking "does it match" means reading the live library.
+ */
+export function describeBackupStatus({ lastRun, preview }) {
+  if (!lastRun) return { text: "Never synced yet.", stale: false };
+
+  const ageMs = Date.now() - new Date(lastRun.at).getTime();
+  const age = formatAge(ageMs);
+  const stale = ageMs > STALE_AFTER_MS;
+
+  if (!lastRun.ok) {
+    // Every real refusal reason already ends with its own sentence (see
+    // library-guard.js's messages) -- appending a second period read as a
+    // typo, "...syncing..".
+    return { text: `Last attempt ${age} was refused: ${lastRun.reason ?? "see below."}`, stale: true };
+  }
+
+  const matchPart = preview
+    ? preview.toCopy === 0 && preview.toReplace === 0
+      ? "It matches the live library right now."
+      : `It is missing ${preview.toCopy + preview.toReplace} file${preview.toCopy + preview.toReplace === 1 ? "" : "s"} that changed since.`
+    : "";
+
+  return {
+    text: stale
+      ? `Backup is stale — last synced ${age}. ${matchPart}`.trim()
+      : `Backup is current — last synced ${age}. ${matchPart}`.trim(),
+    stale,
+  };
+}
+
 export function initLibrarySync() {
   const container = document.getElementById("view-library-sync");
 
@@ -107,8 +177,21 @@ export function initLibrarySync() {
         </div>
       </div>
 
+      ${data.status === "active" ? renderBackupStatus(data) : ""}
       ${data.status !== "active" ? "" : renderRunCard(data)}
       ${data.lastRun ? renderLastRun(data.lastRun) : ""}
+    `;
+  }
+
+  function renderBackupStatus(data) {
+    const { text, stale } = describeBackupStatus({ lastRun: data.lastRun, preview: data.preview });
+    return `
+      <div class="card ${stale ? "bg-warning/10 border border-warning/40" : "bg-base-200"} mb-3">
+        <div class="card-body p-3 gap-1 flex-row items-center">
+          <i data-lucide="${stale ? "alert-triangle" : "shield-check"}" class="w-4 h-4 shrink-0 ${stale ? "text-warning" : "opacity-70"}"></i>
+          <div class="text-sm">${escapeHtml(text)}</div>
+        </div>
+      </div>
     `;
   }
 
