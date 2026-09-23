@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { formatAge, describeBackupStatus, STALE_AFTER_MS } from "../public/library-sync.js";
+import { renderShareLibraryFreshness } from "../public/health.js";
 
 // --- formatAge ---------------------------------------------------------
 
@@ -73,4 +74,36 @@ test("a refused attempt is reported honestly, not as a successful sync", () => {
   assert.match(r.text, /refused/i);
   assert.match(r.text, /ProPresenter is running/);
   assert.doesNotMatch(r.text, /\.\./, "the reason already ends in a period — a second one reads as a typo");
+});
+
+// --- renderShareLibraryFreshness (Health's compact card) ------------------
+//
+// A caught bug, found by code review: this card used to compute "stale"
+// straight from the clock, so a refusal from a minute ago rendered dim and
+// unflagged (opacity-70) while the dedicated Library Sync screen -- built on
+// the same data, via describeBackupStatus -- correctly showed it as urgent.
+// These pin the fix: one shared function decides "is this backup okay",
+// Health only renders whatever it says.
+
+test("a very recent refusal is still flagged, not shown as merely dim", () => {
+  const html = renderShareLibraryFreshness({
+    status: "active",
+    lastRun: { at: new Date(Date.now() - 60_000).toISOString(), ok: false, reason: "ProPresenter is running." },
+  });
+  assert.match(html, /rf-flag/, "a live failure must be visually flagged regardless of how recent it is");
+  assert.doesNotMatch(html, /opacity-70/, "must not also render as the calm, unflagged state");
+});
+
+test("a healthy recent sync stays calm, not flagged", () => {
+  const html = renderShareLibraryFreshness({
+    status: "active",
+    lastRun: { at: new Date(Date.now() - 60_000).toISOString(), ok: true },
+  });
+  assert.match(html, /opacity-70/);
+  assert.doesNotMatch(html, /rf-flag/);
+});
+
+test("nothing renders when Share Library is not active", () => {
+  assert.equal(renderShareLibraryFreshness({ status: "off" }), "");
+  assert.equal(renderShareLibraryFreshness(null), "");
 });

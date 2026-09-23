@@ -1,7 +1,7 @@
 import { COPY_FAILED, noProPresenterFound } from "./strings.js";
 import { showFailure } from "./notice.js";
 import { createMeter, updateMeter, meterCount } from "./led-meter.js";
-import { formatAge, STALE_AFTER_MS } from "./library-sync.js";
+import { describeBackupStatus } from "./library-sync.js";
 const ARRANGEMENT_STATUS_LABEL = {
   off: null, // hidden entirely per Section 4.1
   misconfigured: "Misconfigured",
@@ -928,21 +928,26 @@ function renderTerminalActions(port, installDir) {
     </div>`;
 }
 
-function renderShareLibraryFreshness(share) {
+/**
+ * Reuses describeBackupStatus rather than re-deriving "stale" from the age
+ * alone -- a caught bug: doing the threshold math here independently marked a
+ * same-minute sync FAILURE as merely dim/unflagged (opacity-70) because it was
+ * recent by the clock, while the dedicated Library Sync screen correctly shows
+ * any refusal as urgent regardless of age. One function answering "is this
+ * backup okay" is the only way the two screens can't say different things
+ * about the same sync.
+ *
+ * No `preview` here (Health's card is meant to stay cheap — no live diff
+ * against ProPresenter), so this never claims to know whether the mirror
+ * still matches, only how current the last attempt was.
+ */
+export function renderShareLibraryFreshness(share) {
   if (share?.status !== "active") return "";
-  const r = share.lastRun;
-  if (!r) {
-    return `<div class="text-sm opacity-70">Never synced yet.</div>`;
-  }
-  const ageMs = Date.now() - new Date(r.at).getTime();
-  const stale = ageMs > STALE_AFTER_MS;
-  if (r.ok === false) {
-    return `<div class="text-sm ${stale ? "rf-flag" : "opacity-70"}">Last attempt ${formatAge(ageMs)} was refused${r.reason ? `: ${escapeHtml(r.reason)}` : "."}</div>`;
-  }
+  const { text, stale } = describeBackupStatus({ lastRun: share.lastRun, preview: null });
   return `
     <div class="text-sm ${stale ? "rf-flag" : "opacity-70"}">
-      ${stale ? "Backup stale" : "Backup current"} — last synced ${formatAge(ageMs)}.
-      ${stale ? `<a href="#library-sync" class="link">Check Library Sync</a>` : ""}
+      ${escapeHtml(text)}
+      ${stale && share.lastRun?.ok !== false ? `<a href="#library-sync" class="link">Check Library Sync</a>` : ""}
     </div>`;
 }
 
