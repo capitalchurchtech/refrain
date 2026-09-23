@@ -58,6 +58,7 @@ import {
   daysSinceFullBuild,
   getIndexedSlide,
   lastCrawlAbort,
+  findDuplicateNames,
 } from "./search-index.js";
 import { startLibraryWatch, fullRebuildSuggestion,
   indexStaleness,
@@ -1028,6 +1029,21 @@ app.get("/api/propresenter/status", async (_req, res) => {
 
 app.get("/api/index/status", (_req, res) => {
   res.json(indexStatusPayload());
+});
+
+/**
+ * Presentation names that collide across two different Library folders --
+ * see findDuplicateNames's own doc for why this exists. Pure and in-memory
+ * (no ProPresenter call, no file read), so unlike most of this file there is
+ * nothing here that can fail; the try/catch is only for consistency with the
+ * rest of the routes in this file, not because a real failure is expected.
+ */
+app.get("/api/duplicate-names", (_req, res) => {
+  try {
+    res.json({ groups: findDuplicateNames() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get("/api/library-folders", async (_req, res) => {

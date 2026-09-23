@@ -32,11 +32,14 @@ export function initHealth() {
     const wasLibraryFoldersOpen = document.getElementById("library-folders-details")?.open ?? false;
     const scrollY = window.scrollY;
 
-    const [health, libraryFolders, configOptions, versionInfo] = await Promise.all([
+    const [health, libraryFolders, configOptions, versionInfo, duplicateNames] = await Promise.all([
       fetch("/api/health").then((r) => r.json()),
       fetch("/api/library-folders").then((r) => (r.ok ? r.json() : { folders: [], selected: null, error: true })),
       fetch("/api/config-options").then((r) => r.json()),
       fetchVersionCheck(),
+      // Pure and in-memory on the server, so this costs nothing extra worth
+      // gating behind the index actually being built.
+      fetch("/api/duplicate-names").then((r) => (r.ok ? r.json() : { groups: [] })),
     ]);
     const trackArrangement = health.arrangementModule.status !== "off";
     const arrangementFolders = trackArrangement
@@ -45,7 +48,7 @@ export function initHealth() {
     container.innerHTML = `
       <div class="flex flex-col gap-4 max-w-3xl">
         <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="heart-pulse" class="w-5 h-5"></i> Health</h1>
-        ${renderHealth(health, configOptions, versionInfo, renderLibraryCard(libraryFolders, arrangementFolders))}
+        ${renderHealth(health, configOptions, versionInfo, renderLibraryCard(libraryFolders, arrangementFolders), duplicateNames.groups ?? [])}
       </div>`;
 
     const libraryFoldersDetails = document.getElementById("library-folders-details");
@@ -97,6 +100,28 @@ export function initHealth() {
           btn.innerHTML = label;
           if (window.lucide) window.lucide.createIcons();
         }, 1800);
+      });
+    });
+
+    // One per duplicate-name entry on the card above. Same action and the
+    // same route search.js's results use: opens ProPresenter's editor on
+    // that exact presentation without changing what is live.
+    document.querySelectorAll(".show-in-editor-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        try {
+          const res = await fetch("/api/focus", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ presentationId: btn.dataset.presentationId }),
+          });
+          if (!res.ok) {
+            const { error } = await res.json();
+            showFailure(`Didn't open the editor: ${error ?? "ProPresenter didn't answer"}. Nothing on the screens changed.`);
+          }
+        } finally {
+          btn.disabled = false;
+        }
       });
     });
 
@@ -1055,7 +1080,7 @@ function renderAutostartCard(state) {
     </div>`;
 }
 
-function renderHealth(health, configOptions, versionInfo, libraryCard = "") {
+function renderHealth(health, configOptions, versionInfo, libraryCard = "", duplicateNameGroups = []) {
   const { propresenter, index, arrangementModule, role, version, config, envRequirements } = health;
   const shareLibraryCard = renderShareLibraryCard(health.shareLibrary);
   const terminalCard = renderTerminalActions(health.port ?? window.location.port ?? 9999, health.installDir ?? "$HOME/Refrain");
@@ -1261,6 +1286,55 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "") {
                 </div>`;
               })()
         }
+      </div>
+    </div>
+  `;
+
+  /**
+   * Quiet unless there is something to act on — no "0 duplicates found"
+   * all-clear, matching renderIndexShortfall. A number nobody has to act on
+   * is exactly what the ideas doc's own "considered and not recommended"
+   * section warns against.
+   *
+   * Each entry gets the same "Show in editor" action search.js's results
+   * use — opens ProPresenter's editor on that exact presentation without
+   * changing what is live, so the admin can go look and decide which one
+   * to rename or archive rather than guessing from a name alone.
+   */
+  const duplicateNamesCard =
+    duplicateNameGroups.length === 0
+      ? ""
+      : `
+    <div class="card bg-base-200">
+      <div class="card-body p-3 gap-2">
+        <h2 class="card-title text-base"><i data-lucide="copy-x" class="w-4 h-4 opacity-70"></i> Duplicate names across folders</h2>
+        <div class="text-sm opacity-70 rf-measure">
+          The same presentation name in more than one Library folder. Search and Go Live cannot
+          tell them apart by name alone, which is exactly how a confusing mix-up happens.
+        </div>
+        <div class="flex flex-col gap-2">
+          ${duplicateNameGroups
+            .map(
+              (g) => `
+            <div class="flex flex-col gap-1 border-t border-base-300 pt-2 first:border-0 first:pt-0">
+              <div class="text-sm font-medium">${escapeHtml(g.name)}</div>
+              <div class="flex flex-col gap-1">
+                ${g.entries
+                  .map(
+                    (e) => `
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-xs opacity-70">${escapeHtml(e.folder ?? "Unknown folder")}</span>
+                    <button class="btn btn-chip shrink-0 show-in-editor-btn" data-presentation-id="${escapeHtml(e.presentationId)}">
+                      Show in editor
+                    </button>
+                  </div>`
+                  )
+                  .join("")}
+              </div>
+            </div>`
+            )
+            .join("")}
+        </div>
       </div>
     </div>
   `;
@@ -1650,6 +1724,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "") {
       ${statusStrip}
       ${propresenterCard}
       ${indexCard}
+      ${duplicateNamesCard}
       ${arrangementCard}
       ${configCard}
       ${libraryCard}

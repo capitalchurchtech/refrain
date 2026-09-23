@@ -736,6 +736,48 @@ export function getIndexedFolders() {
 }
 
 /**
+ * Presentation names that appear in more than one Library folder.
+ *
+ * From docs/ideas.md: "Songs/X.pro and Songs Archive/X.pro having the same
+ * document name is how at least one confusing situation arose here." Two
+ * presentations with the same title in different folders look identical in
+ * search and in Go Live -- there is nothing in the UI that says which one
+ * just fired. This does not fix that; it just makes the collision visible
+ * instead of something you find out the hard way mid-service.
+ *
+ * Matched by exact name after normalizeText and lowercasing -- trimmed
+ * whitespace and case differences are still the same collision an operator
+ * would find confusing, but nothing fuzzier than that. A name that merely
+ * looks similar is not a claim this function is willing to make.
+ *
+ * Same-folder repeats are not reported: a library can legitimately have two
+ * presentations that happen to share a name without the cross-library
+ * ambiguity this exists to catch, and ProPresenter itself is the authority
+ * on whether that is allowed.
+ */
+export function findDuplicateNames(index = currentIndex) {
+  const byName = new Map();
+  for (const [presentationId, entry] of Object.entries(index?.presentations ?? {})) {
+    const name = entry?.name;
+    const key = normalizeText(name ?? "").toLowerCase();
+    if (!key) continue;
+    if (!byName.has(key)) byName.set(key, []);
+    byName.get(key).push({ presentationId, folder: entry.folder ?? null, name });
+  }
+
+  const groups = [];
+  for (const entries of byName.values()) {
+    const folders = new Set(entries.map((e) => e.folder));
+    if (folders.size < 2) continue;
+    // The name as actually stored, from whichever entry has one -- byName's
+    // key is lowercased for matching, not for display.
+    groups.push({ name: entries.find((e) => e.name)?.name ?? "", entries });
+  }
+  groups.sort((a, b) => a.name.localeCompare(b.name));
+  return groups;
+}
+
+/**
  * Distinct arrangement names seen in the built index, so the Health screen can
  * offer the church's real arrangement names ("FS", "T", ...) to choose from
  * instead of asking an admin to type labels blind.
