@@ -2058,3 +2058,22 @@ excused and every helper counts as blocking.
   which would have silently thrown away a slide whose other finding was a date.
   Verified in the real UI with a real announcement deck's slides run through the
   real parser (ProPresenter was closed, so the playlist fetch was stubbed).
+- 2026-09-24 · Unused-media scan gets a memory ceiling · done · the corpus is
+  held in memory on the machine that also runs ProPresenter, and the button is
+  not gated on a service being over. 187 MB here, nothing over 5 MB; past 1 GB
+  it now refuses with a reason. Refusing can never give a wrong list.
+- 2026-09-24 · BLOCKED on a reachable ProPresenter · #9 (missing media before
+  the service) and theme conformance. Groundwork, so nobody redoes it:
+  **#9** -- the `availability` Ready/Missing data the issue cites lives in the
+  RocksDB state database (`Workspaces/<name>-<id>/Database/*.sst`), not in any
+  plain file. Do not read .sst files by string matching: blocks can be
+  compressed, and this workspace's live DB was rebuilt after the 11 September
+  repair (32 KB), so it is not the store the 26,740 / 8,454 count came from.
+  The acceptance criteria also need the API (playlist scoping, naming the
+  slide). The reference format IS settled: see the unused-media entry above --
+  bare filename, relative `Media/...` path, and absolute URLs from other Macs.
+  **Theme conformance** -- a theme's own UUID appears in zero `.pro` files,
+  and the name matches decks for the wrong reason ("Announcements" is also a
+  deck title). ProPresenter appears to copy a theme's layouts into a deck when
+  applied rather than keep a link, so "which theme does this deck use" is not
+  answerable from disk without a protobuf schema. Probe the API first.

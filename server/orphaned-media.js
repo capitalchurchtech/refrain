@@ -52,6 +52,9 @@ const MEDIA_EXTENSIONS = new Set([
   ".mp3", ".wav", ".m4a", ".aac", ".aif", ".aiff", ".flac",
 ]);
 
+// See the ceiling check in scanOrphanedMedia.
+const MAX_CORPUS_BYTES = 1_000_000_000;
+
 /**
  * The workspace roots behind a set of library directories.
  *
@@ -165,8 +168,9 @@ async function listFiles(dir, { skipDir = null } = {}) {
  * @param {object} opts
  * @param {string[]} opts.libraryDirs - from search-index's getIndexedLibraryDirs
  * @param {number} [opts.maxListed] - largest orphans to return per workspace; totals always cover all of them
+ * @param {number} [opts.maxCorpusBytes] - refuse, rather than read, more reference data than this
  */
-export async function scanOrphanedMedia({ libraryDirs, maxListed = 500 } = {}) {
+export async function scanOrphanedMedia({ libraryDirs, maxListed = 500, maxCorpusBytes = MAX_CORPUS_BYTES } = {}) {
   const started = Date.now();
   const roots = workspaceRootsFromLibraryDirs(libraryDirs);
   if (roots.length === 0) {
@@ -194,6 +198,22 @@ export async function scanOrphanedMedia({ libraryDirs, maxListed = 500 } = {}) {
       if (MEDIA_EXTENSIONS.has(path.extname(f).toLowerCase())) continue;
       referenceFiles.push(f);
     }
+  }
+
+  // The whole corpus is held in memory at once, on the machine that is also
+  // running ProPresenter -- and this button is not gated on a service being
+  // over. The booth's is 187 MB; past the ceiling, refuse and say why rather
+  // than risk pushing that machine into swap. Refusing can never produce a
+  // wrong list, only no list.
+  let corpusBytes = 0;
+  for (const f of referenceFiles) corpusBytes += (await stat(f)).size;
+  if (corpusBytes > maxCorpusBytes) {
+    return {
+      ok: false,
+      error:
+        `There is ${Math.round(corpusBytes / 1e6)} MB of presentations, playlists and themes to read, which is more ` +
+        `than this scan will hold in memory at once (${Math.round(maxCorpusBytes / 1e6)} MB). Nothing is reported.`,
+    };
   }
 
   // A zero byte between files, so a name cannot be "found" straddling the end

@@ -258,3 +258,14 @@ test("names from disk are escaped, not rendered as markup", () => {
   assert.doesNotMatch(html, /<img src=x/);
   assert.match(html, /&lt;img src=x/);
 });
+
+test("past the memory ceiling it refuses instead of reading everything", async () => {
+  const root = await workspace("too-big", {
+    media: { "Assets/a.jpg": "a" },
+    files: { "Libraries/Songs/Big.pro": "x".repeat(2000) },
+  });
+  const r = await scanOrphanedMedia({ libraryDirs: [path.join(root, "Libraries", "Songs")], maxCorpusBytes: 1000 });
+  assert.equal(r.ok, false);
+  assert.match(r.error, /Nothing is reported/);
+  assert.equal(r.workspaces, undefined, "no partial list, not even an empty one");
+});
