@@ -80,6 +80,7 @@ import { pushLiveItem, findReturnEntry } from "./return-history.js";
 import { checkLibrarySafeToTouch, shouldAutoRunLibrarySync } from "./library-guard.js";
 import { scanOrphanedMedia, resolveMediaPath, workspaceRootsFromLibraryDirs } from "./orphaned-media.js";
 import { findPastDates } from "./stale-dates.js";
+import { buildFlag, saveFlag, listFlags, retryPendingFlags, DEFAULT_FLAGS_FOLDER } from "./slide-flags.js";
 import { heartbeatInterval } from "./heartbeat-pacing.js";
 import { buildInfo } from "./build-info.js";
 import {
@@ -1214,6 +1215,43 @@ app.post("/api/index/reindex-changed", async (_req, res) => {
     });
   } catch (err) {
     res.status(502).json({ error: indexBuildError(err) });
+  }
+});
+
+/**
+ * Slide flags (issue #1): one press records the slide that is live, to fix
+ * after the service. See server/slide-flags.js.
+ *
+ * Reads only the heartbeat's cached state -- nothing here calls ProPresenter,
+ * which is what lets it run during a service with performance mode on.
+ */
+function slideFlagsFolder() {
+  const folder = config.slideFlagsModule?.folder;
+  return typeof folder === "string" && folder.trim() ? folder.trim() : DEFAULT_FLAGS_FOLDER;
+}
+
+app.post("/api/slide-flags", async (_req, res) => {
+  noteClientActivity();
+  const slideId = liveState.slide?.presentationId;
+  const built = buildFlag(liveState, { indexEntry: slideId ? getIndex().presentations?.[slideId] ?? null : null });
+  if (!built.ok) return res.status(409).json({ error: built.error });
+  try {
+    const saved = await saveFlag(built.flag, { folder: slideFlagsFolder() });
+    res.json({ ok: true, flag: built.flag, ...saved });
+  } catch (err) {
+    // Could not even save it on this machine -- the one outcome the operator
+    // must hear about, because the flag does not exist.
+    res.status(500).json({ error: `The flag was not saved: ${err.message}` });
+  }
+});
+
+app.get("/api/slide-flags", async (_req, res) => {
+  try {
+    // Cheap, and the natural moment: someone is looking at the list.
+    await retryPendingFlags({ folder: slideFlagsFolder() });
+    res.json({ flags: await listFlags({ folder: slideFlagsFolder() }) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -3341,6 +3379,13 @@ const server = app.listen(port, "127.0.0.1", async () => {
       console.error("Pending-upload retry failed:", err.message);
     }
   }
+
+  // Flags captured while the shared folder was unreachable, copied now.
+  retryPendingFlags({ folder: slideFlagsFolder() })
+    .then(({ attempted, succeeded }) => {
+      if (attempted > 0) console.log(`Copied ${succeeded} of ${attempted} waiting slide flag(s) to the flags folder.`);
+    })
+    .catch(() => {});
 
   // Create the default image-crop folders up front (even if the module is
   // off) so a volunteer can open and alias them straight away, and they're

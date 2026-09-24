@@ -473,7 +473,11 @@
         <!-- What is on the screens. Recessed, because it reports rather than
              being pressed. Sits above the search field so it is in the
              operator's eyeline on the path to live. -->
-        <div id="search-readout" class="rf-readout mb-4" data-mode="standby"></div>
+        <div id="search-readout" class="rf-readout mb-2" data-mode="standby"></div>
+        <!-- Flag this slide (issue #1): directly under the readout, because that
+             is what it flags -- whatever the readout says is on the screens.
+             A chip, so it never reads as a control that changes them. -->
+        <div id="search-flag" class="mb-4"></div>
 
         <!-- The clear sits inside the field rather than beside it: it acts on
              the field, so putting it in the row would read as a third control

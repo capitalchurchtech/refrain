@@ -62,5 +62,9 @@
   "scriptureModule": {
     "biblegatewayVersion": "NIV",
     "blueletterTranslation": "KJV"
+  },
+  "_slideFlagsModule": "Where Flag this slide keeps its flags. Leave folder null to keep them on this machine only. Point it at a folder two machines can both see (Dropbox, Google Drive, OneDrive) to share one list; each flag is its own file, so they never overwrite each other.",
+  "slideFlagsModule": {
+    "folder": null
   }
 }

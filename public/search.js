@@ -1,4 +1,5 @@
 import { mountLiveReadout, paintGoing, clearGoing } from "./live-readout.js";
+import { mountFlagButton } from "./slide-flags.js";
 import { showFailure } from "./notice.js";
 import { crumb } from "./breadcrumbs.js";
 
@@ -43,6 +44,7 @@ export function initSearch() {
   const pendingEl = document.getElementById("search-pending");
   const connectionBanner = document.getElementById("connection-banner");
   mountLiveReadout(document.getElementById("search-readout"));
+  mountFlagButton(document.getElementById("search-flag"));
   const dateFilterToggle = document.getElementById("date-filter-toggle");
   const dateFilterPanel = document.getElementById("date-filter-panel");
   const dateFieldSelect = document.getElementById("date-field");

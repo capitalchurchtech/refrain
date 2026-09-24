@@ -2077,3 +2077,23 @@ excused and every helper counts as blocking.
   deck title). ProPresenter appears to copy a theme's layouts into a deck when
   applied rather than keep a link, so "which theme does this deck use" is not
   answerable from disk without a protobuf schema. Probe the API first.
+- 2026-09-24 · Flag this slide (issue #1, capture half) · done · a chip under
+  the Search readout and on the Live screen, and a Flagged slides list at the
+  bottom of Live. Reads the heartbeat's cache only -- no ProPresenter traffic,
+  so it is fine under performance mode. **The text snapshot is the INDEXED
+  text**, not a fresh read of the screen: `getCurrentSlide` returns no text,
+  and getting it would mean calling `/v1/status/slide` on every press, which
+  the issue rules out. Saving a deck reindexes it within seconds, so it is
+  normally current. Not on the storage backends: those are arrangement-history
+  storage, off on production, so flags have their own `slideFlagsModule.folder`
+  (local by default). **One file per flag** -- two machines appending to one
+  list in a synced folder is how Dropbox and Drive make conflict copies and
+  lose writes. Written here first and copied after, so an unreachable shared
+  folder means "waiting", never lost. **Verified live**: the refusal with
+  ProPresenter closed (409, nothing written), and a real flag built from a real
+  indexed slide read back through the real route onto both screens. **Not yet
+  verified**: capturing a genuinely live slide -- needs ProPresenter open.
+  One test bug worth knowing: a fixture helper built flags that buildFlag
+  (correctly) refused as stale, and one test passed by comparing against
+  "undefined.json". saveFlag now refuses id-less flags outright. Left for #2:
+  problem types, and marking flags done.

@@ -48,6 +48,7 @@ Working today:
 - Arrangement storage on a Local Folder (single machine) or a Synced Folder (a Google Drive, Dropbox, or OneDrive folder your desktop app already keeps in sync, which is how two machines share without any server).
 - Image cropping, end to end.
 - QR codes, end to end.
+- Flag this slide: one press under the Search readout (or on the Live screen) records whatever slide is live, to fix after the service. It reads what Refrain already knows is on the screens, so it adds no traffic to ProPresenter and works with performance mode on. Flags list on the Live screen with Show in Editor. To share one list between two machines, set `slideFlagsModule.folder` in config.json to a folder both can see (Dropbox, Google Drive, OneDrive); each flag is its own small file, so two machines never overwrite each other. Working through the list afterwards, with problem types, is the follow-up (issue #2).
 - Spell check across a playlist's slides, end to end. The same scan flags dates that have already passed, like an announcement for last month's event still in this weekend's loop.
 - Library Sync (optional, off by default): copies one library between two machines or accounts, add-and-update only, with snapshots. It can also run on its own once ProPresenter is confirmed closed, which is a separate switch, also off by default.
 - A plain answer on Health to "is the backup current": how long since the last sync, and whether it still matches the live library right now.
