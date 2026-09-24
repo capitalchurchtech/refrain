@@ -79,6 +79,7 @@ import { resolveArrangement, flattenGroups, findLiveIndex, parseSlideIndex } fro
 import { pushLiveItem, findReturnEntry } from "./return-history.js";
 import { checkLibrarySafeToTouch, shouldAutoRunLibrarySync } from "./library-guard.js";
 import { scanOrphanedMedia, resolveMediaPath, workspaceRootsFromLibraryDirs } from "./orphaned-media.js";
+import { findPastDates } from "./stale-dates.js";
 import { heartbeatInterval } from "./heartbeat-pacing.js";
 import { buildInfo } from "./build-info.js";
 import {
@@ -1986,15 +1987,19 @@ app.post("/api/spellcheck/scan", async (req, res) => {
       const flaggedSlides = [];
       for (const slide of slides) {
         const words = findTypos(slide.text, { knownWords, allowlist, speller });
+        // Dates that are already over -- the announcement for last month's
+        // event still in this weekend's loop. See server/stale-dates.js.
+        const pastDates = findPastDates(slide.text);
         // Carry the slide's anchor so Go Live from here survives an
         // arrangement switch between this scan and the click.
-        if (words.length) {
+        if (words.length || pastDates.length) {
           flaggedSlides.push({
             slideIndex: slide.index,
             groupId: slide.groupId ?? null,
             groupOffset: slide.groupOffset ?? null,
             text: slide.text,
             words,
+            pastDates,
           });
         }
       }

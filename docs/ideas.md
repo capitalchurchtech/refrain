@@ -46,7 +46,7 @@ report disagreement.
 Directly useful given Template is one of the flag types in #2 — the app could
 pre-empt the flag the way #9 pre-empts the media ones.
 
-**Announcement expiry.** Slides mentioning dates that have passed. Cheap text scan,
+**Built** (in Spell Check's playlist scan, after v0.15.0). **Announcement expiry.** Slides mentioning dates that have passed. Cheap text scan,
 catches the "event from three weeks ago still in the loop" problem.
 
 **Slide readability.** Text too long for the slide, font below a threshold, poor

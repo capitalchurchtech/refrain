@@ -2043,3 +2043,18 @@ excused and every helper counts as blocking.
   identical to it on the real 94 MB corpus. Found by reading ProPresenter's
   files with it CLOSED, since the API was unreachable all day — reading is safe
   then, and it answered what guessing at the API would have got wrong.
+- 2026-09-24 · Past dates in Spell Check's playlist scan · done · the loop is
+  where a stale announcement actually hurts, and Spell Check already scans a
+  playlist before a service, so this is a second kind of finding there rather
+  than a new screen. Library-wide, 356 of 38,561 slides mention a date that
+  has passed -- noise without the playlist scoping. **Decisions, each measured:**
+  numeric dates left out (the only six N/N matches in the library were
+  "Hindsight is 20/20"); a stated weekday picks the year, because "nearest
+  occurrence" calls "Sunday, March 23" upcoming in late September when it was a
+  2025 slide; ranges judged by their end; an explicit year before last year is
+  history ("October 31, 1517") and stays quiet. Every finding shows the date it
+  resolved to, so a mistyped weekday is visible rather than just "347 days ago".
+  **Bug avoided:** ignoring a word dropped every slide with no words left,
+  which would have silently thrown away a slide whose other finding was a date.
+  Verified in the real UI with a real announcement deck's slides run through the
+  real parser (ProPresenter was closed, so the playlist fetch was stubbed).

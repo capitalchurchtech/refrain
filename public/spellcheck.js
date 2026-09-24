@@ -31,7 +31,7 @@ export function initSpellcheck() {
             </div>
             <button id="spellcheck-scan-btn" class="btn btn-brand btn-sm w-fit" title="Choose a playlist first" disabled>Check spelling</button>
             <p id="spellcheck-scan-reason" class="rf-hint">Choose a playlist first.</p>
-            <p class="text-xs opacity-60">Fix anything real in ProPresenter. The buttons on each result jump you there.</p>
+            <p class="text-xs opacity-60">Also flags dates that have already passed. Fix anything real in ProPresenter. The buttons on each result jump you there.</p>
           </div>
         </div>
 
@@ -131,12 +131,18 @@ export function initSpellcheck() {
   function renderResults(data) {
     const statusEl = document.getElementById("spellcheck-status");
     const resultsEl = document.getElementById("spellcheck-results");
-    const total = data.presentations.reduce((n, p) => n + p.slides.reduce((m, s) => m + s.words.length, 0), 0);
+    const wordCount = data.presentations.reduce((n, p) => n + p.slides.reduce((m, s) => m + s.words.length, 0), 0);
+    const dateCount = data.presentations.reduce((n, p) => n + p.slides.reduce((m, s) => m + (s.pastDates?.length ?? 0), 0), 0);
+    const total = wordCount + dateCount;
 
     renderNextControl(total);
+    const found = [
+      wordCount ? `${wordCount} word${wordCount === 1 ? "" : "s"}` : "",
+      dateCount ? `${dateCount} past date${dateCount === 1 ? "" : "s"}` : "",
+    ].filter(Boolean).join(" and ");
     statusEl.textContent = total
-      ? `${total} word${total === 1 ? "" : "s"} to review across ${data.presentations.length} presentation${data.presentations.length === 1 ? "" : "s"}.${data.truncated ? ` (checked the first ${data.scannedCount})` : ""}`
-      : `No likely typos found${data.truncated ? ` in the first ${data.scannedCount} items` : ""}. `;
+      ? `${found} to review across ${data.presentations.length} presentation${data.presentations.length === 1 ? "" : "s"}.${data.truncated ? ` (checked the first ${data.scannedCount})` : ""}`
+      : `No likely typos or past dates found${data.truncated ? ` in the first ${data.scannedCount} items` : ""}. `;
 
     resultsEl.innerHTML = data.presentations
       .map(
@@ -156,6 +162,14 @@ export function initSpellcheck() {
                   <span class="rf-tile rf-flagged gap-1 inline-flex items-center spellcheck-word" data-word="${escapeHtml(w.word)}" title="${w.suggestions.length ? "Suggestions: " + escapeHtml(w.suggestions.join(", ")) : "No suggestions"}">
                     ${escapeHtml(w.word)}${w.suggestions.length ? ` → ${escapeHtml(w.suggestions[0])}` : ""}
                     <button class="spellcheck-ignore-btn ml-1 underline decoration-dotted" data-word="${escapeHtml(w.word)}" title="Never flag this word again. You can undo it under Ignored words.">ignore</button>
+                  </span>`
+                  )
+                  .join("")}
+                ${(s.pastDates ?? [])
+                  .map(
+                    (d) => `
+                  <span class="rf-tile rf-flagged gap-1 inline-flex items-center spellcheck-date" title="Already over. Update or remove it before this goes on the screens.">
+                    Date passed: ${escapeHtml(d.text)} <span class="opacity-70">(was ${escapeHtml(formatPastDate(d.date))})</span>
                   </span>`
                   )
                   .join("")}
@@ -305,10 +319,20 @@ export function initSpellcheck() {
     const lower = word.toLowerCase();
     for (const p of lastResults.presentations) {
       for (const s of p.slides) s.words = s.words.filter((w) => w.word.toLowerCase() !== lower);
-      p.slides = p.slides.filter((s) => s.words.length);
+      // Keep a slide whose only finding is a past date: ignoring a word must
+      // not quietly throw away a different kind of problem on the same slide.
+      p.slides = p.slides.filter((s) => s.words.length || s.pastDates?.length);
     }
     lastResults.presentations = lastResults.presentations.filter((p) => p.slides.length);
     renderResults(lastResults);
+  }
+
+  // "27 Jun 2025": the resolved day, year included, because the year is the
+  // point -- "Sunday, March 23" reads as upcoming until you see it meant 2025.
+  function formatPastDate(iso) {
+    const [y, m, d] = String(iso).split("-").map(Number);
+    if (!y || !m || !d) return String(iso ?? "");
+    return new Date(y, m - 1, d).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
   }
 
   // Wrap each flagged word in the slide text with a <mark>, matching whole
