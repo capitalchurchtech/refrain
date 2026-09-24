@@ -6,7 +6,7 @@
  * actual installed version before relying on anything below.
  */
 import { readFileSync, existsSync } from "node:fs";
-import { copyFile, readdir, mkdir } from "node:fs/promises";
+import { copyFile, readdir, mkdir, stat } from "node:fs/promises";
 import { exec, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { platform, homedir } from "node:os";
@@ -78,6 +78,7 @@ import {
 import { resolveArrangement, flattenGroups, findLiveIndex, parseSlideIndex } from "./arrangements.js";
 import { pushLiveItem, findReturnEntry } from "./return-history.js";
 import { checkLibrarySafeToTouch, shouldAutoRunLibrarySync } from "./library-guard.js";
+import { scanOrphanedMedia, resolveMediaPath, workspaceRootsFromLibraryDirs } from "./orphaned-media.js";
 import { heartbeatInterval } from "./heartbeat-pacing.js";
 import { buildInfo } from "./build-info.js";
 import {
@@ -1044,6 +1045,71 @@ app.get("/api/duplicate-names", (_req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+/**
+ * Media nothing refers to -- see server/orphaned-media.js for the three rules
+ * that keep this from ever calling an in-use file safe to delete.
+ *
+ * A button, never automatic. It reads every reference file in every workspace
+ * (about five seconds on the booth's library), which is fine when someone asks
+ * for it and not something to do behind their back. Because an operator
+ * pressed it, it runs under performance mode like anything else they press --
+ * see performance-mode.js: "it is only Refrain's own initiative that stops."
+ *
+ * One at a time, because two overlapping scans would read the whole library
+ * twice for one answer.
+ */
+let orphanedMediaInFlight = false;
+
+app.post("/api/orphaned-media/scan", async (_req, res) => {
+  if (orphanedMediaInFlight) {
+    return res.status(409).json({ error: "A scan is already running. Wait for it to finish." });
+  }
+  orphanedMediaInFlight = true;
+  try {
+    const result = await scanOrphanedMedia({ libraryDirs: getIndexedLibraryDirs() });
+    res.status(result.ok ? 200 : 409).json(result);
+  } catch (err) {
+    // Fail closed, surfaced as a refusal: an unreadable reference file means
+    // this scan cannot say what is unused, so it says that instead.
+    res.status(502).json({
+      ok: false,
+      error:
+        `Could not read everything needed to tell what is unused (${err.message}). ` +
+        `Nothing is reported, because a file Refrain could not read might be the one using that media.`,
+    });
+  } finally {
+    orphanedMediaInFlight = false;
+  }
+});
+
+/**
+ * Shows one of the scan's files in Finder, so a person can look at it and
+ * decide. Refrain does not delete media, and this is the closest it gets.
+ *
+ * The workspace must be one the index knows and the file must sit inside that
+ * workspace's Media folder -- this takes a path from the browser, so it
+ * refuses anything else rather than revealing wherever it is pointed.
+ */
+app.post("/api/orphaned-media/reveal", async (req, res) => {
+  const { root, relPath } = req.body ?? {};
+  const target = resolveMediaPath(workspaceRootsFromLibraryDirs(getIndexedLibraryDirs()), root, relPath);
+  if (!target) {
+    return res.status(400).json({ error: "That is not a file from this workspace's Media folder." });
+  }
+  if (platform() !== "darwin") {
+    return res.status(501).json({ error: "Showing a file in the file manager is only supported on macOS right now." });
+  }
+  try {
+    await stat(target);
+  } catch {
+    return res.status(404).json({ error: "That file is not there any more. It may already have been moved or deleted." });
+  }
+  execFile("open", ["-R", target], (err) => {
+    if (err) return res.status(500).json({ error: `Could not show it in Finder: ${err.message}` });
+    res.json({ ok: true });
+  });
 });
 
 app.get("/api/library-folders", async (_req, res) => {

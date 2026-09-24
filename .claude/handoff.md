@@ -2009,3 +2009,37 @@ excused and every helper counts as blocking.
   describe. The trigger now records its own destination, pushed after the pin
   so it lands in front of it. **Not verified end to end**: that means putting a
   slide on the church's screens. One minute at the booth settles it.
+- 2026-09-23 · Share Library runs on its own once ProPresenter is closed · done ·
+  5e0d2a8 · opt-in (`librarySyncModule.autoWhenClosed`), fires once per close.
+  **Deliberately not gated on performance mode**: it arms defensively the
+  instant ProPresenter's API goes quiet, which is exactly when a sync becomes
+  possible — gating on it would mean the feature almost never fires. The
+  process-level check in library-guard is the authority. Verified live.
+- 2026-09-23 · "Is the backup current" on Health · done · b108167, 99a1a52 ·
+  age plus a live content-hash match. The second commit fixes a bug code
+  review caught: Health's compact card re-derived "stale" from the clock and
+  showed a minute-old FAILURE as calm. It now calls describeBackupStatus like
+  the Library Sync screen — one function, so the two cannot disagree.
+- 2026-09-23 · Duplicate names across folders · done · daf911b · this library
+  has none; the positive path was proven on an edited copy of the cache,
+  restored byte-identical by SHA-256.
+- 2026-09-24 · Unused media report · done · Health, as a button, never deletes.
+  The booth's Media folder is 37 GB / 2,189 files; 91 files (121 MB) are
+  referenced by nothing. **Three traps, each now a test that fails if the bug
+  comes back (checked by mutation):**
+  1. References are stored twice — an absolute `file://` URL and a relative
+     `Media/Assets/<name>`. The absolute URLs are from OTHER Macs
+     (two different users on two different machines). Matching them reports all 2,189 files.
+     Match the bare filename anywhere instead.
+  2. `Playlists/Media` is a FILE — the Media bin. Skipping "anything named
+     Media" threw it away and reported 522 in-use files as orphans. Skip the
+     Media folder by exact directory path only.
+  3. A swallowed read error made references vanish and orphans appear. One
+     unreadable reference file now fails the whole scan.
+  `manage_media = false` in `media-manager.toml` here, so ProPresenter does not
+  copy media into its folder — worth knowing before assuming it does. The state
+  database is derived from the files and changed nothing when included. A naive
+  matcher took 30s; the extension-indexed one is 27x faster and was checked
+  identical to it on the real 94 MB corpus. Found by reading ProPresenter's
+  files with it CLOSED, since the API was unreachable all day — reading is safe
+  then, and it answered what guessing at the API would have got wrong.

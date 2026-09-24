@@ -25,15 +25,15 @@ good written down, and they are marked where that seems likely.
 
 These need no new integration. The parsing and the file watching are already there.
 
-**Duplicate document names across libraries.** `Songs/X.pro` and `Songs Archive/X.pro`
+**Built** (on Health, after v0.15.0). **Duplicate document names across libraries.** `Songs/X.pro` and `Songs Archive/X.pro`
 having the same document name is how at least one confusing situation arose here. A
 list of name collisions across libraries is cheap and would have saved an afternoon.
 
-**Orphaned media.** The inverse of #9 — assets referenced by no presentation at all.
+**Built** (on Health, as a button, after v0.15.0). **Orphaned media.** The inverse of #9 — assets referenced by no presentation at all.
 This is disk cleanup, not service safety, and should stay well away from any
 pre-service flow so it never dilutes the list that matters.
 
-**Backup mirror verification.** Confirm the sync mirror actually matches the live
+**Built** (on Health and the Library Sync screen, after v0.15.0). **Backup mirror verification.** Confirm the sync mirror actually matches the live
 workspace. We did this by hand with `shasum` and it was genuinely reassuring. A
 "your backup is current / your backup is four days stale" line on the Health screen
 would be worth more than most features on this list.

@@ -49,7 +49,10 @@ Working today:
 - Image cropping, end to end.
 - QR codes, end to end.
 - Spell check across a playlist's slides, end to end.
-- Library Sync (optional, off by default): copies one library between two machines or accounts, add-and-update only, with snapshots.
+- Library Sync (optional, off by default): copies one library between two machines or accounts, add-and-update only, with snapshots. It can also run on its own once ProPresenter is confirmed closed, which is a separate switch, also off by default.
+- A plain answer on Health to "is the backup current": how long since the last sync, and whether it still matches the live library right now.
+- Presentation names that appear in more than one Library folder, listed on Health with a Show in Editor button each. Two decks with the same name cannot be told apart in search or Go Live.
+- An unused media report on Health: files in ProPresenter's Media folder that no presentation, playlist, theme or Media bin item uses, largest first, each with Show in Finder. It is a button, never automatic, and Refrain never deletes anything.
 - ProPresenter first aid on the Health screen: when it won't start, Diagnose explains why and hands you a command plus a ready-made prompt.
 - A readout on Search showing what is on the screens, with an elapsed clock, and a link indicator in the rail that is present on every screen.
 - Reindexing only the presentations whose file changed, automatically a few seconds after you save one.

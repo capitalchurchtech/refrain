@@ -14,6 +14,11 @@ export function initHealth() {
   // Checked once per page load, not on every save-triggered re-render —
   // it's an external call to GitHub, no need to repeat it every time a
   // config field is saved.
+  // The last unused-media scan, kept across re-renders: Health redraws the
+  // whole screen whenever a setting is saved, and a five-second scan the
+  // operator just asked for should not vanish because they saved something.
+  let lastOrphanScan = null;
+
   let versionCheck = null;
   async function fetchVersionCheck() {
     if (versionCheck) return versionCheck;
@@ -123,6 +128,55 @@ export function initHealth() {
           btn.disabled = false;
         }
       });
+    });
+
+    const orphanResults = document.getElementById("orphan-results");
+    const wireOrphanResults = () => {
+      orphanResults?.querySelectorAll(".orphan-reveal-btn").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          btn.disabled = true;
+          try {
+            const res = await fetch("/api/orphaned-media/reveal", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ root: btn.dataset.root, relPath: btn.dataset.relPath }),
+            });
+            if (!res.ok) {
+              const { error } = await res.json().catch(() => ({}));
+              showFailure(error || "Could not show that file in Finder.");
+            }
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+    };
+    if (orphanResults && lastOrphanScan) {
+      orphanResults.innerHTML = renderOrphanResults(lastOrphanScan);
+      wireOrphanResults();
+    }
+    document.getElementById("orphan-scan-btn")?.addEventListener("click", async (e) => {
+      const btn = e.currentTarget; // captured before the await
+      const statusEl = document.getElementById("orphan-scan-status");
+      btn.disabled = true;
+      if (statusEl) statusEl.textContent = "Reading every presentation, playlist and theme. This takes a few seconds.";
+      try {
+        const res = await fetch("/api/orphaned-media/scan", { method: "POST" });
+        const data = await res.json().catch(() => ({ ok: false, error: res.statusText }));
+        if (!data.ok) throw new Error(data.error || "The scan did not finish.");
+        lastOrphanScan = data;
+        if (orphanResults) {
+          orphanResults.innerHTML = renderOrphanResults(data);
+          wireOrphanResults();
+          if (window.lucide) window.lucide.createIcons();
+        }
+        if (statusEl) statusEl.textContent = "";
+      } catch (err) {
+        if (statusEl) statusEl.textContent = "";
+        showFailure(err.message);
+      } finally {
+        btn.disabled = false;
+      }
     });
 
     const shareSaveBtn = document.getElementById("share-library-save");
@@ -966,6 +1020,56 @@ function renderTerminalActions(port, installDir) {
  * against ProPresenter), so this never claims to know whether the mirror
  * still matches, only how current the last attempt was.
  */
+/** "121 MB", "1.4 GB" -- decimal units, the way Finder reports sizes. */
+export function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) return "0 KB";
+  if (bytes < 1e6) return `${Math.max(1, Math.round(bytes / 1e3))} KB`;
+  if (bytes < 1e9) return `${(bytes / 1e6).toFixed(bytes < 1e7 ? 1 : 0)} MB`;
+  return `${(bytes / 1e9).toFixed(1)} GB`;
+}
+
+/**
+ * The results of an unused-media scan, per workspace.
+ *
+ * The caveat at the bottom is not boilerplate: "unused" can only mean unused
+ * by this Mac's ProPresenter, and a volunteer about to delete things should be
+ * told which things that sentence cannot see.
+ */
+export function renderOrphanResults(result) {
+  const sections = (result?.workspaces ?? []).map((w) => {
+    if (w.missing) {
+      return `<div class="text-sm opacity-70">${escapeHtml(w.name)}: no Media folder here, so nothing to check.</div>`;
+    }
+    if (w.orphanCount === 0) {
+      return `<div class="text-sm opacity-70">${escapeHtml(w.name)}: all ${w.mediaFiles.toLocaleString()} media files are in use.</div>`;
+    }
+    const rows = w.orphans
+      .map(
+        (o) => `
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-xs min-w-0 break-all"><span class="opacity-60 tabular-nums">${formatBytes(o.bytes)}</span> ${escapeHtml(o.relPath)}</span>
+          <button class="btn btn-chip shrink-0 orphan-reveal-btn" data-root="${escapeHtml(w.root)}" data-rel-path="${escapeHtml(o.relPath)}">Show in Finder</button>
+        </div>`
+      )
+      .join("");
+    return `
+      <div class="flex flex-col gap-1">
+        <div class="text-sm">
+          <strong>${escapeHtml(w.name)}:</strong> ${w.orphanCount.toLocaleString()} of ${w.mediaFiles.toLocaleString()} files
+          (${formatBytes(w.orphanBytes)}) are not used by anything.
+        </div>
+        ${w.truncated ? `<div class="text-xs opacity-60">Showing the ${w.orphans.length} largest.</div>` : ""}
+        <div class="flex flex-col gap-1 max-h-80 overflow-y-auto">${rows}</div>
+      </div>`;
+  });
+  return `
+    ${sections.join("")}
+    <div class="text-xs opacity-60 rf-measure">
+      Unused means nothing in this Mac's ProPresenter refers to it. It cannot know about a deck you have
+      not built yet, or a copy of this workspace on another machine. Look before you delete.
+    </div>`;
+}
+
 export function renderShareLibraryFreshness(share) {
   if (share?.status !== "active") return "";
   const { text, stale } = describeBackupStatus({ lastRun: share.lastRun, preview: null });
@@ -1335,6 +1439,31 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
             )
             .join("")}
         </div>
+      </div>
+    </div>
+  `;
+
+  /**
+   * Unused media: a button, never automatic, and nowhere near Search or Live --
+   * docs/ideas.md is explicit that this is disk cleanup and must not dilute
+   * the pre-service list. Refrain never deletes anything; the most it does is
+   * show a file in Finder so a person can look and decide.
+   */
+  const orphanedMediaCard = `
+    <div class="card bg-base-200">
+      <div class="card-body p-3 gap-2">
+        <h2 class="card-title text-base"><i data-lucide="image-off" class="w-4 h-4 opacity-70"></i> Unused media</h2>
+        <div class="text-sm opacity-70 rf-measure">
+          Files in ProPresenter's Media folder that no presentation, playlist, theme or Media bin
+          item uses. Refrain never deletes anything. It shows you candidates and you decide.
+        </div>
+        <div class="rf-control-row">
+          <button id="orphan-scan-btn" class="btn btn-outline btn-xs">
+            <i data-lucide="scan-search" class="w-3.5 h-3.5"></i> Scan for unused media
+          </button>
+          <span id="orphan-scan-status" class="text-xs opacity-60"></span>
+        </div>
+        <div id="orphan-results" class="flex flex-col gap-3"></div>
       </div>
     </div>
   `;
@@ -1725,6 +1854,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
       ${propresenterCard}
       ${indexCard}
       ${duplicateNamesCard}
+      ${orphanedMediaCard}
       ${arrangementCard}
       ${configCard}
       ${libraryCard}
