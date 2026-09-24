@@ -2520,6 +2520,30 @@ html.blackroom .rf-preset + .rf-preset {
   overflow-wrap: anywhere;
 }
 
+/* Flag-type grid on Live: uniform like the key bank above. Every chip is the
+   same height whatever its label, and a long label clamps to two lines and
+   wraps inside the chip instead of spilling out of it. Selectors outrank the
+   dark-theme .btn-chip rule (0,2,0) so the fixed height actually wins. */
+#view-live .slide-flag-grid .slide-flag-type-btn {
+  height: 64px;
+  min-height: 0;
+  padding: 8px;
+  overflow: hidden;
+}
+#view-live .slide-flag-grid .slide-flag-type-label {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  max-width: 100%;
+  font-family: var(--rf-sans);
+  font-size: 12px;
+  letter-spacing: 0;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
 /* ============================================================
    30. THE COLLAPSED RAIL CENTRES ITS GLYPHS
 

@@ -63,7 +63,7 @@
     "biblegatewayVersion": "NIV",
     "blueletterTranslation": "KJV"
   },
-  "_slideFlagsModule": "Where Flag this slide keeps its flags. Leave folder null to keep them on this machine only. Point it at a folder two machines can both see (Dropbox, Google Drive, OneDrive) to share one list; each flag is its own file, so they never overwrite each other.",
+  "_slideFlagsModule": "Where Flag this slide keeps its flags. Leave folder null to keep them on this machine only. Point it at a folder two machines can both see (Dropbox, Google Drive, OneDrive) to share one list; each flag is its own file, so they never overwrite each other. Optional: types replaces the problem-type list (each {\"label\", \"icon\"}, icon a Lucide name); keepResolvedDays is how long a resolved flag stays on the Flags screen (default 14, never deleted).",
   "slideFlagsModule": {
     "folder": null
   }

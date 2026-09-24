@@ -25,6 +25,8 @@ const NAV_PRIORITY = {
   scripture: 2,
   "lyrics-assist": 3,
   spellcheck: 4,
+  // First in Prep: working through last service's flags is prep for the next.
+  "slide-flags": 4.5,
   arrangement: 5,
   "image-crop": 6,
   "qr-code": 7,
@@ -40,6 +42,7 @@ const NAV_GROUP = {
   scripture: "service",
   "lyrics-assist": "service",
   spellcheck: "service",
+  "slide-flags": "prep",
   arrangement: "prep",
   "image-crop": "prep",
   "qr-code": "prep",

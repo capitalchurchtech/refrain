@@ -11,6 +11,7 @@ import { initSpellcheck } from "./spellcheck.js";
 import { initLive } from "./live.js";
 import { initScripture } from "./scripture.js";
 import { initLibrarySync } from "./library-sync.js";
+import { initSlideFlags } from "./slide-flags.js";
 import { initReturnBar } from "./return-bar.js";
 import { initStatusCluster } from "./status-cluster.js";
 import { installGlobalErrorBoundary, safeRender } from "./error-boundary.js";
@@ -30,6 +31,7 @@ const views = {
   live: document.getElementById("view-live"),
   scripture: document.getElementById("view-scripture"),
   "library-sync": document.getElementById("view-library-sync"),
+  "slide-flags": document.getElementById("view-slide-flags"),
 };
 
 async function boot() {
@@ -70,6 +72,7 @@ function startApp() {
   const live = initLive();
   const scripture = initScripture();
   const librarySync = initLibrarySync();
+  const slideFlags = initSlideFlags();
   initReturnBar();
   initStatusCluster();
 
@@ -83,10 +86,11 @@ function startApp() {
     live: live.render,
     scripture: scripture.render,
     "library-sync": librarySync.render,
+    "slide-flags": slideFlags.render,
   };
 
   initNav({
-    viewIds: new Set(["search", "lyrics-assist", "arrangement", "image-crop", "qr-code", "spellcheck", "live", "scripture", "library-sync"]),
+    viewIds: new Set(["search", "lyrics-assist", "arrangement", "image-crop", "qr-code", "spellcheck", "live", "scripture", "library-sync", "slide-flags"]),
     onNavigate: (id) => {
       for (const [viewId, el] of Object.entries(views)) {
         el.classList.toggle("hidden", viewId !== id);

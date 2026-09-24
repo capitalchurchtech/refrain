@@ -2097,3 +2097,5 @@ excused and every helper counts as blocking.
   (correctly) refused as stale, and one test passed by comparing against
   "undefined.json". saveFlag now refuses id-less flags outright. Left for #2:
   problem types, and marking flags done.
+
+- 2026-09-24 — **#2 flag types + Flags review screen** (editing session). Live screen gets an 11-type grid (uniform 64px chips, static rules in refrain.css per the JIT note) under "Flag the live slide", with an open-count summary linking to the new **Flags** nav screen (prep group). Review groups by day, then presentation in service order; type/note/resolve/reopen are append-only update files (`updates/<flagId>~<updateId>.json`) merged oldest-first, so two machines editing one flag never conflict. Resolved flags hide after `keepResolvedDays`, never deleted. Verified against a dev server with seeded flags: routes (400/409 paths), note save, type change, reopen, grid at 455px. **Not verified:** capture of a genuinely live slide — ProPresenter was closed all session. NOTE: live workspace is "Bisect"; "ZZ Sync Demo" duplicates Songs (61 duplicate name groups on production).

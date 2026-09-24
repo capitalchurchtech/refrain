@@ -80,7 +80,18 @@ import { pushLiveItem, findReturnEntry } from "./return-history.js";
 import { checkLibrarySafeToTouch, shouldAutoRunLibrarySync } from "./library-guard.js";
 import { scanOrphanedMedia, resolveMediaPath, workspaceRootsFromLibraryDirs } from "./orphaned-media.js";
 import { findPastDates } from "./stale-dates.js";
-import { buildFlag, saveFlag, listFlags, retryPendingFlags, DEFAULT_FLAGS_FOLDER } from "./slide-flags.js";
+import {
+  buildFlag,
+  saveFlag,
+  listFlags,
+  retryPendingFlags,
+  flagTypes,
+  buildUpdate,
+  saveUpdate,
+  visibleFlags,
+  DEFAULT_FLAGS_FOLDER,
+  DEFAULT_KEEP_RESOLVED_DAYS,
+} from "./slide-flags.js";
 import { heartbeatInterval } from "./heartbeat-pacing.js";
 import { buildInfo } from "./build-info.js";
 import {
@@ -1230,10 +1241,22 @@ function slideFlagsFolder() {
   return typeof folder === "string" && folder.trim() ? folder.trim() : DEFAULT_FLAGS_FOLDER;
 }
 
-app.post("/api/slide-flags", async (_req, res) => {
+function configuredFlagTypes() {
+  return flagTypes(config.slideFlagsModule?.types);
+}
+
+/** A type the church configured, null for "no type", or undefined if it is neither. */
+function acceptFlagType(type) {
+  if (type === undefined || type === null || type === "") return null;
+  return configuredFlagTypes().some((t) => t.label === type) ? type : undefined;
+}
+
+app.post("/api/slide-flags", async (req, res) => {
   noteClientActivity();
+  const type = acceptFlagType(req.body?.type);
+  if (type === undefined) return res.status(400).json({ error: "That is not one of this church's flag types." });
   const slideId = liveState.slide?.presentationId;
-  const built = buildFlag(liveState, { indexEntry: slideId ? getIndex().presentations?.[slideId] ?? null : null });
+  const built = buildFlag(liveState, { type, indexEntry: slideId ? getIndex().presentations?.[slideId] ?? null : null });
   if (!built.ok) return res.status(409).json({ error: built.error });
   try {
     const saved = await saveFlag(built.flag, { folder: slideFlagsFolder() });
@@ -1249,9 +1272,39 @@ app.get("/api/slide-flags", async (_req, res) => {
   try {
     // Cheap, and the natural moment: someone is looking at the list.
     await retryPendingFlags({ folder: slideFlagsFolder() });
-    res.json({ flags: await listFlags({ folder: slideFlagsFolder() }) });
+    const all = await listFlags({ folder: slideFlagsFolder() });
+    const days = Number.isInteger(config.slideFlagsModule?.keepResolvedDays)
+      ? config.slideFlagsModule.keepResolvedDays
+      : DEFAULT_KEEP_RESOLVED_DAYS;
+    const flags = visibleFlags(all, { keepResolvedDays: days });
+    res.json({ flags, types: configuredFlagTypes(), keepResolvedDays: days, hiddenResolved: all.length - flags.length });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * A change to one flag: a note, a type, resolved or not. Saved as its own
+ * file, never an edit to the flag's -- see server/slide-flags.js for why that
+ * matters when two machines share the folder.
+ */
+app.post("/api/slide-flags/:id", async (req, res) => {
+  const body = req.body ?? {};
+  const fields = {};
+  if (body.note !== undefined) fields.note = String(body.note);
+  if (body.resolved !== undefined) fields.resolved = Boolean(body.resolved);
+  if (body.type !== undefined) {
+    const type = acceptFlagType(body.type);
+    if (type === undefined) return res.status(400).json({ error: "That is not one of this church's flag types." });
+    fields.type = type;
+  }
+  const built = buildUpdate(req.params.id, fields);
+  if (!built.ok) return res.status(400).json({ error: built.error });
+  try {
+    const saved = await saveUpdate(built.update, { folder: slideFlagsFolder() });
+    res.json({ ok: true, update: built.update, ...saved });
+  } catch (err) {
+    res.status(500).json({ error: `That change was not saved: ${err.message}` });
   }
 });
 

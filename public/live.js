@@ -1,4 +1,4 @@
-import { mountFlagButton, renderFlagList, refreshOnNewFlags } from "./slide-flags.js";
+import { mountLiveFlags, refreshLiveSummaryOnNewFlags } from "./slide-flags.js";
 
 /**
  * Live page — big, obvious controls for the operator during a service.
@@ -140,16 +140,16 @@ export function initLive() {
           <div id="live-macros" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3"></div>
         </div>
 
-        <!-- Last, below every control that changes the screens: this is the
-             list to work through after the service, not something to reach for
-             during it. The capture chip is repeated here so this screen can
-             flag too, but Search is where most presses will come from. -->
+        <!-- Last, below every control that changes the screens. One tap on a
+             type captures the live slide and says what was wrong with it
+             (issue #2). Working through them happens on the Flags screen,
+             after the service -- so this section only captures and counts. -->
         <div id="live-flags-wrap">
-          <h2 class="rf-subhead">Flagged slides</h2>
+          <h2 class="rf-subhead">Flag the live slide</h2>
           <div class="card bg-base-200">
             <div class="card-body p-3 gap-3">
-              <div id="live-flag-btn"></div>
-              <div id="live-flag-list" class="flex flex-col gap-3"></div>
+              <div id="live-flag-grid"></div>
+              <div id="live-flag-summary"></div>
             </div>
           </div>
         </div>
@@ -158,9 +158,8 @@ export function initLive() {
       </div>
     `;
     if (window.lucide) window.lucide.createIcons();
-    mountFlagButton(document.getElementById("live-flag-btn"));
-    renderFlagList(document.getElementById("live-flag-list"));
-    refreshOnNewFlags("live-flag-list");
+    mountLiveFlags(document.getElementById("live-flag-grid"), document.getElementById("live-flag-summary"));
+    refreshLiveSummaryOnNewFlags("live-flag-summary");
 
     wireClearButtons();
     wirePerformanceMode();
