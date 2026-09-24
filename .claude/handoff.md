@@ -1589,6 +1589,65 @@ app runs, when a genuine orphan remains, and when the API answers.
 **Fail-closed is preserved**: if `launchctl list` cannot be read, nothing is
 excused and every helper counts as blocking.
 
+## 36. Persona panel review, 2026-09-24 — for review, not yet a work order
+
+Three reviewers (ProPresenter tech, Creative Director, IT Director) rated the
+nav and every screen from headless screenshots at 1280 and 455 wide plus the
+source, with ProPresenter closed. The welcome modal covered every screen for
+all three, so on-screen ratings are partial. They then each cast 5 votes, plus
+at most one veto, on a merged list of 15 proposals.
+
+**Ratings (PP / CD / IT):** Nav 7/7/7 · Search 7/6/8 · Live 6/6/7 ·
+Scripture 6/5/6 · Flags 6/7/7 · Spell Check 6/5/5 · Lyrics 6/5/6 ·
+Arrangement 7/7/6 · Library Sync 6/3/3 · Image Crop 6/6/7 · QR Codes 6/6/8 ·
+Health 8/7/7.
+
+**Ranked by votes:**
+
+1. **BLOCKER — B3 Clear All arms before it fires (3 votes, all three).**
+   `live.js:126` clears on one click, and Clear All is the page's only filled
+   button. Fix: press once to arm (the label reads "Press again to clear"),
+   then it disarms after about 3 seconds. Switch it to the outline style.
+2. **BLOCKER — B2 Welcome modal only on first run, and never over Live or Health (2 votes).**
+   It opens on any deep link, including `#live` during a service
+   (`nav.js:548–556`), and at 455px it spills past both screen edges. The IT
+   Director added: never over Health, so a volunteer can read out status.
+3. **CRAFT — B1 Rail auto-collapses below ~600px (2 votes).**
+   The expanded rail is 144px and clips Live's "Turn off" to "Turn o". Use the
+   existing `w-14`/`ml-14` static homes.
+4. **CRAFT — B5 One disconnect state on Search (2 votes).**
+   The amber banner and the NO LINK readout say the same thing. Amber also
+   breaks the brief's rule of no saturated warm colour except live. Put the
+   index-age warning in muted text.
+5. **CRAFT, CONTESTED — B4 Clear buttons when LINK is down (+2, −1).**
+   The PP tech and IT Director want them disabled or labelled offline, and the
+   "Clear still works" line dropped. The Creative Director vetoed: disabling
+   removes the one control an operator may still need, and the LINK lamp
+   should carry the state. A possible middle ground is to leave Clear enabled
+   and make its failure loud. **Open decision for Brandon.**
+6. **CRAFT — B7 Library Sync stores the string "null" (1 vote, verified).**
+   `index.js:1990` runs `String(body.sharedFolder)`, so clearing the field
+   saves `"null"`. The dev config has it now: Health reports
+   `sharedFolder: "null"`. Fix the input, and treat a stored `"null"` as unset.
+7. **CRAFT — B9 A disabled module's route explains itself (1 vote).**
+   Right now `#library-sync` silently lands on Search. The Creative Director's
+   wording: "Share Library is off. Turn it on in Health." Take the name from
+   the module's display name.
+8. **POLISH — B12 One shared page header (1 vote).**
+   Scripture, Lyrics, Spell Check, Image Crop and QR Codes use a bare `<h1>`.
+9. **B6, REFUTED on check (1 vote).**
+   The claim was that Arrangement shows "active" with no folder set. In fact
+   `storage/local-folder.js:16` defaults to `./data/arrangements`, so active is
+   true. Residual POLISH: Health should show the default path instead of
+   `null`.
+
+**No votes (keep as POLISH, batch later):** B8 remove the vendor literal
+`"planning-center"` at `config.js:78` (this is a real CLAUDE.md rule
+violation, so it should probably be fixed regardless of votes). B10 Spell
+Check offline copy. B11 label repeated Arrangement songs. B13 move Spell Check
+and Lyrics to Prep. B14 shorten the performance-mode line. B15 Health Modules
+card.
+
 ## Status log
 
 `YYYY-MM-DD · <item> · done | partial | blocked · <one line>`
@@ -2099,3 +2158,6 @@ excused and every helper counts as blocking.
   problem types, and marking flags done.
 
 - 2026-09-24 — **#2 flag types + Flags review screen** (editing session). Live screen gets an 11-type grid (uniform 64px chips, static rules in refrain.css per the JIT note) under "Flag the live slide", with an open-count summary linking to the new **Flags** nav screen (prep group). Review groups by day, then presentation in service order; type/note/resolve/reopen are append-only update files (`updates/<flagId>~<updateId>.json`) merged oldest-first, so two machines editing one flag never conflict. Resolved flags hide after `keepResolvedDays`, never deleted. Verified against a dev server with seeded flags: routes (400/409 paths), note save, type change, reopen, grid at 455px. **Not verified:** capture of a genuinely live slide — ProPresenter was closed all session. NOTE: live workspace is "Bisect"; "ZZ Sync Demo" duplicates Songs (61 duplicate name groups on production).
+
+- 2026-09-24 — Persona panel review recorded as section 36 (ranked findings, one open decision on B4). Nothing implemented yet.
+- 2026-09-24 — Section 36 work landed (editing session): B3 Clear All arms (outline at rest, "Press again to clear", brand collar while armed, disarms after 3s); B2 welcome opens at most once a day per browser and never on Live or Health (localStorage day stamp; "Don't show" still permanent); B1 a stored full rail shows as icons below 600px without changing the saved preference; B5 Search's amber banner is now one muted line under the NO LINK readout, and the index-age notice is muted; B7 `cleanFolderSetting` stops `"null"` being saved as a folder path and treats an existing stored one as unset; B8 providers declare `static requiredEnv`, so `server/config.js` no longer names Planning Center. Verified at 455 and 1280 against a dev server. B4 (Clear while LINK is down) still open.

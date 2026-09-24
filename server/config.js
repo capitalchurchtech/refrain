@@ -73,13 +73,9 @@ export function getArrangementModuleStatus(config) {
 
   // A missing provider credential falls back to "manual" rather than
   // taking down the whole module (Section 4.1) — only actually block
-  // activation if the config explicitly asks for planning-center
-  // without the credentials it needs, on the machine that would use them.
-  if (config.arrangementModule.provider === "planning-center" && config.role === "logger") {
-    if (!process.env.PLANNING_CENTER_APP_ID || !process.env.PLANNING_CENTER_SECRET) {
-      return "misconfigured";
-    }
-  }
+  // activation if the configured provider declares credentials it needs,
+  // on the machine that would use them, and they are not set.
+  if (providerEnvNeeds(config).some((r) => !process.env[r.name])) return "misconfigured";
 
   return "active";
 }
@@ -111,10 +107,41 @@ export function getImageCropModuleStatus(config) {
  * someone fills it in.
  * @returns {"off" | "misconfigured" | "active"}
  */
+/**
+ * Provider classes found by plugin discovery, registered once at boot. Kept
+ * here so the status checks above can stay synchronous and still ask the
+ * provider what it needs, rather than naming one in shared code.
+ */
+let registeredProviders = [];
+export function registerProviders(providers) {
+  registeredProviders = Array.isArray(providers) ? providers : [];
+}
+
+function providerEnvNeeds(config) {
+  const id = config.arrangementModule?.provider;
+  const Provider = registeredProviders.find((P) => P.providerId === id);
+  if (!Provider) return [];
+  return (Provider.requiredEnv ?? [])
+    .filter((r) => !r.roles || r.roles.includes(config.role))
+    .map((r) => ({ name: r.name, Provider }));
+}
+
+/**
+ * A folder setting as stored: a real path, or null. `String(null)` is "null",
+ * which an older save wrote into config.json when the field was cleared, and
+ * `path.join("null", …)` would then quietly create a folder called null. Both
+ * that and a blank string mean "not set".
+ */
+export function cleanFolderSetting(value) {
+  if (value === null || value === undefined) return null;
+  const s = String(value).trim();
+  return s && s !== "null" && s !== "undefined" ? s : null;
+}
+
 export function getLibrarySyncModuleStatus(config) {
   const mod = config.librarySyncModule;
   if (!mod?.enabled) return "off";
-  if (!mod.sharedFolder || !String(mod.sharedFolder).trim()) return "misconfigured";
+  if (!cleanFolderSetting(mod.sharedFolder)) return "misconfigured";
   if (!mod.libraryName || !String(mod.libraryName).trim()) return "misconfigured";
   if (mod.direction !== "send" && mod.direction !== "receive") return "misconfigured";
   return "active";
@@ -148,19 +175,12 @@ export function getEnvRequirements(config) {
     );
   }
 
-  if (arrangement.provider === "planning-center" && config.role === "logger") {
-    reqs.push(
-      {
-        name: "PLANNING_CENTER_APP_ID",
-        set: Boolean(process.env.PLANNING_CENTER_APP_ID),
-        note: "Planning Center provider — required on the logger machine only.",
-      },
-      {
-        name: "PLANNING_CENTER_SECRET",
-        set: Boolean(process.env.PLANNING_CENTER_SECRET),
-        note: "Planning Center provider — required on the logger machine only.",
-      }
-    );
+  for (const { name, Provider } of providerEnvNeeds(config)) {
+    reqs.push({
+      name,
+      set: Boolean(process.env[name]),
+      note: `${Provider.displayName} provider — required on ${config.role === "logger" ? "the logger machine" : "this machine"}.`,
+    });
   }
 
   return reqs;

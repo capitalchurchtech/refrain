@@ -35,6 +35,7 @@ Optional capabilities, which you only implement if they apply, and which you fla
 
 - `static displayName` gives a readable name for UI text, like "Push to Planning Center" or the provider picker. It defaults to a title cased version of `providerId`, so it's optional.
 - `static supportsPlanBrowsing = true` plus `getRecentPlans(count)` if your system has a "plan" concept (a named, dated set of songs for a service) that can be listed. This drives the "this weekend" one button workflow.
+- `static requiredEnv = [{ name: "YOUR_API_KEY", roles: ["logger"] }]` if your provider needs credentials from `.env`. The Health screen lists them and reports the module misconfigured when one is missing on a machine that needs it; nothing in shared code has to know your provider exists. Leave `roles` off for every machine.
 - `static supportsPush = true` plus `getArrangementSequence(...)` and `updateArrangementSequence(...)` if your system can accept a corrected arrangement back. This drives the "push to (provider)" button, which only ever fires from an explicit confirmation, never on its own.
 
 `providers/planning-center.js` implements all of these and is the reference. `providers/manual.js` is the opposite end: no API at all, the user just types the arrangement in, which is the option for a church with no church management software.

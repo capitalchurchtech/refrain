@@ -58,6 +58,11 @@ export class PlanningCenterProvider extends ArrangementProvider {
   static providerId = "planning-center";
   static supportsPush = true;
   static supportsPlanBrowsing = true;
+  // Only the logger talks to Planning Center; readers never need the keys.
+  static requiredEnv = [
+    { name: "PLANNING_CENTER_APP_ID", roles: ["logger"] },
+    { name: "PLANNING_CENTER_SECRET", roles: ["logger"] },
+  ];
 
   constructor({ appId, secret, serviceTypeId = null } = {}) {
     super();

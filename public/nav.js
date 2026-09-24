@@ -1,6 +1,6 @@
 /**
- * Nav rail (Section 13) — manual narrow/wide toggle only, no automatic
- * breakpoint switching, persisted in config.json's navPinned. Items are
+ * Nav rail (Section 13) — manual narrow/wide toggle, persisted in
+ * config.json's navMode; below 600px an expanded rail shows as icons. Items are
  * driven by /api/modules (Section 17.11: nav renders from registered
  * modules, not hardcoded) plus the always-present core "Health" screen.
  *
@@ -384,8 +384,24 @@ export async function initNav({ onNavigate, viewIds }) {
    * cycle is two states rather than three. Losing a state is better than losing
    * the way back.
    */
+  /**
+   * Below 600px the expanded rail takes a third of the panel and clips the
+   * screen beside it, so a stored "full" shows as icons there. That is a
+   * display rule, not a preference change: nothing is saved, and widening the
+   * window brings the labels back. Pressing the toggle while narrow is taken
+   * at its word for the rest of the session.
+   */
+  const narrowQuery = window.matchMedia?.("(max-width: 599px)");
+  let expandedWhileNarrow = false;
+  const effectiveNavMode = () =>
+    navMode === "full" && narrowQuery?.matches && !expandedWhileNarrow ? "icons" : navMode;
+  narrowQuery?.addEventListener("change", () => {
+    if (!narrowQuery.matches) expandedWhileNarrow = false;
+    applyPinnedState();
+  });
+
   function applyPinnedState() {
-    const mode = navMode;
+    const mode = effectiveNavMode();
     const isFull = mode === "full";
     const isSliver = mode === "sliver";
     const pinned = isFull;
@@ -470,7 +486,9 @@ export async function initNav({ onNavigate, viewIds }) {
   brandRow.addEventListener("click", () => setActive("search"));
 
   pinToggle.addEventListener("click", async () => {
-    navMode = nextNavMode(navMode);
+    const shown = effectiveNavMode();
+    navMode = nextNavMode(shown);
+    if (narrowQuery?.matches && navMode === "full") expandedWhileNarrow = true;
     applyPinnedState();
     await fetch("/api/preferences", {
       method: "POST",
@@ -544,7 +562,29 @@ export async function initNav({ onNavigate, viewIds }) {
     if (e.target === shortcutsModal) closeShortcuts();
   });
 
-  // Welcome / how-to overlay for volunteers, shown on start until dismissed.
+  // Welcome / how-to overlay for volunteers. It opens on its own at most once
+  // a day per browser, and never over Live or Health: a reload during a
+  // service must not put a dialog over Clear, and a volunteer on the phone
+  // with IT needs to read Health straight away. "Don't show this" still stops
+  // it for good. The day stamp is a per-browser convenience, so storage that
+  // throws or comes back empty just means it may show once more.
+  const WELCOME_DAY_KEY = "refrain.welcomeShownOn";
+  const todayStamp = () => new Date().toLocaleDateString("en-CA");
+  const shouldAutoOpenWelcome = (screenId) => {
+    if (welcomeDismissed || screenId === "live" || screenId === "health") return false;
+    try {
+      return localStorage.getItem(WELCOME_DAY_KEY) !== todayStamp();
+    } catch {
+      return true;
+    }
+  };
+  const markWelcomeShownToday = () => {
+    try {
+      localStorage.setItem(WELCOME_DAY_KEY, todayStamp());
+    } catch {
+      // Private window or blocked storage: it shows again next load, no harm.
+    }
+  };
   const welcomeModal = document.getElementById("welcome-modal");
   const welcomeDontShow = document.getElementById("welcome-dontshow");
   let welcomeDismissed = Boolean(prefs.welcomeDismissed);
@@ -669,7 +709,10 @@ export async function initNav({ onNavigate, viewIds }) {
   // having to click a nav key first.
   history.replaceState(null, "", `#${activeId}`);
   onNavigate(activeId);
-  if (!welcomeDismissed) openWelcome();
+  if (shouldAutoOpenWelcome(activeId)) {
+    openWelcome();
+    markWelcomeShownToday();
+  }
 
   // Reflect the image-crop watcher's live state in the nav. Polled (not
   // pushed) — cheap on localhost, and the watcher can start/stop from

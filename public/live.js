@@ -123,7 +123,7 @@ export function initLive() {
         <div>
           <h2 class="rf-subhead">Clear</h2>
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <button class="btn btn-brand h-20 text-base" data-clear="all"><span class="flex flex-col items-center gap-1"><i data-lucide="x-octagon" class="w-6 h-6"></i> Clear All</span></button>
+            <button class="btn btn-outline h-20 text-base" data-clear="all" data-arm="true"><span class="flex flex-col items-center gap-1"><i data-lucide="x-octagon" class="w-6 h-6"></i> Clear All</span></button>
             <button class="btn btn-outline h-20 text-base" data-clear="slide"><span class="flex flex-col items-center gap-1"><i data-lucide="type" class="w-6 h-6"></i> Slide</span></button>
             <button class="btn btn-outline h-20 text-base" data-clear="media"><span class="flex flex-col items-center gap-1"><i data-lucide="image" class="w-6 h-6"></i> Media</span></button>
             <button class="btn btn-outline h-20 text-base" data-clear="messages"><span class="flex flex-col items-center gap-1"><i data-lucide="message-square" class="w-6 h-6"></i> Messages</span></button>
@@ -265,10 +265,39 @@ export function initLive() {
     );
   }
 
+  // Clear All takes everything off every screen, so it arms on the first
+  // press and fires on a second within ARM_MS. The armed label says so in
+  // words, because a nervous volunteer should not have to guess why nothing
+  // happened. At rest it is an outline key like its neighbours; only armed
+  // does it take the brand collar, so the loudest key on Live is the one
+  // waiting on you. (.btn-brand has a static rule in refrain.css, so the
+  // JIT note in CLAUDE.md does not bite.) The single-layer clears stay one
+  // press.
+  const ARM_MS = 3000;
   function wireClearButtons() {
-    container.querySelectorAll("[data-clear]").forEach((btn) =>
-      btn.addEventListener("click", () => fire(btn, "/api/live/clear", { layer: btn.dataset.clear }, btn.textContent.trim()))
-    );
+    container.querySelectorAll("[data-clear]").forEach((btn) => {
+      const label = btn.textContent.trim();
+      const idleHtml = btn.innerHTML;
+      let disarmTimer = null;
+      const disarm = () => {
+        clearTimeout(disarmTimer);
+        disarmTimer = null;
+        btn.classList.replace("btn-brand", "btn-outline");
+        btn.innerHTML = idleHtml;
+        if (window.lucide) window.lucide.createIcons();
+      };
+      btn.addEventListener("click", () => {
+        if (btn.dataset.arm === "true" && !disarmTimer) {
+          btn.classList.replace("btn-outline", "btn-brand");
+          btn.innerHTML = `<span class="flex flex-col items-center gap-1"><i data-lucide="x-octagon" class="w-6 h-6"></i> Press again to clear</span>`;
+          if (window.lucide) window.lucide.createIcons();
+          disarmTimer = setTimeout(disarm, ARM_MS);
+          return;
+        }
+        if (disarmTimer) disarm();
+        fire(btn, "/api/live/clear", { layer: btn.dataset.clear }, label);
+      });
+    });
   }
 
   // Fire a control, briefly disabling its button and surfacing any failure.

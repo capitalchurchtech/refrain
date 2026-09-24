@@ -132,7 +132,7 @@ export function initSearch() {
     }
     el.classList.remove("hidden");
     el.innerHTML = `
-      <span class="rf-flag">${escapeHtml(notice.message)}</span>
+      <span class="rf-nominal">${escapeHtml(notice.message)}</span>
       <button id="index-refresh-btn" class="btn btn-chip ml-2">Refresh</button>`;
     el.querySelector("#index-refresh-btn").addEventListener("click", async (e) => {
       const btn = e.currentTarget;
@@ -185,7 +185,11 @@ export function initSearch() {
     if (window.lucide) window.lucide.createIcons();
 
     if (!connRes.connected) {
-      connectionBanner.textContent = `Can't reach ProPresenter at ${connRes.host}:${connRes.port}. Check it's running with Network API enabled (Preferences > Network).`;
+      // The readout above already says the link is down, and the LINK lamp
+      // agrees. This line only adds where Refrain is looking and the fix, in
+      // muted text: amber is reserved for Health (creative direction), and a
+      // second loud notice for one fault pushed the search box off the page.
+      connectionBanner.textContent = `Looking at ${connRes.host}:${connRes.port}. Check ProPresenter is running with Network API on (Preferences > Network).`;
       connectionBanner.classList.remove("hidden");
     } else {
       connectionBanner.classList.add("hidden");

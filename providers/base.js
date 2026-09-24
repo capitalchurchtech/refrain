@@ -30,6 +30,15 @@ export class ArrangementProvider {
   static supportsPlanBrowsing = false;
 
   /**
+   * Environment variables (from .env) this provider needs, and on which
+   * machine roles. Shared code reads this to report "misconfigured" on the
+   * Health screen instead of naming a vendor: each entry is
+   * `{ name, roles }`, where `roles` is a list like ["logger"], or omitted
+   * for every machine. The manual provider needs nothing.
+   */
+  static requiredEnv = [];
+
+  /**
    * @param {string} songId - the ProPresenter presentationId
    * @param {string} serviceDate - ISO date string
    * @param {string} songName - the ProPresenter presentation's display

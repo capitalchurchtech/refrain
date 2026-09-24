@@ -23,6 +23,8 @@ import {
   getImageCropModuleStatus,
   getLibrarySyncModuleStatus,
   getEnvRequirements,
+  registerProviders,
+  cleanFolderSetting,
   ensureMachineId,
   readConfigFileRaw,
 } from "./config.js";
@@ -174,6 +176,9 @@ process.on("uncaughtException", (err) => {
 
 const app = express();
 let config = loadConfig();
+// Before anything asks for module status: the arrangement checks read each
+// provider's declared requiredEnv instead of naming a vendor.
+registerProviders(await discoverProviders());
 let client = new ProPresenterClient(config.propresenter);
 
 app.use(express.static("public"));
@@ -1682,7 +1687,7 @@ function librarySyncSettings() {
     enabled: Boolean(mod.enabled),
     libraryName: mod.libraryName ?? "Songs",
     direction: mod.direction === "receive" ? "receive" : "send",
-    sharedFolder: mod.sharedFolder ?? null,
+    sharedFolder: cleanFolderSetting(mod.sharedFolder),
     minimumFiles: Number.isInteger(mod.minimumFiles) ? mod.minimumFiles : DEFAULT_MINIMUM_FILES,
     snapshotsToKeep: Number.isInteger(mod.snapshotsToKeep) ? mod.snapshotsToKeep : DEFAULT_SNAPSHOTS_TO_KEEP,
     // Off by default even once the rest of this is configured -- turning it on
@@ -1987,7 +1992,7 @@ app.post("/api/library-sync/config", async (req, res) => {
     }
     next.direction = body.direction;
   }
-  if (body.sharedFolder !== undefined) next.sharedFolder = String(body.sharedFolder).trim() || null;
+  if (body.sharedFolder !== undefined) next.sharedFolder = cleanFolderSetting(body.sharedFolder);
   if (body.minimumFiles !== undefined) {
     const n = Number(body.minimumFiles);
     if (!Number.isInteger(n) || n < 1) {
