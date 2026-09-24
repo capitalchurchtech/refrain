@@ -25,15 +25,15 @@ good written down, and they are marked where that seems likely.
 
 These need no new integration. The parsing and the file watching are already there.
 
-**Built** (on Health, after v0.15.0). **Duplicate document names across libraries.** `Songs/X.pro` and `Songs Archive/X.pro`
+**Built** (on Health, v0.16.0). **Duplicate document names across libraries.** `Songs/X.pro` and `Songs Archive/X.pro`
 having the same document name is how at least one confusing situation arose here. A
 list of name collisions across libraries is cheap and would have saved an afternoon.
 
-**Built** (on Health, as a button, after v0.15.0). **Orphaned media.** The inverse of #9 — assets referenced by no presentation at all.
+**Built** (on Health, as a button, v0.16.0). **Orphaned media.** The inverse of #9 — assets referenced by no presentation at all.
 This is disk cleanup, not service safety, and should stay well away from any
 pre-service flow so it never dilutes the list that matters.
 
-**Built** (on Health and the Library Sync screen, after v0.15.0). **Backup mirror verification.** Confirm the sync mirror actually matches the live
+**Built** (on Health and the Library Sync screen, v0.16.0). **Backup mirror verification.** Confirm the sync mirror actually matches the live
 workspace. We did this by hand with `shasum` and it was genuinely reassuring. A
 "your backup is current / your backup is four days stale" line on the Health screen
 would be worth more than most features on this list.
@@ -46,7 +46,7 @@ report disagreement.
 Directly useful given Template is one of the flag types in #2 — the app could
 pre-empt the flag the way #9 pre-empts the media ones.
 
-**Built** (in Spell Check's playlist scan, after v0.15.0). **Announcement expiry.** Slides mentioning dates that have passed. Cheap text scan,
+**Built** (in Spell Check's playlist scan, v0.16.0). **Announcement expiry.** Slides mentioning dates that have passed. Cheap text scan,
 catches the "event from three weeks ago still in the loop" problem.
 
 **Slide readability.** Text too long for the slide, font below a threshold, poor
