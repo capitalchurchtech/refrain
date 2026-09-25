@@ -1648,6 +1648,183 @@ Check offline copy. B11 label repeated Arrangement songs. B13 move Spell Check
 and Lyrics to Prep. B14 shorten the performance-mode line. B15 Health Modules
 card.
 
+## 37. PLAN — The service system: checks before, flags during, timeline, close-out after
+
+Issues #3 (playbook), #6 (timeline), #4 (summary delivery), #8 (second-device
+flags), #5 (arrangement audit) and #7 (progress feed) describe one system from
+six angles. This is the order to build it in, and what each piece reuses. Nothing
+here is started. Open decisions are at the end; phases 1 and 2 don't depend on
+any of them.
+
+### What already exists and gets reused, not rebuilt
+
+| Need | Already have |
+|---|---|
+| What is on the screens, when it appeared | heartbeat `liveState` (`slide`, `liveSince`), about every 4s while a browser is open |
+| Quiet during a service | performance mode: arms itself on live, stops index work |
+| Playlist-scoped checks | Spell Check scan: typos, past dates, missing media (#9) |
+| Flags during the service | Live type grid, Search chip, Flags screen (#1, #2) |
+| Post-service arrangement check | Arrangement "Compare all songs" |
+| Safe shared storage | one-file-per-record, local first then copy (slide-flags.js) |
+
+### The one new idea: a Service Day record
+
+Everything hangs off a **day**: `data/service-days/<date>/`, one file per event,
+append-only, on the same pattern as flags (a synced folder works with no
+Dropbox conflict copies). A day holds one or more **services** (for example
+5PM, 9AM, 11:15AM). Each service has a **service playlist**, picked once at
+pre-service. Nothing is rewritten. "Current state" is the events folded in
+order, which is also what makes it survive a restart mid-service (#6
+acceptance).
+
+Events: `phase-entered`, `check-result`, `service-started`, `item-live`,
+`item-left`, `service-ended`, `flag` (a reference to the existing flag id, not
+a copy), `day-ended`.
+
+### Phases (config JSON, per #3)
+
+`config.json › serviceModule.phases`: an ordered list, each with steps. A step
+is either **automatic** (a check Refrain runs, from a small registry of check
+ids), or **manual** (a checkbox with a sentence: "Screens on", "Stage display
+showing"). Campuses edit the list and never touch code. A default list ships,
+which the steps below describe.
+
+**1. Arrive** (manual plus two automatic)
+- ProPresenter answering (heartbeat)
+- ProPresenter finished its own startup indexing. Handoff 31 already covers
+  "don't crawl a just-launched app", so this waits for it rather than racing it.
+- Manual: screens, stage display, audio, confidence monitor
+
+**2. Pre-service: "checks before" (automatic unless noted)**
+- **Pick the service playlist(s).** This is the only required input, and every
+  check after it is scoped to it.
+- Index fresh for those presentations (index staleness already exists)
+- Spell Check scan of the playlist: typos, past dates, missing media (#9)
+- **Arrangement references that don't resolve (#5).** The .pro decoder from #9
+  is the groundwork. This is the next check to build.
+- Duplicate names across libraries, limited to the playlist's presentations
+- Library Sync backup fresh, if that module is on
+- Theme conformance, once "current theme" is defined (section 36 NOTE)
+- Each check reports **pass / needs a look / couldn't check**. "Couldn't
+  check" is never shown as pass: the same rule as the scan's unreadable
+  count.
+- All of this runs before the first slide goes live. Once performance mode
+  arms, pre-service checks that need ProPresenter refuse to start and say
+  why, rather than adding load mid-service.
+
+**3. Service running: "flags in the middle"**
+- Deliberately quiet. The playbook screen shows one line per service ("9AM
+  running, 42 min, item 6 of 11, 2 flags"), and nothing asks for attention.
+- Flags: the Live grid as today, each flag tagged with the service it fell in.
+- **Timeline (#6)** records passively; see below.
+- Later: **second-device flags (#8)** and the **progress feed (#7)** both read
+  the timeline. They come after the timeline exists, not before.
+
+**4. Between services**
+- Manual reset list (clear screens, reset stage timer, back to the pre-roll)
+- Automatic: "flags from the last service", listed once, not nagging
+- The next service starts on its own when its first playlist item goes live,
+  or by hand
+
+**5. Post-service: "checks after"**
+- Work the flag list (the Flags screen, filtered to today)
+- Arrangement drift compare for the songs **actually shown** (from the
+  timeline), not the whole plan: the #3 open question, answered by having the
+  timeline
+- Timeline review: per-service durations side by side
+
+**6. End**
+- One press. It stops per-day capture, runs the drift compare without asking
+  (results listed, never pushed: pushing stays deliberate, per #3), and writes
+  the **day summary**.
+- The summary is a rendered file in the day folder: flags by service and type,
+  drift found, checks that failed or were skipped, and the timeline table.
+  Email or folder delivery (#4) is a plugin that sends this file, later.
+
+### "Run down of timing": the timeline, precisely
+
+**Signal:** the heartbeat's `slide.presentationId` changing. No new
+ProPresenter calls, so it's safe under performance mode.
+
+**Mapping a presentation to a playlist item:** the service playlist fetched at
+pre-service gives the ordered items, each with its presentation id. A live
+presentation that matches item *n* is an `item-live` for *n*. One that is in
+no service playlist (an ad-hoc song, a countdown fired by hand) is recorded as
+**off-plan**, with its name. That is useful ("we ran an extra song"), and it is
+not dropped.
+
+**Recorded per item:** first live, last live (a revisit never overwrites the
+first, per #6), total time on screen, and the gap before it (time with
+nothing live, or the previous item). Plus, per service: start (first item
+live), end (last item left, or End), and overrun against the same service
+last week.
+
+**The report** (post-service screen and summary):
+
+```
+9AM                         started 9:01:12   ran 1:12:40
+  #  item                 live at   on screen   gap before
+  1  Countdown            9:01:12     2:00        –
+  2  The Joy              9:03:20     4:10       0:08
+  3  Wait On You          9:07:40     5:02       0:10
+  4  Announcements        9:13:05     6:44       0:23
+  5  Message              9:20:02    38:15       0:13
+     ↺ The Joy            10:05:30    1:40      (revisit)
+  +  Off-plan: Doxology   10:07:18    0:55
+```
+
+Plus "11:15AM ran 3:40 longer than 9AM. Most of it in Message (+3:05)."
+
+**Two things this plan changes, and why:**
+
+1. **The heartbeat must stay at active pace for the whole service phase.**
+   Today it slows to 30s when no browser is polling (heartbeat-pacing.js).
+   That is right when idle, but it would make timeline timestamps ±30s.
+   During an active service, the pacing uses the 4s interval whether or not a
+   browser is open. It is still the same two calls of about 3ms each, the
+   ones that already run during every service where the Live screen is open.
+2. **Timestamps are "first seen", not "went live".** With a 4s beat, an item
+   is stamped up to 4s late. The report says so once (±4s) rather than
+   showing seconds it can't vouch for. An item live for less than one beat
+   can be missed entirely. That is acceptable for a rundown, and stated.
+
+### Build order
+
+Each phase ships on its own and is useful without the next.
+
+1. **Service Day record plus the timeline** (#6). Storage, the
+   presentation-to-item mapping, first- and last-live, off-plan, heartbeat
+   pacing during service, a post-service timeline table. Tests: event folding,
+   revisit, off-plan, restart mid-service, pacing rule.
+2. **Pre-service checks screen.** Pick playlists, run the existing checks as
+   one list with pass / needs a look / couldn't check. Add the #5 arrangement
+   audit as its first new check.
+3. **Playbook phases from config** (#3). Manual steps, phase screen, the quiet
+   service line, the between-services list.
+4. **End plus the day summary.** Auto drift compare on songs shown, summary
+   file, flags tagged by service.
+5. **Delivery plugins** (#4): folder first, then email (the first thing that
+   sends data off the machine, so opt-in and reviewed, per the issue).
+6. **Second-device flags** (#8) and the **progress feed** (#7). Both read the
+   timeline, and both are a separate, narrow, read-mostly route with no path
+   to any control.
+
+### Open decisions (owner)
+
+- **What starts a service:** the first item of its playlist going live
+  (automatic), or a Start press? Automatic is proposed, with manual override.
+- **Several services, one playlist, or one playlist per service?** The 9/20
+  plan lists all three times in one plan, but ProPresenter playlists here are
+  per service ("SL-09", "SL-11"). Per-service playlists are proposed.
+- **End then another service** (a #3 question): proposed that End closes the
+  day, and a later service reopens it with a visible "reopened" event rather
+  than silently rolling over.
+- **Nagging:** an unfinished playbook shows once on Health the next week,
+  then stops.
+- **Where the playbook lives in the rail:** proposed as a new Service item
+  ("Service"), above Search, because it is the day's front door.
+- **Theme conformance definition** (still open from section 36).
+
 ## Status log
 
 `YYYY-MM-DD · <item> · done | partial | blocked · <one line>`
@@ -2169,3 +2346,4 @@ card.
 - 2026-09-24 — ProPresenter reachable (after the Network API was toggled). #1/#2 verified live and closed: with a song slide live, a flag captured presentation, slide, arrangement and text via the route and via a Live-grid tap; the OFFLINE banner stayed hidden while connected. **#9 landed** in Spell Check's playlist scan: `server/pro-media.js` reads the .pro the API names (the API reports no media), decodes just cue_groups/cues/URL (field numbers verified against the API's group order, counts and UUIDs), and checks each reference against its absolute path and then the relative path under ~/Documents/ProPresenter and the workspace roots. Keyed by groupId/groupOffset, so only slides the arrangement plays are checked. Guards: a field-count cap and a per-slide decode budget, because a thumbnail decodes as millions of fake fields and an unguarded walk ran out of memory. Across 30 playlists: mostly zero, 44/12/2/1/1 on old event playlists, spot-checked as genuinely absent. Theme conformance: not started.
 - 2026-09-24 — Theme conformance groundwork, correcting the earlier note: a theme's own UUID is in no .pro, but its **slide layouts' UUIDs are**. `/v1/themes` lists 254 layouts; 237 of 973 presentations reference at least one (message decks mostly: the top layouts are Message / Speaker Intro, Homework, Quote). So 'which theme does this deck use' IS answerable from disk. Blocked on a definition, not on data: nothing says which theme is 'current' (per library? newest by name?). Needs the owner's call before building.
 - 2026-09-24 — Owner: Scripture moved to Prep, Flags moved to Service. Rail is now Service: Search, Live, Flags · Prep: Spell Check, Lyrics, Scripture, Arrangement, Image Crop, QR Codes · System: Health.
+- 2026-09-24 — Section 37 written: the plan for the service system (Service Day record, timeline from the heartbeat, pre-service checks, playbook phases, End summary, then delivery/second device/feed). Nothing built; open decisions listed there.
