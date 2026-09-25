@@ -22,13 +22,17 @@ const THEME_ICON = { system: "sun-moon", light: "sun", dark: "moon", blackroom: 
 const NAV_PRIORITY = {
   search: 0,
   live: 1,
-  scripture: 2,
-  // First in Prep: working through last service's flags is prep for the next.
-  "slide-flags": 3,
+  // In Service, beside Live: flags are raised during the service, and the
+  // count of open ones is what the operator glances at afterwards.
+  "slide-flags": 2,
   // Desk work before the service, not during it, so Prep rather than Service
-  // (persona panel, handoff section 36): Service holds only what runs live.
+  // (persona panel, handoff section 36): Service holds what runs live:
+  // Search, Live, and Flags.
   spellcheck: 4,
   "lyrics-assist": 4.5,
+  // Looking up and copying a passage happens while building the service, not
+  // while running it, so Prep.
+  scripture: 4.7,
   arrangement: 5,
   "image-crop": 6,
   "qr-code": 7,
@@ -41,10 +45,10 @@ const DEFAULT_PRIORITY = 99;
 const NAV_GROUP = {
   search: "service",
   live: "service",
-  scripture: "service",
+  scripture: "prep",
   "lyrics-assist": "prep",
   spellcheck: "prep",
-  "slide-flags": "prep",
+  "slide-flags": "service",
   arrangement: "prep",
   "image-crop": "prep",
   "qr-code": "prep",
