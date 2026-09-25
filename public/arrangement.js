@@ -126,7 +126,11 @@ export function initArrangement() {
       <div class="flex flex-col divide-y divide-base-300">
         ${data.songs
           .map(
-            (s) => `
+            // A plan that runs several services repeats the set once per
+            // service time; the section heading is what tells the copies
+            // apart. Printed only where it changes.
+            (s, i) => `
+          ${s.section && s.section !== data.songs[i - 1]?.section ? `<div class="rf-subhead pt-2">${escapeHtml(s.section)}</div>` : ""}
           <div class="flex items-center gap-2 py-1.5 text-sm">
             <span class="rf-led rf-led-col ${s.presentationId ? "lit" : ""}" title="${s.presentationId ? "Matched in ProPresenter" : "Not found in ProPresenter"}"></span>
             <span class="flex-1 truncate min-w-0">${escapeHtml(s.title)}</span>

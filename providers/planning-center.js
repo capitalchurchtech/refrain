@@ -54,6 +54,29 @@ export function normalizeSongTitle(title) {
     .trim();
 }
 
+/**
+ * Pairs each song item with the header above it. A plan that runs several
+ * service times lists the set once per time, separated only by header items,
+ * so without this the same songs appear two and three times with nothing to
+ * say which service they belong to. Headers with no words in them (spacer
+ * rows like "::") are skipped so they do not blank the label.
+ * @returns {Array<{ item: object, section: string | null }>}
+ */
+export function songItemsWithSections(items) {
+  let section = null;
+  const out = [];
+  for (const item of items ?? []) {
+    const type = item?.attributes?.item_type;
+    const title = String(item?.attributes?.title ?? "").trim();
+    if (type === "header") {
+      if (/[\p{L}\p{N}]/u.test(title)) section = title;
+    } else if (type === "song") {
+      out.push({ item, section });
+    }
+  }
+  return out;
+}
+
 export class PlanningCenterProvider extends ArrangementProvider {
   static providerId = "planning-center";
   static supportsPush = true;
@@ -130,43 +153,43 @@ export class PlanningCenterProvider extends ArrangementProvider {
    */
   async getPlanSongs(planId) {
     const items = await this.#get(`/plans/${planId}/items?per_page=200`);
-    const songItems = items.data.filter((item) => item.attributes.item_type === "song");
-
     return Promise.all(
-      songItems.map(async (item) => {
-        const songRel = item.relationships.song?.data;
-        const arrangementRel = item.relationships.arrangement?.data;
-        // Generic field names (not "pco...") — these are exactly the
-        // songId/arrangementId that getArrangementSequence/
-        // updateArrangementSequence take, so the rest of the app never
-        // needs to know they came from Planning Center specifically.
-        const externalSongId = songRel?.id ?? null;
-        const externalArrangementId = arrangementRel?.id ?? null;
-
-        if (item.attributes.custom_arrangement_sequence?.length) {
-          return {
-            title: item.attributes.title,
-            sectionSequence: item.attributes.custom_arrangement_sequence,
-            externalSongId,
-            externalArrangementId,
-          };
-        }
-        if (songRel && arrangementRel) {
-          try {
-            const arrangement = await this.#get(`/songs/${songRel.id}/arrangements/${arrangementRel.id}`);
-            return {
-              title: item.attributes.title,
-              sectionSequence: arrangement.data.attributes.sequence ?? [],
-              externalSongId,
-              externalArrangementId,
-            };
-          } catch {
-            // Fall through to the empty-sequence case below.
-          }
-        }
-        return { title: item.attributes.title, sectionSequence: [], externalSongId, externalArrangementId };
-      })
+      songItemsWithSections(items.data).map(async ({ item, section }) => ({ section, ...(await this.#songFromItem(item)) }))
     );
+  }
+
+  async #songFromItem(item) {
+    const songRel = item.relationships.song?.data;
+    const arrangementRel = item.relationships.arrangement?.data;
+    // Generic field names (not "pco...") — these are exactly the
+    // songId/arrangementId that getArrangementSequence/
+    // updateArrangementSequence take, so the rest of the app never
+    // needs to know they came from Planning Center specifically.
+    const externalSongId = songRel?.id ?? null;
+    const externalArrangementId = arrangementRel?.id ?? null;
+
+    if (item.attributes.custom_arrangement_sequence?.length) {
+      return {
+        title: item.attributes.title,
+        sectionSequence: item.attributes.custom_arrangement_sequence,
+        externalSongId,
+        externalArrangementId,
+      };
+    }
+    if (songRel && arrangementRel) {
+      try {
+        const arrangement = await this.#get(`/songs/${songRel.id}/arrangements/${arrangementRel.id}`);
+        return {
+          title: item.attributes.title,
+          sectionSequence: arrangement.data.attributes.sequence ?? [],
+          externalSongId,
+          externalArrangementId,
+        };
+      } catch {
+        // Fall through to the empty-sequence case below.
+      }
+    }
+    return { title: item.attributes.title, sectionSequence: [], externalSongId, externalArrangementId };
   }
 
   /** The base Arrangement's current sequence — used as an undo backup right before overwriting it. */

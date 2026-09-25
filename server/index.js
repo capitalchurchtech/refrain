@@ -2508,6 +2508,10 @@ function matchPlanSongsToPresentations(planSongs) {
     const match = indexed.find((p) => p.normalized === normalized);
     return {
       title: song.title,
+      // Which part of the plan it sits under (a service time, usually), so a
+      // set repeated per service can be told apart. Null when the provider
+      // has no such concept.
+      section: song.section ?? null,
       sectionSequence: song.sectionSequence,
       presentationId: match?.presentationId ?? null,
       presentationName: match?.name ?? null,
