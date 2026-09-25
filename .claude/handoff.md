@@ -1984,6 +1984,59 @@ all.
   ("Service"), above Search, because it is the day's front door.
 - **Theme conformance definition** (still open from section 36).
 
+## 38. Owner requests, 2026-09-24 (not started)
+
+### CRAFT — Search stands apart in the rail
+**Ask:** Search should look different from every other rail button: a dim
+purple glow at rest, and a solid purple glow when it is the active screen.
+
+**Why it's right:** Search is the booth's front door and the one screen
+everything else returns to (`/`, Cmd/Ctrl+K, the brand row). Today it is one
+key among ten.
+
+**How, so it doesn't bite:**
+- Static rules in `refrain.css`, keyed on `#nav-rail .nav-item[data-id="search"]`,
+  **co-located with the rail's tier rules and at equal or higher specificity**
+  (the touch-floor lesson in CLAUDE.md: `[data-theme="dark"] #nav-rail .nav-item`
+  is 1,2,0, and a media query adds none).
+- Reuse the brief's lit vocabulary instead of inventing one: the dim state
+  borrows the `.btn-brand` collar at low alpha (the `--rf-plum-lit` ring plus
+  a faint halo); the active state is the full collar the brand key already
+  uses. Check it against `.claude/creative-direction.md` (materials, elevation,
+  and the rule that saturated warm is reserved for live; plum is not warm, so
+  it is allowed).
+- It must still read in light theme and Blackroom, and in the collapsed
+  icons-only rail and the sliver.
+- The active marker the other items use must not be doubled up on Search.
+- Verify with computed `box-shadow` values in both states and all three
+  themes, not by reading the stylesheet.
+
+### NOTE → CRAFT — "Show in Editor" landing on the searched slide
+**Ask:** the small Show in Editor buttons (Search results, Spell Check,
+Flags, Arrangement) should open the presentation in ProPresenter's editor
+**with the searched slide selected** (the blue selection), not just the
+presentation.
+
+**What the API allows today (probed against ProPresenter 21.3):**
+- `GET /v1/presentation/{uuid}/focus` brings the presentation up in the
+  editor. That is what Show in Editor calls now.
+- `GET /v1/presentation/focused` reads what is focused, including an `index`.
+- `/v1/presentation/{uuid}/{index}/focus` does not exist (404).
+- The only index-taking call found is `…/{index}/trigger`, which puts the
+  slide **live**. That is the one thing Show in Editor exists to avoid, so it
+  is not an option, not even "trigger then clear".
+
+**So:** not possible through the documented API as far as probed. Next steps,
+in order:
+1. Probe further, read-only, for a select or cue call in this version's API
+   (ProPresenter publishes its API docs with each release; check 21.x
+   release notes before guessing more URLs).
+2. If none exists: make the button honest instead. It shows "slide 7" next to
+   the button and scrolls the editor to the presentation, so the operator
+   knows which slide to click. Search results already know the slide number.
+3. Worth a feature request to Renewed Vision: "focus presentation at slide
+   index without triggering". Record it here if filed.
+
 ## Status log
 
 `YYYY-MM-DD · <item> · done | partial | blocked · <one line>`
@@ -2509,3 +2562,4 @@ all.
 - 2026-09-24 — Section 37 gained a Portability subsection: services are learned from the picked playlist (no times in code), optional name-pattern schedule, day-not-Sunday, phases as data with a check registry, provider `supportsServiceTimes` capability, Intl formatting, off by default, neutral fixtures.
 - 2026-09-24 — Section 37 gained declared service times (watch windows): per-day override, recurring config schedule, or provider capability; T−60 reindex, T−45 checks prompt, T−15 heartbeat held at 4s and no heavy work; never blocks operators or arms performance mode by itself.
 - 2026-09-24 — Section 37 gained Lock-in: a hand-opened, open-ended watch window plus hand-armed performance mode, released explicitly; survives restart, reminds at 6h/24h, never auto-releases; behaves as a service for timeline, flags and summary.
+- 2026-09-24 — Section 38 noted: Search glow in the rail (CRAFT, not started); Show in Editor selecting the slide (API probed: no select-without-trigger call found; fallback and next steps listed).
