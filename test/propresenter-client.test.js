@@ -401,13 +401,13 @@ test("getPlaylistItems keeps presentations and drops headers", async () => {
   // trigger -- so including it would render a row that cannot go anywhere.
   await withFetch(jsonFetch({ items: [
     { type: "header", id: { name: "Pre-service" } },
-    { type: "presentation", id: { name: "Build My Life" }, presentation_info: { presentation_uuid: "u1" } },
+    { type: "presentation", id: { name: "Build My Life" }, presentation_info: { presentation_uuid: "u1", arrangement_name: "Full" } },
     { type: "presentation", id: { name: "No uuid" }, presentation_info: {} },
     { type: "presentation", presentation_info: { presentation_uuid: "u2" } },
   ] }), async () => {
     assert.deepEqual(await client().getPlaylistItems("pl1"), { items: [
-      { id: "u1", name: "Build My Life" },
-      { id: "u2", name: "Untitled" },
+      { id: "u1", name: "Build My Life", arrangementName: "Full" },
+      { id: "u2", name: "Untitled", arrangementName: null },
     ] });
   });
 });

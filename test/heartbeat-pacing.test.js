@@ -51,3 +51,9 @@ test("the idle rate is a large reduction, which is the point", () => {
   assert.equal(idle, 240);
   assert.ok(idle < active / 5, `${idle}/hr vs ${active}/hr is not worth the complexity`);
 });
+
+test("a watched service or lock-in holds the active pace even with no browser open", () => {
+  assert.equal(heartbeatInterval({ lastClientAt: null, now: NOW, hold: true }), HEARTBEAT_ACTIVE_MS);
+  assert.equal(heartbeatInterval({ lastClientAt: NOW - 3_600_000, now: NOW, hold: true }), HEARTBEAT_ACTIVE_MS);
+  assert.equal(heartbeatInterval({ lastClientAt: null, now: NOW, hold: false }), HEARTBEAT_IDLE_MS);
+});

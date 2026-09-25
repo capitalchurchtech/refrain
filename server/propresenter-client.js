@@ -184,6 +184,9 @@ export class ProPresenterClient {
       .map((item) => ({
         id: item.presentation_info.presentation_uuid,
         name: item.id?.name ?? "Untitled",
+        // Tells apart one presentation used several times in a playlist (a
+        // pre-roll at the start, the intermission and the end).
+        arrangementName: item.presentation_info.arrangement_name ?? null,
       }));
     return { items };
   }

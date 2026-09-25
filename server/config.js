@@ -12,6 +12,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { writeFile, rename } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import "dotenv/config"; // TODO: add `dotenv` as a real dependency
+import { scheduleProblems } from "./service-days.js";
 
 const CONFIG_PATH = "./config.json";
 const CONFIG_EXAMPLE_PATH = "./config.example.json";
@@ -145,6 +146,18 @@ export function getLibrarySyncModuleStatus(config) {
   if (!mod.libraryName || !String(mod.libraryName).trim()) return "misconfigured";
   if (mod.direction !== "send" && mod.direction !== "receive") return "misconfigured";
   return "active";
+}
+
+/**
+ * The service system (handoff section 37). Off unless a church turns it on:
+ * a church that only wants search never sees a playbook. A malformed
+ * schedule is "misconfigured" with a message on Health, never a crash.
+ * @returns {"off" | "misconfigured" | "active"}
+ */
+export function getServiceModuleStatus(config) {
+  const mod = config.serviceModule;
+  if (!mod?.enabled) return "off";
+  return scheduleProblems(mod.schedule).length ? "misconfigured" : "active";
 }
 
 export function getEnvRequirements(config) {

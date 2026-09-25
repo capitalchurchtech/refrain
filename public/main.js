@@ -12,6 +12,7 @@ import { initLive } from "./live.js";
 import { initScripture } from "./scripture.js";
 import { initLibrarySync } from "./library-sync.js";
 import { initSlideFlags } from "./slide-flags.js";
+import { initService } from "./service.js";
 import { initReturnBar } from "./return-bar.js";
 import { initStatusCluster } from "./status-cluster.js";
 import { installGlobalErrorBoundary, safeRender } from "./error-boundary.js";
@@ -32,6 +33,7 @@ const views = {
   scripture: document.getElementById("view-scripture"),
   "library-sync": document.getElementById("view-library-sync"),
   "slide-flags": document.getElementById("view-slide-flags"),
+  service: document.getElementById("view-service"),
 };
 
 async function boot() {
@@ -73,6 +75,7 @@ function startApp() {
   const scripture = initScripture();
   const librarySync = initLibrarySync();
   const slideFlags = initSlideFlags();
+  const service = initService();
   initReturnBar();
   initStatusCluster();
 
@@ -87,10 +90,11 @@ function startApp() {
     scripture: scripture.render,
     "library-sync": librarySync.render,
     "slide-flags": slideFlags.render,
+    service: service.render,
   };
 
   initNav({
-    viewIds: new Set(["search", "lyrics-assist", "arrangement", "image-crop", "qr-code", "spellcheck", "live", "scripture", "library-sync", "slide-flags"]),
+    viewIds: new Set(["search", "lyrics-assist", "arrangement", "image-crop", "qr-code", "spellcheck", "live", "scripture", "library-sync", "slide-flags", "service"]),
     onNavigate: (id) => {
       for (const [viewId, el] of Object.entries(views)) {
         el.classList.toggle("hidden", viewId !== id);

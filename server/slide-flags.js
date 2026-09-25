@@ -35,7 +35,7 @@
  * safe here and the copy is retried, and the operator is told which happened.
  */
 
-import { readFile, writeFile, readdir, mkdir, rename, unlink } from "node:fs/promises";
+import { saveRecord, retryPending, readJsonDir } from "./append-store.js";
 import { randomBytes } from "node:crypto";
 import { hostname } from "node:os";
 import path from "node:path";
@@ -183,27 +183,6 @@ function isUpdateName(name) {
   return Boolean(m && isFlagId(m[1]) && isFlagId(m[2]));
 }
 
-async function writeAtomic(dir, name, data) {
-  await mkdir(dir, { recursive: true });
-  const finalPath = path.join(dir, name);
-  const tmpPath = `${finalPath}.tmp`;
-  await writeFile(tmpPath, JSON.stringify(data, null, 2));
-  await rename(tmpPath, finalPath);
-}
-
-/** Here first, then the shared folder. Throws only if it could not be saved here. */
-async function saveRecord(subdir, name, data, { folder, pendingDir }) {
-  const localDir = path.join(pendingDir, subdir);
-  await writeAtomic(localDir, name, data);
-  try {
-    await writeAtomic(path.join(folder, subdir), name, data);
-  } catch (err) {
-    return { shared: false, reason: err.message };
-  }
-  await unlink(path.join(localDir, name)).catch(() => {});
-  return { shared: true };
-}
-
 /**
  * Saves a flag: here first, then to the flags folder.
  *
@@ -229,37 +208,7 @@ export async function saveUpdate(update, { folder = DEFAULT_FLAGS_FOLDER, pendin
 
 /** Copies anything still waiting to the flags folder. Safe to call any time. */
 export async function retryPendingFlags({ folder = DEFAULT_FLAGS_FOLDER, pendingDir = PENDING_DIR } = {}) {
-  let attempted = 0;
-  let succeeded = 0;
-  for (const subdir of ["", UPDATES]) {
-    const localDir = path.join(pendingDir, subdir);
-    const names = (await readdir(localDir).catch(() => [])).filter((n) => n.endsWith(".json"));
-    for (const name of names) {
-      attempted += 1;
-      try {
-        const record = JSON.parse(await readFile(path.join(localDir, name), "utf-8"));
-        await writeAtomic(path.join(folder, subdir), name, record);
-        await unlink(path.join(localDir, name));
-        succeeded += 1;
-      } catch {
-        // Still unreachable, or unreadable -- leave it for the next attempt.
-      }
-    }
-  }
-  return { attempted, succeeded };
-}
-
-async function readJsonDir(dir, accept) {
-  const out = [];
-  for (const name of await readdir(dir).catch(() => [])) {
-    if (!name.endsWith(".json") || !accept(name)) continue;
-    try {
-      out.push(JSON.parse(await readFile(path.join(dir, name), "utf-8")));
-    } catch {
-      // A half-synced or damaged file is skipped, not fatal to the list.
-    }
-  }
-  return out;
+  return retryPending(["", UPDATES], { folder, pendingDir });
 }
 
 /**

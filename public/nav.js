@@ -25,6 +25,9 @@ const NAV_PRIORITY = {
   // In Service, beside Live: flags are raised during the service, and the
   // count of open ones is what the operator glances at afterwards.
   "slide-flags": 2,
+  // The day's rundown and lock-in. After Flags for now; whether it becomes the
+  // front door above Search is an open decision (handoff section 37).
+  service: 2.5,
   // Desk work before the service, not during it, so Prep rather than Service
   // (persona panel, handoff section 36): Service holds what runs live:
   // Search, Live, and Flags.
@@ -49,6 +52,7 @@ const NAV_GROUP = {
   "lyrics-assist": "prep",
   spellcheck: "prep",
   "slide-flags": "service",
+  service: "service",
   arrangement: "prep",
   "image-crop": "prep",
   "qr-code": "prep",

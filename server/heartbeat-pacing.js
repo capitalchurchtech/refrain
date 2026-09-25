@@ -38,7 +38,11 @@ export const HEARTBEAT_IDLE_MS = 30_000;
  * of a machine booted into a service with nobody at the desk — so it is treated
  * as idle rather than as active.
  */
-export function heartbeatInterval({ lastClientAt = null, now = Date.now() } = {}) {
+export function heartbeatInterval({ lastClientAt = null, now = Date.now(), hold = false } = {}) {
+  // During a watched service or a lock-in, the timeline needs the active pace
+  // whether or not anyone is at the desk, and mid-service nobody usually is.
+  // Still the same two ~3ms calls; only the idle slowdown is suspended.
+  if (hold) return HEARTBEAT_ACTIVE_MS;
   if (lastClientAt == null) return HEARTBEAT_IDLE_MS;
   const since = now - lastClientAt;
   if (!Number.isFinite(since) || since < 0) return HEARTBEAT_ACTIVE_MS;

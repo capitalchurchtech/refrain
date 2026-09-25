@@ -22,6 +22,7 @@ import {
   getArrangementModuleStatus,
   getImageCropModuleStatus,
   getLibrarySyncModuleStatus,
+  getServiceModuleStatus,
   getEnvRequirements,
   registerProviders,
   cleanFolderSetting,
@@ -96,6 +97,26 @@ import {
   DEFAULT_KEEP_RESOLVED_DAYS,
 } from "./slide-flags.js";
 import { heartbeatInterval } from "./heartbeat-pacing.js";
+import {
+  DEFAULT_DAYS_FOLDER,
+  DEFAULT_LEAD_MINUTES,
+  DEFAULT_TRAIL_MINUTES,
+  buildEvent,
+  newServiceId,
+  dayKey,
+  localTimeOn,
+  foldDay,
+  serviceWindow,
+  activeServices,
+  shouldHoldPace,
+  transitionEvents,
+  timelineRows,
+  serviceSummary,
+  lockinReminder,
+  saveEvent,
+  readDay,
+  retryPendingEvents,
+} from "./service-days.js";
 import { buildInfo } from "./build-info.js";
 import {
   syncLibrary,
@@ -195,6 +216,7 @@ app.use(express.json());
 function navEnabledFor(m) {
   if (m.id === "arrangement") return getArrangementModuleStatus(config) !== "off";
   if (m.id === "library-sync") return getLibrarySyncModuleStatus(config) !== "off";
+  if (m.id === "service") return getServiceModuleStatus(config) !== "off";
   return m.enabledByDefault;
 }
 
@@ -744,8 +766,14 @@ let heartbeatTimer = null;
 // flat out forever: see heartbeat-pacing.js for why 43,200 requests a day at
 // idle was not defensible.
 let lastClientAt = null;
+
+// Set by beat(): brings the next beat forward when the pace should be faster
+// than the one already scheduled (a browser arriving, a lock-in, a service
+// added), instead of waiting out a 30s idle gap first.
+let quickenHeartbeat = () => {};
 export function noteClientActivity() {
   lastClientAt = Date.now();
+  quickenHeartbeat();
 }
 
 let liveState = {
@@ -758,6 +786,127 @@ let liveState = {
 
 function slideKey(slide) {
   return slide ? `${slide.presentationId}:${slide.slideIndex}` : null;
+}
+
+// --- Service days (handoff section 37, phase 1) ---------------------------
+//
+// The day's events in memory, mirrored to disk as they happen (one file each,
+// see server/service-days.js). Folded fresh whenever it is needed: a day is a
+// few hundred events at most, and a fold nobody caches cannot go stale.
+let serviceDay = { day: null, events: [], loading: null };
+
+function serviceModuleOn() {
+  return getServiceModuleStatus(config) !== "off";
+}
+
+function serviceOptions() {
+  const m = config.serviceModule ?? {};
+  const num = (v, d) => (Number.isFinite(v) && v >= 0 ? v : d);
+  return {
+    folder: typeof m.folder === "string" && m.folder.trim() ? m.folder.trim() : DEFAULT_DAYS_FOLDER,
+    schedule: Array.isArray(m.schedule) ? m.schedule : [],
+    windows: { leadMinutes: num(m.leadMinutes, DEFAULT_LEAD_MINUTES), trailMinutes: num(m.trailMinutes, DEFAULT_TRAIL_MINUTES) },
+  };
+}
+
+function serviceState(now = Date.now()) {
+  return foldDay(serviceDay.events, { schedule: serviceOptions().schedule, day: serviceDay.day ?? dayKey(now), now });
+}
+
+function previousDay(day) {
+  const [y, m, d] = day.split("-").map(Number);
+  return dayKey(new Date(y, m - 1, d - 1, 12).getTime());
+}
+
+/**
+ * Loads the day to record into. Usually today; yesterday instead while a
+ * lock-in opened yesterday is still running, so an event that crosses
+ * midnight stays one event rather than being split across two folders.
+ */
+async function loadServiceDay(now = Date.now()) {
+  const { folder, schedule } = serviceOptions();
+  const today = dayKey(now);
+  const yesterday = previousDay(today);
+  const yEvents = await readDay(yesterday, { folder });
+  if (foldDay(yEvents, { schedule, day: yesterday, now }).lockin) {
+    serviceDay = { day: yesterday, events: yEvents, loading: null };
+  } else {
+    serviceDay = { day: today, events: await readDay(today, { folder }), loading: null };
+  }
+}
+
+/** Moves on to a new day once the old one is over (no lock-in holding it open). */
+function rollServiceDayIfNeeded(now = Date.now()) {
+  if (serviceDay.loading || serviceDay.day === dayKey(now)) return;
+  if (serviceDay.day && serviceState(now).lockin) return;
+  serviceDay.loading = loadServiceDay(now).catch((err) => {
+    console.error("Could not load the service day:", err.message);
+    serviceDay.loading = null;
+  });
+}
+
+/** Records events: in memory straight away, on disk here first and then the shared folder. */
+function recordServiceEvents(events) {
+  const { folder } = serviceOptions();
+  setImmediate(() => quickenHeartbeat());
+  for (const raw of events) {
+    // Filed under the day being recorded, which is yesterday during a lock-in
+    // that crossed midnight.
+    const event = { ...raw, day: serviceDay.day ?? raw.day };
+    serviceDay.events.push(event);
+    saveEvent(event, { folder })
+      .then((r) => {
+        if (!r.shared) console.warn(`Service event kept on this machine; the shared folder is unreachable (${r.reason}). It will be copied later.`);
+      })
+      .catch((err) => console.error("Could not save a service event:", err.message));
+  }
+}
+
+function holdHeartbeatPace(now = Date.now()) {
+  return serviceModuleOn() && shouldHoldPace(serviceState(now), now, serviceOptions().windows);
+}
+
+/**
+ * Scheduled services name their playlist by pattern. Resolve it once the
+ * window opens, before anything is live: a couple of playlist reads, and
+ * never while performance mode is holding still.
+ */
+const resolvedSchedulePlaylists = new Set();
+async function resolveScheduledPlaylists(now = Date.now()) {
+  if (!serviceModuleOn() || performance.armed || !liveState.connected) return;
+  const { windows } = serviceOptions();
+  const pending = activeServices(serviceState(now), now, windows).filter(
+    (s) => s.source === "schedule" && s.playlistMatch && !s.playlist && !resolvedSchedulePlaylists.has(s.serviceId)
+  );
+  if (!pending.length) return;
+  let playlists;
+  try {
+    playlists = flattenPlaylists(await client.getPlaylists());
+  } catch {
+    return; // try again next minute
+  }
+  for (const s of pending) {
+    resolvedSchedulePlaylists.add(s.serviceId);
+    const match = playlists.find((p) => p.name.toLowerCase().includes(s.playlistMatch.toLowerCase()));
+    if (!match) {
+      console.log(`Service "${s.name}": no playlist name contains "${s.playlistMatch}". Recording without one.`);
+      continue;
+    }
+    try {
+      const { items } = await client.getPlaylistItems(match.id);
+      recordServiceEvents([
+        buildEvent("service-added", {
+          serviceId: s.serviceId,
+          name: s.name,
+          source: "schedule",
+          startsAt: s.startsAt,
+          playlist: { id: match.id, name: match.name, items: items.map((i) => ({ presentationId: i.id, name: i.name, arrangementName: i.arrangementName })) },
+        }),
+      ]);
+    } catch (err) {
+      console.error(`Service "${s.name}": could not read playlist "${match.name}":`, err.message);
+    }
+  }
 }
 
 async function heartbeat() {
@@ -791,6 +940,24 @@ async function heartbeat() {
     liveSince: enriched ? (sameSlide ? liveState.liveSince : now) : null,
     checkedAt: now,
   };
+
+  // The service timeline: what goes live, when, and in which service. It reads
+  // only what this beat already fetched. Skipped while ProPresenter is not
+  // answering, because "can't see" is not "nothing is live", and recording a
+  // departure there would turn every network blip into a false return.
+  if (connected && serviceModuleOn() && serviceDay.day) {
+    rollServiceDayIfNeeded(now);
+    const current =
+      liveState.live && enriched
+        ? {
+            presentationId: enriched.presentationId,
+            name: enriched.presentationName ?? enriched.name ?? null,
+            arrangementName: enriched.arrangementName ?? null,
+          }
+        : null;
+    const events = transitionEvents(serviceState(now), current, now, { opts: serviceOptions().windows });
+    if (events.length) recordServiceEvents(events);
+  }
 
   // Everything that goes on the screens joins the history, from the first item
   // ProPresenter loads. It used to fill only from app-initiated jumps, so a
@@ -827,8 +994,18 @@ function startPerformancePolling() {
   // whether anyone is actually watching without tearing down a timer.
   const beat = async () => {
     await heartbeat().catch(() => {});
-    const next = heartbeatInterval({ lastClientAt });
+    const next = heartbeatInterval({ lastClientAt, hold: holdHeartbeatPace() });
+    scheduledFor = Date.now() + next;
     heartbeatTimer = setTimeout(beat, next);
+    heartbeatTimer.unref?.();
+  };
+  let scheduledFor = 0;
+  quickenHeartbeat = () => {
+    const due = Date.now() + heartbeatInterval({ lastClientAt, hold: holdHeartbeatPace() });
+    if (due >= scheduledFor) return;
+    clearTimeout(heartbeatTimer);
+    scheduledFor = due;
+    heartbeatTimer = setTimeout(beat, due - Date.now());
     heartbeatTimer.unref?.();
   };
   beat();
@@ -1242,6 +1419,141 @@ app.post("/api/index/reindex-changed", async (_req, res) => {
  * Reads only the heartbeat's cached state -- nothing here calls ProPresenter,
  * which is what lets it run during a service with performance mode on.
  */
+// --- Service screen ---------------------------------------------------------
+
+function jsonTime(ms) {
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+}
+
+function servicePayload(now = Date.now()) {
+  const state = serviceState(now);
+  const { windows } = serviceOptions();
+  const watching = new Set(activeServices(state, now, windows).map((s) => s.serviceId));
+  const rowOut = (r) => ({ ...r, firstLive: jsonTime(r.firstLive), lastLive: jsonTime(r.lastLive), returns: r.returns.map((x) => ({ ...x, at: jsonTime(x.at) })) });
+  return {
+    day: serviceDay.day,
+    status: getServiceModuleStatus(config),
+    services: state.services.map((s) => {
+      const w = serviceWindow(s, windows);
+      const sum = serviceSummary(state, s.serviceId, now);
+      return {
+        serviceId: s.serviceId,
+        name: s.name,
+        source: s.source,
+        startsAt: jsonTime(s.startsAt),
+        endedAt: jsonTime(s.endedAt),
+        playlist: s.playlist ? { id: s.playlist.id, name: s.playlist.name, count: s.playlist.items?.length ?? 0 } : null,
+        playlistMatch: s.playlistMatch ?? null,
+        window: w ? { from: jsonTime(w.from), to: jsonTime(w.to) } : null,
+        watching: watching.has(s.serviceId),
+        summary: { ...sum, startedAt: jsonTime(sum.startedAt), endedAt: jsonTime(sum.endedAt) },
+        rows: timelineRows(state, s.serviceId, now).map(rowOut),
+      };
+    }),
+    outside: timelineRows(state, null, now).map(rowOut),
+    lockin: state.lockin ? { ...state.lockin, startedAt: jsonTime(state.lockin.startedAt) } : null,
+    lockinReminder: lockinReminder(state.lockin, now),
+    holdingPace: holdHeartbeatPace(now),
+    beatMs: heartbeatInterval({ lastClientAt, hold: holdHeartbeatPace(now), now }),
+    performance: { armed: performance.armed, source: performance.source },
+  };
+}
+
+function requireServiceModule(res) {
+  if (serviceModuleOn()) return true;
+  res.status(409).json({ error: "The Service module is off. Turn it on in config.json (serviceModule.enabled)." });
+  return false;
+}
+
+async function ensureServiceDay() {
+  if (!serviceDay.day) await loadServiceDay();
+  if (serviceDay.loading) await serviceDay.loading;
+}
+
+app.get("/api/service/day", async (_req, res) => {
+  noteClientActivity();
+  if (!requireServiceModule(res)) return;
+  await ensureServiceDay();
+  res.json(servicePayload());
+});
+
+/** Adds a service for today: a name, and optionally a time and a playlist. */
+app.post("/api/service/services", async (req, res) => {
+  if (!requireServiceModule(res)) return;
+  await ensureServiceDay();
+  const name = String(req.body?.name ?? "").trim().slice(0, 60);
+  if (!name) return res.status(400).json({ error: "Give the service a name." });
+  let startsAt = null;
+  if (req.body?.time) {
+    startsAt = localTimeOn(serviceDay.day, req.body.time);
+    if (startsAt == null) return res.status(400).json({ error: 'The time should look like "09:00".' });
+  }
+  let playlist = null;
+  const playlistId = req.body?.playlistId ? String(req.body.playlistId) : null;
+  if (playlistId) {
+    try {
+      // One read, pressed by the operator, the same as Spell Check's scan.
+      const { items } = await client.getPlaylistItems(playlistId);
+      playlist = {
+        id: playlistId,
+        name: String(req.body?.playlistName ?? "Playlist").slice(0, 120),
+        items: items.map((i) => ({ presentationId: i.id, name: i.name, arrangementName: i.arrangementName })),
+      };
+    } catch (err) {
+      return res.status(502).json({ error: `Couldn't read that playlist from ProPresenter: ${err.message}` });
+    }
+  }
+  const event = buildEvent("service-added", { name, source: "today", startsAt, playlist });
+  recordServiceEvents([event]);
+  res.json({ ok: true, serviceId: newServiceId(event), ...servicePayload() });
+});
+
+app.post("/api/service/services/:id/end", async (req, res) => {
+  if (!requireServiceModule(res)) return;
+  await ensureServiceDay();
+  const service = serviceState().services.find((s) => s.serviceId === req.params.id);
+  if (!service) return res.status(404).json({ error: "No service by that id today." });
+  if (service.endedAt != null) return res.status(409).json({ error: "That service has already ended." });
+  recordServiceEvents([buildEvent("service-ended", { serviceId: service.serviceId })]);
+  res.json({ ok: true, ...servicePayload() });
+});
+
+/**
+ * Lock in for a live event: a watched window with no end, plus performance
+ * mode turned on by hand, until released. Nothing here touches ProPresenter.
+ */
+app.post("/api/service/lockin", async (req, res) => {
+  if (!requireServiceModule(res)) return;
+  await ensureServiceDay();
+  if (serviceState().lockin) return res.status(409).json({ error: "Already locked in. Release it first." });
+  const now = Date.now();
+  const name =
+    String(req.body?.name ?? "").trim().slice(0, 60) ||
+    `Live event, ${new Date(now).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+  const added = buildEvent("service-added", { name, source: "lockin" }, { now });
+  // Remember whether lock-in is the reason performance mode is on, so release
+  // turns off only what lock-in turned on.
+  const armedPerformance = !(performance.armed && performance.source === "manual");
+  if (armedPerformance) performance = armManually(performance, now);
+  recordServiceEvents([added, buildEvent("lockin-started", { serviceId: newServiceId(added), name, armedPerformance }, { now: now + 1 })]);
+  console.log(`Locked in for "${name}". Performance mode on by hand until released.`);
+  res.json({ ok: true, ...servicePayload() });
+});
+
+app.post("/api/service/lockin/release", async (_req, res) => {
+  if (!requireServiceModule(res)) return;
+  await ensureServiceDay();
+  const { lockin } = serviceState();
+  if (!lockin) return res.status(409).json({ error: "Nothing is locked in." });
+  const now = Date.now();
+  recordServiceEvents([buildEvent("lockin-released", { serviceId: lockin.serviceId }, { now })]);
+  if (lockin.armedPerformance && performance.armed && performance.source === "manual") {
+    performance = disarmManually(performance, now);
+  }
+  console.log(`Released lock-in "${lockin.name}".`);
+  res.json({ ok: true, ...servicePayload() });
+});
+
 function slideFlagsFolder() {
   const folder = config.slideFlagsModule?.folder;
   return typeof folder === "string" && folder.trim() ? folder.trim() : DEFAULT_FLAGS_FOLDER;
@@ -3465,6 +3777,25 @@ const server = app.listen(port, "127.0.0.1", async () => {
       }
     } catch (err) {
       console.error("Pending-upload retry failed:", err.message);
+    }
+  }
+
+  // Service days: load today (or yesterday, if a lock-in is still running
+  // from it), put performance mode back if a lock-in survived the restart,
+  // and copy any events that were waiting for the shared folder.
+  if (serviceModuleOn()) {
+    try {
+      await loadServiceDay();
+      const { lockin } = serviceState();
+      if (lockin && !(performance.armed && performance.source === "manual")) {
+        performance = armManually(performance, Date.now());
+        console.log(`Still locked in for "${lockin.name}" after the restart. Performance mode back on by hand.`);
+      }
+      const { folder } = serviceOptions();
+      retryPendingEvents({ folder }).catch(() => {});
+      setInterval(() => resolveScheduledPlaylists().catch(() => {}), 60_000).unref?.();
+    } catch (err) {
+      console.error("Service days could not start:", err.message);
     }
   }
 
