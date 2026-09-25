@@ -1809,6 +1809,62 @@ Each phase ships on its own and is useful without the next.
    timeline, and both are a separate, narrow, read-mostly route with no path
    to any control.
 
+### Portability: this ships to churches that aren't us
+
+The repo is public, and the core promise (full value with zero setup for
+features a church didn't ask for) applies here as much as to search. So no
+church's schedule, wording or tools go in code. The rule: **Refrain learns a
+service from what the operator does, and config can only add to that, never
+be required for it.**
+
+- **No clock times anywhere in code.** A service is not "9AM". It is **a
+  playlist the operator picked** (at pre-service, or implied when that
+  playlist's first item goes live). Its name defaults to the playlist's own
+  name, so a church whose playlists read "Sunday Mass 10:30" or "Youth Night"
+  gets those labels for free. Our 5PM / 9AM / 11:15AM appear in this plan as
+  examples only.
+- **An optional schedule, for churches that want one.**
+  `serviceModule.services: [{ "name": "Early", "playlistMatch": "early" }]`
+  pre-selects playlists by name pattern and labels them. It is empty by
+  default. With nothing set, pre-service simply asks which playlist, which
+  works for a church with one service a month.
+- **"Day", not "Sunday" or "weekend".** A Service Day is a date. How days
+  roll up in the summary (per day, or Saturday plus Sunday as one weekend) is
+  `serviceModule.summaryGroup: "day" | "week"`, defaulting to day. A Wednesday
+  service, a Saturday vigil, or three services on Christmas Eve all work
+  without special cases.
+- **Phases and steps are data.** The shipped default is short and generic
+  ("Screens on", "Stage display showing"). Anything specific to one room is
+  the church's own `config.json`. Automatic checks are named from a registry
+  (`"spellcheck-scan"`, `"missing-media"`, `"arrangement-refs"`), so a church
+  can drop the ones it doesn't want. A check whose module is off hides itself
+  instead of failing, so the arrangement check never appears for a church
+  without the Arrangement module.
+- **Planning-system times are a capability, not an assumption.** If a
+  provider can say when services are (Planning Center plans have service
+  times), it declares `static supportsServiceTimes = true`, and the playbook
+  can offer "use the plan's times". The manual provider and churches with no
+  planning system lose nothing. Same pattern as `supportsPush`, and no vendor
+  name in shared code.
+- **Words and formats are the machine's.** Times print through `Intl` in the
+  machine's locale and time zone (12- or 24-hour as the OS says). Durations
+  are plain m:ss. The UI word is "service", with one string to change if a
+  church says "gathering" or "Mass". That is a later nicety, noted and not
+  built.
+- **Off by default.** `serviceModule.enabled: false`, like every other
+  module. A church that only wants search never sees a playbook, and core
+  search never imports it.
+- **Docs and fixtures stay neutral.** Tests, README and the example config use
+  invented services ("Early", "Late") and public-domain hymns. None of our
+  playlists, plan items or people go in the repo. The timeline sample above
+  uses real song titles only because it lives in this internal handoff; the
+  README version must not.
+
+This changes two of the open decisions below: "one playlist per service" is no
+longer our preference to encode, it is simply how services are identified; and
+"service start" defaults to automatic because that needs no configuration at
+all.
+
 ### Open decisions (owner)
 
 - **What starts a service:** the first item of its playlist going live
@@ -2347,3 +2403,4 @@ Each phase ships on its own and is useful without the next.
 - 2026-09-24 — Theme conformance groundwork, correcting the earlier note: a theme's own UUID is in no .pro, but its **slide layouts' UUIDs are**. `/v1/themes` lists 254 layouts; 237 of 973 presentations reference at least one (message decks mostly: the top layouts are Message / Speaker Intro, Homework, Quote). So 'which theme does this deck use' IS answerable from disk. Blocked on a definition, not on data: nothing says which theme is 'current' (per library? newest by name?). Needs the owner's call before building.
 - 2026-09-24 — Owner: Scripture moved to Prep, Flags moved to Service. Rail is now Service: Search, Live, Flags · Prep: Spell Check, Lyrics, Scripture, Arrangement, Image Crop, QR Codes · System: Health.
 - 2026-09-24 — Section 37 written: the plan for the service system (Service Day record, timeline from the heartbeat, pre-service checks, playbook phases, End summary, then delivery/second device/feed). Nothing built; open decisions listed there.
+- 2026-09-24 — Section 37 gained a Portability subsection: services are learned from the picked playlist (no times in code), optional name-pattern schedule, day-not-Sunday, phases as data with a check registry, provider `supportsServiceTimes` capability, Intl formatting, off by default, neutral fixtures.
