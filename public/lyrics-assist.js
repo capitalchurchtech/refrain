@@ -26,7 +26,7 @@ export function initLyricsAssist() {
 
     container.innerHTML = `
       <div class="flex flex-col gap-4 max-w-3xl">
-        <h1>Lyrics</h1>
+        <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="music" class="w-5 h-5"></i> Lyrics</h1>
         <!-- Step one, and E1: finding the words is the errand, not the work.
              The Tier 1 collar used to sit on Search Lyrics, which opens
              genius.com in a new tab -- the screen's single emitter spent on

@@ -45,7 +45,7 @@ export function initScripture() {
 
     container.innerHTML = `
       <div class="flex flex-col gap-4 max-w-3xl">
-        <h1>Scripture</h1>
+        <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="book-open" class="w-5 h-5"></i> Scripture</h1>
 
         <!-- E1. Looking the passage up is the errand; the collar used to sit on
              Bible Gateway, which leaves the app. The two-sentence lede went

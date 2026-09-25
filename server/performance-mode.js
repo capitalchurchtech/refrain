@@ -146,13 +146,17 @@ export function describe(state, now = Date.now()) {
   // sentences opening with "Off." on adjacent lines of the same card saying
   // different things. Off needs no explanation; on does.
   if (!state.armed) return "";
-  const forMin = state.since ? Math.max(0, Math.round((now - state.since) / 60_000)) : 0;
+  // One cold line (creative direction: "Lost ProPresenter. Retrying." is the
+  // standard). The "for N min" clause is gone: the last-checked time already
+  // says the claim is current, and two clock phrases in one line read as noise.
   const how =
     state.source === "manual"
-      ? "Turned on by hand"
+      ? "On by hand"
       : state.source === "unknown"
-        ? "On because ProPresenter is not answering, so Refrain cannot tell whether you are live"
-        : "On because ProPresenter is showing something";
-  const checked = state.lastCheckedAt ? `, last checked ${new Date(state.lastCheckedAt).toLocaleTimeString()}` : "";
-  return `${how}${forMin > 0 ? `, ${forMin} min ago` : ""}${checked}.`;
+        ? "ProPresenter not answering, so it can't see what's live"
+        : "ProPresenter is showing something";
+  const checked = state.lastCheckedAt
+    ? `; last checked ${new Date(state.lastCheckedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+    : "";
+  return `${how}${checked}.`;
 }

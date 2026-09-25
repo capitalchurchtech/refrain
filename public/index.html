@@ -397,6 +397,10 @@
            app-initiated Go Live arms a return pin server-side; then it
            shows on every screen so the operator can snap back to where the
            plan was in one click. -->
+      <!-- A link to a module that is switched off lands here instead of on a
+           screen that cannot render. Cold copy, one line, and the way to turn
+           it on. Filled from nav.js; hidden again on the next navigation. -->
+      <div id="module-off-notice" class="hidden rf-readout mb-3 text-sm" role="status"></div>
       <div id="return-wrap" class="mb-3">
         <div id="return-bar" class="hidden alert alert-warning py-2 px-3 flex items-center justify-between gap-2" role="status" aria-live="polite">
           <span id="return-bar-label" class="text-sm min-w-0"></span>

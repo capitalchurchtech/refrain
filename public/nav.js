@@ -123,6 +123,25 @@ export async function initNav({ onNavigate, viewIds }) {
    */
   const hashId = location.hash.slice(1);
   let activeId = items.some((i) => i.id === hashId) ? hashId : (items[0]?.id ?? "search");
+
+  // A bookmarked or shared link to a module that is switched off used to fall
+  // through to Search with no word, which reads as a broken link. Say which
+  // module and where to turn it on. The name comes from the module's own
+  // navLabel, never a literal here.
+  const offNotice = document.getElementById("module-off-notice");
+  function showModuleOffNotice(id) {
+    if (!offNotice) return;
+    const off = modules.find((m) => m.id === id && !m.enabled);
+    if (!off) {
+      offNotice.classList.add("hidden");
+      return;
+    }
+    offNotice.innerHTML = `${escapeText(off.navLabel)} is off. <a href="#health" class="link">Turn it on in Health.</a>`;
+    offNotice.classList.remove("hidden");
+  }
+  function escapeText(str) {
+    return String(str ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  }
   let currentTheme = prefs.theme ?? "dark";
   // Expanded by default until the user chooses: on a fresh install navPinned
   // is unset (null), so a first-time user sees labels rather than a wall of
@@ -333,6 +352,7 @@ export async function initNav({ onNavigate, viewIds }) {
      * that is what this fixes.
      */
     history.replaceState(null, "", `#${id}`);
+    offNotice?.classList.add("hidden");
     renderItems();
     onNavigate(id);
     restoreScroll(id);
@@ -700,6 +720,10 @@ export async function initNav({ onNavigate, viewIds }) {
   window.addEventListener("hashchange", () => {
     const id = location.hash.slice(1);
     if (id !== activeId && items.some((i) => i.id === id)) setActive(id);
+    else if (!items.some((i) => i.id === id)) {
+      showModuleOffNotice(id);
+      history.replaceState(null, "", `#${activeId}`);
+    }
   });
 
   renderItems();
@@ -709,6 +733,7 @@ export async function initNav({ onNavigate, viewIds }) {
   // having to click a nav key first.
   history.replaceState(null, "", `#${activeId}`);
   onNavigate(activeId);
+  if (hashId && hashId !== activeId) showModuleOffNotice(hashId);
   if (shouldAutoOpenWelcome(activeId)) {
     openWelcome();
     markWelcomeShownToday();

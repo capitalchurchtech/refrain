@@ -84,7 +84,7 @@ export function initQrCode() {
     }
     container.innerHTML = `
       <div class="flex flex-col gap-4 max-w-3xl">
-        <h1>QR Codes</h1>
+        <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="qr-code" class="w-5 h-5"></i> QR Codes</h1>
 
         <!-- One line, and it is the one fact that changes a decision: no
              shortener means the code cannot expire or start charging. -->

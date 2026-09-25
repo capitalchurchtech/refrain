@@ -16,7 +16,7 @@ export function initSpellcheck() {
   async function render() {
     container.innerHTML = `
       <div class="flex flex-col gap-4 max-w-3xl">
-        <h1>Spell Check</h1>
+        <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="spell-check" class="w-5 h-5"></i> Spell Check</h1>
 
         <!-- E2, the hero: the scan is the whole screen. The three-sentence lede
              it replaced explained how the check decides what to flag, which is
@@ -66,8 +66,15 @@ export function initSpellcheck() {
     const scanBtn = document.getElementById("spellcheck-scan-btn");
 
     try {
-      const { playlists } = await fetch("/api/spellcheck/playlists").then((r) => r.json());
-      if (!playlists?.length) {
+      const res = await fetch("/api/spellcheck/playlists");
+      const { playlists } = await res.json().catch(() => ({}));
+      // A 502 is ProPresenter not answering, not an empty library. Saying
+      // "No playlists found" then reads as though they were deleted.
+      if (!res.ok) {
+        select.innerHTML = `<option value="">ProPresenter isn't answering</option>`;
+        document.getElementById("spellcheck-status").innerHTML =
+          `Open ProPresenter, then come back to this screen. <a href="#health" class="link">Diagnose on Health</a>`;
+      } else if (!playlists?.length) {
         select.innerHTML = `<option value="">No playlists found</option>`;
       } else {
         select.innerHTML = `<option value="">Choose one...</option>` + playlists.map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`).join("");
