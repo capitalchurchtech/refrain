@@ -91,6 +91,9 @@ export async function initNav({ onNavigate, viewIds }) {
   const navItemsEl = document.getElementById("nav-items");
   const pinToggle = document.getElementById("nav-pin-toggle");
   const pinIcon = document.getElementById("nav-pin-icon");
+  const sideToggle = document.getElementById("nav-side-toggle");
+  const sideIcon = document.getElementById("nav-side-icon");
+  const sideLabel = document.getElementById("nav-side-label");
   const themeToggle = document.getElementById("theme-toggle");
   const themeIcon = document.getElementById("theme-icon");
   const themeLabel = document.getElementById("theme-label");
@@ -162,6 +165,8 @@ export async function initNav({ onNavigate, viewIds }) {
   let navMode =
     prefs.navMode ?? (prefs.navPinned == null ? "full" : prefs.navPinned ? "full" : "icons");
   if (!["full", "icons", "sliver"].includes(navMode)) navMode = "full";
+  let navSide = prefs.navSide === "right" ? "right" : "left";
+  document.documentElement.classList.toggle("rail-right", navSide === "right");
   /**
    * The sliver does not survive a reload; it comes back as icons.
    *
@@ -456,7 +461,9 @@ export async function initNav({ onNavigate, viewIds }) {
     // with an icon+label.
     brandMark.classList.toggle("hidden", pinned);
     brandLogo.classList.toggle("hidden", !pinned);
-    setIcon(pinIcon, isFull ? "chevrons-left" : "chevrons-right");
+    // "Collapse" points toward the rail's own edge, which flips with it.
+    const toward = navSide === "right" ? ["chevrons-right", "chevrons-left"] : ["chevrons-left", "chevrons-right"];
+    setIcon(pinIcon, isFull ? toward[0] : toward[1]);
     pinToggle.title = isFull
       ? "Collapse to icons"
       : mode === "icons"
@@ -514,6 +521,26 @@ export async function initNav({ onNavigate, viewIds }) {
   }
 
   brandRow.addEventListener("click", () => setActive("search"));
+
+  // Left or right. Mirrored by one class on <html>; refrain.css section 36
+  // flips everything that assumed the left edge.
+  function applySide() {
+    document.documentElement.classList.toggle("rail-right", navSide === "right");
+    const other = navSide === "right" ? "left" : "right";
+    sideToggle.title = `Move the menu to the ${other}`;
+    if (sideLabel) sideLabel.textContent = `Move ${other}`;
+    setIcon(sideIcon, navSide === "right" ? "panel-left" : "panel-right");
+    applyPinnedState();
+  }
+  sideToggle?.addEventListener("click", async () => {
+    navSide = navSide === "right" ? "left" : "right";
+    applySide();
+    await fetch("/api/preferences", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ navSide }),
+    });
+  });
 
   pinToggle.addEventListener("click", async () => {
     const shown = effectiveNavMode();
@@ -737,7 +764,7 @@ export async function initNav({ onNavigate, viewIds }) {
   });
 
   renderItems();
-  applyPinnedState();
+  applySide();
   applyThemeUI();
   // Stamps the fragment on first paint too, so the URL is shareable without
   // having to click a nav key first.

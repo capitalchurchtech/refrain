@@ -821,6 +821,7 @@ html.blackroom .nav-label {
  */
 #nav-rail .nav-item,
 #nav-rail #theme-toggle,
+#nav-rail #nav-side-toggle,
 #nav-rail #nav-pin-toggle,
 #nav-rail #nav-help-toggle {
   flex-wrap: nowrap;
@@ -832,6 +833,7 @@ html.blackroom .nav-label {
 /* Reclaim the wrapping room from the gap rather than the type. */
 #nav-rail .nav-item,
 #nav-rail #theme-toggle,
+#nav-rail #nav-side-toggle,
 #nav-rail #nav-pin-toggle,
 #nav-rail #nav-help-toggle {
   gap: 0.5rem;
@@ -852,7 +854,9 @@ html.blackroom #nav-rail .nav-item,
 [data-theme="dark"] #nav-rail #nav-help-toggle,
 html.blackroom #nav-rail #nav-help-toggle,
 [data-theme="dark"] #nav-rail #theme-toggle,
+[data-theme="dark"] #nav-rail #nav-side-toggle,
 html.blackroom #nav-rail #theme-toggle,
+html.blackroom #nav-rail #nav-side-toggle,
 [data-theme="dark"] #nav-rail #nav-pin-toggle,
 html.blackroom #nav-rail #nav-pin-toggle {
   background-color: transparent;
@@ -866,7 +870,9 @@ html.blackroom #nav-rail .nav-item:hover,
 [data-theme="dark"] #nav-rail #nav-help-toggle:hover,
 html.blackroom #nav-rail #nav-help-toggle:hover,
 [data-theme="dark"] #nav-rail #theme-toggle:hover,
+[data-theme="dark"] #nav-rail #nav-side-toggle:hover,
 html.blackroom #nav-rail #theme-toggle:hover,
+html.blackroom #nav-rail #nav-side-toggle:hover,
 [data-theme="dark"] #nav-rail #nav-pin-toggle:hover,
 html.blackroom #nav-rail #nav-pin-toggle:hover {
   background-image: linear-gradient(180deg, #332B3D 0%, #251F2F 100%);
@@ -893,6 +899,7 @@ html.blackroom #nav-rail #nav-pin-toggle:hover {
 #nav-rail .nav-item:active,
 #nav-rail #nav-help-toggle:active,
 #nav-rail #theme-toggle:active,
+#nav-rail #nav-side-toggle:active,
 #nav-rail #nav-pin-toggle:active,
 #nav-rail #brand-row:active {
   transform: none;
@@ -902,7 +909,9 @@ html.blackroom #nav-rail .nav-item:active,
 [data-theme="dark"] #nav-rail #nav-help-toggle:active,
 html.blackroom #nav-rail #nav-help-toggle:active,
 [data-theme="dark"] #nav-rail #theme-toggle:active,
+[data-theme="dark"] #nav-rail #nav-side-toggle:active,
 html.blackroom #nav-rail #theme-toggle:active,
+html.blackroom #nav-rail #nav-side-toggle:active,
 [data-theme="dark"] #nav-rail #nav-pin-toggle:active,
 html.blackroom #nav-rail #nav-pin-toggle:active {
   box-shadow:
@@ -1043,7 +1052,9 @@ html.blackroom #nav-rail .nav-item svg,
 [data-theme="dark"] #nav-rail #nav-help-toggle svg,
 html.blackroom #nav-rail #nav-help-toggle svg,
 [data-theme="dark"] #nav-rail #theme-toggle svg,
+[data-theme="dark"] #nav-rail #nav-side-toggle svg,
 html.blackroom #nav-rail #theme-toggle svg,
+html.blackroom #nav-rail #nav-side-toggle svg,
 [data-theme="dark"] #nav-rail #nav-pin-toggle svg,
 html.blackroom #nav-rail #nav-pin-toggle svg {
   color: var(--rf-muted);
@@ -2006,6 +2017,7 @@ html.blackroom .go-live-btn {
 #nav-rail .nav-item,
 #nav-rail #nav-help-toggle,
 #nav-rail #theme-toggle,
+#nav-rail #nav-side-toggle,
 #nav-rail #nav-pin-toggle {
   min-height: 36px;
   height: auto;
@@ -2048,6 +2060,7 @@ html.blackroom .go-live-btn {
   #nav-rail .nav-item,
   #nav-rail #nav-help-toggle,
   #nav-rail #theme-toggle,
+  #nav-rail #nav-side-toggle,
   #nav-rail #nav-pin-toggle,
   .rf-tile,
   .btn-chip,
@@ -2649,6 +2662,7 @@ html.blackroom .rf-preset + .rf-preset {
 #nav-rail.collapsed #brand-row,
 #nav-rail.collapsed #nav-help-toggle,
 #nav-rail.collapsed #theme-toggle,
+#nav-rail.collapsed #nav-side-toggle,
 #nav-rail.collapsed #nav-pin-toggle {
   justify-content: center;
   padding-left: 0;
@@ -3063,6 +3077,7 @@ html.blackroom .rf-notice-close {
 #nav-rail #brand-row,
 #nav-rail #nav-help-toggle,
 #nav-rail #theme-toggle,
+#nav-rail #nav-side-toggle,
 #nav-rail #nav-pin-toggle {
   border-radius: 0;
 }
@@ -3554,6 +3569,7 @@ html.blackroom .rf-record-row:hover {
 #nav-rail.sliver .rf-status-break,
 #nav-rail.sliver #nav-help-toggle,
 #nav-rail.sliver #theme-toggle,
+#nav-rail.sliver #nav-side-toggle,
 #nav-rail.sliver .nav-label,
 #nav-rail.sliver .rf-group-label {
   display: none;
@@ -3597,6 +3613,8 @@ html.blackroom .rf-record-row:hover {
 #nav-rail.sliver.peek #nav-help-toggle,
 #nav-rail.sliver:focus-within #nav-help-toggle,
 #nav-rail.sliver.peek #theme-toggle,
+#nav-rail.sliver.peek #nav-side-toggle,
+#nav-rail.sliver:focus-within #nav-side-toggle,
 #nav-rail.sliver:focus-within #theme-toggle {
   display: flex;
 }
@@ -3673,4 +3691,56 @@ html.blackroom .rf-record-row:hover {
   .rf-field-clearable > .input {
     padding-right: 2.75rem;
   }
+}
+
+/* ============================================================
+   36. THE MIRRORED RAIL
+
+   The rail can sit on the right instead of the left (owner request): a
+   booth laid out with ProPresenter on the left wants Refrain's menu on the
+   side nearest the operator. `html.rail-right` is set by nav.js from the
+   saved `navSide` preference, before first paint, so the rail doesn't jump.
+
+   Everything that assumed the left edge is flipped here, in one place, each
+   rule outranking the one it mirrors: the rail's position (Tailwind's
+   `.left-0` is 0,1,0), the content margin (the static homes above are
+   1,1,0), the lit junction, the latched key's plum edge and Search's latch,
+   and the error notices, which otherwise sit on top of a right-hand rail.
+   Assert computed values when changing any of it, not the stylesheet.
+   ============================================================ */
+html.rail-right #nav-rail {
+  left: auto;
+  right: 0;
+}
+html.rail-right #main-content.ml-14 { margin-left: 0; margin-right: 3.5rem; }
+html.rail-right #main-content.ml-36 { margin-left: 0; margin-right: 9rem; }
+html.rail-right #main-content.ml-5 { margin-left: 0; margin-right: 1.25rem; }
+
+html.rail-right[data-theme="dark"] #nav-rail,
+html.rail-right.blackroom #nav-rail {
+  box-shadow:
+    inset 1px 0 0 rgba(255, 240, 235, 0.10),
+    -1px 0 0 rgba(0, 0, 0, 0.6);
+}
+html.rail-right[data-theme="dark"] #nav-rail .nav-item.btn-active,
+html.rail-right.blackroom #nav-rail .nav-item.btn-active {
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.8),
+    inset 0 -1px 0 rgba(255, 240, 235, 0.07),
+    inset -3px 0 0 var(--rf-plum),
+    0 0 6px rgba(169, 111, 232, 0.3);
+}
+html.rail-right[data-theme="dark"] #nav-rail .nav-item.btn-active[data-id="search"],
+html.rail-right.blackroom #nav-rail .nav-item.btn-active[data-id="search"] {
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.8),
+    inset 0 -1px 0 rgba(255, 240, 235, 0.07),
+    inset -3px 0 0 var(--rf-plum),
+    0 0 0 1px var(--rf-plum-lit),
+    0 0 9px rgba(169, 111, 232, 0.6),
+    0 0 18px rgba(132, 70, 201, 0.3);
+}
+html.rail-right #rf-notices {
+  right: auto;
+  left: 14px;
 }

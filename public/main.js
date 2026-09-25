@@ -41,6 +41,8 @@ async function boot() {
   // alike, so there's no flash of the wrong theme.
   const prefs = await fetch("/api/preferences").then((r) => r.json()).catch(() => ({ theme: "dark" }));
   applyTheme(prefs.theme ?? "dark");
+  // Same reason as the theme: set the rail's side before anything renders.
+  document.documentElement.classList.toggle("rail-right", prefs.navSide === "right");
 
   const { needsSetup } = await fetch("/api/setup/status").then((r) => r.json());
 
