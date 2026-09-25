@@ -1,4 +1,5 @@
 import { mountLiveFlags, refreshLiveSummaryOnNewFlags } from "./slide-flags.js";
+import { lastKnownConnected, LINK_EVENT } from "./status-cluster.js";
 
 /**
  * Live page — big, obvious controls for the operator during a service.
@@ -122,6 +123,14 @@ export function initLive() {
 
         <div>
           <h2 class="rf-subhead">Clear</h2>
+          <!-- Across the top of the bank whenever the LINK lamp is dark. The
+               keys stay live on purpose: a clear is the one thing an operator
+               may still need, and it may land the moment the link comes back.
+               The banner is there so nobody presses one believing it will. -->
+          <div id="live-clear-offline" class="hidden rf-offline-banner" role="status">
+            <span class="rf-offline-word">Offline</span>
+            <span>ProPresenter isn't answering. A clear may not reach the screens.</span>
+          </div>
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <button class="btn btn-outline h-20 text-base" data-clear="all" data-arm="true"><span class="flex flex-col items-center gap-1"><i data-lucide="x-octagon" class="w-6 h-6"></i> Clear All</span></button>
             <button class="btn btn-outline h-20 text-base" data-clear="slide"><span class="flex flex-col items-center gap-1"><i data-lucide="type" class="w-6 h-6"></i> Slide</span></button>
@@ -163,6 +172,7 @@ export function initLive() {
 
     wireClearButtons();
     wirePerformanceMode();
+    paintClearOffline(lastKnownConnected());
 
     try {
       const { looks, macros, messages } = await fetch("/api/live/controls").then((r) => r.json());
@@ -170,7 +180,7 @@ export function initLive() {
       renderButtons("live-looks", "live-looks-wrap", looks, "look");
       renderButtons("live-macros", "live-macros-wrap", macros, "macro");
       if (!looks.length && !macros.length) {
-        setStatus("No Looks or Macros found. Clear still works.");
+        setStatus("No Looks or Macros found.");
       }
     } catch {
       setStatus("Couldn't reach ProPresenter to load its controls. The Clear buttons still work.");
@@ -321,6 +331,12 @@ export function initLive() {
       btn.disabled = false;
     }
   }
+
+  // Null means no check has come back yet: say nothing rather than guess.
+  function paintClearOffline(connected) {
+    document.getElementById("live-clear-offline")?.classList.toggle("hidden", connected !== false);
+  }
+  window.addEventListener(LINK_EVENT, (e) => paintClearOffline(e.detail.connected));
 
   function setStatus(msg) {
     const el = document.getElementById("live-status");

@@ -2544,6 +2544,32 @@ html.blackroom .rf-preset + .rf-preset {
   overflow-wrap: anywhere;
 }
 
+/* OFFLINE over Live's Clear bank, shown whenever the LINK lamp is dark.
+   Cold, not amber: the brief keeps saturated warm for what is live and the
+   fault colour for Health, and an outage is a state to report, not an alarm.
+   The word is set like the readout's NO LINK so the two read as one system.
+   `:not(.hidden)` so Tailwind's .hidden still wins when it is toggled on. */
+.rf-offline-banner:not(.hidden) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--rf-hairline);
+  border-radius: 2px;
+  background-color: var(--rf-surface);
+  color: var(--rf-text);
+  font-size: 13px;
+}
+.rf-offline-word {
+  font-family: var(--rf-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
 /* ============================================================
    30. THE COLLAPSED RAIL CENTRES ITS GLYPHS
 

@@ -23,10 +23,12 @@ const NAV_PRIORITY = {
   search: 0,
   live: 1,
   scripture: 2,
-  "lyrics-assist": 3,
-  spellcheck: 4,
   // First in Prep: working through last service's flags is prep for the next.
-  "slide-flags": 4.5,
+  "slide-flags": 3,
+  // Desk work before the service, not during it, so Prep rather than Service
+  // (persona panel, handoff section 36): Service holds only what runs live.
+  spellcheck: 4,
+  "lyrics-assist": 4.5,
   arrangement: 5,
   "image-crop": 6,
   "qr-code": 7,
@@ -40,8 +42,8 @@ const NAV_GROUP = {
   search: "service",
   live: "service",
   scripture: "service",
-  "lyrics-assist": "service",
-  spellcheck: "service",
+  "lyrics-assist": "prep",
+  spellcheck: "prep",
   "slide-flags": "prep",
   arrangement: "prep",
   "image-crop": "prep",

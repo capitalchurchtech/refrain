@@ -62,6 +62,17 @@ const LAMPS = [
   },
 ];
 
+/**
+ * The link as the lamps last saw it, for screens that need to say more than a
+ * lamp can (Live's OFFLINE banner over Clear). One poll feeds both, so the
+ * banner and the LINK lamp can never disagree. Null until the first check.
+ */
+let lastConnected = null;
+export function lastKnownConnected() {
+  return lastConnected;
+}
+export const LINK_EVENT = "refrain:link";
+
 export function initStatusCluster() {
   const host = document.getElementById("status-cluster");
   if (!host) return;
@@ -78,6 +89,11 @@ export function initStatusCluster() {
   let lastKey = null;
 
   function paint(state) {
+    const connected = Boolean(state?.connected);
+    if (connected !== lastConnected) {
+      lastConnected = connected;
+      window.dispatchEvent(new CustomEvent(LINK_EVENT, { detail: { connected } }));
+    }
     // Only touch the DOM when something actually changed, so a poll every four
     // seconds is not rewriting the rail continuously.
     const key = LAMPS.map((l) => (l.read(state) ? "1" : "0")).join("");
