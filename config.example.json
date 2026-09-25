@@ -67,12 +67,14 @@
   "slideFlagsModule": {
     "folder": null
   },
-  "_serviceModule": "The Service screen: a timing rundown of what went live in each service, and lock-in for live events. Off until enabled. Everything else is optional. schedule lists recurring services in this machine's local time, e.g. [{\"day\": \"sun\", \"time\": \"09:00\", \"name\": \"Early\", \"playlistMatch\": \"early\"}]; playlistMatch picks the playlist whose name contains it. Refrain watches closely from leadMinutes before a start to trailMinutes after. folder works like slideFlagsModule.folder: one file per event, safe in a synced folder.",
+  "_serviceModule": "The Service screen: a timing rundown of what went live in each service, and lock-in for live events. Off until enabled. Everything else is optional. schedule lists recurring services in this machine's local time, e.g. [{\"day\": \"sun\", \"time\": \"09:00\", \"name\": \"Early\", \"playlistMatch\": \"early\"}]; playlistMatch picks the playlist whose name contains it. Refrain watches closely from leadMinutes before a start to trailMinutes after. folder works like slideFlagsModule.folder: one file per event, safe in a synced folder. playlistMatch plus today's date picks this week's playlist (6/7/26, 06/07/26, Jun-07-26, Jun 7 and 2026-06-07 are all recognised). summaryFolder, if set, gets a copy of each day summary End writes (a new file every time, never an overwrite). phases replaces the checklist: [{\"name\": \"Arrive\", \"scope\": \"day\", \"steps\": [\"Screens on\", {\"label\": \"Run the checks\", \"checks\": true}]}], where scope is day, service (once per service) or between (after every service but the last), and a step with end: true ticks when the day is ended. Leave it null for the default.",
   "serviceModule": {
     "enabled": false,
     "schedule": [],
     "leadMinutes": 15,
     "trailMinutes": 150,
-    "folder": null
+    "folder": null,
+    "summaryFolder": null,
+    "phases": null
   }
 }

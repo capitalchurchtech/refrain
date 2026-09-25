@@ -187,6 +187,10 @@ export class ProPresenterClient {
         // Tells apart one presentation used several times in a playlist (a
         // pre-roll at the start, the intermission and the end).
         arrangementName: item.presentation_info.arrangement_name ?? null,
+        // The arrangement the entry points at, by id. A playlist can point at
+        // one the presentation no longer has, and ProPresenter falls back
+        // silently (issue #5), so this is what the pre-service check compares.
+        arrangementUuid: item.presentation_info.arrangement_uuid ?? null,
       }));
     return { items };
   }

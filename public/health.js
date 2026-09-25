@@ -8,6 +8,31 @@ const ARRANGEMENT_STATUS_LABEL = {
   active: "Active",
 };
 
+/**
+ * A recent service day that was never ended, so no summary was written. Shown
+ * once per day per browser, then it stops (handoff section 37's proposed
+ * default): a reminder, not a nag.
+ */
+async function showUnfinishedDay() {
+  const host = document.getElementById("health-unfinished-day");
+  if (!host) return;
+  try {
+    const { day } = await fetch("/api/service/unfinished").then((r) => r.json());
+    if (!day) return;
+    const key = `refrain.unfinishedSeen.${day}`;
+    try {
+      if (localStorage.getItem(key)) return;
+      localStorage.setItem(key, "1");
+    } catch {
+      // No storage: it shows each time instead of once. Harmless.
+    }
+    const label = new Date(`${day}T12:00:00`).toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" });
+    host.innerHTML = `<div class="rf-readout text-sm">${escapeHtml(label)} had services but was never ended, so no summary was written. <a href="#service" class="link">Open Service</a></div>`;
+  } catch {
+    // The Service module is off, or unreachable: nothing to say.
+  }
+}
+
 export function initHealth() {
   const container = document.getElementById("view-health");
 
@@ -53,6 +78,7 @@ export function initHealth() {
     container.innerHTML = `
       <div class="flex flex-col gap-4 max-w-3xl">
         <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="heart-pulse" class="w-5 h-5"></i> Health</h1>
+        <div id="health-unfinished-day"></div>
         ${renderHealth(health, configOptions, versionInfo, renderLibraryCard(libraryFolders, arrangementFolders), duplicateNames.groups ?? [])}
       </div>`;
 
@@ -61,6 +87,7 @@ export function initHealth() {
     window.scrollTo(0, scrollY);
 
     if (window.lucide) window.lucide.createIcons();
+    showUnfinishedDay();
 
     const autostartBtn = document.getElementById("autostart-toggle");
     if (autostartBtn) {

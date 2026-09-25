@@ -116,7 +116,13 @@ import {
   saveEvent,
   readDay,
   retryPendingEvents,
+  matchPlaylist,
+  stepKey,
 } from "./service-days.js";
+import { evaluateChecks, checksHeadline } from "./service-checks.js";
+import { playbookPhases, checklistState, skippedSteps } from "./service-playbook.js";
+import { renderDaySummary, flagsByService } from "./service-summary.js";
+import { saveTextRecord, retryPending } from "./append-store.js";
 import { buildInfo } from "./build-info.js";
 import {
   syncLibrary,
@@ -879,6 +885,7 @@ function holdHeartbeatPace(now = Date.now()) {
  * never while performance mode is holding still.
  */
 const resolvedSchedulePlaylists = new Set();
+const scheduleMatchNotes = new Map();
 async function resolveScheduledPlaylists(now = Date.now()) {
   if (!serviceModuleOn() || performance.armed || !liveState.connected) return;
   const { windows } = serviceOptions();
@@ -893,12 +900,16 @@ async function resolveScheduledPlaylists(now = Date.now()) {
     return; // try again next minute
   }
   for (const s of pending) {
-    resolvedSchedulePlaylists.add(s.serviceId);
-    const match = playlists.find((p) => p.name.toLowerCase().includes(s.playlistMatch.toLowerCase()));
+    // Retried each minute while the window is open: this week's playlist is
+    // sometimes built on the morning itself. Logged once per reason.
+    const { playlist: match, reason } = matchPlaylist(playlists, s.playlistMatch, serviceDay.day);
     if (!match) {
-      console.log(`Service "${s.name}": no playlist name contains "${s.playlistMatch}". Recording without one.`);
+      const said = scheduleMatchNotes.get(s.serviceId);
+      if (said !== reason) console.log(`Service "${s.name}": ${reason}. Recording without a playlist for now.`);
+      scheduleMatchNotes.set(s.serviceId, reason);
       continue;
     }
+    resolvedSchedulePlaylists.add(s.serviceId);
     try {
       const { items } = await client.getPlaylistItems(match.id);
       recordServiceEvents([
@@ -1173,6 +1184,18 @@ function startWatching() {
   console.log(`Watching ${dirs.length} library folder(s) for changes — edited presentations reindex on their own.`);
 }
 
+/**
+ * A lock-in holds performance mode on, so nothing reindexes in the
+ * background. After a day of that, the reason search may be behind is the
+ * lock-in, and the index-age notice on Search says so rather than just "old".
+ */
+function lockinStaleness(now = Date.now()) {
+  if (!serviceModuleOn() || !serviceDay.day) return null;
+  const { lockin } = serviceState(now);
+  if (!lockin || now - lockin.startedAt < 24 * 3_600_000) return null;
+  return { message: `Not reindexing: locked in for "${lockin.name}" since ${new Date(lockin.startedAt).toLocaleDateString([], { weekday: "long" })}. Release it on the Service screen once the event is over.` };
+}
+
 function indexStatusPayload() {
   const index = getIndex();
   return {
@@ -1193,7 +1216,7 @@ function indexStatusPayload() {
       lastError: performance.lastError,
     },
     fullRebuildSuggestion: fullRebuildSuggestion(daysSinceFullBuild(index)),
-    staleness: indexStaleness(index?.builtAt ?? null),
+    staleness: lockinStaleness() ?? indexStaleness(index?.builtAt ?? null),
     // Accuracy is reported separately from age because they are different
     // problems: a week-old index misses new songs, a stale-schema one can fire
     // the wrong slide. The second is worse and must not be readable as the first.
@@ -1460,10 +1483,91 @@ function servicePayload(now = Date.now()) {
     outside: timelineRows(state, null, now).map(rowOut),
     lockin: state.lockin ? { ...state.lockin, startedAt: jsonTime(state.lockin.startedAt) } : null,
     lockinReminder: lockinReminder(state.lockin, now),
+    checks: Object.fromEntries(
+      [...state.checks].map(([id, run]) => [id ?? "day", { at: jsonTime(run.at), headline: checksHeadline(run.results), results: run.results }])
+    ),
+    // A scheduled or timed service starting within 45 minutes whose checks
+    // haven't been run: one line at the top of the screen, never a modal.
+    checksDue: state.services
+      .filter((s) => s.startsAt && s.startsAt > now && s.startsAt - now <= 45 * 60_000 && !state.checks.has(s.serviceId) && !s.endedAt)
+      .map((s) => ({ serviceId: s.serviceId, name: s.name, startsAt: jsonTime(s.startsAt), hasPlaylist: Boolean(s.playlist) })),
+    checklist: checklistState(currentPhases(), {
+      services: state.services.filter((s) => !(s.source === "lockin" && s.endedAt)),
+      isDone: (k) => state.steps.get(k),
+      checksRun: (serviceId) => state.checks.has(serviceId),
+      dayEnded: state.dayEnds.length > 0 && !state.reopened,
+      stepKey,
+    }),
+    phaseProblems: playbookPhases(config.serviceModule?.phases).problems,
+    dayEnded: state.dayEnds.length ? { at: jsonTime(state.dayEnds.at(-1).at), summaryFile: state.dayEnds.at(-1).summaryFile } : null,
+    reopened: state.reopened,
     holdingPace: holdHeartbeatPace(now),
     beatMs: heartbeatInterval({ lastClientAt, hold: holdHeartbeatPace(now), now }),
     performance: { armed: performance.armed, source: performance.source },
   };
+}
+
+function currentPhases() {
+  return playbookPhases(config.serviceModule?.phases).phases;
+}
+
+function summaryPendingDir() {
+  return "./data/service-summaries-pending";
+}
+
+/**
+ * Pre-service checks for one service's playlist (phase 2). One scan of the
+ * playlist feeds typos, passed dates, missing media and arrangement
+ * references; the index and duplicate names are read from memory. Refuses to
+ * read ProPresenter while performance mode is holding still, and says so.
+ */
+async function runServiceChecks(service) {
+  const connected = liveState.connected;
+  const performanceArmed = performance.armed;
+  let scan = null;
+  let scanError = null;
+  if (connected && !performanceArmed) {
+    try {
+      scan = await scanPlaylist(service.playlist.id);
+    } catch (err) {
+      scanError = err.message;
+    }
+  }
+  const index = getIndex();
+  return evaluateChecks({
+    connected,
+    performanceArmed,
+    scan,
+    scanError,
+    indexedIds: new Set(Object.keys(index?.presentations ?? {})),
+    staleness: indexStaleness(index?.builtAt ?? null),
+    groups: findDuplicateNames(),
+  });
+}
+
+/**
+ * One hour before a timed service, refresh the index for anything edited
+ * since, then go quiet. Refrain-initiated, so it stands down on its own if
+ * something goes live. Once per service per run of the app.
+ */
+const preServiceReindexed = new Set();
+let preServiceReindexRunning = false;
+async function preServiceReindex(now = Date.now()) {
+  if (!serviceModuleOn() || preServiceReindexRunning || performance.armed || !liveState.connected) return;
+  const due = serviceState(now).services.find(
+    (s) => s.startsAt && s.startsAt - now > 0 && s.startsAt - now <= 60 * 60_000 && !s.endedAt && !preServiceReindexed.has(s.serviceId)
+  );
+  if (!due) return;
+  preServiceReindexed.add(due.serviceId);
+  preServiceReindexRunning = true;
+  console.log(`"${due.name}" starts within the hour: refreshing the search index for anything edited since.`);
+  try {
+    await startRebuild({ incremental: true });
+  } catch (err) {
+    console.error("Pre-service reindex failed:", err.message);
+  } finally {
+    preServiceReindexRunning = false;
+  }
 }
 
 function requireServiceModule(res) {
@@ -1559,6 +1663,171 @@ app.post("/api/service/lockin/release", async (_req, res) => {
   }
   console.log(`Released lock-in "${lockin.name}".`);
   res.json({ ok: true, ...servicePayload() });
+});
+
+app.post("/api/service/services/:id/checks", async (req, res) => {
+  if (!requireServiceModule(res)) return;
+  await ensureServiceDay();
+  const service = serviceState().services.find((s) => s.serviceId === req.params.id);
+  if (!service) return res.status(404).json({ error: "No service by that id today." });
+  if (!service.playlist) return res.status(409).json({ error: "Checks read the service's playlist. Add this service again with a playlist, or set playlistMatch in the schedule." });
+  const results = await runServiceChecks(service);
+  recordServiceEvents([buildEvent("checks-run", { serviceId: service.serviceId, results })]);
+  res.json({ ok: true, results, headline: checksHeadline(results), ...servicePayload() });
+});
+
+/** Ticks or unticks a checklist step. Only steps the playbook actually has. */
+app.post("/api/service/steps", async (req, res) => {
+  if (!requireServiceModule(res)) return;
+  await ensureServiceDay();
+  const { phaseId, stepId, serviceId = null, done } = req.body ?? {};
+  const phase = currentPhases().find((p) => p.id === phaseId);
+  const step = phase?.steps.find((st) => st.id === stepId);
+  if (!phase || !step || step.checks || step.end || typeof done !== "boolean") {
+    return res.status(400).json({ error: "That isn't a step you can tick." });
+  }
+  if (phase.scope !== "day" && !serviceState().services.some((s) => s.serviceId === serviceId)) {
+    return res.status(400).json({ error: "That step belongs to a service; say which one." });
+  }
+  recordServiceEvents([buildEvent("step-set", { phaseId, stepId, serviceId: phase.scope === "day" ? null : serviceId, done })]);
+  res.json({ ok: true, ...servicePayload() });
+});
+
+/** Why End can or can't compare arrangements on this machine, in words. */
+async function driftReadiness() {
+  const status = getArrangementModuleStatus(config);
+  if (status !== "active") return `the Arrangement module is ${status} on this machine`;
+  if (config.role !== "logger") return "this machine isn't the logger (see Health)";
+  const Provider = await getArrangementProviderClass();
+  if (!Provider.supportsPlanBrowsing) return `${Provider.displayName} has no weekend plans to compare against`;
+  return null;
+}
+
+/**
+ * End the day (phase 4). Closes open services and any lock-in, compares the
+ * arrangements of the songs actually shown (results listed, never pushed),
+ * and writes the day summary: to the day's folder always, and to
+ * serviceModule.summaryFolder when one is set (phase 5, folder delivery).
+ * A new summary file every time, never an overwrite.
+ */
+app.post("/api/service/end-day", async (_req, res) => {
+  if (!requireServiceModule(res)) return;
+  await ensureServiceDay();
+  const now = Date.now();
+  let state = serviceState(now);
+
+  const closing = [];
+  for (const s of state.services) {
+    if (s.endedAt == null && s.source !== "lockin") closing.push(buildEvent("service-ended", { serviceId: s.serviceId }, { now }));
+  }
+  if (state.lockin) {
+    closing.push(buildEvent("lockin-released", { serviceId: state.lockin.serviceId }, { now }));
+    if (state.lockin.armedPerformance && performance.armed && performance.source === "manual") performance = disarmManually(performance, now);
+  }
+  if (closing.length) recordServiceEvents(closing);
+  state = serviceState(now);
+
+  // Arrangement drift, for songs that actually went live.
+  let drift = { ran: false, reason: await driftReadiness() };
+  if (!drift.reason) {
+    const shown = new Set(state.segments.map((g) => g.presentationId));
+    try {
+      const out = await compareWeekendSongs({ onlyPresentationIds: shown });
+      drift = out.notFound ? { ran: false, reason: "no past plan was found to compare against" } : { ran: true, ...out };
+    } catch (err) {
+      drift = { ran: false, reason: `the comparison failed (${err.message})` };
+    }
+  }
+
+  let flags = [];
+  try {
+    flags = (await listFlags({ folder: slideFlagsFolder() })).filter((f) => dayKey(Date.parse(f.capturedAt)) === serviceDay.day);
+  } catch {
+    // No flags folder yet is the same as no flags.
+  }
+
+  const payload = servicePayload(now);
+  const services = payload.services.map((s) => ({
+    ...s,
+    startsAt: s.startsAt ? Date.parse(s.startsAt) : null,
+    summary: { ...s.summary, startedAt: s.summary.startedAt ? Date.parse(s.summary.startedAt) : null },
+    rows: timelineRows(state, s.serviceId, now),
+  }));
+  const markdown = renderDaySummary({
+    day: serviceDay.day,
+    services: services.filter((s) => s.summary.items || s.source !== "lockin"),
+    outside: timelineRows(state, null, now),
+    flags: flagsByService(flags, state),
+    checks: state.checks,
+    skipped: skippedSteps(payload.checklist),
+    drift,
+    reopened: state.dayEnds.length > 0,
+    endedAt: now,
+  });
+
+  const ended = buildEvent("day-ended", {}, { now: now + 1 });
+  const summaryFile = `summary-${ended.id}.md`;
+  const { folder } = serviceOptions();
+  let delivered = null;
+  try {
+    await saveTextRecord(serviceDay.day, summaryFile, markdown, { folder, pendingDir: "./data/service-days-pending" });
+  } catch (err) {
+    return res.status(500).json({ error: `Couldn't save the day summary on this machine: ${err.message}. The day was not ended.` });
+  }
+  const summaryFolder = config.serviceModule?.summaryFolder;
+  if (typeof summaryFolder === "string" && summaryFolder.trim()) {
+    const stamp = new Date(now).toTimeString().slice(0, 5).replace(":", "");
+    const name = `${serviceDay.day} Refrain summary ${stamp}.md`;
+    try {
+      const r = await saveTextRecord("", name, markdown, { folder: summaryFolder.trim(), pendingDir: summaryPendingDir() });
+      delivered = r.shared ? { ok: true, name } : { ok: false, name, reason: r.reason };
+    } catch (err) {
+      delivered = { ok: false, name, reason: err.message };
+    }
+  }
+  recordServiceEvents([{ ...ended, summaryFile, delivered }]);
+  console.log(`Ended ${serviceDay.day}. Summary written${delivered ? (delivered.ok ? ` and copied to ${summaryFolder}` : `; copying to ${summaryFolder} is waiting (${delivered.reason})`) : ""}.`);
+  res.json({ ok: true, summary: markdown, delivered, ...servicePayload() });
+});
+
+/** The latest summary for a day, as Markdown. */
+app.get("/api/service/summary", async (req, res) => {
+  if (!requireServiceModule(res)) return;
+  await ensureServiceDay();
+  const day = typeof req.query.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.day) ? req.query.day : serviceDay.day;
+  const { folder } = serviceOptions();
+  const events = day === serviceDay.day ? serviceDay.events : await readDay(day, { folder });
+  const last = events.filter((e) => e.type === "day-ended" && e.summaryFile).sort((a, b) => a.at.localeCompare(b.at)).at(-1);
+  if (!last) return res.status(404).json({ error: "That day hasn't been ended yet." });
+  for (const dir of [path.join(folder, day), path.join("./data/service-days-pending", day)]) {
+    try {
+      const text = await readFile(path.join(dir, last.summaryFile), "utf-8");
+      return res.type("text/markdown").send(text);
+    } catch {
+      // try the other copy
+    }
+  }
+  res.status(404).json({ error: "The summary file is missing." });
+});
+
+/**
+ * A recent day that had services but was never ended, for one line on Health
+ * (proposed default: shown once, then it stops; the screen remembers it was
+ * seen). Looks back a week, skipping today.
+ */
+app.get("/api/service/unfinished", async (_req, res) => {
+  if (!serviceModuleOn()) return res.json({ day: null });
+  const { folder, schedule } = serviceOptions();
+  let day = dayKey(Date.now());
+  for (let i = 0; i < 7; i++) {
+    day = previousDay(day);
+    const events = await readDay(day, { folder });
+    if (!events.length) continue;
+    const st = foldDay(events, { schedule, day });
+    const hadService = st.segments.some((g) => g.serviceId) || st.services.some((s) => s.source !== "schedule");
+    if (hadService && !st.dayEnds.length) return res.json({ day, services: st.services.map((s) => s.name) });
+  }
+  res.json({ day: null });
 });
 
 function slideFlagsFolder() {
@@ -2383,77 +2652,90 @@ app.get("/api/spellcheck/playlists", async (_req, res) => {
   }
 });
 
+/**
+ * Reads a playlist's presentations and finds likely typos, dates that have
+ * passed, and media that isn't on this Mac. Shared by Spell Check's scan and
+ * the Service screen's pre-service checks, so both say the same thing.
+ * `docs` carries each presentation document read, for checks that need more.
+ */
+async function scanPlaylist(playlistId) {
+  const [{ items }, speller] = await Promise.all([client.getPlaylistItems(playlistId), loadSpeller()]);
+  const knownWords = libraryKnownWords();
+  const allowlist = new Set((config.spellcheckModule?.allowlist ?? []).map((w) => w.toLowerCase()));
+
+  // Missing media (issue #9) rides on the same scan: same playlist, same
+  // slides, same jump to the slide. Read from the .pro file on disk because
+  // the API reports no media; see server/pro-media.js. Only slides the
+  // arrangement actually plays are checked, since only they are looked up.
+  const mediaEnv = {
+    exists: existsSync,
+    home: homedir(),
+    mediaRoots: [path.join(homedir(), "Documents", "ProPresenter"), ...workspaceRootsFromLibraryDirs(getIndexedLibraryDirs())],
+  };
+  let mediaUnreadable = 0;
+  const docs = new Map();
+
+  const presentations = [];
+  const scanned = items.slice(0, SPELLCHECK_MAX_PRESENTATIONS);
+  for (const item of scanned) {
+    let slides;
+    let missingMedia = new Map();
+    try {
+      const doc = await client.getPresentation(item.id);
+      docs.set(item.id, doc);
+      slides = extractSlides(doc, preferredArrangements());
+      const proPath = doc?.presentation?.presentation_path;
+      if (proPath) {
+        try {
+          missingMedia = missingMediaBySlide(await readFile(proPath), mediaEnv);
+        } catch {
+          // Counted, not hidden: "no missing media" and "could not look"
+          // must never read the same.
+          mediaUnreadable++;
+        }
+      }
+    } catch {
+      continue; // a single unreadable presentation shouldn't sink the whole scan
+    }
+    const flaggedSlides = [];
+    for (const slide of slides) {
+      const words = findTypos(slide.text, { knownWords, allowlist, speller });
+      // Dates that are already over -- the announcement for last month's
+      // event still in this weekend's loop. See server/stale-dates.js.
+      const pastDates = findPastDates(slide.text);
+      const media = slide.groupId != null ? (missingMedia.get(`${slide.groupId}:${slide.groupOffset}`) ?? []) : [];
+      // Carry the slide's anchor so Go Live from here survives an
+      // arrangement switch between this scan and the click.
+      if (words.length || pastDates.length || media.length) {
+        flaggedSlides.push({
+          slideIndex: slide.index,
+          groupId: slide.groupId ?? null,
+          groupOffset: slide.groupOffset ?? null,
+          text: slide.text,
+          words,
+          pastDates,
+          missingMedia: media,
+        });
+      }
+    }
+    if (flaggedSlides.length) {
+      presentations.push({ presentationId: item.id, presentationName: item.name, slides: flaggedSlides });
+    }
+  }
+  return { items, presentations, docs, scannedCount: scanned.length, truncated: items.length > scanned.length, mediaUnreadable };
+}
+
 app.post("/api/spellcheck/scan", async (req, res) => {
   const { playlistId } = req.body ?? {};
   if (!playlistId) return res.status(400).json({ error: "playlistId is required" });
   try {
-    const [{ items }, speller] = await Promise.all([client.getPlaylistItems(playlistId), loadSpeller()]);
-    const knownWords = libraryKnownWords();
-    const allowlist = new Set((config.spellcheckModule?.allowlist ?? []).map((w) => w.toLowerCase()));
-
-    // Missing media (issue #9) rides on the same scan: same playlist, same
-    // slides, same jump to the slide. Read from the .pro file on disk because
-    // the API reports no media; see server/pro-media.js. Only slides the
-    // arrangement actually plays are checked, since only they are looked up.
-    const mediaEnv = {
-      exists: existsSync,
-      home: homedir(),
-      mediaRoots: [path.join(homedir(), "Documents", "ProPresenter"), ...workspaceRootsFromLibraryDirs(getIndexedLibraryDirs())],
-    };
-    let mediaUnreadable = 0;
-
-    const presentations = [];
-    const scanned = items.slice(0, SPELLCHECK_MAX_PRESENTATIONS);
-    for (const item of scanned) {
-      let slides;
-      let missingMedia = new Map();
-      try {
-        const doc = await client.getPresentation(item.id);
-        slides = extractSlides(doc, preferredArrangements());
-        const proPath = doc?.presentation?.presentation_path;
-        if (proPath) {
-          try {
-            missingMedia = missingMediaBySlide(await readFile(proPath), mediaEnv);
-          } catch {
-            // Counted, not hidden: "no missing media" and "could not look"
-            // must never read the same.
-            mediaUnreadable++;
-          }
-        }
-      } catch {
-        continue; // a single unreadable presentation shouldn't sink the whole scan
-      }
-      const flaggedSlides = [];
-      for (const slide of slides) {
-        const words = findTypos(slide.text, { knownWords, allowlist, speller });
-        // Dates that are already over -- the announcement for last month's
-        // event still in this weekend's loop. See server/stale-dates.js.
-        const pastDates = findPastDates(slide.text);
-        const media = slide.groupId != null ? (missingMedia.get(`${slide.groupId}:${slide.groupOffset}`) ?? []) : [];
-        // Carry the slide's anchor so Go Live from here survives an
-        // arrangement switch between this scan and the click.
-        if (words.length || pastDates.length || media.length) {
-          flaggedSlides.push({
-            slideIndex: slide.index,
-            groupId: slide.groupId ?? null,
-            groupOffset: slide.groupOffset ?? null,
-            text: slide.text,
-            words,
-            pastDates,
-            missingMedia: media,
-          });
-        }
-      }
-      if (flaggedSlides.length) {
-        presentations.push({ presentationId: item.id, presentationName: item.name, slides: flaggedSlides });
-      }
-    }
-
-    res.json({ presentations, scannedCount: scanned.length, truncated: items.length > scanned.length, mediaUnreadable });
+    const { presentations, scannedCount, truncated, mediaUnreadable } = await scanPlaylist(playlistId);
+    res.json({ presentations, scannedCount, truncated, mediaUnreadable });
   } catch (err) {
     res.status(502).json({ error: err.message });
   }
 });
+
 
 /**
  * Saves an allowlist, only swapping the in-memory config once the write has
@@ -2921,6 +3203,73 @@ app.get("/api/arrangement/plans", async (_req, res) => {
  * plain-language suggestion per song for what — if anything — the
  * church-management system's arrangement should be updated to.
  */
+/**
+ * Compares a weekend plan's songs against what actually played. The body of
+ * "Compare all songs", shared with End (which passes `onlyPresentationIds`
+ * so it compares only the songs that were actually shown).
+ * @returns {Promise<{ plan, serviceDate, results, unmatched } | { notFound: true }>}
+ */
+async function compareWeekendSongs({ planId = null, onlyPresentationIds = null } = {}) {
+  const storage = await getStorageBackend();
+  const provider = await getArrangementProvider(storage);
+  const plans = await provider.getRecentPlans(5);
+  const plan = planId ? plans.find((p) => p.id === planId) : plans[0];
+  if (!plan) return { notFound: true };
+  const serviceDate = plan.sortDate.slice(0, 10);
+  let matched = matchPlanSongsToPresentations(await provider.getPlanSongs(plan.id));
+  if (onlyPresentationIds) matched = matched.filter((song) => song.presentationId && onlyPresentationIds.has(song.presentationId));
+
+  config = await ensureMachineId(config);
+  const results = [];
+  const unmatched = [];
+  const done = new Set();
+  for (const song of matched) {
+    if (!song.presentationId) {
+      unmatched.push({ title: song.title });
+      continue;
+    }
+    // A song planned in three services is one comparison, not three.
+    if (done.has(song.presentationId)) continue;
+    done.add(song.presentationId);
+    const actualGroupSequence = getGroupSequence(song.presentationId);
+    if (!actualGroupSequence) {
+      unmatched.push({ title: song.title, reason: "Matched a presentation, but it's not in the search index." });
+      continue;
+    }
+    try {
+      const result = await runComparison({
+        songId: song.presentationId,
+        songName: song.presentationName,
+        presentationId: song.presentationId,
+        serviceDate,
+        actualGroupSequence,
+        provider,
+        storage,
+        machineId: config.machineId,
+        force: true, // this is a deliberate re-run of the whole weekend, not a single accidental double-click
+        planId: plan.id,
+      });
+      const lastEntry = result.record.history.at(-1);
+      results.push({
+        title: song.title,
+        presentationId: song.presentationId,
+        presentationName: song.presentationName,
+        planned: lastEntry.planned,
+        actual: lastEntry.actual,
+        diff: lastEntry.diff,
+        suggestion: describeDrift(lastEntry.diff),
+        alwaysDiffers: result.record.alwaysDiffers ?? false,
+        ignored: lastEntry.ignored ?? false,
+        externalSongId: song.externalSongId,
+        externalArrangementId: song.externalArrangementId,
+      });
+    } catch (err) {
+      unmatched.push({ title: song.title, reason: err.message });
+    }
+  }
+  return { plan, serviceDate, results, unmatched };
+}
+
 app.post("/api/arrangement/compare-all", async (req, res) => {
   if (!requireArrangementActive(res)) return;
   if (config.role !== "logger") {
@@ -2929,69 +3278,18 @@ app.post("/api/arrangement/compare-all", async (req, res) => {
   if (!(await requireProviderCapability(res, "supportsPlanBrowsing", "The weekend compare-all workflow"))) return;
 
   try {
-    const storage = await getStorageBackend();
-    const provider = await getArrangementProvider(storage);
-    const { planId } = req.body ?? {};
-    const plans = await provider.getRecentPlans(5);
-    const plan = planId ? plans.find((p) => p.id === planId) : plans[0];
-    if (!plan) {
+    const out = await compareWeekendSongs({ planId: req.body?.planId ?? null });
+    if (out.notFound) {
       return res.status(404).json({
         error: "No past plan found — check the Service Type ID in Configuration, and that it has at least one plan with a past date.",
       });
     }
-    const serviceDate = plan.sortDate.slice(0, 10);
-    const matched = matchPlanSongsToPresentations(await provider.getPlanSongs(plan.id));
-
-    config = await ensureMachineId(config);
-    const results = [];
-    const unmatched = [];
-    for (const song of matched) {
-      if (!song.presentationId) {
-        unmatched.push({ title: song.title });
-        continue;
-      }
-      const actualGroupSequence = getGroupSequence(song.presentationId);
-      if (!actualGroupSequence) {
-        unmatched.push({ title: song.title, reason: "Matched a presentation, but it's not in the search index." });
-        continue;
-      }
-      try {
-        const result = await runComparison({
-          songId: song.presentationId,
-          songName: song.presentationName,
-          presentationId: song.presentationId,
-          serviceDate,
-          actualGroupSequence,
-          provider,
-          storage,
-          machineId: config.machineId,
-          force: true, // this is a deliberate re-run of the whole weekend, not a single accidental double-click
-          planId: plan.id,
-        });
-        const lastEntry = result.record.history.at(-1);
-        results.push({
-          title: song.title,
-          presentationId: song.presentationId,
-          presentationName: song.presentationName,
-          planned: lastEntry.planned,
-          actual: lastEntry.actual,
-          diff: lastEntry.diff,
-          suggestion: describeDrift(lastEntry.diff),
-          alwaysDiffers: result.record.alwaysDiffers ?? false,
-          ignored: lastEntry.ignored ?? false,
-          externalSongId: song.externalSongId,
-          externalArrangementId: song.externalArrangementId,
-        });
-      } catch (err) {
-        unmatched.push({ title: song.title, reason: err.message });
-      }
-    }
-
-    res.json({ plan, serviceDate, results, unmatched });
+    res.json(out);
   } catch (err) {
     res.status(502).json({ error: err.message });
   }
 });
+
 
 /**
  * Pushes a song's actual (as-played) arrangement up to the
@@ -3800,7 +4098,14 @@ const server = app.listen(port, "127.0.0.1", async () => {
       }
       const { folder } = serviceOptions();
       retryPendingEvents({ folder }).catch(() => {});
-      setInterval(() => resolveScheduledPlaylists().catch(() => {}), 60_000).unref?.();
+      setInterval(() => {
+        resolveScheduledPlaylists().catch(() => {});
+        preServiceReindex().catch(() => {});
+      }, 60_000).unref?.();
+      const summaryFolder = config.serviceModule?.summaryFolder;
+      if (typeof summaryFolder === "string" && summaryFolder.trim()) {
+        retryPending([""], { folder: summaryFolder.trim(), pendingDir: summaryPendingDir() }).catch(() => {});
+      }
     } catch (err) {
       console.error("Service days could not start:", err.message);
     }

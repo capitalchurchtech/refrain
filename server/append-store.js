@@ -21,10 +21,14 @@ import { readFile, writeFile, readdir, mkdir, rename, unlink } from "node:fs/pro
 import path from "node:path";
 
 export async function writeAtomic(dir, name, data) {
+  await writeTextAtomic(dir, name, JSON.stringify(data, null, 2));
+}
+
+export async function writeTextAtomic(dir, name, text) {
   await mkdir(dir, { recursive: true });
   const finalPath = path.join(dir, name);
   const tmpPath = `${finalPath}.tmp`;
-  await writeFile(tmpPath, JSON.stringify(data, null, 2));
+  await writeFile(tmpPath, text);
   await rename(tmpPath, finalPath);
 }
 
@@ -45,18 +49,34 @@ export async function saveRecord(subdir, name, data, { folder, pendingDir }) {
   return { shared: true };
 }
 
+/** The same guarantees for a text file (a day summary), rather than a JSON record. */
+export async function saveTextRecord(subdir, name, text, { folder, pendingDir }) {
+  const localDir = path.join(pendingDir, subdir);
+  await writeTextAtomic(localDir, name, text);
+  try {
+    await writeTextAtomic(path.join(folder, subdir), name, text);
+  } catch (err) {
+    return { shared: false, reason: err.message };
+  }
+  await unlink(path.join(localDir, name)).catch(() => {});
+  return { shared: true };
+}
+
 /** Copies anything still waiting in these subfolders to the shared folder. Safe to call any time. */
 export async function retryPending(subdirs, { folder, pendingDir }) {
   let attempted = 0;
   let succeeded = 0;
   for (const subdir of subdirs) {
     const localDir = path.join(pendingDir, subdir);
-    const names = (await readdir(localDir).catch(() => [])).filter((n) => n.endsWith(".json"));
+    const names = (await readdir(localDir).catch(() => [])).filter((n) => n.endsWith(".json") || n.endsWith(".md"));
     for (const name of names) {
       attempted += 1;
       try {
-        const record = JSON.parse(await readFile(path.join(localDir, name), "utf-8"));
-        await writeAtomic(path.join(folder, subdir), name, record);
+        const text = await readFile(path.join(localDir, name), "utf-8");
+        // A JSON record is parsed first, so a damaged one stays here to be
+        // looked at instead of being copied on as damage.
+        if (name.endsWith(".json")) JSON.parse(text);
+        await writeTextAtomic(path.join(folder, subdir), name, text);
         await unlink(path.join(localDir, name));
         succeeded += 1;
       } catch {

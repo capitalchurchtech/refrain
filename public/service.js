@@ -123,6 +123,12 @@ export function renderServicesHtml(data) {
             </div>
             <div class="text-sm">${line}${compare ? ` <span class="opacity-70">· ${escapeHtml(compare)}</span>` : ""}</div>
             ${sum.items ? renderRowsHtml(s.rows) : ""}
+            ${
+              s.playlist && s.source !== "lockin" && !s.endedAt
+                ? `<div><button type="button" class="btn btn-chip service-checks-btn" data-service-id="${escapeHtml(s.serviceId)}">${data.checks?.[s.serviceId] ? "Run checks again" : "Run pre-service checks"}</button></div>`
+                : ""
+            }
+            ${renderChecksHtml(data.checks?.[s.serviceId])}
           </div>
         </div>`;
     })
@@ -155,6 +161,83 @@ export function renderLockinHtml(data) {
     <div class="text-xs opacity-60">For events with no set time. Refrain watches closely and holds still (performance mode) until you release it. Nothing on the screens changes.</div>`;
 }
 
+const STATUS_TEXT = { pass: "Pass", attention: "Needs a look", couldnt: "Couldn't check" };
+
+/** The last run of a service's checks: the headline, then anything that isn't a pass, with where. */
+export function renderChecksHtml(run) {
+  if (!run) return "";
+  const rows = run.results
+    .filter((r) => r.status !== "pass")
+    .map((r) => {
+      const details = (r.details ?? [])
+        .slice(0, 8)
+        .map((d) => `<li>${escapeHtml(d.name ?? "")}${d.slide ? `, slide ${d.slide}` : ""}${d.text ? `: ${escapeHtml(d.text)}` : ""}</li>`)
+        .join("");
+      const more = (r.details?.length ?? 0) > 8 ? `<li class="opacity-60">and ${r.details.length - 8} more</li>` : "";
+      return `
+        <div class="service-check" data-status="${escapeHtml(r.status)}">
+          <div><span class="font-medium">${escapeHtml(STATUS_TEXT[r.status] ?? r.status)}:</span> ${escapeHtml(r.label)}. <span class="opacity-80">${escapeHtml(r.summary)}</span></div>
+          ${details || more ? `<ul class="list-disc pl-5 text-xs opacity-80">${details}${more}</ul>` : ""}
+        </div>`;
+    })
+    .join("");
+  return `
+    <div class="text-sm flex flex-col gap-1">
+      <div><span class="font-medium">Checks: ${escapeHtml(run.headline)}</span> <span class="opacity-60 text-xs">(run ${escapeHtml(formatClock(run.at, { seconds: false }))})</span></div>
+      ${rows}
+    </div>`;
+}
+
+export function renderChecksDueHtml(due) {
+  if (!due?.length) return "";
+  return due
+    .map(
+      (d) => `<div class="rf-readout text-sm">${escapeHtml(d.name)} starts at ${escapeHtml(formatClock(d.startsAt, { seconds: false }))}. ${
+        d.hasPlaylist ? "The pre-service checks haven't been run yet." : "Its playlist hasn't been found yet, so checks can't run."
+      }</div>`
+    )
+    .join("");
+}
+
+/** The checklist, phase by phase. Checks and End steps tick themselves. */
+export function renderChecklistHtml(checklist) {
+  return (checklist ?? [])
+    .map((p) => {
+      const title = `${escapeHtml(p.name)}${p.serviceName ? ` <span class="opacity-60">· ${escapeHtml(p.serviceName)}</span>` : ""}`;
+      const steps = p.steps
+        .map((st) => {
+          const auto = st.checks || st.end;
+          const link = st.link ? ` <a href="${escapeHtml(st.link)}" class="link text-xs">Open</a>` : "";
+          return `
+            <label class="flex items-center gap-2 text-sm ${auto ? "opacity-80" : "cursor-pointer"}">
+              <input type="checkbox" class="checkbox checkbox-sm service-step" ${st.done ? "checked" : ""} ${auto ? "disabled" : ""}
+                data-phase-id="${escapeHtml(p.phaseId)}" data-step-id="${escapeHtml(st.id)}" data-service-id="${escapeHtml(p.serviceId ?? "")}" />
+              <span>${escapeHtml(st.label)}${auto ? ` <span class="text-xs opacity-60">(${st.checks ? "ticks when the checks run" : "ticks when you End the day"})</span>` : ""}${link}</span>
+            </label>`;
+        })
+        .join("");
+      return `<div class="flex flex-col gap-1"><div class="text-xs uppercase tracking-wide opacity-60">${title}</div>${steps}</div>`;
+    })
+    .join("");
+}
+
+export function renderEndHtml(data) {
+  if (data.dayEnded && !data.reopened) {
+    return `
+      <div class="flex items-center justify-between gap-3 flex-wrap">
+        <div class="text-sm">Day ended at ${escapeHtml(formatClock(data.dayEnded.at, { seconds: false }))}. The summary is saved.</div>
+        <div class="flex gap-2"><button type="button" id="service-summary-btn" class="btn btn-outline btn-sm">View summary</button></div>
+      </div>`;
+  }
+  const again = data.reopened ? `<div class="text-sm">Things were recorded after the last End, so the day is open again. End it again to write a new summary; the earlier one is kept.</div>` : "";
+  return `
+    ${again}
+    <div class="flex items-center justify-between gap-3 flex-wrap">
+      <div class="text-xs opacity-70">End closes today's services and any lock-in, compares the arrangements of the songs that were shown (nothing is pushed back), and writes the day summary.</div>
+      <button type="button" id="service-end-day-btn" class="btn btn-outline btn-sm">End the day</button>
+    </div>`;
+}
+
 export function paceNote(data) {
   return data.holdingPace
     ? "Times are when Refrain first saw each item, within about 4 seconds."
@@ -165,6 +248,7 @@ export function initService() {
   const container = document.getElementById("view-service");
   let timer = null;
   let playlistsLoaded = false;
+  let endArmed = null;
 
   async function post(url, body) {
     const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body ?? {}) });
@@ -186,6 +270,13 @@ export function initService() {
       ? `<h2 class="rf-subhead">Not in a service</h2><div class="card bg-base-200"><div class="card-body p-3">${renderRowsHtml(data.outside)}</div></div>`
       : "";
     note.textContent = paceNote(data);
+    const due = document.getElementById("service-due");
+    if (due) due.innerHTML = renderChecksDueHtml(data.checksDue);
+    const cl = document.getElementById("service-checklist");
+    if (cl) cl.innerHTML = renderChecklistHtml(data.checklist) + (data.phaseProblems?.length ? `<div class="text-xs opacity-70">${escapeHtml(data.phaseProblems.join(" "))}</div>` : "");
+    const end = document.getElementById("service-end");
+    // Don't repaint End while it's armed, or the second press would miss.
+    if (end && !endArmed) end.innerHTML = renderEndHtml(data);
     if (window.lucide) window.lucide.createIcons();
     wire();
   }
@@ -221,6 +312,64 @@ export function initService() {
         load();
       }
     });
+    document.querySelectorAll(".service-checks-btn").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        btn.textContent = "Checking...";
+        try {
+          paint(await post(`/api/service/services/${encodeURIComponent(btn.dataset.serviceId)}/checks`));
+        } catch (err) {
+          showFailure(`Couldn't run the checks: ${err.message}`);
+          load();
+        }
+      })
+    );
+    document.querySelectorAll(".service-step").forEach((box) =>
+      box.addEventListener("change", async () => {
+        try {
+          paint(await post("/api/service/steps", { phaseId: box.dataset.phaseId, stepId: box.dataset.stepId, serviceId: box.dataset.serviceId || null, done: box.checked }));
+        } catch (err) {
+          box.checked = !box.checked;
+          showFailure(`That wasn't saved: ${err.message}`);
+        }
+      })
+    );
+    // Two presses, like Clear All: End closes the day and writes the summary,
+    // so the first press arms it and says so.
+    document.getElementById("service-end-day-btn")?.addEventListener("click", async (e) => {
+      const btn = e.currentTarget;
+      if (!endArmed) {
+        btn.textContent = "Press again to end the day";
+        btn.classList.replace("btn-outline", "btn-brand");
+        endArmed = setTimeout(() => {
+          endArmed = null;
+          load();
+        }, 3000);
+        return;
+      }
+      clearTimeout(endArmed);
+      endArmed = null;
+      btn.disabled = true;
+      btn.textContent = "Ending...";
+      try {
+        const data = await post("/api/service/end-day");
+        paint(data);
+        showSummary(data.summary);
+        if (data.delivered && !data.delivered.ok) showFailure(`The summary is saved here, but copying it to the summary folder is waiting: ${data.delivered.reason}`);
+      } catch (err) {
+        showFailure(`Couldn't end the day: ${err.message}`);
+        load();
+      }
+    });
+    document.getElementById("service-summary-btn")?.addEventListener("click", async () => {
+      try {
+        const res = await fetch("/api/service/summary");
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? res.statusText);
+        showSummary(await res.text());
+      } catch (err) {
+        showFailure(`Couldn't open the summary: ${err.message}`);
+      }
+    });
     document.querySelectorAll(".service-end-btn").forEach((btn) =>
       btn.addEventListener("click", async () => {
         btn.disabled = true;
@@ -232,6 +381,13 @@ export function initService() {
         }
       })
     );
+  }
+
+  function showSummary(text) {
+    const pre = document.getElementById("service-summary");
+    if (!pre) return;
+    pre.textContent = text ?? "";
+    pre.classList.remove("hidden");
   }
 
   async function loadPlaylists() {
@@ -259,6 +415,8 @@ export function initService() {
           <p class="text-sm opacity-70">What went live today, when, and for how long.</p>
         </div>
 
+        <div id="service-due" class="flex flex-col gap-2"></div>
+
         <div>
           <h2 class="rf-subhead">Live event</h2>
           <div class="card bg-base-200"><div id="service-lockin" class="card-body p-3 gap-2"></div></div>
@@ -283,6 +441,17 @@ export function initService() {
             <div class="text-xs opacity-60">The time and playlist are optional. A time lets Refrain watch closely from a little before it; a playlist lets the rundown number each item and spot anything off-plan. Recurring services can go in config.json instead (serviceModule.schedule).</div>
           </div>
         </details>
+
+        <div>
+          <h2 class="rf-subhead">Checklist</h2>
+          <div class="card bg-base-200"><div id="service-checklist" class="card-body p-3 gap-3"></div></div>
+        </div>
+
+        <div>
+          <h2 class="rf-subhead">End of the day</h2>
+          <div class="card bg-base-200"><div id="service-end" class="card-body p-3 gap-2"></div></div>
+          <pre id="service-summary" class="hidden mt-2 p-3 bg-base-200 rounded text-xs whitespace-pre-wrap"></pre>
+        </div>
 
         <p id="service-pace-note" class="text-xs opacity-60"></p>
       </div>`;

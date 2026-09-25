@@ -95,6 +95,9 @@ export const EVENT_TYPES = new Set([
   "lockin-released",
   "item-live",
   "item-left",
+  "checks-run",
+  "step-set",
+  "day-ended",
 ]);
 
 export function buildEvent(type, fields = {}, { now = Date.now(), machine = hostname(), id } = {}) {
@@ -179,6 +182,9 @@ export function foldDay(events, { schedule = [], day = null, now = Date.now() } 
 
   let lockin = null;
   let open = null;
+  const checks = new Map(); // serviceId -> the latest run
+  const steps = new Map(); // `${phaseId}:${stepId}:${serviceId ?? "day"}` -> done
+  const dayEnds = [];
   const segments = [];
   const closeOpen = (atMs) => {
     if (!open) return;
@@ -229,15 +235,77 @@ export function foldDay(events, { schedule = [], day = null, now = Date.now() } 
       };
     } else if (e.type === "item-left") {
       if (open && (!e.presentationId || e.presentationId === open.presentationId)) closeOpen(atMs);
+    } else if (e.type === "checks-run") {
+      checks.set(e.serviceId ?? null, { at: atMs, results: Array.isArray(e.results) ? e.results : [] });
+    } else if (e.type === "step-set") {
+      steps.set(stepKey(e.phaseId, e.stepId, e.serviceId), Boolean(e.done));
+    } else if (e.type === "day-ended") {
+      dayEnds.push({ at: atMs, eventId: e.id, summaryFile: e.summaryFile ?? null });
     }
   }
+  const lastEnd = dayEnds.at(-1) ?? null;
+  // Anything recorded after End means the day was picked up again: a late
+  // service, or someone putting a song back up. Shown, never silently merged.
+  const reopened = Boolean(lastEnd) && ordered.some((e) => Date.parse(e.at) > lastEnd.at && e.type !== "day-ended");
 
   return {
     services: [...services.values()].sort((a, b) => (a.startsAt ?? a.addedAt ?? 0) - (b.startsAt ?? b.addedAt ?? 0)),
     lockin,
     openItem: open,
     segments,
+    checks,
+    steps,
+    dayEnds,
+    reopened,
   };
+}
+
+export function stepKey(phaseId, stepId, serviceId = null) {
+  return `${phaseId}:${stepId}:${serviceId ?? "day"}`;
+}
+
+// --- finding this week's playlist -------------------------------------------
+
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+
+/**
+ * Ways a church might write a date in a playlist name, for one day. Collected
+ * from a real library, which used all of these within a year: 6/7/26,
+ * 02/21/26, Dec-13-25, Oct 25, Jan 8, plus 2026-09-27 for tidy people.
+ */
+export function dateTokens(day) {
+  const [y, m, d] = day.split("-").map(Number);
+  const yy = String(y).slice(2);
+  const mm = String(m).padStart(2, "0");
+  const dd = String(d).padStart(2, "0");
+  const mon = MONTHS[m - 1];
+  return [
+    `${m}/${d}/${yy}`, `${mm}/${dd}/${yy}`, `${m}/${d}/${y}`, `${mm}/${dd}/${y}`,
+    `${m}-${d}-${yy}`, `${mm}-${dd}-${yy}`, `${mon}-${dd}-${yy}`, `${mon}-${d}-${yy}`,
+    `${y}-${mm}-${dd}`, `${m}/${d}`, `${mm}/${dd}`, `${mon} ${d}`, `${mon} ${dd}`,
+  ];
+}
+
+/**
+ * The playlist a scheduled service means: its name contains the pattern
+ * ("SL-09"), and when several do (every past week's does), the one dated this
+ * day. Dates are matched as whole tokens, so "9/2" doesn't match "9/27".
+ * Returns null rather than guess when it can't tell, and says why.
+ */
+export function matchPlaylist(playlists, pattern, day) {
+  const want = String(pattern ?? "").toLowerCase();
+  if (!want) return { playlist: null, reason: "no pattern" };
+  const named = (playlists ?? []).filter((p) => String(p.name).toLowerCase().includes(want));
+  if (!named.length) return { playlist: null, reason: `no playlist name contains "${pattern}"` };
+  const tokens = dateTokens(day);
+  const dated = named.filter((p) => {
+    const name = String(p.name).toLowerCase();
+    return tokens.some((t) => new RegExp(`(^|[^0-9a-z])${t.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}($|[^0-9])`).test(name));
+  });
+  if (dated.length === 1) return { playlist: dated[0], reason: "dated today" };
+  if (dated.length > 1) return { playlist: null, reason: `${dated.length} playlists match "${pattern}" and today's date` };
+  if (named.length === 1) return { playlist: named[0], reason: "only match" };
+  return { playlist: null, reason: `${named.length} playlists contain "${pattern}", none dated today` };
 }
 
 // --- windows and pacing ---------------------------------------------------

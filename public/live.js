@@ -68,6 +68,35 @@ export function initLive() {
       }
     });
 
+    // Lock in, from where the operator already is. Only when the Service
+    // module is on; its state lives on the Service screen.
+    const lockBtn = document.getElementById("live-lockin-btn");
+    const paintLock = async () => {
+      try {
+        const res = await fetch("/api/service/day");
+        if (!res.ok) return lockBtn.classList.add("hidden");
+        const day = await res.json();
+        lockBtn.classList.remove("hidden");
+        lockBtn.textContent = day.lockin ? "Release lock-in" : "Lock in";
+        lockBtn.dataset.locked = day.lockin ? "1" : "";
+      } catch {
+        lockBtn.classList.add("hidden");
+      }
+    };
+    lockBtn?.addEventListener("click", async () => {
+      lockBtn.disabled = true;
+      try {
+        const url = lockBtn.dataset.locked ? "/api/service/lockin/release" : "/api/service/lockin";
+        const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+        if (!res.ok) setStatus((await res.json().catch(() => ({}))).error ?? "That didn't work.");
+      } finally {
+        lockBtn.disabled = false;
+        await paintLock();
+        load();
+      }
+    });
+    paintLock();
+
     load();
     clearInterval(perfTimer);
     perfTimer = setInterval(load, 30_000);
@@ -90,7 +119,10 @@ export function initLive() {
                   <span id="perf-mode-dot" class="rf-led"></span>
                   <span id="perf-mode-state" class="font-medium">Checking...</span>
                 </div>
-                <button id="perf-mode-toggle" class="btn btn-sm btn-outline">Turn on</button>
+                <span class="flex gap-2">
+                  <button id="live-lockin-btn" class="btn btn-sm btn-outline hidden" title="For an event with no set time: watch closely and hold still until released">Lock in</button>
+                  <button id="perf-mode-toggle" class="btn btn-sm btn-outline">Turn on</button>
+                </span>
               </div>
               <div id="perf-mode-why" class="text-sm opacity-70"></div>
               <!-- One line, and it has to be true in the state you are reading it
