@@ -1184,6 +1184,29 @@ function renderAutostartCard(state) {
     </div>`;
 }
 
+/**
+ * The Modules tile in the top strip: one line a volunteer can read out on the
+ * phone. Only the modules that need setup report a status (the rest are
+ * always on), so this lists those, worst first, plus anything staged locally
+ * and still waiting to reach shared storage.
+ */
+export function summarizeModules(health) {
+  const mods = [
+    { name: "Arrangement", status: health.arrangementModule?.status },
+    { name: "Share Library", status: health.shareLibrary?.status },
+  ].filter((m) => m.status);
+  const rank = { misconfigured: 0, active: 1, off: 2 };
+  mods.sort((a, b) => (rank[a.status] ?? 3) - (rank[b.status] ?? 3));
+  const broken = mods.filter((m) => m.status === "misconfigured").length;
+  const pending = health.arrangementModule?.pendingUploads ?? 0;
+  const headline = broken ? `${broken} need${broken === 1 ? "s" : ""} setup` : "Nothing misconfigured";
+  const detail = [
+    ...mods.map((m) => `${m.name} ${m.status}`),
+    ...(pending ? [`${pending} upload${pending === 1 ? "" : "s"} waiting`] : []),
+  ].join(" · ");
+  return { headline, detail, attention: broken > 0 || pending > 0 };
+}
+
 function renderHealth(health, configOptions, versionInfo, libraryCard = "", duplicateNameGroups = []) {
   const { propresenter, index, arrangementModule, role, version, config, envRequirements } = health;
   const shareLibraryCard = renderShareLibraryCard(health.shareLibrary);
@@ -1820,8 +1843,9 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
 
   // Status is scanned, not read: three tiles answer "is it working" at a glance,
   // and the detail that used to fill three full cards now hangs off them.
+  const modules = summarizeModules(health);
   const statusStrip = `
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+    <div id="health-status-strip" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
       <div class="bg-base-200 rounded p-3 flex flex-col gap-1">
         <div class="text-xs uppercase tracking-wide opacity-50">ProPresenter</div>
         <div class="text-sm font-medium flex items-center gap-1.5 rf-value">
@@ -1844,6 +1868,14 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
         <div class="text-xs opacity-60">${
           versionInfo?.updateAvailable ? `v${escapeHtml(versionInfo.latestVersion)} available` : "up to date"
         }</div>
+      </div>
+      <div class="bg-base-200 rounded p-3 flex flex-col gap-1">
+        <div class="text-xs uppercase tracking-wide opacity-50">Modules</div>
+        <div class="text-sm font-medium flex items-center gap-1.5 rf-value">
+          <span class="rf-led ${modules.attention ? "lit" : ""}" title="${modules.attention ? "Something needs a look" : "Nothing needs a look"}"></span>
+          ${escapeHtml(modules.headline)}
+        </div>
+        <div class="text-xs opacity-60">${escapeHtml(modules.detail)}</div>
       </div>
     </div>
   `;

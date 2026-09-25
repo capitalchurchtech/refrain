@@ -2939,6 +2939,19 @@ html.blackroom .rf-notice-close {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
+/* Health's top strip gained a fourth tile (Modules), rendered from health.js,
+   so its two breakpoints need the same static homes: two across on a narrow
+   panel, four across when there is room. */
+@media (min-width: 640px) {
+  #health-status-strip.sm\:grid-cols-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1024px) {
+  #health-status-strip.lg\:grid-cols-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
 @media (min-width: 1280px) {
   #live-looks.xl\:grid-cols-5,
   #live-macros.xl\:grid-cols-5 {
