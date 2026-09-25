@@ -1809,6 +1809,54 @@ Each phase ships on its own and is useful without the next.
    timeline, and both are a separate, narrow, read-mostly route with no path
    to any control.
 
+### Declared service times: "watch windows" (optional)
+
+An operator can say when services are, so Refrain pays close attention near
+those times. It is purely additive: with no times declared, everything above
+still works by watching playlists.
+
+**Where they come from**, most specific wins:
+1. **Today, on the Service screen:** "Add a service at 18:30, called Carols".
+   Stored as an event in that day's record, so it applies to one day only
+   (Christmas Eve, a funeral, a special night).
+2. **Recurring, in config:** `serviceModule.schedule: [{ "day": "sun", "time":
+   "09:00", "name": "Early", "playlistMatch": "early" }]`, in the machine's
+   local wall-clock time, so a daylight-saving change needs no edit. Empty by
+   default.
+3. **From the planning system,** if the provider declares
+   `supportsServiceTimes` (see Portability). It is offered, never assumed.
+
+**What a window changes.** A window runs from `leadMinutes` before (default
+60) to `trailMinutes` after the start (default 150), or until that service's
+End, whichever comes first.
+
+| When | What Refrain does |
+|---|---|
+| T−60 | Runs one "reindex changed" so search is current for the service, then goes quiet. This is the index freshness problem solved at the right moment instead of whenever someone notices. |
+| T−45 | Pre-service checks come to the front on the Service screen ("Early at 9:00: 4 checks to run"). One line, never a modal. |
+| T−15 → end | **Heartbeat held at the active 4s pace** whether or not a browser is open, so the timeline is sharp (this replaces "during the service phase" above with a clock-based trigger, which also covers a service started straight from ProPresenter). No background index work starts, and a full rebuild asks first ("Early starts in 12 min. Rebuild anyway?"). |
+| T+0 → first live | The timeline links the first item that goes live to this service, which is the reliable way to tell services apart when two share a playlist. |
+| Window closes, nothing went live | Noted in the day summary ("Early 9:00: nothing went live"), with no alert. A cancelled service is not an error. |
+
+**What a window never does:**
+- It never blocks Go Live, Clear, flags or anything an operator presses. It
+  is a hint to Refrain, not a rule for people.
+- It never arms performance mode on its own. Performance mode still arms from
+  what is actually live; a window only stops Refrain from *starting* heavy
+  work. The difference matters when the clock is wrong or the service is late.
+- It never requires the times to be right. A service that starts 20 minutes
+  late is still inside the window; one that starts outside it is caught by
+  the playlist rule as before.
+
+**Tests to write with it:** window arithmetic across a DST change and across
+midnight; today's override beating the recurring schedule; overlapping
+windows (two services 90 min apart) taking the union for pacing but each item
+going to the nearer start; a late start inside the window; a start outside it.
+
+**Build order impact:** windows ride in phase 1 (the heartbeat-pacing rule
+and the timeline's service assignment need them), with the T−60 reindex and
+T−45 prompt landing with phase 2's checks screen.
+
 ### Portability: this ships to churches that aren't us
 
 The repo is public, and the core promise (full value with zero setup for
@@ -2404,3 +2452,4 @@ all.
 - 2026-09-24 — Owner: Scripture moved to Prep, Flags moved to Service. Rail is now Service: Search, Live, Flags · Prep: Spell Check, Lyrics, Scripture, Arrangement, Image Crop, QR Codes · System: Health.
 - 2026-09-24 — Section 37 written: the plan for the service system (Service Day record, timeline from the heartbeat, pre-service checks, playbook phases, End summary, then delivery/second device/feed). Nothing built; open decisions listed there.
 - 2026-09-24 — Section 37 gained a Portability subsection: services are learned from the picked playlist (no times in code), optional name-pattern schedule, day-not-Sunday, phases as data with a check registry, provider `supportsServiceTimes` capability, Intl formatting, off by default, neutral fixtures.
+- 2026-09-24 — Section 37 gained declared service times (watch windows): per-day override, recurring config schedule, or provider capability; T−60 reindex, T−45 checks prompt, T−15 heartbeat held at 4s and no heavy work; never blocks operators or arms performance mode by itself.
