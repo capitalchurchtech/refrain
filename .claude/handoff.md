@@ -1857,6 +1857,61 @@ going to the nearer start; a late start inside the window; a start outside it.
 and the timeline's service assignment need them), with the T−60 reindex and
 T−45 prompt landing with phase 2's checks screen.
 
+### Lock-in: a watch window you open by hand, for live events
+
+For things with no schedule: a concert, a conference session, a funeral that
+runs long, a night of worship that ends when it ends. **Lock in** is a fourth
+source of watch window (after today, recurring and provider): it starts now,
+has no end time, and lasts **until released**.
+
+It deliberately isn't a new mode. It is the existing two pieces switched on
+together:
+- a **watch window** (heartbeat held at 4s, no heavy work starts, timeline
+  records, flags are tagged to it), and
+- **performance mode, turned on by hand** (the manual source that already
+  exists), so it holds still even before anything goes live.
+
+**Release** ends both, but only the performance mode that lock-in turned on.
+If performance mode had armed itself from something live, releasing lock-in
+leaves it to disarm the normal way. Releasing never clears the screens or
+touches ProPresenter.
+
+**Where:** one control on the Live screen, in the performance-mode card
+("Lock in for an event", then "Release"), plus the Service screen. It asks
+for an optional name ("Carols", "Conference day 2"), defaulting to "Live
+event, <time>". That name labels the timeline and the flags.
+
+**It behaves like a service, so everything downstream works unchanged:**
+- The timeline records it as its own service, with off-plan items allowed. A
+  lock-in with no playlist just records everything that goes live, in order.
+- Flags raised during it are tagged to it, and the Flags screen groups them.
+- End of day and the summary include it like any other service.
+
+**Safety for the forgotten lock-in.** The cost of leaving it on is real but
+mild (4s heartbeat, no background reindexing, so search goes stale), so
+nothing turns it off behind the operator's back:
+- It is stored as an event in the day record, so it **survives a restart**.
+  A reboot mid-event must not silently release it.
+- After 6 hours, the LOCK line reads "Locked in since 18:02 (6h). Release?"
+  on Live and Health. After 24 hours, Search's index-age notice names it as
+  the reason ("not reindexed: locked in since yesterday"). It is only ever
+  pointed out, never released automatically: an event that really is still
+  running must not have its tracking pulled.
+- The status cluster's PERF lamp stays lit throughout, and the tooltip says
+  "Locked in: <name>". It uses no new lamp, because the lamp budget is spent
+  (see the meter reasoning in search.js).
+
+**A lock-in inside a scheduled window:** the lock-in wins while it lasts, and
+the scheduled service still gets its own row in the timeline if its playlist
+goes live. A lock-in across midnight belongs to the day it started.
+
+**Tests:** restart while locked in; release restoring only lock-in's own
+performance mode; lock-in overlapping a scheduled window; midnight crossing;
+the 6h and 24h reminders.
+
+**Build order:** phase 1, beside watch windows. It is the simplest window
+source (no schedule to parse), so it is a good first one to ship.
+
 ### Portability: this ships to churches that aren't us
 
 The repo is public, and the core promise (full value with zero setup for
@@ -2453,3 +2508,4 @@ all.
 - 2026-09-24 — Section 37 written: the plan for the service system (Service Day record, timeline from the heartbeat, pre-service checks, playbook phases, End summary, then delivery/second device/feed). Nothing built; open decisions listed there.
 - 2026-09-24 — Section 37 gained a Portability subsection: services are learned from the picked playlist (no times in code), optional name-pattern schedule, day-not-Sunday, phases as data with a check registry, provider `supportsServiceTimes` capability, Intl formatting, off by default, neutral fixtures.
 - 2026-09-24 — Section 37 gained declared service times (watch windows): per-day override, recurring config schedule, or provider capability; T−60 reindex, T−45 checks prompt, T−15 heartbeat held at 4s and no heavy work; never blocks operators or arms performance mode by itself.
+- 2026-09-24 — Section 37 gained Lock-in: a hand-opened, open-ended watch window plus hand-armed performance mode, released explicitly; survives restart, reminds at 6h/24h, never auto-releases; behaves as a service for timeline, flags and summary.
