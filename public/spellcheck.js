@@ -140,16 +140,24 @@ export function initSpellcheck() {
     const resultsEl = document.getElementById("spellcheck-results");
     const wordCount = data.presentations.reduce((n, p) => n + p.slides.reduce((m, s) => m + s.words.length, 0), 0);
     const dateCount = data.presentations.reduce((n, p) => n + p.slides.reduce((m, s) => m + (s.pastDates?.length ?? 0), 0), 0);
-    const total = wordCount + dateCount;
+    const mediaCount = data.presentations.reduce((n, p) => n + p.slides.reduce((m, s) => m + (s.missingMedia?.length ?? 0), 0), 0);
+    const total = wordCount + dateCount + mediaCount;
 
     renderNextControl(total);
     const found = [
       wordCount ? `${wordCount} word${wordCount === 1 ? "" : "s"}` : "",
       dateCount ? `${dateCount} past date${dateCount === 1 ? "" : "s"}` : "",
-    ].filter(Boolean).join(" and ");
+      mediaCount ? `${mediaCount} missing media file${mediaCount === 1 ? "" : "s"}` : "",
+    ].filter(Boolean).join(", ");
+    // Said plainly, because "nothing missing" and "could not look" must not
+    // read the same (issue #9).
+    const unreadable = data.mediaUnreadable
+      ? ` Couldn't read ${data.mediaUnreadable} presentation file${data.mediaUnreadable === 1 ? "" : "s"}, so their media wasn't checked.`
+      : "";
     statusEl.textContent = total
       ? `${found} to review across ${data.presentations.length} presentation${data.presentations.length === 1 ? "" : "s"}.${data.truncated ? ` (checked the first ${data.scannedCount})` : ""}`
-      : `No likely typos or past dates found${data.truncated ? ` in the first ${data.scannedCount} items` : ""}. `;
+      : `No likely typos, past dates or missing media found${data.truncated ? ` in the first ${data.scannedCount} items` : ""}. `;
+    statusEl.textContent += unreadable;
 
     resultsEl.innerHTML = data.presentations
       .map(
@@ -161,7 +169,13 @@ export function initSpellcheck() {
             .map(
               (s) => `
             <div class="text-sm bg-base-100 rounded p-2 spellcheck-slide" data-presentation-id="${escapeHtml(p.presentationId)}" data-slide-index="${s.slideIndex}">
-              <div class="whitespace-pre-line">${highlight(s.text, s.words.map((w) => w.word))}</div>
+              ${
+                // A video or image slide has no words, so the text that names
+                // every other result would be blank here. Say which slide.
+                s.text?.trim()
+                  ? `<div class="whitespace-pre-line">${highlight(s.text, s.words.map((w) => w.word))}</div>`
+                  : `<div class="opacity-60">Slide ${s.slideIndex + 1}, no text on it</div>`
+              }
               <div class="flex flex-wrap items-center gap-2 mt-2">
                 ${s.words
                   .map(
@@ -177,6 +191,14 @@ export function initSpellcheck() {
                     (d) => `
                   <span class="rf-tile rf-flagged gap-1 inline-flex items-center spellcheck-date" title="Already over. Update or remove it before this goes on the screens.">
                     Date passed: ${escapeHtml(d.text)} <span class="opacity-70">(was ${escapeHtml(formatPastDate(d.date))})</span>
+                  </span>`
+                  )
+                  .join("")}
+                ${(s.missingMedia ?? [])
+                  .map(
+                    (m) => `
+                  <span class="rf-tile rf-flagged gap-1 inline-flex items-center spellcheck-media" title="${escapeHtml(m.path)}">
+                    Missing media: ${escapeHtml(m.fileName)}${m.otherMac ? ` <span class="opacity-70">(saved on another Mac, never copied here)</span>` : ""}
                   </span>`
                   )
                   .join("")}
@@ -328,7 +350,7 @@ export function initSpellcheck() {
       for (const s of p.slides) s.words = s.words.filter((w) => w.word.toLowerCase() !== lower);
       // Keep a slide whose only finding is a past date: ignoring a word must
       // not quietly throw away a different kind of problem on the same slide.
-      p.slides = p.slides.filter((s) => s.words.length || s.pastDates?.length);
+      p.slides = p.slides.filter((s) => s.words.length || s.pastDates?.length || s.missingMedia?.length);
     }
     lastResults.presentations = lastResults.presentations.filter((p) => p.slides.length);
     renderResults(lastResults);

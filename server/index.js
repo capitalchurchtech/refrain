@@ -6,7 +6,7 @@
  * actual installed version before relying on anything below.
  */
 import { readFileSync, existsSync } from "node:fs";
-import { copyFile, readdir, mkdir, stat } from "node:fs/promises";
+import { copyFile, readdir, mkdir, stat, readFile } from "node:fs/promises";
 import { exec, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { platform, homedir } from "node:os";
@@ -81,6 +81,7 @@ import { resolveArrangement, flattenGroups, findLiveIndex, parseSlideIndex } fro
 import { pushLiveItem, findReturnEntry } from "./return-history.js";
 import { checkLibrarySafeToTouch, shouldAutoRunLibrarySync } from "./library-guard.js";
 import { scanOrphanedMedia, resolveMediaPath, workspaceRootsFromLibraryDirs } from "./orphaned-media.js";
+import { missingMediaBySlide } from "./pro-media.js";
 import { findPastDates } from "./stale-dates.js";
 import {
   buildFlag,
@@ -2071,12 +2072,35 @@ app.post("/api/spellcheck/scan", async (req, res) => {
     const knownWords = libraryKnownWords();
     const allowlist = new Set((config.spellcheckModule?.allowlist ?? []).map((w) => w.toLowerCase()));
 
+    // Missing media (issue #9) rides on the same scan: same playlist, same
+    // slides, same jump to the slide. Read from the .pro file on disk because
+    // the API reports no media; see server/pro-media.js. Only slides the
+    // arrangement actually plays are checked, since only they are looked up.
+    const mediaEnv = {
+      exists: existsSync,
+      home: homedir(),
+      mediaRoots: [path.join(homedir(), "Documents", "ProPresenter"), ...workspaceRootsFromLibraryDirs(getIndexedLibraryDirs())],
+    };
+    let mediaUnreadable = 0;
+
     const presentations = [];
     const scanned = items.slice(0, SPELLCHECK_MAX_PRESENTATIONS);
     for (const item of scanned) {
       let slides;
+      let missingMedia = new Map();
       try {
-        slides = extractSlides(await client.getPresentation(item.id), preferredArrangements());
+        const doc = await client.getPresentation(item.id);
+        slides = extractSlides(doc, preferredArrangements());
+        const proPath = doc?.presentation?.presentation_path;
+        if (proPath) {
+          try {
+            missingMedia = missingMediaBySlide(await readFile(proPath), mediaEnv);
+          } catch {
+            // Counted, not hidden: "no missing media" and "could not look"
+            // must never read the same.
+            mediaUnreadable++;
+          }
+        }
       } catch {
         continue; // a single unreadable presentation shouldn't sink the whole scan
       }
@@ -2086,9 +2110,10 @@ app.post("/api/spellcheck/scan", async (req, res) => {
         // Dates that are already over -- the announcement for last month's
         // event still in this weekend's loop. See server/stale-dates.js.
         const pastDates = findPastDates(slide.text);
+        const media = slide.groupId != null ? (missingMedia.get(`${slide.groupId}:${slide.groupOffset}`) ?? []) : [];
         // Carry the slide's anchor so Go Live from here survives an
         // arrangement switch between this scan and the click.
-        if (words.length || pastDates.length) {
+        if (words.length || pastDates.length || media.length) {
           flaggedSlides.push({
             slideIndex: slide.index,
             groupId: slide.groupId ?? null,
@@ -2096,6 +2121,7 @@ app.post("/api/spellcheck/scan", async (req, res) => {
             text: slide.text,
             words,
             pastDates,
+            missingMedia: media,
           });
         }
       }
@@ -2104,7 +2130,7 @@ app.post("/api/spellcheck/scan", async (req, res) => {
       }
     }
 
-    res.json({ presentations, scannedCount: scanned.length, truncated: items.length > scanned.length });
+    res.json({ presentations, scannedCount: scanned.length, truncated: items.length > scanned.length, mediaUnreadable });
   } catch (err) {
     res.status(502).json({ error: err.message });
   }
