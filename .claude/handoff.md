@@ -2047,6 +2047,49 @@ in order:
 3. Worth a feature request to Renewed Vision: "focus presentation at slide
    index without triggering". Record it here if filed.
 
+### NOTE — Switch each song's selected arrangement to "FS" where one exists (not started)
+**Ask:** can the API change which arrangement a presentation has selected in
+the library, and if so, set every presentation that has an "FS" arrangement to
+use it?
+
+**What the library holds (read-only count from the .pro files, 2026-09-24):**
+973 presentations, 789 with arrangements, **55 have an arrangement named
+exactly "FS"** (none has two). 19 already have FS selected, so **36 would
+change**. For context, the common names are Ver 1 (378), FULL (177), THIRDS
+(172), FS (55), Ver 2 (54), T (52). The "(FS)" in many *presentation* names is
+not the same thing as an arrangement called FS; this counted arrangements only.
+
+**Can the API do it?** Not that we know of. The v1 API *reports*
+`current_arrangement` on `GET /v1/presentation/{uuid}`, but no setter has been
+found, and none was probed: guessing write URLs against a live library isn't
+something to do by trial. First step is to check ProPresenter 21.x's
+published API docs for an arrangement setter.
+
+**The constraint that decides it.** Refrain has never written to a
+presentation. #5 says it outright ("Refrain does not write to presentations
+anywhere else and should not start here"), and CLAUDE.md's data-safety rule is
+why. So:
+- **If the API has a setter:** it is ProPresenter making the change, which is
+  acceptable, but it's still a bulk edit to 36 decks. Build it as a preview
+  list ("these 36 will switch from Ver 1 to FS") with a confirm, one call per
+  deck, a report of any that failed, and an undo list saved first (each deck's
+  previous arrangement), following the stage-then-write pattern.
+- **If there is no setter:** do **not** rewrite .pro files to fake one.
+  Instead, report the 36 (a Health or Arrangement card, "FS exists but isn't
+  selected") with Show in Editor on each, and someone switches them in
+  ProPresenter.
+
+**Worth knowing before wanting it:** the library's selected arrangement is
+not what a playlist plays. Each playlist entry stores its own arrangement
+UUID (#5), so switching the library default changes new additions and
+Search's preferred arrangement, not existing playlists. If the goal is "FS in
+this weekend's playlists", that is a playlist-entry change, and it needs the
+same API question answered.
+
+**Generalise:** "FS" is our naming. For the public repo this is
+"preferred arrangement name(s)", the same `preferredArrangements()` config
+Search already reads, not a hardcoded "FS".
+
 ## Status log
 
 `YYYY-MM-DD · <item> · done | partial | blocked · <one line>`
@@ -2574,3 +2617,4 @@ in order:
 - 2026-09-24 — Section 37 gained Lock-in: a hand-opened, open-ended watch window plus hand-armed performance mode, released explicitly; survives restart, reminds at 6h/24h, never auto-releases; behaves as a service for timeline, flags and summary.
 - 2026-09-24 — Section 38 noted: Search glow in the rail (CRAFT, not started); Show in Editor selecting the slide (API probed: no select-without-trigger call found; fallback and next steps listed).
 - 2026-09-24 — Section 38: owner approved the slide-number label on Show in Editor; noted with file locations, not built.
+- 2026-09-24 — Section 38: noted the FS arrangement request (55 decks have FS, 36 would change; no API setter known; never rewrite .pro; playlists carry their own arrangement).
