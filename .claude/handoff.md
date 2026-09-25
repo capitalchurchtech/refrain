@@ -2031,9 +2031,19 @@ in order:
 1. Probe further, read-only, for a select or cue call in this version's API
    (ProPresenter publishes its API docs with each release; check 21.x
    release notes before guessing more URLs).
-2. If none exists: make the button honest instead. It shows "slide 7" next to
-   the button and scrolls the editor to the presentation, so the operator
-   knows which slide to click. Search results already know the slide number.
+2. If none exists: make the button honest instead. **Owner approved this
+   (2026-09-24): note only, not built yet.** The label carries the slide, e.g.
+   "Show slide 7", so the number is still in view once the editor opens.
+   Where:
+   - `public/search.js` ~373, per-slide "Show" chip: already has
+     `r.slideIndex`. The presentation-level "Show in editor" (~350) has no
+     single slide, so it stays as is.
+   - `public/spellcheck.js` ~207, `.spellcheck-editor-btn`: use `s.slideIndex`.
+   - `public/slide-flags.js` ~203, `.slide-flag-editor-btn`: use
+     `slideNumber(f)`.
+   - Not the Arrangement history rows or Health's duplicate-name buttons:
+     those point at a presentation, not a slide.
+   One-based, the same as the "Slide N" text already shown beside results.
 3. Worth a feature request to Renewed Vision: "focus presentation at slide
    index without triggering". Record it here if filed.
 
@@ -2563,3 +2573,4 @@ in order:
 - 2026-09-24 — Section 37 gained declared service times (watch windows): per-day override, recurring config schedule, or provider capability; T−60 reindex, T−45 checks prompt, T−15 heartbeat held at 4s and no heavy work; never blocks operators or arms performance mode by itself.
 - 2026-09-24 — Section 37 gained Lock-in: a hand-opened, open-ended watch window plus hand-armed performance mode, released explicitly; survives restart, reminds at 6h/24h, never auto-releases; behaves as a service for timeline, flags and summary.
 - 2026-09-24 — Section 38 noted: Search glow in the rail (CRAFT, not started); Show in Editor selecting the slide (API probed: no select-without-trigger call found; fallback and next steps listed).
+- 2026-09-24 — Section 38: owner approved the slide-number label on Show in Editor; noted with file locations, not built.
