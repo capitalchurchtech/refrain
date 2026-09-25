@@ -2090,6 +2090,30 @@ same API question answered.
 "preferred arrangement name(s)", the same `preferredArrangements()` config
 Search already reads, not a hardcoded "FS".
 
+**Follow-up: can the API change a playlist entry's arrangement?** (checked 2026-09-24)
+- **Reading: yes.** `GET /v1/playlist/{id}` returns every entry's
+  `presentation_info.arrangement_name` and `arrangement_uuid`, with headers
+  and the per-item `id.uuid`. So "which entries in this weekend's playlist
+  aren't on FS" is answerable from the API alone, with no file parsing.
+- **Writing: maybe.** ProPresenter's API is understood to have a
+  `PUT /v1/playlist/{id}` that replaces a playlist's items. Whether it honours
+  a changed `arrangement_uuid`, keeps headers, colours, `is_hidden` and PCO
+  links intact, and preserves each entry's identity is **unverified**. It was
+  deliberately **not tried** against a real playlist: a replace-all call that
+  drops a field would silently damage a service order.
+- **How to find out safely:** in ProPresenter, duplicate a playlist into a
+  scratch "Refrain test" playlist, then, on that copy only: GET it, PUT back
+  the same items with one `arrangement_uuid` changed, GET again, and diff
+  every field. Pass only if exactly that one field changed.
+- **If it passes, build it as:** pick playlist → preview ("7 entries will
+  switch to FS: …") → confirm → one PUT, with the original items saved to disk
+  first (stage then write) so an Undo can PUT them back. Refuse while
+  performance mode is armed or anything is live. Playlists synced from a
+  planning system (`is_pco: true`) are flagged, because the next sync may
+  overwrite the change.
+- This is the more useful half of the FS request: it changes what actually
+  plays this weekend, where the library default doesn't.
+
 ## Status log
 
 `YYYY-MM-DD · <item> · done | partial | blocked · <one line>`
@@ -2618,3 +2642,4 @@ Search already reads, not a hardcoded "FS".
 - 2026-09-24 — Section 38 noted: Search glow in the rail (CRAFT, not started); Show in Editor selecting the slide (API probed: no select-without-trigger call found; fallback and next steps listed).
 - 2026-09-24 — Section 38: owner approved the slide-number label on Show in Editor; noted with file locations, not built.
 - 2026-09-24 — Section 38: noted the FS arrangement request (55 decks have FS, 36 would change; no API setter known; never rewrite .pro; playlists carry their own arrangement).
+- 2026-09-24 — Section 38: playlist-entry arrangement: readable via GET /v1/playlist/{id}; PUT replace-all unverified, test only on a scratch duplicate playlist.
