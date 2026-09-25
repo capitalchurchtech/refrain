@@ -200,7 +200,7 @@ function renderReviewRow(f, types, showMachine) {
           <span>slide ${slideNumber(f)}${f.arrangementName ? ` · ${escapeHtml(f.arrangementName)}` : ""}</span>
           ${f.resolved ? `<span class="badge badge-ghost badge-sm ml-1">Resolved</span>` : ""}
         </div>
-        <button type="button" class="btn btn-chip shrink-0 slide-flag-editor-btn" data-presentation-id="${escapeHtml(f.presentationId)}">Show in Editor</button>
+        <button type="button" class="btn btn-chip shrink-0 slide-flag-editor-btn" data-presentation-id="${escapeHtml(f.presentationId)}" title="Opens the presentation in ProPresenter's editor. It can't select the slide for you, so the number says which one.">Show slide ${slideNumber(f)} in Editor</button>
       </div>
       ${
         f.text

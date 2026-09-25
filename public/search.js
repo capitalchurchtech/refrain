@@ -370,8 +370,12 @@ export function initSearch() {
                      because a confirmation the operator has to read is the
                      thing that makes them press twice. -->
                 <div class="flex items-center gap-3 shrink-0">
-                  <button class="btn btn-chip show-in-editor-btn" data-presentation-id="${r.presentationId}" title="Open in ProPresenter's editor without changing what is on the screens">
-                    Show
+                  <!-- Names the slide, because ProPresenter's API can open a
+                       presentation in the editor but not select a slide in it
+                       (handoff section 38): the number is how the operator
+                       finds it once the editor is up. -->
+                  <button class="btn btn-chip show-in-editor-btn" data-presentation-id="${r.presentationId}" title="Open in ProPresenter's editor without changing what is on the screens. Then click slide ${r.slideIndex + 1}.">
+                    Show slide ${r.slideIndex + 1}
                   </button>
                   <button class="btn btn-brand btn-xs go-live-btn" data-presentation-id="${r.presentationId}" data-slide-index="${r.slideIndex}" data-group-id="${escapeHtml(r.groupId ?? "")}" data-group-offset="${r.groupOffset ?? ""}" data-slide-text="${escapeHtml(r.snippet ?? "")}" data-presentation-name="${escapeHtml(r.presentationName ?? "")}" data-arrangement-name="${escapeHtml(r.arrangementName ?? "")}">
                     Go Live

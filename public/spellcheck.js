@@ -204,7 +204,7 @@ export function initSpellcheck() {
                   .join("")}
                 <span class="flex-1"></span>
                 <button class="btn btn-brand btn-xs spellcheck-live-btn" data-presentation-id="${escapeHtml(p.presentationId)}" data-slide-index="${s.slideIndex}" data-group-id="${escapeHtml(s.groupId ?? "")}" data-group-offset="${s.groupOffset ?? ""}" data-slide-text="${escapeHtml(s.text ?? "")}">Go Live</button>
-                <button class="btn btn-outline btn-xs spellcheck-editor-btn" data-presentation-id="${escapeHtml(p.presentationId)}">Show in Editor</button>
+                <button class="btn btn-outline btn-xs spellcheck-editor-btn" data-presentation-id="${escapeHtml(p.presentationId)}" title="Opens the presentation in ProPresenter's editor. It can't select the slide for you, so the number says which one.">Show slide ${s.slideIndex + 1} in Editor</button>
               </div>
             </div>`
             )

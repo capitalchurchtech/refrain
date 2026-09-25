@@ -2650,3 +2650,4 @@ Search already reads, not a hardcoded "FS".
 - 2026-09-24 — Section 38: noted the FS arrangement request (55 decks have FS, 36 would change; no API setter known; never rewrite .pro; playlists carry their own arrangement).
 - 2026-09-24 — Section 38: playlist-entry arrangement: readable via GET /v1/playlist/{id}; PUT replace-all unverified, test only on a scratch duplicate playlist.
 - 2026-09-24 — Playlist PUT test: 400 with the GET items array; playlist unchanged (verified). Needs the documented request schema before another try.
+- 2026-09-25 — Section 38 items landed: Search's rail key glows (dim collar at rest, full collar latched; dark, Blackroom and light, verified by computed box-shadow in all six states, other keys unaffected). Show in Editor buttons name the slide ("Show slide 7" in Search rows, "Show slide N in Editor" in Spell Check and Flags). Released as v0.19.1 with the rail reorder.
