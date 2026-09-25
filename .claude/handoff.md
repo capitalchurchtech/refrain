@@ -2111,6 +2111,12 @@ Search already reads, not a hardcoded "FS".
   performance mode is armed or anything is live. Playlists synced from a
   planning system (`is_pco: true`) are flagged, because the next sync may
   overwrite the change.
+- **Tested 2026-09-24 (owner ran it on a past playlist, SL-11):** `PUT
+  /v1/playlist/{id}` with the GET's own `items` array (one
+  `arrangement_uuid` changed) returned **400**, and the playlist was verified
+  byte-identical afterwards. So the endpoint exists but not in that body
+  shape. Next: find the real schema in ProPresenter 21.x's published API docs
+  before sending anything else. Don't guess shapes against a real playlist.
 - This is the more useful half of the FS request: it changes what actually
   plays this weekend, where the library default doesn't.
 
@@ -2643,3 +2649,4 @@ Search already reads, not a hardcoded "FS".
 - 2026-09-24 — Section 38: owner approved the slide-number label on Show in Editor; noted with file locations, not built.
 - 2026-09-24 — Section 38: noted the FS arrangement request (55 decks have FS, 36 would change; no API setter known; never rewrite .pro; playlists carry their own arrangement).
 - 2026-09-24 — Section 38: playlist-entry arrangement: readable via GET /v1/playlist/{id}; PUT replace-all unverified, test only on a scratch duplicate playlist.
+- 2026-09-24 — Playlist PUT test: 400 with the GET items array; playlist unchanged (verified). Needs the documented request schema before another try.
