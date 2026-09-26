@@ -216,7 +216,7 @@ export async function initNav({ onNavigate, viewIds }) {
         title="${item.navLabel}"
       >
         <i data-lucide="${item.icon}" class="shrink-0 w-4 h-4"></i>
-        <span class="nav-label whitespace-nowrap ${navMode === "full" ? "" : "hidden"}">${item.navLabel}</span>
+        <span class="nav-label whitespace-nowrap ${effectiveNavMode() === "full" ? "" : "hidden"}">${item.navLabel}</span>
         ${keyBadge}
       </button>
     `;

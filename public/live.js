@@ -1,4 +1,4 @@
-import { mountLiveFlags, refreshLiveSummaryOnNewFlags } from "./slide-flags.js";
+import { mountLiveFlagSummary, refreshLiveSummaryOnNewFlags } from "./slide-flags.js";
 import { lastKnownConnected, LINK_EVENT } from "./status-cluster.js";
 
 /**
@@ -11,6 +11,17 @@ import { lastKnownConnected, LINK_EVENT } from "./status-cluster.js";
  * Everything is deliberately oversized and high-contrast: this screen is
  * meant to be usable at a glance from the back of a dark room.
  */
+/**
+ * What the macro bank shows. Normally only the ones not hidden; while
+ * editing, all of them, hidden ones included, so they can be brought back.
+ * Pure, for tests.
+ */
+export function macroBank(macros, editing = false) {
+  const list = macros ?? [];
+  const hiddenCount = list.filter((m) => m.hidden).length;
+  return { shown: editing ? list : list.filter((m) => !m.hidden), hiddenCount };
+}
+
 export function initLive() {
   const container = document.getElementById("view-live");
 
@@ -177,29 +188,29 @@ export function initLive() {
         </div>
 
         <div id="live-macros-wrap" class="hidden">
-          <h2 class="rf-subhead">Macros</h2>
+          <div class="flex items-center justify-between gap-2">
+            <h2 class="rf-subhead">Macros</h2>
+            <span class="flex items-center gap-2">
+              <span id="live-macros-hidden-note" class="text-xs opacity-60"></span>
+              <button id="live-macros-edit" type="button" class="btn btn-chip" aria-pressed="false">Edit</button>
+            </span>
+          </div>
+          <!-- Said once, in words, because in this mode a tap does something
+               different from what the same tile did a second ago. -->
+          <p id="live-macros-editing" class="hidden text-sm mb-2">Tap a macro to hide or show it. Nothing runs while you're editing.</p>
           <div id="live-macros" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3"></div>
         </div>
 
-        <!-- Last, below every control that changes the screens. One tap on a
-             type captures the live slide and says what was wrong with it
-             (issue #2). Working through them happens on the Flags screen,
-             after the service -- so this section only captures and counts. -->
-        <div id="live-flags-wrap">
-          <h2 class="rf-subhead">Flag the live slide</h2>
-          <div class="card bg-base-200">
-            <div class="card-body p-3 gap-3">
-              <div id="live-flag-grid"></div>
-              <div id="live-flag-summary"></div>
-            </div>
-          </div>
-        </div>
+        <!-- Flagging lives on the Flags screen, which has no live controls
+             (handoff §39b): reaching it from here meant scrolling a thumb past
+             every Clear, Look and Macro. One line keeps the count and the way. -->
+        <div id="live-flag-summary"></div>
 
         <div id="live-status" class="text-sm opacity-70"></div>
       </div>
     `;
     if (window.lucide) window.lucide.createIcons();
-    mountLiveFlags(document.getElementById("live-flag-grid"), document.getElementById("live-flag-summary"));
+    mountLiveFlagSummary(document.getElementById("live-flag-summary"));
     refreshLiveSummaryOnNewFlags("live-flag-summary");
 
     wireClearButtons();
@@ -210,7 +221,12 @@ export function initLive() {
       const { looks, macros, messages } = await fetch("/api/live/controls").then((r) => r.json());
       renderMessages(messages ?? []);
       renderButtons("live-looks", "live-looks-wrap", looks, "look");
-      renderButtons("live-macros", "live-macros-wrap", macros, "macro");
+      macroList = macros ?? [];
+      paintMacros();
+      document.getElementById("live-macros-edit")?.addEventListener("click", () => {
+        editingMacros = !editingMacros;
+        paintMacros();
+      });
       if (!looks.length && !macros.length) {
         setStatus("No Looks or Macros found.");
       }
@@ -268,8 +284,74 @@ export function initLive() {
   function renderButtons(gridId, wrapId, items, kind) {
     if (!items?.length) return;
     const grid = document.getElementById(gridId);
-    grid.innerHTML = items
-      .map(
+    grid.innerHTML = items.map((it) => tileHtml(it, kind)).join("");
+    document.getElementById(wrapId).classList.remove("hidden");
+    if (window.lucide) window.lucide.createIcons();
+    grid.querySelectorAll(`[data-${kind}]`).forEach((btn) =>
+      btn.addEventListener("click", () => fire(btn, `/api/live/${kind}`, { id: btn.dataset[kind] }, btn.textContent.trim()))
+    );
+  }
+
+  /**
+   * The macro bank, with the church's hidden ones put away (handoff §39f).
+   * Edit turns every tile into a hide/show toggle and shows the hidden ones
+   * marked as such. While editing, a tap never runs a macro: the fire path is
+   * not wired at all in that mode, rather than guarded inside it.
+   */
+  let macroList = [];
+  let editingMacros = false;
+  function paintMacros() {
+    const wrap = document.getElementById("live-macros-wrap");
+    const grid = document.getElementById("live-macros");
+    const note = document.getElementById("live-macros-hidden-note");
+    const edit = document.getElementById("live-macros-edit");
+    const editingLine = document.getElementById("live-macros-editing");
+    if (!wrap || !grid) return;
+    if (!macroList.length) return wrap.classList.add("hidden");
+    wrap.classList.remove("hidden");
+    const { shown, hiddenCount } = macroBank(macroList, editingMacros);
+    note.textContent = hiddenCount && !editingMacros ? `${hiddenCount} hidden` : "";
+    edit.textContent = editingMacros ? "Done" : "Edit";
+    edit.setAttribute("aria-pressed", String(editingMacros));
+    editingLine.classList.toggle("hidden", !editingMacros);
+    grid.innerHTML = shown.length
+      ? shown.map((it) => tileHtml(it, "macro", editingMacros && it.hidden ? "rf-tile-put-away" : "")).join("")
+      : `<p class="text-sm opacity-70 col-span-full">All ${macroList.length} macros are hidden. Edit to bring some back.</p>`;
+    if (window.lucide) window.lucide.createIcons();
+    grid.querySelectorAll("[data-macro]").forEach((btn) => {
+      const item = macroList.find((m) => m.id === btn.dataset.macro);
+      if (editingMacros) {
+        btn.setAttribute("aria-pressed", String(!item?.hidden));
+        btn.title = `${item?.name ?? ""}: ${item?.hidden ? "hidden. Tap to show it on Live." : "shown. Tap to hide it from Live."}`;
+        btn.addEventListener("click", () => toggleMacro(btn, item));
+      } else {
+        btn.addEventListener("click", () => fire(btn, "/api/live/macro", { id: btn.dataset.macro }, btn.textContent.trim()));
+      }
+    });
+  }
+
+  async function toggleMacro(btn, item) {
+    if (!item) return;
+    btn.disabled = true;
+    try {
+      const res = await fetch("/api/live/visibility", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: "macro", id: item.id, hidden: !item.hidden }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? res.statusText);
+      const hidden = new Set(data.hiddenMacros ?? []);
+      macroList = macroList.map((m) => ({ ...m, hidden: hidden.has(m.id) }));
+    } catch (err) {
+      setStatus(`That wasn't saved: ${err.message}`);
+    }
+    paintMacros();
+  }
+
+  // One tile, for a Look or a Macro.
+  function tileHtml(it, kind, extraClass = "") {
+    return (
         // No size class here. `h-20` used to be, and it never did anything:
         // it is applied from this template string only, so Tailwind's runtime
         // scanner never saw it at boot and generated no rule (see CLAUDE.md on
@@ -287,8 +369,7 @@ export function initLive() {
         // shape instead of by reading every one under pressure. Looks have no
         // equivalent and simply render without one, so the markup has to work
         // either way rather than reserving a gap.
-        (it) =>
-          `<button class="btn rf-tile" data-${kind}="${escapeHtml(it.id)}" title="${escapeHtml(it.name)}">${
+      `<button class="btn rf-tile${extraClass ? ` ${extraClass}` : ""}" data-${kind}="${escapeHtml(it.id)}" title="${escapeHtml(it.name)}">${
             // The macro's own colour, as ProPresenter shows it. Printed ink,
             // never lit: a flat swatch and a lit collar are different objects,
             // so even a red macro cannot be read as the live signal. No colour
@@ -297,13 +378,7 @@ export function initLive() {
             it.color ? `<span class="rf-tile-swatch" style="background:${escapeHtml(it.color)}"></span>` : ""
           }${
             it.icon ? `<i data-lucide="${escapeHtml(it.icon)}" class="rf-tile-icon"></i>` : ""
-          }<span class="rf-tile-label">${escapeHtml(it.name)}</span></button>`
-      )
-      .join("");
-    document.getElementById(wrapId).classList.remove("hidden");
-    if (window.lucide) window.lucide.createIcons();
-    grid.querySelectorAll(`[data-${kind}]`).forEach((btn) =>
-      btn.addEventListener("click", () => fire(btn, `/api/live/${kind}`, { id: btn.dataset[kind] }, btn.textContent.trim()))
+      }<span class="rf-tile-label">${escapeHtml(it.name)}</span></button>`
     );
   }
 

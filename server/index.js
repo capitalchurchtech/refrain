@@ -97,6 +97,7 @@ import {
   DEFAULT_KEEP_RESOLVED_DAYS,
 } from "./slide-flags.js";
 import { heartbeatInterval } from "./heartbeat-pacing.js";
+import { markHidden, setHidden, isControlId } from "./live-visibility.js";
 import {
   DEFAULT_DAYS_FOLDER,
   DEFAULT_LEAD_MINUTES,
@@ -2188,7 +2189,28 @@ app.get("/api/live/controls", async (_req, res) => {
     client.getMacros().catch(() => []),
     client.getMessages().catch(() => []),
   ]);
-  res.json({ looks, macros, messages });
+  res.json({ looks, macros: markHidden(macros, config.liveModule?.hiddenMacros), messages });
+});
+
+/**
+ * Hides or shows one macro on the Live screen. Saved to config.json (atomic
+ * write), so it survives a restart and applies to every browser on this
+ * machine. Only changes what Refrain shows; nothing in ProPresenter moves.
+ */
+app.post("/api/live/visibility", async (req, res) => {
+  const { kind, id, hidden } = req.body ?? {};
+  if (kind !== "macro") return res.status(400).json({ error: 'kind must be "macro"' });
+  if (!isControlId(id) || typeof hidden !== "boolean") return res.status(400).json({ error: "id and hidden are required" });
+  const liveModule = { ...(config.liveModule ?? {}) };
+  liveModule.hiddenMacros = setHidden(liveModule.hiddenMacros, id, hidden);
+  const newConfig = { ...config, liveModule };
+  try {
+    await saveConfig(newConfig);
+  } catch (err) {
+    return res.status(500).json({ error: `Failed to save config.json: ${err.message}` });
+  }
+  config = newConfig;
+  res.json({ ok: true, hiddenMacros: liveModule.hiddenMacros });
 });
 
 app.post("/api/live/clear", async (req, res) => {

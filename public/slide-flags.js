@@ -235,7 +235,7 @@ export function renderReviewHtml(flags, types = [], { hiddenResolved = 0, keepRe
     : "";
   if (all.length === 0) {
     return `
-      <div class="text-sm opacity-70 rf-measure">Nothing flagged. During a service, press <strong>Flag this slide</strong> under the readout on Search, or pick a type on the Live screen.</div>
+      <div class="text-sm opacity-70 rf-measure">Nothing flagged yet. During a service, tap a type above, or <strong>Flag this slide</strong> under the readout on Search.</div>
       ${hiddenNote}`;
   }
   const shown = all.slice(0, LIST_LIMIT);
@@ -361,6 +361,7 @@ export function initSlideFlags() {
       const res = await fetch("/api/slide-flags");
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || res.statusText);
+      mountCapture(data.types ?? []);
       list.innerHTML = renderReviewHtml(data.flags, data.types, data);
     } catch (err) {
       list.innerHTML = `<div class="text-sm opacity-70">Couldn't load flagged slides: ${escapeHtml(err.message)}</div>`;
@@ -376,12 +377,29 @@ export function initSlideFlags() {
       <div class="flex flex-col gap-4 max-w-3xl">
         <div>
           <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="flag" class="w-5 h-5"></i> Flags</h1>
-          <p class="text-sm opacity-70">Slides flagged during a service, to fix now it is over. Show in Editor opens each one in ProPresenter.</p>
+          <p class="text-sm opacity-70">Tap what's wrong with the slide on screen now. Nothing on the screens changes. Fix them after the service.</p>
+        </div>
+        <div>
+          <h2 class="rf-subhead">Flag the live slide</h2>
+          <div class="card bg-base-200"><div class="card-body p-3 gap-3"><div id="slide-flags-capture"></div></div></div>
         </div>
         <div id="slide-flags-list" class="flex flex-col gap-4 text-sm opacity-70">Loading...</div>
       </div>`;
     if (window.lucide) window.lucide.createIcons();
     await load();
+  }
+
+  /**
+   * Capture, first on the screen. This screen has no live controls at all, so
+   * a thumb reaching for a problem type can't land on Clear or a Macro.
+   * Types come with the list, so the grid is filled from the same response.
+   */
+  function mountCapture(types) {
+    const host = document.getElementById("slide-flags-capture");
+    if (host && !host.dataset.mounted) {
+      mountTypeGrid(host, types);
+      host.dataset.mounted = "1";
+    }
   }
 
   window.addEventListener(FLAG_EVENT, () => {
@@ -391,24 +409,19 @@ export function initSlideFlags() {
 }
 
 /**
- * The Live screen's section: the type grid, and how many are open with a way
- * to the Flags screen. The full list lives there; during a service this
- * section only needs to capture.
+ * The Live screen's one line: how many flags are open, and the way to the
+ * Flags screen, where capture and review both live. Flagging used to be a
+ * grid here, below every live control; see handoff §39b.
  */
-export async function mountLiveFlags(gridHost, summaryHost) {
-  let types = [];
+export async function mountLiveFlagSummary(summaryHost) {
   let flags = [];
   try {
     const res = await fetch("/api/slide-flags");
     const data = await res.json().catch(() => ({}));
-    if (res.ok) {
-      types = data.types ?? [];
-      flags = data.flags ?? [];
-    }
+    if (res.ok) flags = data.flags ?? [];
   } catch {
-    // The grid still renders from nothing; the summary just says so.
+    // The line still renders; the count just reads as none.
   }
-  mountTypeGrid(gridHost, types);
   renderLiveSummary(summaryHost, flags);
 }
 
@@ -423,7 +436,7 @@ function renderLiveSummary(host, flags) {
   host.innerHTML = `
     <div class="flex items-center gap-2 text-sm">
       <span class="opacity-70 slide-flag-live-summary">${escapeHtml(liveSummaryText(flags))}</span>
-      <a href="#slide-flags" class="link text-sm">Review</a>
+      <a href="#slide-flags" class="link text-sm">Flag or review</a>
     </div>`;
 }
 

@@ -2561,6 +2561,18 @@ html.blackroom .rf-preset + .rf-preset {
   padding-top: 0;
   padding-bottom: 0;
 }
+
+/* A macro the church has hidden, as it appears while editing the bank
+   (handoff §39f). Faded and struck through: still findable, so it can be
+   brought back, but plainly not part of the bank. Outside edit mode hidden
+   macros aren't rendered at all. `rf-tile-put-away` is applied from live.js,
+   so it has this static home (CLAUDE.md, the JIT note). */
+#view-live .rf-tile.rf-tile-put-away {
+  opacity: 0.45;
+}
+#view-live .rf-tile.rf-tile-put-away .rf-tile-label {
+  text-decoration: line-through;
+}
 .rf-tile-label {
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -2577,17 +2589,17 @@ html.blackroom .rf-preset + .rf-preset {
   overflow-wrap: anywhere;
 }
 
-/* Flag-type grid on Live: uniform like the key bank above. Every chip is the
+/* Flag-type grid on the Flags screen: uniform like Live's key bank. Every chip is the
    same height whatever its label, and a long label clamps to two lines and
    wraps inside the chip instead of spilling out of it. Selectors outrank the
    dark-theme .btn-chip rule (0,2,0) so the fixed height actually wins. */
-#view-live .slide-flag-grid .slide-flag-type-btn {
+#view-slide-flags .slide-flag-grid .slide-flag-type-btn {
   height: 64px;
   min-height: 0;
   padding: 8px;
   overflow: hidden;
 }
-#view-live .slide-flag-grid .slide-flag-type-label {
+#view-slide-flags .slide-flag-grid .slide-flag-type-label {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
