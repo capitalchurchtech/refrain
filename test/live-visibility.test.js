@@ -35,3 +35,18 @@ test("the bank shows only unhidden macros normally, and all of them while editin
   assert.deepEqual(macroBank(marked, true).shown.map((m) => m.id), ["M1", "M2", "M3"]);
   assert.deepEqual(macroBank([]).shown, []);
 });
+
+import { plainMessagesHtml } from "../public/live.js";
+
+test("a message with nothing to fill in is listed with Show, Take down, its text, and whether it's up", () => {
+  const html = plainMessagesHtml([
+    { id: "P", name: "Kids <Pager>", text: "A12", active: true },
+    { id: "C", name: "Countdown", text: null, active: false },
+  ]);
+  assert.match(html, /data-message-show="P"/);
+  assert.match(html, /data-message-hide="C"/);
+  assert.match(html, /Says: A12/);
+  assert.equal((html.match(/On screen/g) ?? []).length, 2, "the LED title and the label, for the active one only");
+  assert.match(html, /Kids &lt;Pager&gt;/, "names are escaped");
+  assert.equal(plainMessagesHtml([]), "");
+});

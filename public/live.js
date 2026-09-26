@@ -22,6 +22,35 @@ export function macroBank(macros, editing = false) {
   return { shown: editing ? list : list.filter((m) => !m.hidden), hiddenCount };
 }
 
+/**
+ * Rows for messages with no fill-in field. Pure, for tests. A message whose
+ * text is fixed can only be shown as it is, so its row offers Show and Take
+ * down and shows the text, rather than a field ProPresenter would ignore.
+ * Giving a message a text field in ProPresenter moves it to the poster below.
+ */
+export function plainMessagesHtml(plain) {
+  const esc = (str) => String(str ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  return (plain ?? [])
+    .map(
+      (m) => `
+    <div class="card bg-base-200 live-message-row" data-active="${m.active ? "1" : ""}">
+      <div class="card-body p-3 gap-1">
+        <div class="flex items-center justify-between gap-2">
+          <div class="min-w-0">
+            <div class="font-medium flex items-center gap-2">${m.active ? `<span class="rf-led lit" title="On screen"></span>` : ""}${esc(m.name)}${m.active ? ` <span class="text-xs opacity-70">On screen</span>` : ""}</div>
+            ${m.text ? `<div class="text-xs opacity-70 truncate">Says: ${esc(m.text)}</div>` : ""}
+          </div>
+          <div class="flex gap-2 shrink-0">
+            <button type="button" class="btn btn-outline btn-sm" data-message-show="${esc(m.id)}">Show</button>
+            <button type="button" class="btn btn-outline btn-sm" data-message-hide="${esc(m.id)}">Take down</button>
+          </div>
+        </div>
+      </div>
+    </div>`
+    )
+    .join("");
+}
+
 export function initLive() {
   const container = document.getElementById("view-live");
 
@@ -149,21 +178,6 @@ export function initLive() {
           </div>
         </div>
 
-        <div id="live-message-wrap" class="hidden">
-          <h2 class="rf-subhead">Message on screen</h2>
-          <div class="card bg-base-200">
-            <div class="card-body p-3 gap-3">
-              <select id="live-message-select" class="select select-bordered select-sm hidden"></select>
-              <div id="live-message-fields" class="flex flex-col gap-2"></div>
-              <div class="flex gap-2">
-                <button id="live-message-post" class="btn btn-outline h-16 flex-1 text-base"><span class="flex items-center gap-2"><i data-lucide="send" class="w-5 h-5"></i> Post to screen</span></button>
-                <button id="live-message-clear" class="btn btn-outline h-16"><span class="flex items-center gap-2"><i data-lucide="x" class="w-5 h-5"></i> Clear</span></button>
-              </div>
-              <p class="text-xs opacity-60">Fills a message you set up once in ProPresenter and shows it, so an urgent code is type-and-post. Clear takes it back down.</p>
-            </div>
-          </div>
-        </div>
-
         <div>
           <h2 class="rf-subhead">Clear</h2>
           <!-- Across the top of the bank whenever the LINK lamp is dark. The
@@ -179,6 +193,28 @@ export function initLive() {
             <button class="btn btn-outline h-20 text-base" data-clear="slide"><span class="flex flex-col items-center gap-1"><i data-lucide="type" class="w-6 h-6"></i> Slide</span></button>
             <button class="btn btn-outline h-20 text-base" data-clear="media"><span class="flex flex-col items-center gap-1"><i data-lucide="image" class="w-6 h-6"></i> Media</span></button>
             <button class="btn btn-outline h-20 text-base" data-clear="messages"><span class="flex flex-col items-center gap-1"><i data-lucide="message-square" class="w-6 h-6"></i> Messages</span></button>
+          </div>
+        </div>
+
+        <div id="live-message-wrap" class="hidden">
+          <!-- Below Clear, never above it: six message rows would otherwise
+               push the Clear keys out of reach at the moment they matter. -->
+          <h2 class="rf-subhead">Messages</h2>
+          <!-- Messages with no fill-in field (countdowns, a fixed pager
+               line): Show and Take down, with what each says and whether it's
+               up. Listed rather than hidden, which used to leave the whole
+               section missing with no word why (handoff §39e). -->
+          <div id="live-message-plain" class="flex flex-col gap-2 mb-3"></div>
+          <div id="live-message-poster" class="card bg-base-200 hidden">
+            <div class="card-body p-3 gap-3">
+              <select id="live-message-select" class="select select-bordered select-sm hidden"></select>
+              <div id="live-message-fields" class="flex flex-col gap-2"></div>
+              <div class="flex gap-2">
+                <button id="live-message-post" class="btn btn-outline h-16 flex-1 text-base"><span class="flex items-center gap-2"><i data-lucide="send" class="w-5 h-5"></i> Post to screen</span></button>
+                <button id="live-message-clear" class="btn btn-outline h-16"><span class="flex items-center gap-2"><i data-lucide="x" class="w-5 h-5"></i> Clear</span></button>
+              </div>
+              <p class="text-xs opacity-60">Fills a message you set up once in ProPresenter and shows it, so an urgent code is type-and-post. Clear takes it back down.</p>
+            </div>
           </div>
         </div>
 
@@ -244,10 +280,16 @@ export function initLive() {
   // posted from here, so timer-only messages are left out. When several
   // qualify, a small picker chooses between them.
   function renderMessages(messages) {
-    const postable = (messages ?? []).filter((m) => m.tokens?.some((t) => t.kind === "text"));
-    if (!postable.length) return;
-
+    const all = messages ?? [];
+    const postable = all.filter((m) => m.tokens?.some((t) => t.kind === "text"));
+    const plain = all.filter((m) => !postable.includes(m));
     const wrap = document.getElementById("live-message-wrap");
+    if (!all.length) return;
+    wrap.classList.remove("hidden");
+    renderPlainMessages(plain);
+    if (!postable.length) return;
+    document.getElementById("live-message-poster").classList.remove("hidden");
+
     const select = document.getElementById("live-message-select");
     const fields = document.getElementById("live-message-fields");
     const postBtn = document.getElementById("live-message-post");
@@ -284,6 +326,38 @@ export function initLive() {
 
     wrap.classList.remove("hidden");
     if (window.lucide) window.lucide.createIcons();
+  }
+
+  /**
+   * One row per message that has nothing to fill in: its name, what it says
+   * now, whether it's on screen, and Show / Take down. After a press the list
+   * is re-read, so "On screen" reflects what ProPresenter says, not a guess.
+   */
+  function renderPlainMessages(plain) {
+    const host = document.getElementById("live-message-plain");
+    if (!host) return;
+    host.innerHTML = plainMessagesHtml(plain);
+    host.querySelectorAll("[data-message-show]").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        await fire(btn, "/api/live/message", { id: btn.dataset.messageShow, values: [] }, "Show message");
+        refreshMessages();
+      })
+    );
+    host.querySelectorAll("[data-message-hide]").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        await fire(btn, "/api/live/message-clear", { id: btn.dataset.messageHide }, "Take down message");
+        refreshMessages();
+      })
+    );
+  }
+
+  async function refreshMessages() {
+    try {
+      const { messages } = await fetch("/api/live/controls").then((r) => r.json());
+      renderPlainMessages((messages ?? []).filter((m) => !m.tokens?.some((t) => t.kind === "text")));
+    } catch {
+      // Leave the list as it was; the next visit re-reads it.
+    }
   }
 
   function renderButtons(gridId, wrapId, items, kind) {

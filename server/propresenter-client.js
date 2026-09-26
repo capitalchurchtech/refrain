@@ -333,6 +333,10 @@ export class ProPresenterClient {
         id: m?.id?.uuid,
         name: m?.id?.name ?? "Untitled",
         tokens: extractMessageTokens(m),
+        // What it says now, and whether it's on the screens: shown beside
+        // Show / Take down, so the operator can see which one is up.
+        text: typeof m?.message === "string" ? m.message : null,
+        active: Boolean(m?.is_active),
       }))
       .filter((m) => m.id);
   }

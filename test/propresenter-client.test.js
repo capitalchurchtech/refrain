@@ -336,7 +336,7 @@ test("getMessages reads tokens from message_components", async () => {
       { id: "msg1", name: "Childcare", tokens: [
         { name: "room", kind: "text" },
         { name: "clock", kind: "timer" },
-      ] },
+      ], text: null, active: false },
     ]);
   });
 });
@@ -351,6 +351,15 @@ test("getMessages also accepts the `tokens` array shape", async () => {
       { name: "who", kind: "text" },
       { name: "t", kind: "timer" },
     ]);
+  });
+});
+
+test("getMessages reports a message's current text and whether it's on screen", async () => {
+  await withFetch(jsonFetch([{ id: { uuid: "m", name: "Pager" }, message: "A12", tokens: [], is_active: true }]), async () => {
+    const [m] = await client().getMessages();
+    assert.equal(m.text, "A12");
+    assert.equal(m.active, true);
+    assert.deepEqual(m.tokens, []);
   });
 });
 
