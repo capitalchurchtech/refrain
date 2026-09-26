@@ -1261,6 +1261,8 @@ export function summarizeModules(health) {
   const mods = [
     { name: "Arrangement", status: health.arrangementModule?.status },
     { name: "Share Library", status: health.shareLibrary?.status },
+    { name: "Phone flags", status: health.networkModule?.status },
+    { name: "Summary sending", status: health.reportModule?.status },
   ].filter((m) => m.status);
   const rank = { misconfigured: 0, active: 1, off: 2 };
   mods.sort((a, b) => (rank[a.status] ?? 3) - (rank[b.status] ?? 3));
@@ -1539,6 +1541,23 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
    * the pre-service list. Refrain never deletes anything; the most it does is
    * show a file in Finder so a person can look and decide.
    */
+  const net = health.networkModule;
+  const phoneCard =
+    net && net.status !== "off"
+      ? `
+    <div class="card bg-base-200">
+      <div class="card-body p-3 gap-2">
+        <h2 class="card-title text-base"><i data-lucide="smartphone" class="w-4 h-4 opacity-70"></i> Phone flags</h2>
+        ${
+          net.status === "active"
+            ? `<div class="text-sm rf-measure">Anyone on the church network can open this on a phone to flag a slide or see where the service is. It can't change the screens.${net.pin ? " It asks for the PIN." : " There's no PIN; set networkModule.pin to require one."}</div>
+               <div class="text-sm font-mono">${(net.urls ?? []).map(escapeHtml).join("<br>") || "No network address found."}</div>`
+            : `<div class="text-sm">Not running: ${escapeHtml((net.problems ?? []).join(" "))}</div>`
+        }
+      </div>
+    </div>`
+      : "";
+
   const themesCard = `
     <div class="card bg-base-200">
       <div class="card-body p-3 gap-2">
@@ -1972,6 +1991,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
       ${duplicateNamesCard}
       ${orphanedMediaCard}
       ${themesCard}
+      ${phoneCard}
       ${arrangementCard}
       ${configCard}
       ${libraryCard}

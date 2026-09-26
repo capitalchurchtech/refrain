@@ -176,6 +176,23 @@ export function getReportModuleStatus(config) {
 }
 
 /**
+ * Phone flags and the progress feed (issues #8 and #7): a separate listener
+ * that can be reached from the church network. Off unless turned on; the
+ * main app stays on 127.0.0.1 either way.
+ * @returns {{ status: "off" | "misconfigured" | "active", problems: string[] }}
+ */
+export function getNetworkModuleStatus(config, mainPort = 9999) {
+  const mod = config.networkModule;
+  if (!mod?.enabled) return { status: "off", problems: [] };
+  const problems = [];
+  const port = Number(mod.port ?? 9997);
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) problems.push("networkModule.port should be a number from 1024 to 65535.");
+  if (port === Number(mainPort)) problems.push("networkModule.port can't be the same as Refrain's own port.");
+  if (mod.pin != null && mod.pin !== "" && !/^\d{4,8}$/.test(String(mod.pin))) problems.push("networkModule.pin should be 4 to 8 digits, or left empty.");
+  return { status: problems.length ? "misconfigured" : "active", problems };
+}
+
+/**
  * The service system (handoff section 37). Off unless a church turns it on:
  * a church that only wants search never sees a playbook. A malformed
  * schedule is "misconfigured" with a message on Health, never a crash.

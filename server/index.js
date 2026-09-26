@@ -9,7 +9,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { copyFile, readdir, mkdir, stat, readFile } from "node:fs/promises";
 import { exec, execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { platform, homedir } from "node:os";
+import { platform, homedir, networkInterfaces } from "node:os";
 import path from "node:path";
 
 const execFileAsync = promisify(execFile);
@@ -27,6 +27,7 @@ import {
   registerProviders,
   registerDeliveryBackends,
   getReportModuleStatus,
+  getNetworkModuleStatus,
   deliveryBackendFor,
   cleanFolderSetting,
   ensureMachineId,
@@ -104,6 +105,7 @@ import { heartbeatInterval } from "./heartbeat-pacing.js";
 import { markHidden, setHidden, isControlId, rememberValues } from "./live-visibility.js";
 import { safeSlides, addSafeSlide, removeSafeSlide, renameSafeSlide, moveSafeSlide } from "./safe-slides.js";
 import { layoutThemes, themesInDeck, themeReport } from "./theme-report.js";
+import { createRemoteApp, pushRecent, serviceProgress } from "./remote.js";
 import {
   DEFAULT_DAYS_FOLDER,
   DEFAULT_LEAD_MINUTES,
@@ -815,6 +817,51 @@ function slideKey(slide) {
 // see server/service-days.js). Folded fresh whenever it is needed: a day is a
 // few hundred events at most, and a fold nobody caches cannot go stale.
 let serviceDay = { day: null, events: [], loading: null };
+let recentSlides = [];
+
+/** Where a phone on the church network would open the flag page, one URL per network address. */
+function networkUrls() {
+  const port = Number(config.networkModule?.port ?? 9997);
+  const host = config.networkModule?.host;
+  // Bound to one address: that's the only one that works, so it's the only one shown.
+  if (typeof host === "string" && host && host !== "0.0.0.0") {
+    return [`http://${/^(127\.|localhost$|::1$)/.test(host) ? "127.0.0.1" : host}:${port}/`];
+  }
+  const out = [];
+  for (const list of Object.values(networkInterfaces())) {
+    for (const a of list ?? []) if (a.family === "IPv4" && !a.internal) out.push(`http://${a.address}:${port}/`);
+  }
+  return out;
+}
+
+/**
+ * Starts the phone listener when networkModule is on. Separate app, separate
+ * port, a handful of routes; see server/remote.js for the boundary.
+ */
+let remoteServer = null;
+function startRemoteListener() {
+  const { status, problems } = getNetworkModuleStatus(config, port);
+  if (status !== "active") {
+    if (status === "misconfigured") console.warn(`Phone flags are misconfigured: ${problems.join(" ")}`);
+    return;
+  }
+  const remoteApp = createRemoteApp({
+    getState: () => ({
+      liveState,
+      recent: recentSlides,
+      progress: serviceProgress(serviceModuleOn() && serviceDay.day ? serviceState() : null, liveState),
+    }),
+    saveFlag: (flag) => saveFlag(flag, { folder: slideFlagsFolder() }),
+    flagTypes: configuredFlagTypes,
+    pin: () => (config.networkModule?.pin ? String(config.networkModule.pin) : null),
+  });
+  const host = typeof config.networkModule?.host === "string" && config.networkModule.host ? config.networkModule.host : "0.0.0.0";
+  const remotePort = Number(config.networkModule?.port ?? 9997);
+  remoteServer = remoteApp.listen(remotePort, host, () => {
+    console.log(`Phone flags on: ${networkUrls().join(", ") || `port ${remotePort}`}${config.networkModule?.pin ? " (PIN required)" : ""}.`);
+  });
+  remoteServer.on("error", (err) => console.error(`Phone flags couldn't start on port ${remotePort}: ${err.message}`));
+}
 
 function serviceModuleOn() {
   return getServiceModuleStatus(config) !== "off";
@@ -966,6 +1013,10 @@ async function heartbeat() {
     liveSince: enriched ? (sameSlide ? liveState.liveSince : now) : null,
     checkedAt: now,
   };
+
+  // The last few slides that were on the screens, for a flag sent late from
+  // a phone (server/remote.js). In memory only: it's a scrollback, not a record.
+  if (liveState.live && enriched) recentSlides = pushRecent(recentSlides, enriched, now);
 
   // The service timeline: what goes live, when, and in which service. It reads
   // only what this beat already fetched. Skipped while ProPresenter is not
@@ -4105,6 +4156,8 @@ app.get("/api/health", async (_req, res) => {
       },
     },
     envRequirements: getEnvRequirements(config),
+    networkModule: { ...getNetworkModuleStatus(config, port), urls: getNetworkModuleStatus(config, port).status === "active" ? networkUrls() : [], pin: Boolean(config.networkModule?.pin) },
+    reportModule: getReportModuleStatus(config),
   });
 });
 
@@ -4322,6 +4375,8 @@ const server = app.listen(port, "127.0.0.1", async () => {
       console.error("Service days could not start:", err.message);
     }
   }
+
+  startRemoteListener();
 
   // Flags captured while the shared folder was unreachable, copied now.
   retryPendingFlags({ folder: slideFlagsFolder() })
