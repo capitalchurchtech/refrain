@@ -37,6 +37,19 @@
   <h1>Flag a slide</h1>
   <div class="muted">Pick the slide you saw, say what's wrong, and send it to the booth. Nothing on the screens changes.</div>
 
+  <!-- Shown instead of everything below until this phone has today's PIN. -->
+  <div id="lock" class="card" hidden>
+    <label for="pin" style="margin-top:0">Today's PIN</label>
+    <input id="pin" inputmode="numeric" autocomplete="one-time-code" maxlength="8" />
+    <div id="lock-hint" class="muted" style="margin-top:8px"></div>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:12px;color:var(--text);font-size:15px">
+      <input id="trust" type="checkbox" style="width:auto" /> Trust this phone for 30 days
+    </label>
+    <button id="unlock" class="send">Continue</button>
+    <div id="lock-status" class="status" role="status" aria-live="polite"></div>
+  </div>
+
+  <div id="main">
   <h2>Where the service is</h2>
   <div id="progress" class="card progress">Loading...</div>
 
@@ -52,6 +65,7 @@
 
   <button id="send" class="send" disabled>Send flag</button>
   <div id="status" class="status" role="status" aria-live="polite"></div>
+  </div>
 
   <script type="module" src="/remote.js"></script>
 </body>

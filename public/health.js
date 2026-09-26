@@ -182,6 +182,33 @@ export function initHealth() {
       orphanResults.innerHTML = renderOrphanResults(lastOrphanScan);
       wireOrphanResults();
     }
+    // Today's phone PIN, to read out; and a way to sign every phone out.
+    const pinEl = document.getElementById("phone-pin-today");
+    const paintPin = async () => {
+      try {
+        const p = await fetch("/api/network/pin").then((r) => (r.ok ? r.json() : null));
+        if (p && pinEl) pinEl.innerHTML = `${p.mode === "daily" ? "Today's PIN" : "PIN"}: <strong class="font-mono text-base">${escapeHtml(p.pin ?? "")}</strong>${p.changesAt ? ` <span class="opacity-60">(changes at midnight)</span>` : ""}`;
+      } catch {
+        // leave it blank
+      }
+    };
+    if (pinEl) paintPin();
+    document.getElementById("phone-forget-btn")?.addEventListener("click", async (e) => {
+      const btn = e.currentTarget;
+      const status = document.getElementById("phone-forget-status");
+      btn.disabled = true;
+      try {
+        const res = await fetch("/api/network/forget-phones", { method: "POST" });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? res.statusText);
+        status.textContent = "Every phone will need the new PIN.";
+        await paintPin();
+      } catch (err) {
+        status.textContent = err.message;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
     document.getElementById("theme-report-btn")?.addEventListener("click", async (e) => {
       const btn = e.currentTarget;
       const statusEl = document.getElementById("theme-report-status");
@@ -1550,8 +1577,17 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
         <h2 class="card-title text-base"><i data-lucide="smartphone" class="w-4 h-4 opacity-70"></i> Phone flags</h2>
         ${
           net.status === "active"
-            ? `<div class="text-sm rf-measure">Anyone on the church network can open this on a phone to flag a slide or see where the service is. It can't change the screens.${net.pin ? " It asks for the PIN." : " There's no PIN; set networkModule.pin to require one."}</div>
-               <div class="text-sm font-mono">${(net.urls ?? []).map(escapeHtml).join("<br>") || "No network address found."}</div>`
+            ? `<div class="text-sm rf-measure">Anyone on the church network can open this on a phone to flag a slide or see where the service is. It can't change the screens.${
+                net.pinMode === "none" ? " There's no PIN; set networkModule.pin to \"daily\" to require one." : ""
+              }</div>
+               <div class="text-sm font-mono">${(net.urls ?? []).map(escapeHtml).join("<br>") || "No network address found."}</div>
+               ${
+                 net.pinMode === "none"
+                   ? ""
+                   : `<div class="flex items-center gap-3 flex-wrap"><span id="phone-pin-today" class="text-sm"></span>
+                      <button id="phone-forget-btn" class="btn btn-outline btn-xs" title="Signs every phone out and changes today's PIN">Forget all phones</button>
+                      <span id="phone-forget-status" class="text-xs opacity-60"></span></div>`
+               }`
             : `<div class="text-sm">Not running: ${escapeHtml((net.problems ?? []).join(" "))}</div>`
         }
       </div>

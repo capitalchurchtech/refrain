@@ -73,12 +73,13 @@
     "safeSlides": [],
     "messageRecent": {}
   },
-  "_networkModule": "Phone flags and the service progress feed (off until enabled). A separate listener on its own port that anyone on the church network can open on a phone: it shows what's live, the last few slides and where the service is, and adds a flag with a note and a name. It has no route that can change the screens, and never calls ProPresenter. Refrain's main screens stay on this machine only. pin (4 to 8 digits) is asked for once per phone; leave it empty for none. host defaults to every network address (0.0.0.0); set 127.0.0.1 to try it on this machine only.",
+  "_networkModule": "Phone flags and the service progress feed (off until enabled). A separate listener on its own port that anyone on the church network can open on a phone: it shows what's live, the last few slides and where the service is, and adds a flag with a note and a name. It has no route that can change the screens, and never calls ProPresenter. Refrain's main screens stay on this machine only. pin is \"daily\" (a four-digit PIN that changes at midnight, shown in the booth on the Flags screen and Health), a fixed 4 to 8 digits, or empty for none. pinHint is what the phone's PIN screen says about where to find it. A correct PIN signs the phone in until midnight, or for 30 days if the person ticks \"Trust this phone\"; Forget all phones on Health signs them all out. host defaults to every network address (0.0.0.0); set 127.0.0.1 to try it on this machine only.",
   "networkModule": {
     "enabled": false,
     "host": "0.0.0.0",
     "port": 9997,
-    "pin": null
+    "pin": "daily",
+    "pinHint": null
   },
   "_reportModule": "Sending End's day summary somewhere (off until enabled). deliveryBackend is a file in delivery/: email (SMTP settings in .env, recipients here) or folder (folder here). A person presses Send after reading the summary unless requireReview is false. Email is the one thing in Refrain that sends data off the machine; it only happens for a church that turns this on.",
   "reportModule": {

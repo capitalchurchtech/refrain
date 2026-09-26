@@ -6,7 +6,7 @@
  * actual installed version before relying on anything below.
  */
 import { readFileSync, existsSync } from "node:fs";
-import { copyFile, readdir, mkdir, stat, readFile } from "node:fs/promises";
+import { copyFile, readdir, mkdir, stat, readFile, chmod } from "node:fs/promises";
 import { exec, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { platform, homedir, networkInterfaces } from "node:os";
@@ -106,6 +106,8 @@ import { markHidden, setHidden, isControlId, rememberValues } from "./live-visib
 import { safeSlides, addSafeSlide, removeSafeSlide, renameSafeSlide, moveSafeSlide } from "./safe-slides.js";
 import { layoutThemes, themesInDeck, themeReport } from "./theme-report.js";
 import { createRemoteApp, pushRecent, serviceProgress } from "./remote.js";
+import { dailyPin, newSecret, endOfDay } from "./remote-auth.js";
+import { writeAtomic } from "./append-store.js";
 import {
   DEFAULT_DAYS_FOLDER,
   DEFAULT_LEAD_MINUTES,
@@ -834,6 +836,51 @@ function networkUrls() {
   return out;
 }
 
+// --- The phone PIN (server/remote-auth.js) ----------------------------------
+//
+// The secret behind the daily PIN and every phone token lives on this
+// machine only, in data/, never in config.json (which gets exported and
+// shared). Created the first time it's needed; replaced by "Forget all
+// phones". Written atomically, like every other file a volunteer would miss.
+const REMOTE_SECRET_FILE = "./data/remote-secret.json";
+let remoteSecret = null;
+function loadRemoteSecret() {
+  if (remoteSecret) return remoteSecret;
+  try {
+    remoteSecret = JSON.parse(readFileSync(REMOTE_SECRET_FILE, "utf-8")).secret ?? null;
+  } catch {
+    remoteSecret = null;
+  }
+  if (!remoteSecret) {
+    remoteSecret = newSecret();
+    saveRemoteSecret().catch((err) =>
+      console.error("Couldn't save the phone PIN secret; phones will need the PIN again after a restart:", err.message)
+    );
+  }
+  return remoteSecret;
+}
+async function saveRemoteSecret() {
+  await writeAtomic(path.dirname(REMOTE_SECRET_FILE), path.basename(REMOTE_SECRET_FILE), { secret: remoteSecret, createdAt: new Date().toISOString() });
+  // Readable only by the account Refrain runs as.
+  await chmod(REMOTE_SECRET_FILE, 0o600).catch(() => {});
+}
+async function forgetAllPhones() {
+  remoteSecret = newSecret();
+  await saveRemoteSecret();
+}
+const DEFAULT_PIN_HINT = "Today's PIN is on the Flags screen in the booth. Ask whoever is running the screens.";
+function remotePinMode() {
+  const pin = config.networkModule?.pin;
+  if (pin === "daily") return "daily";
+  return /^\d{4,8}$/.test(String(pin ?? "")) ? "fixed" : "none";
+}
+function expectedRemotePin(now = Date.now()) {
+  const mode = remotePinMode();
+  if (mode === "daily") return dailyPin(loadRemoteSecret(), dayKey(now));
+  if (mode === "fixed") return String(config.networkModule.pin);
+  return null;
+}
+
 /**
  * Starts the phone listener when networkModule is on. Separate app, separate
  * port, a handful of routes; see server/remote.js for the boundary.
@@ -853,12 +900,17 @@ function startRemoteListener() {
     }),
     saveFlag: (flag) => saveFlag(flag, { folder: slideFlagsFolder() }),
     flagTypes: configuredFlagTypes,
-    pin: () => (config.networkModule?.pin ? String(config.networkModule.pin) : null),
+    auth: {
+      expectedPin: () => expectedRemotePin(),
+      secret: () => loadRemoteSecret(),
+      hint: () => (typeof config.networkModule?.pinHint === "string" && config.networkModule.pinHint.trim() ? config.networkModule.pinHint.trim() : DEFAULT_PIN_HINT),
+      daily: () => remotePinMode() === "daily",
+    },
   });
   const host = typeof config.networkModule?.host === "string" && config.networkModule.host ? config.networkModule.host : "0.0.0.0";
   const remotePort = Number(config.networkModule?.port ?? 9997);
   remoteServer = remoteApp.listen(remotePort, host, () => {
-    console.log(`Phone flags on: ${networkUrls().join(", ") || `port ${remotePort}`}${config.networkModule?.pin ? " (PIN required)" : ""}.`);
+    console.log(`Phone flags on: ${networkUrls().join(", ") || `port ${remotePort}`}${remotePinMode() === "none" ? "" : remotePinMode() === "daily" ? " (daily PIN)" : " (PIN)"}.`);
   });
   remoteServer.on("error", (err) => console.error(`Phone flags couldn't start on port ${remotePort}: ${err.message}`));
 }
@@ -2412,6 +2464,27 @@ async function saveLiveModule(res, change) {
   }
 }
 const refuse = (status, message) => Object.assign(new Error(message), { status });
+
+/**
+ * Today's phone PIN, for the booth: shown on the Flags screen and Health so
+ * whoever is running the screens can read it out. This route is on the main
+ * app, which only this machine can reach; the phone listener never serves it.
+ */
+app.get("/api/network/pin", (_req, res) => {
+  if (getNetworkModuleStatus(config, port).status !== "active") return res.status(409).json({ error: "Phone flags are off." });
+  const mode = remotePinMode();
+  res.json({ mode, pin: expectedRemotePin(), changesAt: mode === "daily" ? new Date(endOfDay()).toISOString() : null, urls: networkUrls() });
+});
+
+/** New secret: every phone is signed out, and the daily PIN changes now. */
+app.post("/api/network/forget-phones", async (_req, res) => {
+  try {
+    await forgetAllPhones();
+    res.json({ ok: true, pin: expectedRemotePin() });
+  } catch (err) {
+    res.status(500).json({ error: `Couldn't save the new secret: ${err.message}` });
+  }
+});
 
 app.get("/api/live/safe-slides", (_req, res) => {
   res.json({ safeSlides: safeSlides(config.liveModule?.safeSlides) });
@@ -4186,7 +4259,7 @@ app.get("/api/health", async (_req, res) => {
       },
     },
     envRequirements: getEnvRequirements(config),
-    networkModule: { ...getNetworkModuleStatus(config, port), urls: getNetworkModuleStatus(config, port).status === "active" ? networkUrls() : [], pin: Boolean(config.networkModule?.pin) },
+    networkModule: { ...getNetworkModuleStatus(config, port), urls: getNetworkModuleStatus(config, port).status === "active" ? networkUrls() : [], pinMode: remotePinMode() },
     reportModule: getReportModuleStatus(config),
   });
 });

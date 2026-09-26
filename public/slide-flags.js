@@ -379,6 +379,7 @@ export function initSlideFlags() {
         <div>
           <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="flag" class="w-5 h-5"></i> Flags</h1>
           <p class="text-sm opacity-70">Tap what's wrong with the slide on screen now. Nothing on the screens changes. Fix them after the service.</p>
+          <p id="slide-flags-phone-pin" class="text-sm hidden"></p>
         </div>
         <div>
           <h2 class="rf-subhead">Flag the live slide</h2>
@@ -387,7 +388,25 @@ export function initSlideFlags() {
         <div id="slide-flags-list" class="flex flex-col gap-4 text-sm opacity-70">Loading...</div>
       </div>`;
     if (window.lucide) window.lucide.createIcons();
+    showPhonePin();
     await load();
+  }
+
+  // The phone page points people here for today's PIN, so it's shown where
+  // the booth can read it out. Only when phone flags are on with a PIN.
+  async function showPhonePin() {
+    const el = document.getElementById("slide-flags-phone-pin");
+    if (!el) return;
+    try {
+      const res = await fetch("/api/network/pin");
+      if (!res.ok) return;
+      const p = await res.json();
+      if (p.mode === "none") return;
+      el.innerHTML = `Flagging from a phone: ${escapeHtml((p.urls ?? [])[0] ?? "")} · ${p.mode === "daily" ? "today's PIN" : "PIN"} <strong class="font-mono">${escapeHtml(p.pin ?? "")}</strong>`;
+      el.classList.remove("hidden");
+    } catch {
+      // Phone flags off or unreachable: say nothing.
+    }
   }
 
   /**

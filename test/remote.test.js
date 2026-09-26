@@ -4,13 +4,13 @@ import { createRemoteApp, pushRecent, flagFromRecent, serviceProgress, rateLimit
 
 const slide = (n, extra = {}) => ({ presentationId: `P${n}`, presentationName: `Hymn ${n}`, slideIndex: n, text: `Line ${n}`, ...extra });
 
-function start({ pin = null, recent = [] } = {}) {
+function start({ pin = null, recent = [], secret = { value: "s1" } } = {}) {
   const saved = [];
   const app = createRemoteApp({
     getState: () => ({ liveState: { connected: true, live: true }, recent, progress: { live: true, item: { name: "Hymn 1" } } }),
     saveFlag: async (f) => (saved.push(f), { shared: true }),
     flagTypes: () => [{ label: "Typo or spelling" }],
-    pin: () => pin,
+    auth: { expectedPin: () => pin, secret: () => secret.value, hint: () => "On the Flags screen in the booth.", daily: () => true },
   });
   return new Promise((resolve) => {
     const server = app.listen(0, "127.0.0.1", () => resolve({ server, base: `http://127.0.0.1:${server.address().port}`, saved }));
@@ -64,21 +64,38 @@ test("only the phone routes exist: nothing that could change the screens is reac
   }
 });
 
-test("with a PIN set, reading and flagging need it; the page itself loads so it can ask", async () => {
+test("with a PIN: the page and the lock say where to find it; everything else needs a phone token earned with it", async () => {
   const recent = pushRecent([], slide(1));
-  const { server, base, saved } = await start({ pin: "2468", recent });
+  const secret = { value: "s1" };
+  const { server, base, saved } = await start({ pin: "2468", recent, secret });
+  const post = (path, body, token) => fetch(base + path, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { "x-refrain-device": token } : {}) }, body: JSON.stringify(body) });
   try {
     assert.equal((await fetch(`${base}/`)).status, 200);
+    const lock = await (await fetch(`${base}/api/lock`)).json();
+    assert.deepEqual(lock, { required: true, daily: true, hint: "On the Flags screen in the booth." });
     assert.equal((await fetch(`${base}/api/state`)).status, 401);
-    const ok = await fetch(`${base}/api/state`, { headers: { "x-refrain-pin": "2468" } });
-    const state = await ok.json();
-    assert.equal(state.recent[0].slideNumber, 2);
-    const sent = await fetch(`${base}/api/flag`, { method: "POST", headers: { "Content-Type": "application/json", "x-refrain-pin": "2468" }, body: JSON.stringify({ ref: state.recent[0].ref, type: "Typo or spelling", note: "x", name: "Sam" }) });
+    assert.equal((await post("/api/unlock", { pin: "1111" })).status, 403);
+    const unlocked = await (await post("/api/unlock", { pin: "2468", trust: true })).json();
+    assert.equal(unlocked.trusted, true);
+    const state = await (await fetch(`${base}/api/state`, { headers: { "x-refrain-device": unlocked.token } })).json();
+    const sent = await post("/api/flag", { ref: state.recent[0].ref, type: "Typo or spelling", note: "x", name: "Sam" }, unlocked.token);
     assert.equal(sent.status, 200);
     assert.equal(saved.length, 1);
-    assert.equal(saved[0].type, "Typo or spelling");
-    const stale = await fetch(`${base}/api/flag`, { method: "POST", headers: { "Content-Type": "application/json", "x-refrain-pin": "2468" }, body: JSON.stringify({ ref: "gone" }) });
-    assert.equal(stale.status, 404);
+    assert.equal((await post("/api/flag", { ref: "gone" }, unlocked.token)).status, 404);
+    // Forget all phones: a new secret, and the old token stops working.
+    secret.value = "s2";
+    assert.equal((await fetch(`${base}/api/state`, { headers: { "x-refrain-device": unlocked.token } })).status, 401);
+  } finally {
+    server.close();
+  }
+});
+
+test("guessing the PIN is held to five tries a minute", async () => {
+  const { server, base } = await start({ pin: "2468" });
+  try {
+    const codes = [];
+    for (let i = 0; i < 7; i++) codes.push((await fetch(`${base}/api/unlock`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin: "0000" }) })).status);
+    assert.deepEqual(codes, [403, 403, 403, 403, 403, 429, 429]);
   } finally {
     server.close();
   }

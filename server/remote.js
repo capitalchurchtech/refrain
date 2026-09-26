@@ -16,14 +16,16 @@
  * the state Refrain's heartbeat already has. The main app stays bound to
  * 127.0.0.1 regardless.
  *
- * "Nobody knows the URL" is not access control, so an optional PIN is
- * checked on every request when set, and flags are rate-limited per device.
+ * "Nobody knows the URL" is not access control, so when a PIN is set (daily
+ * or fixed; see server/remote-auth.js) every API call needs a phone token
+ * earned with it, and flags are rate-limited per device.
  */
 
 import express from "express";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { buildFlag } from "./slide-flags.js";
+import { pinMatches, issueToken, tokenValid } from "./remote-auth.js";
 
 export const RECENT_SLIDES = 12;
 
@@ -112,22 +114,40 @@ export function rateLimiter({ max = 20, windowMs = 60_000 } = {}) {
  * @param {() => object} deps.getState     { liveState, recent, progress }
  * @param {(flag) => Promise<object>} deps.saveFlag
  * @param {() => Array<{label:string}>} deps.flagTypes
- * @param {() => string|null} deps.pin
+ * @param {{ expectedPin: () => string|null, secret: () => string, hint: () => string, daily: () => boolean }} deps.auth
+ *   expectedPin is today's PIN (daily or fixed), or null for no PIN.
  * @param {string} [deps.publicDir]
  */
-export function createRemoteApp({ getState, saveFlag, flagTypes, pin, publicDir = "./public" }) {
+export function createRemoteApp({ getState, saveFlag, flagTypes, auth, publicDir = "./public" }) {
   const app = express();
   app.disable("x-powered-by");
   app.use(express.json({ limit: "8kb" }));
   const allow = rateLimiter();
+  // Five PIN tries a minute per device: four digits read aloud across a room
+  // is the point, and this is what makes guessing them impractical.
+  const allowUnlock = rateLimiter({ max: 5, windowMs: 60_000 });
+  const pinOn = () => Boolean(auth.expectedPin());
 
-  // Every request, the page included, carries the PIN when one is set. The
-  // page asks for it once and keeps it in the phone's browser.
+  // Open to anyone: the page, its script, and what the lock needs to say.
+  const open = new Set(["/", "/remote.js", "/api/lock", "/api/unlock"]);
   app.use((req, res, next) => {
-    const required = pin();
-    if (!required || req.path === "/" || req.path === "/remote.js") return next();
-    if (req.get("x-refrain-pin") !== required) return res.status(401).json({ error: "Wrong or missing PIN." });
+    if (!pinOn() || open.has(req.path)) return next();
+    if (!tokenValid(auth.secret(), req.get("x-refrain-device"))) return res.status(401).json({ error: "This phone needs today's PIN.", locked: true });
     next();
+  });
+
+  app.get("/api/lock", (_req, res) => {
+    res.json({ required: pinOn(), daily: auth.daily(), hint: auth.hint() });
+  });
+
+  /** A correct PIN earns this phone a signed token: until midnight, or 30 days if trusted. */
+  app.post("/api/unlock", (req, res) => {
+    if (!pinOn()) return res.json({ ok: true, token: null });
+    if (!allowUnlock(req.ip)) return res.status(429).json({ error: "Too many tries. Wait a minute, then ask the booth for today's PIN." });
+    const { pin, trust } = req.body ?? {};
+    if (!pinMatches(pin, auth.expectedPin())) return res.status(403).json({ error: "That isn't today's PIN." });
+    const { token, expires } = issueToken(auth.secret(), { trust: trust === true });
+    res.json({ ok: true, token, expiresAt: new Date(expires).toISOString(), trusted: trust === true });
   });
 
   const page = path.resolve(publicDir, "remote.html");
@@ -140,7 +160,7 @@ export function createRemoteApp({ getState, saveFlag, flagTypes, pin, publicDir 
     res.json({
       connected: Boolean(liveState?.connected),
       live: Boolean(liveState?.live),
-      pinRequired: Boolean(pin()),
+      pinRequired: pinOn(),
       types: flagTypes().map((t) => t.label),
       recent: (recent ?? []).map((r) => ({ ref: r.ref, at: new Date(r.at).toISOString(), presentationName: r.presentationName, slideNumber: r.slideIndex + 1, text: r.text })),
       progress,

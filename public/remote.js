@@ -18,22 +18,55 @@ const store = {
 let state = null;
 let chosenRef = null;
 let chosenType = null;
-let pin = store.get("refrain.remote.pin", "");
+let token = store.get("refrain.remote.token", "");
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const clock = (iso) => new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
 const dur = (ms) => { const t = Math.max(0, Math.round(ms / 1000)); const h = Math.floor(t / 3600); const m = Math.floor((t % 3600) / 60); const s = String(t % 60).padStart(2, "0"); return h ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`; };
 
 async function api(path, opts = {}) {
-  const res = await fetch(path, { ...opts, headers: { "Content-Type": "application/json", ...(pin ? { "x-refrain-pin": pin } : {}) } });
+  const res = await fetch(path, { ...opts, headers: { "Content-Type": "application/json", ...(token ? { "x-refrain-device": token } : {}) } });
   const data = await res.json().catch(() => ({}));
-  if (res.status === 401) {
-    const entered = prompt("This Refrain needs a PIN. Ask the booth for it.");
-    if (entered) { pin = entered.trim(); store.set("refrain.remote.pin", pin); return api(path, opts); }
-  }
+  if (res.status === 401 && data.locked) showLock();
   if (!res.ok) { const e = new Error(data.error || res.statusText); e.status = res.status; throw e; }
   return data;
 }
+
+// --- the PIN -----------------------------------------------------------------
+// Where to find it comes from the booth (networkModule.pinHint). A correct
+// PIN earns this phone a token: until midnight, or 30 days if trusted.
+async function showLock() {
+  if (!$("lock").hidden) return; // already asking; don't steal the cursor every refresh
+  $("main").hidden = true;
+  $("lock").hidden = false;
+  try {
+    const lock = await (await fetch("/api/lock")).json();
+    $("lock-hint").textContent = lock.hint ?? "";
+    $("pin").previousElementSibling.textContent = lock.daily ? "Today's PIN" : "PIN";
+  } catch { /* the hint is a courtesy */ }
+  $("pin").focus();
+}
+
+$("unlock").addEventListener("click", async () => {
+  $("unlock").disabled = true;
+  try {
+    const res = await fetch("/api/unlock", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin: $("pin").value, trust: $("trust").checked }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    token = data.token ?? "";
+    store.set("refrain.remote.token", token);
+    $("lock").hidden = true;
+    $("main").hidden = false;
+    $("pin").value = "";
+    refresh();
+  } catch (err) {
+    $("lock-status").textContent = err.message;
+    $("lock-status").className = "status fault";
+  } finally {
+    $("unlock").disabled = false;
+  }
+});
+$("pin").addEventListener("keydown", (e) => { if (e.key === "Enter") $("unlock").click(); });
 
 function paintProgress(p) {
   const el = $("progress");
@@ -84,7 +117,7 @@ async function flush() {
     } catch (err) {
       // Refused for good (the slide aged out, bad type): say so and drop it.
       // Network trouble: keep it for the next try.
-      if (err.status && err.status < 500 && err.status !== 429) say(`A waiting flag couldn't be sent: ${err.message}`, true);
+      if (err.status && err.status < 500 && err.status !== 429 && err.status !== 401) say(`A waiting flag couldn't be sent: ${err.message}`, true);
       else left.push(item);
     }
   }
@@ -104,7 +137,7 @@ $("send").addEventListener("click", async () => {
     chosenType = null;
     paintTypes();
   } catch (err) {
-    if (!err.status || err.status >= 500) {
+    if (!err.status || err.status >= 500 || err.status === 401) {
       store.set("refrain.remote.queue", [...queued(), item]);
       say("No connection. The flag is saved on this phone and will send when it can.", true);
     } else {
@@ -123,8 +156,8 @@ async function refresh() {
     if (!$("types").childElementCount) paintTypes();
     ready();
     flush();
-  } catch {
-    $("progress").textContent = "Can't reach the booth right now. Retrying.";
+  } catch (err) {
+    if (err.status !== 401) $("progress").textContent = "Can't reach the booth right now. Retrying.";
   }
 }
 

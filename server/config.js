@@ -188,7 +188,7 @@ export function getNetworkModuleStatus(config, mainPort = 9999) {
   const port = Number(mod.port ?? 9997);
   if (!Number.isInteger(port) || port < 1024 || port > 65535) problems.push("networkModule.port should be a number from 1024 to 65535.");
   if (port === Number(mainPort)) problems.push("networkModule.port can't be the same as Refrain's own port.");
-  if (mod.pin != null && mod.pin !== "" && !/^\d{4,8}$/.test(String(mod.pin))) problems.push("networkModule.pin should be 4 to 8 digits, or left empty.");
+  if (mod.pin != null && mod.pin !== "" && mod.pin !== "daily" && !/^\d{4,8}$/.test(String(mod.pin))) problems.push('networkModule.pin should be "daily", 4 to 8 digits, or left empty.');
   return { status: problems.length ? "misconfigured" : "active", problems };
 }
 
