@@ -187,7 +187,9 @@ export function initHealth() {
     const paintPin = async () => {
       try {
         const p = await fetch("/api/network/pin").then((r) => (r.ok ? r.json() : null));
-        if (p && pinEl) pinEl.innerHTML = `${p.mode === "daily" ? "Today's PIN" : "PIN"}: <strong class="font-mono text-base">${escapeHtml(p.pin ?? "")}</strong>${p.changesAt ? ` <span class="opacity-60">(changes at midnight)</span>` : ""}`;
+        if (p && pinEl) pinEl.innerHTML = `${p.mode === "daily" ? "Today's PIN" : "PIN"}: <strong class="font-mono text-base">${escapeHtml(p.pin ?? "")}</strong>${p.changesAt ? ` <span class="opacity-60">(changes at midnight)</span>` : ""}${
+          p.wrongToday ? ` <span class="opacity-80">· ${p.wrongToday} wrong PIN${p.wrongToday === 1 ? "" : "s"} today${p.wrongToday >= 30 ? ", so phones can't sign in again until tomorrow" : ""}</span>` : ""
+        }`;
       } catch {
         // leave it blank
       }

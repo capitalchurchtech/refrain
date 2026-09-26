@@ -5,7 +5,7 @@
  * Step 0 is verifying ProPresenter API capabilities against your
  * actual installed version before relying on anything below.
  */
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, statSync } from "node:fs";
 import { copyFile, readdir, mkdir, stat, readFile, chmod } from "node:fs/promises";
 import { exec, execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -102,10 +102,11 @@ import {
   DEFAULT_KEEP_RESOLVED_DAYS,
 } from "./slide-flags.js";
 import { heartbeatInterval } from "./heartbeat-pacing.js";
+import { crossSiteRefused } from "./request-guard.js";
 import { markHidden, setHidden, isControlId, rememberValues } from "./live-visibility.js";
 import { safeSlides, addSafeSlide, removeSafeSlide, renameSafeSlide, moveSafeSlide } from "./safe-slides.js";
 import { layoutThemes, themesInDeck, themeReport } from "./theme-report.js";
-import { createRemoteApp, pushRecent, serviceProgress } from "./remote.js";
+import { createRemoteApp, pushRecent, serviceProgress, pinFailureGuard } from "./remote.js";
 import { dailyPin, newSecret, endOfDay } from "./remote-auth.js";
 import { writeAtomic } from "./append-store.js";
 import {
@@ -221,6 +222,12 @@ registerProviders(await discoverProviders());
 registerDeliveryBackends(await discoverDeliveryBackends());
 let client = new ProPresenterClient(config.propresenter);
 
+app.use((req, res, next) => {
+  if (crossSiteRefused(req.method, req.get("origin"), req.get("host"))) {
+    return res.status(403).json({ error: "Refused: that request came from another website's page." });
+  }
+  next();
+});
 app.use(express.static("public"));
 app.use(express.json());
 
@@ -847,6 +854,8 @@ let remoteSecret = null;
 function loadRemoteSecret() {
   if (remoteSecret) return remoteSecret;
   try {
+    // A secret others can read has to be treated as known: start again.
+    if (statSync(REMOTE_SECRET_FILE).mode & 0o077) throw new Error("not private");
     remoteSecret = JSON.parse(readFileSync(REMOTE_SECRET_FILE, "utf-8")).secret ?? null;
   } catch {
     remoteSecret = null;
@@ -860,14 +869,21 @@ function loadRemoteSecret() {
   return remoteSecret;
 }
 async function saveRemoteSecret() {
-  await writeAtomic(path.dirname(REMOTE_SECRET_FILE), path.basename(REMOTE_SECRET_FILE), { secret: remoteSecret, createdAt: new Date().toISOString() });
-  // Readable only by the account Refrain runs as.
-  await chmod(REMOTE_SECRET_FILE, 0o600).catch(() => {});
+  // Created readable only by the account Refrain runs as (never briefly
+  // open to others), and checked afterwards: if it isn't private, it isn't
+  // used, because this secret signs every phone and derives every PIN.
+  await writeAtomic(path.dirname(REMOTE_SECRET_FILE), path.basename(REMOTE_SECRET_FILE), { secret: remoteSecret, createdAt: new Date().toISOString() }, { mode: 0o600 });
+  const { mode } = await stat(REMOTE_SECRET_FILE);
+  if (mode & 0o077) {
+    await chmod(REMOTE_SECRET_FILE, 0o600);
+    if ((await stat(REMOTE_SECRET_FILE)).mode & 0o077) throw new Error("the phone PIN secret file can't be made private");
+  }
 }
 async function forgetAllPhones() {
   remoteSecret = newSecret();
   await saveRemoteSecret();
 }
+const remotePinGuard = pinFailureGuard({ dayOf: (now) => dayKey(now) });
 const DEFAULT_PIN_HINT = "Today's PIN is on the Flags screen in the booth. Ask whoever is running the screens.";
 function remotePinMode() {
   const pin = config.networkModule?.pin;
@@ -900,6 +916,8 @@ function startRemoteListener() {
     }),
     saveFlag: (flag) => saveFlag(flag, { folder: slideFlagsFolder() }),
     flagTypes: configuredFlagTypes,
+    knownSlide: (presentationId, slideIndex) => getIndexedSlide(presentationId, slideIndex),
+    pinGuard: remotePinGuard,
     auth: {
       expectedPin: () => expectedRemotePin(),
       secret: () => loadRemoteSecret(),
@@ -2473,7 +2491,7 @@ const refuse = (status, message) => Object.assign(new Error(message), { status }
 app.get("/api/network/pin", (_req, res) => {
   if (getNetworkModuleStatus(config, port).status !== "active") return res.status(409).json({ error: "Phone flags are off." });
   const mode = remotePinMode();
-  res.json({ mode, pin: expectedRemotePin(), changesAt: mode === "daily" ? new Date(endOfDay()).toISOString() : null, urls: networkUrls() });
+  res.json({ mode, pin: expectedRemotePin(), changesAt: mode === "daily" ? new Date(endOfDay()).toISOString() : null, urls: networkUrls(), wrongToday: remotePinGuard.count() });
 });
 
 /** New secret: every phone is signed out, and the daily PIN changes now. */

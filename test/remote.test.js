@@ -107,3 +107,82 @@ test("a stuck button can't fill the flags folder", () => {
   assert.equal(allow("phone", 2000), true, "a new window");
   assert.equal(allow("other", 0), true, "per device");
 });
+
+import { pinFailureGuard } from "../server/remote.js";
+import { crossSiteRefused } from "../server/request-guard.js";
+
+test("wrong PINs are capped across every phone for the day, and the cap lifts when the day changes", () => {
+  let day = "2026-09-27";
+  const guard = pinFailureGuard({ perDay: 3, dayOf: () => day });
+  for (let i = 0; i < 3; i++) guard.fail();
+  assert.equal(guard.blocked(), true);
+  assert.equal(guard.count(), 3);
+  day = "2026-09-28";
+  assert.equal(guard.blocked(), false);
+});
+
+test("the daily cap refuses unlocking even with the right PIN, from any device", async () => {
+  let blockedNow = false;
+  const app = createRemoteApp({
+    getState: () => ({ liveState: {}, recent: [] }),
+    saveFlag: async () => ({}),
+    flagTypes: () => [],
+    auth: { expectedPin: () => "2468", secret: () => "s", hint: () => "", daily: () => true },
+    pinGuard: { blocked: () => blockedNow, fail: () => {}, count: () => 0 },
+  });
+  const server = await new Promise((r) => { const sv = app.listen(0, "127.0.0.1", () => r(sv)); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    blockedNow = true;
+    const res = await fetch(`${base}/api/unlock`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin: "2468" }) });
+    assert.equal(res.status, 429);
+  } finally {
+    server.close();
+  }
+});
+
+test("a malformed request gets one sentence, never a stack trace", async () => {
+  const { server, base } = await start({ pin: "2468" });
+  try {
+    const res = await fetch(`${base}/api/unlock`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{" });
+    const text = await res.text();
+    assert.equal(res.status, 400);
+    assert.equal(text, JSON.stringify({ error: "Bad request." }));
+    assert.doesNotMatch(text, /node_modules|\sat\s/);
+  } finally {
+    server.close();
+  }
+});
+
+test("a flag that waited on the phone still lands, but only on a slide the index really has, with the index's text", async () => {
+  const saved = [];
+  const app = createRemoteApp({
+    getState: () => ({ liveState: {}, recent: [] }),
+    saveFlag: async (f) => (saved.push(f), { shared: true }),
+    flagTypes: () => [],
+    auth: { expectedPin: () => null, secret: () => "s", hint: () => "", daily: () => false },
+    knownSlide: (id, i) => (id === "REAL" ? { presentationName: "Real Hymn", text: "Indexed text", slideIndex: i } : null),
+  });
+  const server = await new Promise((r) => { const sv = app.listen(0, "127.0.0.1", () => r(sv)); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const post = (body) => fetch(`${base}/api/flag`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  try {
+    assert.equal((await post({ ref: "gone", slide: { presentationId: "REAL", slideIndex: 2, at: "2026-09-27T15:00:00Z", text: "made up" }, note: "kept" })).status, 200);
+    assert.equal(saved[0].text, "Indexed text", "the phone's copy of the text is never trusted");
+    assert.equal(saved[0].note, "kept");
+    assert.equal(saved[0].slideSeenAt, "2026-09-27T15:00:00.000Z");
+    assert.equal((await post({ ref: "gone", slide: { presentationId: "FAKE", slideIndex: 0 } })).status, 404);
+  } finally {
+    server.close();
+  }
+});
+
+test("another site's page can't send the main app a change; Refrain's own pages and tools can", () => {
+  assert.equal(crossSiteRefused("POST", "https://evil.example", "127.0.0.1:9999"), true);
+  assert.equal(crossSiteRefused("POST", "http://127.0.0.1:1234", "127.0.0.1:9999"), true, "another local port is another site");
+  assert.equal(crossSiteRefused("POST", "http://127.0.0.1:9999", "127.0.0.1:9999"), false);
+  assert.equal(crossSiteRefused("POST", "http://localhost:9999", "127.0.0.1:9999"), false);
+  assert.equal(crossSiteRefused("POST", undefined, "127.0.0.1:9999"), false, "curl sends no Origin");
+  assert.equal(crossSiteRefused("GET", "https://evil.example", "127.0.0.1:9999"), false, "reads are left alone");
+  assert.equal(crossSiteRefused("POST", "null", "127.0.0.1:9999"), true);
+});

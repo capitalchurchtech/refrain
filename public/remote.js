@@ -106,28 +106,52 @@ function say(text, fault = false) {
 }
 
 // --- the queue ---------------------------------------------------------------
+// One retry at a time, and each flag has its own id, so a retry only ever
+// removes what it actually sent: a flag queued while a retry is running is
+// never erased, and a slow retry can't overlap the next and send twice.
 const queued = () => store.get("refrain.remote.queue", []);
+const dropFromQueue = (id) => store.set("refrain.remote.queue", queued().filter((q) => q.id !== id));
+let flushing = false;
 async function flush() {
-  const q = queued();
-  if (!q.length) return;
-  const left = [];
-  for (const item of q) {
-    try {
-      await api("/api/flag", { method: "POST", body: JSON.stringify(item) });
-    } catch (err) {
-      // Refused for good (the slide aged out, bad type): say so and drop it.
-      // Network trouble: keep it for the next try.
-      if (err.status && err.status < 500 && err.status !== 429 && err.status !== 401) say(`A waiting flag couldn't be sent: ${err.message}`, true);
-      else left.push(item);
+  if (flushing || !queued().length) return;
+  flushing = true;
+  let sent = 0;
+  try {
+    for (const item of queued()) {
+      try {
+        await api("/api/flag", { method: "POST", body: JSON.stringify(item) });
+        dropFromQueue(item.id);
+        sent++;
+      } catch (err) {
+        // Refused for good (not in the index any more, say): say so, with
+        // the note, so it isn't lost silently. Network trouble or a lock:
+        // keep it for the next try.
+        if (err.status && err.status < 500 && err.status !== 429 && err.status !== 401) {
+          dropFromQueue(item.id);
+          say(`A waiting flag couldn't be sent (${err.message})${item.note ? `. Its note was: "${item.note}"` : ""}`, true);
+        } else break;
+      }
     }
+  } finally {
+    flushing = false;
   }
-  store.set("refrain.remote.queue", left);
-  if (!left.length && q.length) say("Waiting flags sent.");
-  else if (left.length) say(`${left.length} flag${left.length === 1 ? "" : "s"} waiting to send. Refrain will keep trying.`, true);
+  const left = queued().length;
+  if (left) say(`${left} flag${left === 1 ? "" : "s"} waiting to send. Refrain will keep trying.`, true);
+  else if (sent) say("Waiting flags sent.");
 }
 
 $("send").addEventListener("click", async () => {
-  const item = { ref: chosenRef, type: chosenType, note: $("note").value, name: $("name").value };
+  const r = (state?.recent ?? []).find((x) => x.ref === chosenRef);
+  // The slide it means travels with it, so a flag that waits (no signal)
+  // still lands on the right slide after its entry has left the list.
+  const item = {
+    id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`,
+    ref: chosenRef,
+    slide: r ? { presentationId: r.presentationId, slideIndex: r.slideIndex, at: r.at } : null,
+    type: chosenType,
+    note: $("note").value,
+    name: $("name").value,
+  };
   store.set("refrain.remote.name", item.name);
   $("send").disabled = true;
   try {

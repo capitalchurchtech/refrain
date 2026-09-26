@@ -95,6 +95,41 @@ export function serviceProgress(state, liveState, now = Date.now()) {
   };
 }
 
+/**
+ * Wrong PINs, counted across every phone for the day. Per-device limits
+ * alone don't stop guessing (a device can try thousands of times a day, and
+ * several devices more), so after `perDay` wrong tries in a day, unlocking
+ * stops for everyone until the date changes, when a daily PIN also changes.
+ * A church that gets locked out by this reads today's count on Health.
+ * With the defaults, a guesser's chance of finding a four-digit PIN in a day
+ * is about 30 in 10,000.
+ */
+export function pinFailureGuard({ perDay = 30, dayOf } = {}) {
+  let day = null;
+  let failures = 0;
+  const roll = (now) => {
+    const d = dayOf(now);
+    if (d !== day) {
+      day = d;
+      failures = 0;
+    }
+  };
+  return {
+    blocked(now = Date.now()) {
+      roll(now);
+      return failures >= perDay;
+    },
+    fail(now = Date.now()) {
+      roll(now);
+      failures += 1;
+    },
+    count(now = Date.now()) {
+      roll(now);
+      return failures;
+    },
+  };
+}
+
 /** A tiny fixed-window limiter, per device, so a stuck button can't fill the flags folder. */
 export function rateLimiter({ max = 20, windowMs = 60_000 } = {}) {
   const hits = new Map();
@@ -116,15 +151,19 @@ export function rateLimiter({ max = 20, windowMs = 60_000 } = {}) {
  * @param {() => Array<{label:string}>} deps.flagTypes
  * @param {{ expectedPin: () => string|null, secret: () => string, hint: () => string, daily: () => boolean }} deps.auth
  *   expectedPin is today's PIN (daily or fixed), or null for no PIN.
+ * @param {(presentationId: string, slideIndex: number) => object|null} [deps.knownSlide]
+ *   the indexed slide, so a flag queued on a phone before a restart can still land
+ * @param {{ blocked, fail, count }} [deps.pinGuard]  see pinFailureGuard
  * @param {string} [deps.publicDir]
  */
-export function createRemoteApp({ getState, saveFlag, flagTypes, auth, publicDir = "./public" }) {
+export function createRemoteApp({ getState, saveFlag, flagTypes, auth, knownSlide = () => null, pinGuard = null, publicDir = "./public" }) {
   const app = express();
   app.disable("x-powered-by");
   app.use(express.json({ limit: "8kb" }));
   const allow = rateLimiter();
-  // Five PIN tries a minute per device: four digits read aloud across a room
-  // is the point, and this is what makes guessing them impractical.
+  // Five PIN tries a minute per device, and a daily cap across every device
+  // (pinGuard). Four digits is the point, since it's read aloud across a room;
+  // the cap, not the device limit, is what keeps guessing it unlikely.
   const allowUnlock = rateLimiter({ max: 5, windowMs: 60_000 });
   const pinOn = () => Boolean(auth.expectedPin());
 
@@ -143,9 +182,13 @@ export function createRemoteApp({ getState, saveFlag, flagTypes, auth, publicDir
   /** A correct PIN earns this phone a signed token: until midnight, or 30 days if trusted. */
   app.post("/api/unlock", (req, res) => {
     if (!pinOn()) return res.json({ ok: true, token: null });
+    if (pinGuard?.blocked()) return res.status(429).json({ error: "Too many wrong PINs today, so phones can't sign in until tomorrow. Phones already signed in still work." });
     if (!allowUnlock(req.ip)) return res.status(429).json({ error: "Too many tries. Wait a minute, then ask the booth for today's PIN." });
     const { pin, trust } = req.body ?? {};
-    if (!pinMatches(pin, auth.expectedPin())) return res.status(403).json({ error: "That isn't today's PIN." });
+    if (!pinMatches(pin, auth.expectedPin())) {
+      pinGuard?.fail();
+      return res.status(403).json({ error: "That isn't today's PIN." });
+    }
     const { token, expires } = issueToken(auth.secret(), { trust: trust === true });
     res.json({ ok: true, token, expiresAt: new Date(expires).toISOString(), trusted: trust === true });
   });
@@ -162,15 +205,24 @@ export function createRemoteApp({ getState, saveFlag, flagTypes, auth, publicDir
       live: Boolean(liveState?.live),
       pinRequired: pinOn(),
       types: flagTypes().map((t) => t.label),
-      recent: (recent ?? []).map((r) => ({ ref: r.ref, at: new Date(r.at).toISOString(), presentationName: r.presentationName, slideNumber: r.slideIndex + 1, text: r.text })),
+      recent: (recent ?? []).map((r) => ({ ref: r.ref, at: new Date(r.at).toISOString(), presentationId: r.presentationId, slideIndex: r.slideIndex, presentationName: r.presentationName, slideNumber: r.slideIndex + 1, text: r.text })),
       progress,
     });
   });
 
   app.post("/api/flag", async (req, res) => {
     if (!allow(req.ip)) return res.status(429).json({ error: "That's a lot of flags at once. Wait a minute and try again." });
-    const { ref, type, note, name } = req.body ?? {};
-    const entry = (getState().recent ?? []).find((r) => r.ref === ref);
+    const { ref, type, note, name, slide } = req.body ?? {};
+    let entry = (getState().recent ?? []).find((r) => r.ref === ref);
+    // A flag queued on a phone (no signal) can arrive after its slide has
+    // left the in-memory list, or after a restart. It carries which slide it
+    // meant; that's accepted only if the slide really is in the index, and
+    // the text recorded is the index's, never the phone's.
+    if (!entry && slide && typeof slide.presentationId === "string" && Number.isInteger(slide.slideIndex)) {
+      const indexed = knownSlide(slide.presentationId, slide.slideIndex);
+      const seenAt = Date.parse(slide.at);
+      if (indexed) entry = { ...indexed, presentationId: slide.presentationId, slideIndex: slide.slideIndex, at: Number.isFinite(seenAt) ? seenAt : Date.now() };
+    }
     if (!entry) return res.status(404).json({ error: "That slide has scrolled out of the recent list. Pick it again." });
     const types = flagTypes().map((t) => t.label);
     const chosenType = typeof type === "string" && types.includes(type) ? type : null;
@@ -186,5 +238,9 @@ export function createRemoteApp({ getState, saveFlag, flagTypes, auth, publicDir
 
   // Anything else doesn't exist here, by construction.
   app.use((_req, res) => res.status(404).json({ error: "Not available from another device." }));
+  // A malformed request gets one plain sentence. Express's default would
+  // send a stack trace, with file paths, to anyone on the network.
+  // Four arguments, because that's how Express knows it's an error handler.
+  app.use((err, _req, res, _next) => res.status(err.status && err.status < 500 ? err.status : 400).json({ error: "Bad request." }));
   return app;
 }
