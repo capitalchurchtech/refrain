@@ -285,7 +285,8 @@ export function initLive() {
     paintClearOffline(lastKnownConnected());
 
     try {
-      const { looks, macros, messages } = await fetch("/api/live/controls").then((r) => r.json());
+      const { looks, macros, messages, messageRecent: recent } = await fetch("/api/live/controls").then((r) => r.json());
+      messageRecent = recent ?? {};
       renderMessages(messages ?? []);
       renderButtons("live-looks", "live-looks-wrap", looks, "look");
       const looksCount = document.getElementById("live-looks-count");
@@ -332,23 +333,46 @@ export function initLive() {
       const m = selected();
       fields.innerHTML = m.tokens
         .filter((t) => t.kind === "text")
-        .map(
-          (t) => `
+        .map((t) => {
+          // Recent values fill the field; they never post. Posting stays the
+          // one deliberate press, so a mis-tap on an old code costs nothing.
+          const recent = messageRecent[m.id]?.[t.name] ?? [];
+          const chips = recent.length
+            ? `<div class="flex flex-wrap gap-1 mt-1">${recent
+                .map((v) => `<button type="button" class="btn btn-chip live-message-recent" data-token="${escapeHtml(t.name)}" data-value="${escapeHtml(v)}">${escapeHtml(v)}</button>`)
+                .join("")}</div>`
+            : "";
+          return `
         <label class="form-control">
           <div class="label py-0"><span class="label-text text-xs opacity-70">${escapeHtml(t.name)}</span></div>
           <input class="input input-bordered live-message-token" data-token="${escapeHtml(t.name)}" placeholder="Type the message..." />
-        </label>`
-        )
+        </label>${chips}`;
+        })
         .join("");
+      fields.querySelectorAll(".live-message-recent").forEach((chip) =>
+        chip.addEventListener("click", () => {
+          const input = [...fields.querySelectorAll(".live-message-token")].find((i) => i.dataset.token === chip.dataset.token);
+          if (input) {
+            input.value = chip.dataset.value;
+            input.focus();
+          }
+        })
+      );
     }
 
     select.addEventListener("change", renderFields);
     renderFields();
 
-    postBtn.addEventListener("click", () => {
+    postBtn.addEventListener("click", async () => {
       const m = selected();
       const values = [...fields.querySelectorAll(".live-message-token")].map((inp) => ({ name: inp.dataset.token, text: inp.value }));
-      fire(postBtn, "/api/live/message", { id: m.id, values }, "Post");
+      const answer = await fire(postBtn, "/api/live/message", { id: m.id, values }, "Post");
+      if (answer) {
+        // The recents the server just saved, for next time. The fields aren't
+        // re-rendered under the operator's hands.
+        if (answer.recent) messageRecent = { ...messageRecent, [m.id]: answer.recent };
+        setStatus(`On screen: ${m.name}.`);
+      }
     });
     clearBtn.addEventListener("click", () => fire(clearBtn, "/api/live/message-clear", { id: selected().id }, "Clear message"));
 
@@ -388,6 +412,7 @@ export function initLive() {
     }
   }
 
+  let messageRecent = {};
   let safeList = [];
   let editingSafe = false;
 
@@ -621,7 +646,8 @@ export function initLive() {
         setStatus(`${label} failed: ${error ?? res.statusText}`);
         return false;
       }
-      return true;
+      // The server's answer, for callers that need it; truthy either way.
+      return (await res.json().catch(() => null)) ?? {};
     } catch (err) {
       setStatus(`${label} failed: ${err.message}`);
       return false;

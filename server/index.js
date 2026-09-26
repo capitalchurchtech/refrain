@@ -98,7 +98,7 @@ import {
   DEFAULT_KEEP_RESOLVED_DAYS,
 } from "./slide-flags.js";
 import { heartbeatInterval } from "./heartbeat-pacing.js";
-import { markHidden, setHidden, isControlId } from "./live-visibility.js";
+import { markHidden, setHidden, isControlId, rememberValues } from "./live-visibility.js";
 import { safeSlides, addSafeSlide, removeSafeSlide, renameSafeSlide, moveSafeSlide } from "./safe-slides.js";
 import { layoutThemes, themesInDeck, themeReport } from "./theme-report.js";
 import {
@@ -2247,7 +2247,7 @@ app.get("/api/live/controls", async (_req, res) => {
     client.getMacros().catch(() => []),
     client.getMessages().catch(() => []),
   ]);
-  res.json({ looks, macros: markHidden(macros, config.liveModule?.hiddenMacros), messages });
+  res.json({ looks, macros: markHidden(macros, config.liveModule?.hiddenMacros), messages, messageRecent: config.liveModule?.messageRecent ?? {} });
 });
 
 // --- Safe slides (handoff §39a) ---------------------------------------------
@@ -2371,7 +2371,12 @@ app.post("/api/live/message", async (req, res) => {
   if (!id) return res.status(400).json({ error: "id is required" });
   try {
     await client.triggerMessage(id, values);
-    res.json({ ok: true });
+    // Remembered only after ProPresenter accepted it. A failed save of the
+    // recents mustn't turn a message that is on screen into an error.
+    const messageRecent = rememberValues(config.liveModule?.messageRecent, id, values);
+    const newConfig = { ...config, liveModule: { ...(config.liveModule ?? {}), messageRecent } };
+    saveConfig(newConfig).then(() => { config = newConfig; }).catch(() => {});
+    res.json({ ok: true, recent: messageRecent[id] ?? {} });
   } catch (err) {
     res.status(502).json({ error: err.message });
   }

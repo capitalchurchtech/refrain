@@ -50,3 +50,16 @@ test("a message with nothing to fill in is listed with Show, Take down, its text
   assert.match(html, /Kids &lt;Pager&gt;/, "names are escaped");
   assert.equal(plainMessagesHtml([]), "");
 });
+
+import { rememberValues, RECENT_PER_FIELD } from "../server/live-visibility.js";
+
+test("recent message values: newest first, no repeats, capped, blanks ignored", () => {
+  let r = rememberValues(undefined, "PAGER", [{ name: "Code", text: "A12" }]);
+  r = rememberValues(r, "PAGER", [{ name: "Code", text: " B07 " }, { name: "Room", text: "" }]);
+  r = rememberValues(r, "PAGER", [{ name: "Code", text: "A12" }]);
+  assert.deepEqual(r.PAGER, { Code: ["A12", "B07"] });
+  for (let i = 0; i < 10; i++) r = rememberValues(r, "PAGER", [{ name: "Code", text: `C${i}` }]);
+  assert.equal(r.PAGER.Code.length, RECENT_PER_FIELD);
+  assert.equal(r.PAGER.Code[0], "C9");
+  assert.deepEqual(rememberValues({}, "", [{ name: "Code", text: "X" }]), {}, "no message id, nothing kept");
+});
