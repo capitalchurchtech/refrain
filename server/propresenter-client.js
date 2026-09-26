@@ -172,6 +172,17 @@ export class ProPresenterClient {
   }
 
   /** Recursive playlist tree (folders/groups containing playlists). */
+  /**
+   * The Look that's on now, by name. ProPresenter reports it with its own
+   * id for the live copy, which doesn't match the id in the Looks list, so
+   * callers match on the name. Null if it can't say.
+   */
+  async getCurrentLook() {
+    const look = await this.#get("/v1/look/current");
+    const name = look?.id?.name;
+    return typeof name === "string" && name ? { name } : null;
+  }
+
   /** The theme tree: folders of themes, each with its slide layouts. Read-only. */
   async getThemes() {
     return this.#get("/v1/themes");

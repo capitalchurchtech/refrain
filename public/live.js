@@ -285,12 +285,15 @@ export function initLive() {
     paintClearOffline(lastKnownConnected());
 
     try {
-      const { looks, macros, messages, messageRecent: recent } = await fetch("/api/live/controls").then((r) => r.json());
+      const { looks, macros, messages, messageRecent: recent, currentLook } = await fetch("/api/live/controls").then((r) => r.json());
       messageRecent = recent ?? {};
       renderMessages(messages ?? []);
       renderButtons("live-looks", "live-looks-wrap", looks, "look");
-      const looksCount = document.getElementById("live-looks-count");
-      if (looksCount && looks?.length) looksCount.textContent = `(${looks.length})`;
+      lookCount = looks?.length ?? 0;
+      paintCurrentLook(currentLook);
+      // A Look changes on a Look press, and often on a macro press too.
+      document.getElementById("live-looks")?.addEventListener("click", (e) => e.target.closest("[data-look]") && setTimeout(refreshCurrentLook, 400));
+      document.getElementById("live-macros")?.addEventListener("click", (e) => !editingMacros && e.target.closest("[data-macro]") && setTimeout(refreshCurrentLook, 600));
       macroList = macros ?? [];
       paintMacros();
       document.getElementById("live-macros-edit")?.addEventListener("click", () => {
@@ -413,6 +416,33 @@ export function initLive() {
   }
 
   let messageRecent = {};
+  let lookCount = 0;
+
+  /**
+   * Which Look is on, in the folded heading and on its tile, so a tap on the
+   * neighbouring one is visible. Matched by name: ProPresenter reports the
+   * live Look under a different id from the list's.
+   */
+  function paintCurrentLook(current) {
+    const count = document.getElementById("live-looks-count");
+    const name = current?.name ?? null;
+    // The Look's name is the operator's own, so it keeps its own case: the
+    // subhead's uppercase applies to the heading, not to their name.
+    if (count && lookCount) count.innerHTML = `(${lookCount})${name ? ` · <span class="rf-looks-current">Current: ${escapeHtml(name)}</span>` : ""}`;
+    document.querySelectorAll("#live-looks [data-look]").forEach((btn) => {
+      const on = Boolean(name) && btn.title === name;
+      btn.classList.toggle("rf-tile-current", on);
+      btn.setAttribute("aria-pressed", String(on));
+    });
+  }
+
+  async function refreshCurrentLook() {
+    try {
+      paintCurrentLook((await fetch("/api/live/current-look").then((r) => r.json())).currentLook);
+    } catch {
+      // Keep what's shown; the next visit re-reads it.
+    }
+  }
   let safeList = [];
   let editingSafe = false;
 

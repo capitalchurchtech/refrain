@@ -2242,12 +2242,18 @@ const CLEAR_LAYERS = ["slide", "media", "props", "messages", "announcements", "v
 // empty lists (not an error) if ProPresenter is unreachable, so the Clear
 // buttons still render and work.
 app.get("/api/live/controls", async (_req, res) => {
-  const [looks, macros, messages] = await Promise.all([
+  const [looks, macros, messages, currentLook] = await Promise.all([
     client.getLooks().catch(() => []),
     client.getMacros().catch(() => []),
     client.getMessages().catch(() => []),
+    client.getCurrentLook().catch(() => null),
   ]);
-  res.json({ looks, macros: markHidden(macros, config.liveModule?.hiddenMacros), messages, messageRecent: config.liveModule?.messageRecent ?? {} });
+  res.json({ looks, currentLook, macros: markHidden(macros, config.liveModule?.hiddenMacros), messages, messageRecent: config.liveModule?.messageRecent ?? {} });
+});
+
+/** Just the current Look, for Live to refresh after a Look or a macro. */
+app.get("/api/live/current-look", async (_req, res) => {
+  res.json({ currentLook: await client.getCurrentLook().catch(() => null) });
 });
 
 // --- Safe slides (handoff §39a) ---------------------------------------------

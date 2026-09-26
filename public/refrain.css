@@ -2596,6 +2596,21 @@ html.blackroom .rf-preset + .rf-preset {
   text-decoration: line-through;
 }
 
+/* The Look that's on now. Printed ink, not emission: a plum edge and bold
+   legend, no glow, so it can't be read as the live signal. Applied from
+   live.js; static home. */
+#view-live .rf-tile.rf-tile-current {
+  box-shadow: inset 0 0 0 2px var(--rf-plum);
+}
+#view-live .rf-tile.rf-tile-current .rf-tile-label {
+  font-weight: 700;
+}
+#view-live .rf-looks-fold .rf-looks-current {
+  font-family: var(--rf-sans);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
 /* Looks, folded (owner request): the heading is the control that opens it, so
    it gets the touch floor instead of a subhead's height. Padding rather than
    display:flex, which would drop the disclosure triangle. */
