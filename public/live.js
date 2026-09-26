@@ -182,11 +182,6 @@ export function initLive() {
           </div>
         </div>
 
-        <div id="live-looks-wrap" class="hidden">
-          <h2 class="rf-subhead">Looks</h2>
-          <div id="live-looks" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3"></div>
-        </div>
-
         <div id="live-macros-wrap" class="hidden">
           <div class="flex items-center justify-between gap-2">
             <h2 class="rf-subhead">Macros</h2>
@@ -200,6 +195,14 @@ export function initLive() {
           <p id="live-macros-editing" class="hidden text-sm mb-2">Tap a macro to hide or show it. Nothing runs while you're editing.</p>
           <div id="live-macros" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3"></div>
         </div>
+
+        <!-- Folded away and after Macros: Looks change rarely here, and a
+             macro usually switches the Look as part of what it does. Closed on
+             every load, so the bank someone reaches for mid-service is Macros. -->
+        <details id="live-looks-wrap" class="hidden rf-looks-fold">
+          <summary class="rf-subhead cursor-pointer">Looks <span id="live-looks-count" class="opacity-60"></span></summary>
+          <div id="live-looks" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 mt-2"></div>
+        </details>
 
         <!-- Flagging lives on the Flags screen, which has no live controls
              (handoff §39b): reaching it from here meant scrolling a thumb past
@@ -221,6 +224,8 @@ export function initLive() {
       const { looks, macros, messages } = await fetch("/api/live/controls").then((r) => r.json());
       renderMessages(messages ?? []);
       renderButtons("live-looks", "live-looks-wrap", looks, "look");
+      const looksCount = document.getElementById("live-looks-count");
+      if (looksCount && looks?.length) looksCount.textContent = `(${looks.length})`;
       macroList = macros ?? [];
       paintMacros();
       document.getElementById("live-macros-edit")?.addEventListener("click", () => {

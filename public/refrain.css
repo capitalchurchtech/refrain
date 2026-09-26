@@ -2573,6 +2573,16 @@ html.blackroom .rf-preset + .rf-preset {
 #view-live .rf-tile.rf-tile-put-away .rf-tile-label {
   text-decoration: line-through;
 }
+
+/* Looks, folded (owner request): the heading is the control that opens it, so
+   it gets the touch floor instead of a subhead's height. Padding rather than
+   display:flex, which would drop the disclosure triangle. */
+#view-live .rf-looks-fold > summary {
+  box-sizing: border-box;
+  min-height: 44px;
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
 .rf-tile-label {
   display: -webkit-box;
   -webkit-line-clamp: 2;
