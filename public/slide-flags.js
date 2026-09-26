@@ -198,6 +198,7 @@ function renderReviewRow(f, types, showMachine) {
         <div class="min-w-0">
           <span class="opacity-60 tabular-nums">${escapeHtml(new Date(f.capturedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }))}</span>
           <span>slide ${slideNumber(f)}${f.arrangementName ? ` · ${escapeHtml(f.arrangementName)}` : ""}</span>
+          ${f.source === "remote" ? `<span class="opacity-70"> · from ${escapeHtml(f.submittedBy || "another device")}</span>` : ""}
           ${f.resolved ? `<span class="badge badge-ghost badge-sm ml-1">Resolved</span>` : ""}
         </div>
         <button type="button" class="btn btn-chip shrink-0 slide-flag-editor-btn" data-presentation-id="${escapeHtml(f.presentationId)}" title="Opens the presentation in ProPresenter's editor. It can't select the slide for you, so the number says which one.">Show slide ${slideNumber(f)} in Editor</button>
@@ -235,7 +236,7 @@ export function renderReviewHtml(flags, types = [], { hiddenResolved = 0, keepRe
     : "";
   if (all.length === 0) {
     return `
-      <div class="text-sm opacity-70 rf-measure">Nothing flagged. During a service, press <strong>Flag this slide</strong> under the readout on Search, or pick a type on the Live screen.</div>
+      <div class="text-sm opacity-70 rf-measure">Nothing flagged yet. During a service, tap a type above, or <strong>Flag this slide</strong> under the readout on Search.</div>
       ${hiddenNote}`;
   }
   const shown = all.slice(0, LIST_LIMIT);
@@ -361,6 +362,7 @@ export function initSlideFlags() {
       const res = await fetch("/api/slide-flags");
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || res.statusText);
+      mountCapture(data.types ?? []);
       list.innerHTML = renderReviewHtml(data.flags, data.types, data);
     } catch (err) {
       list.innerHTML = `<div class="text-sm opacity-70">Couldn't load flagged slides: ${escapeHtml(err.message)}</div>`;
@@ -376,12 +378,48 @@ export function initSlideFlags() {
       <div class="flex flex-col gap-4 max-w-3xl">
         <div>
           <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="flag" class="w-5 h-5"></i> Flags</h1>
-          <p class="text-sm opacity-70">Slides flagged during a service, to fix now it is over. Show in Editor opens each one in ProPresenter.</p>
+          <p class="text-sm opacity-70">Tap what's wrong with the slide on screen now. Nothing on the screens changes. Fix them after the service.</p>
+          <p id="slide-flags-phone-pin" class="text-sm hidden"></p>
+        </div>
+        <div>
+          <h2 class="rf-subhead">Flag the live slide</h2>
+          <div class="card bg-base-200"><div class="card-body p-3 gap-3"><div id="slide-flags-capture"></div></div></div>
         </div>
         <div id="slide-flags-list" class="flex flex-col gap-4 text-sm opacity-70">Loading...</div>
       </div>`;
     if (window.lucide) window.lucide.createIcons();
+    showPhonePin();
     await load();
+  }
+
+  // The phone page points people here for today's PIN, so it's shown where
+  // the booth can read it out. Only when phone flags are on with a PIN.
+  async function showPhonePin() {
+    const el = document.getElementById("slide-flags-phone-pin");
+    if (!el) return;
+    try {
+      const res = await fetch("/api/network/pin");
+      if (!res.ok) return;
+      const p = await res.json();
+      if (p.mode === "none") return;
+      el.innerHTML = `Flagging from a phone: ${escapeHtml((p.urls ?? [])[0] ?? "")} · ${p.mode === "daily" ? "today's PIN" : "PIN"} <strong class="font-mono">${escapeHtml(p.pin ?? "")}</strong>`;
+      el.classList.remove("hidden");
+    } catch {
+      // Phone flags off or unreachable: say nothing.
+    }
+  }
+
+  /**
+   * Capture, first on the screen. This screen has no live controls at all, so
+   * a thumb reaching for a problem type can't land on Clear or a Macro.
+   * Types come with the list, so the grid is filled from the same response.
+   */
+  function mountCapture(types) {
+    const host = document.getElementById("slide-flags-capture");
+    if (host && !host.dataset.mounted) {
+      mountTypeGrid(host, types);
+      host.dataset.mounted = "1";
+    }
   }
 
   window.addEventListener(FLAG_EVENT, () => {
@@ -391,24 +429,19 @@ export function initSlideFlags() {
 }
 
 /**
- * The Live screen's section: the type grid, and how many are open with a way
- * to the Flags screen. The full list lives there; during a service this
- * section only needs to capture.
+ * The Live screen's one line: how many flags are open, and the way to the
+ * Flags screen, where capture and review both live. Flagging used to be a
+ * grid here, below every live control; see handoff §39b.
  */
-export async function mountLiveFlags(gridHost, summaryHost) {
-  let types = [];
+export async function mountLiveFlagSummary(summaryHost) {
   let flags = [];
   try {
     const res = await fetch("/api/slide-flags");
     const data = await res.json().catch(() => ({}));
-    if (res.ok) {
-      types = data.types ?? [];
-      flags = data.flags ?? [];
-    }
+    if (res.ok) flags = data.flags ?? [];
   } catch {
-    // The grid still renders from nothing; the summary just says so.
+    // The line still renders; the count just reads as none.
   }
-  mountTypeGrid(gridHost, types);
   renderLiveSummary(summaryHost, flags);
 }
 
@@ -423,7 +456,7 @@ function renderLiveSummary(host, flags) {
   host.innerHTML = `
     <div class="flex items-center gap-2 text-sm">
       <span class="opacity-70 slide-flag-live-summary">${escapeHtml(liveSummaryText(flags))}</span>
-      <a href="#slide-flags" class="link text-sm">Review</a>
+      <a href="#slide-flags" class="link text-sm">Flag or review</a>
     </div>`;
 }
 

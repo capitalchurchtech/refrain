@@ -17,18 +17,24 @@
  *   the whole list down with it.
  */
 
-import { readFile, writeFile, readdir, mkdir, rename, unlink } from "node:fs/promises";
+import { readFile, writeFile, readdir, mkdir, rename, unlink, rm } from "node:fs/promises";
 import path from "node:path";
 
-export async function writeAtomic(dir, name, data) {
-  await writeTextAtomic(dir, name, JSON.stringify(data, null, 2));
+export async function writeAtomic(dir, name, data, opts = {}) {
+  await writeTextAtomic(dir, name, JSON.stringify(data, null, 2), opts);
 }
 
-export async function writeTextAtomic(dir, name, text) {
+/**
+ * `mode` sets the file's permissions at creation (the temp file is created
+ * with them, and rename keeps them), so a private file is never briefly
+ * readable by other accounts.
+ */
+export async function writeTextAtomic(dir, name, text, { mode } = {}) {
   await mkdir(dir, { recursive: true });
   const finalPath = path.join(dir, name);
   const tmpPath = `${finalPath}.tmp`;
-  await writeFile(tmpPath, text);
+  await rm(tmpPath, { force: true });
+  await writeFile(tmpPath, text, mode ? { mode, flag: "wx" } : undefined);
   await rename(tmpPath, finalPath);
 }
 

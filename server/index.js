@@ -5,11 +5,11 @@
  * Step 0 is verifying ProPresenter API capabilities against your
  * actual installed version before relying on anything below.
  */
-import { readFileSync, existsSync } from "node:fs";
-import { copyFile, readdir, mkdir, stat, readFile } from "node:fs/promises";
+import { readFileSync, existsSync, statSync } from "node:fs";
+import { copyFile, readdir, mkdir, stat, readFile, chmod } from "node:fs/promises";
 import { exec, execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { platform, homedir } from "node:os";
+import { platform, homedir, networkInterfaces } from "node:os";
 import path from "node:path";
 
 const execFileAsync = promisify(execFile);
@@ -25,6 +25,10 @@ import {
   getServiceModuleStatus,
   getEnvRequirements,
   registerProviders,
+  registerDeliveryBackends,
+  getReportModuleStatus,
+  getNetworkModuleStatus,
+  deliveryBackendFor,
   cleanFolderSetting,
   ensureMachineId,
   readConfigFileRaw,
@@ -62,6 +66,7 @@ import {
   getIndexedSlide,
   lastCrawlAbort,
   findDuplicateNames,
+  suggestQuery,
 } from "./search-index.js";
 import { startLibraryWatch, fullRebuildSuggestion,
   indexStaleness,
@@ -97,6 +102,13 @@ import {
   DEFAULT_KEEP_RESOLVED_DAYS,
 } from "./slide-flags.js";
 import { heartbeatInterval } from "./heartbeat-pacing.js";
+import { crossSiteRefused } from "./request-guard.js";
+import { markHidden, setHidden, isControlId, rememberValues } from "./live-visibility.js";
+import { safeSlides, addSafeSlide, removeSafeSlide, renameSafeSlide, moveSafeSlide } from "./safe-slides.js";
+import { layoutThemes, themesInDeck, themeReport } from "./theme-report.js";
+import { createRemoteApp, pushRecent, serviceProgress, pinFailureGuard } from "./remote.js";
+import { dailyPin, newSecret, endOfDay } from "./remote-auth.js";
+import { writeAtomic } from "./append-store.js";
 import {
   DEFAULT_DAYS_FOLDER,
   DEFAULT_LEAD_MINUTES,
@@ -136,7 +148,7 @@ import {
   DEFAULT_MINIMUM_FILES,
   DEFAULT_SNAPSHOTS_TO_KEEP,
 } from "./library-sync.js";
-import { discoverModules, discoverSlideSplitters, discoverProviders, discoverStorageBackends } from "./plugin-loader.js";
+import { discoverModules, discoverSlideSplitters, discoverProviders, discoverStorageBackends, discoverDeliveryBackends } from "./plugin-loader.js";
 import { runComparison, suggestMapping, getPendingUploadCount, retryPendingUploads } from "./arrangement-diff.js";
 import { startWatcher as startImageCropWatcher, getImageCropStatus, foldersOverlap, websafeToken } from "./image-crop.js";
 import { generateQr, getQrHistoryList, getQrHistoryEntry, addQrHistoryEntry, clearQrHistory, QR_LIMITS } from "./qr-code.js";
@@ -207,8 +219,15 @@ let config = loadConfig();
 // Before anything asks for module status: the arrangement checks read each
 // provider's declared requiredEnv instead of naming a vendor.
 registerProviders(await discoverProviders());
+registerDeliveryBackends(await discoverDeliveryBackends());
 let client = new ProPresenterClient(config.propresenter);
 
+app.use((req, res, next) => {
+  if (crossSiteRefused(req.method, req.get("origin"), req.get("host"))) {
+    return res.status(403).json({ error: "Refused: that request came from another website's page." });
+  }
+  next();
+});
 app.use(express.static("public"));
 app.use(express.json());
 
@@ -807,6 +826,112 @@ function slideKey(slide) {
 // see server/service-days.js). Folded fresh whenever it is needed: a day is a
 // few hundred events at most, and a fold nobody caches cannot go stale.
 let serviceDay = { day: null, events: [], loading: null };
+let recentSlides = [];
+
+/** Where a phone on the church network would open the flag page, one URL per network address. */
+function networkUrls() {
+  const port = Number(config.networkModule?.port ?? 9997);
+  const host = config.networkModule?.host;
+  // Bound to one address: that's the only one that works, so it's the only one shown.
+  if (typeof host === "string" && host && host !== "0.0.0.0") {
+    return [`http://${/^(127\.|localhost$|::1$)/.test(host) ? "127.0.0.1" : host}:${port}/`];
+  }
+  const out = [];
+  for (const list of Object.values(networkInterfaces())) {
+    for (const a of list ?? []) if (a.family === "IPv4" && !a.internal) out.push(`http://${a.address}:${port}/`);
+  }
+  return out;
+}
+
+// --- The phone PIN (server/remote-auth.js) ----------------------------------
+//
+// The secret behind the daily PIN and every phone token lives on this
+// machine only, in data/, never in config.json (which gets exported and
+// shared). Created the first time it's needed; replaced by "Forget all
+// phones". Written atomically, like every other file a volunteer would miss.
+const REMOTE_SECRET_FILE = "./data/remote-secret.json";
+let remoteSecret = null;
+function loadRemoteSecret() {
+  if (remoteSecret) return remoteSecret;
+  try {
+    // A secret others can read has to be treated as known: start again.
+    if (statSync(REMOTE_SECRET_FILE).mode & 0o077) throw new Error("not private");
+    remoteSecret = JSON.parse(readFileSync(REMOTE_SECRET_FILE, "utf-8")).secret ?? null;
+  } catch {
+    remoteSecret = null;
+  }
+  if (!remoteSecret) {
+    remoteSecret = newSecret();
+    saveRemoteSecret().catch((err) =>
+      console.error("Couldn't save the phone PIN secret; phones will need the PIN again after a restart:", err.message)
+    );
+  }
+  return remoteSecret;
+}
+async function saveRemoteSecret() {
+  // Created readable only by the account Refrain runs as (never briefly
+  // open to others), and checked afterwards: if it isn't private, it isn't
+  // used, because this secret signs every phone and derives every PIN.
+  await writeAtomic(path.dirname(REMOTE_SECRET_FILE), path.basename(REMOTE_SECRET_FILE), { secret: remoteSecret, createdAt: new Date().toISOString() }, { mode: 0o600 });
+  const { mode } = await stat(REMOTE_SECRET_FILE);
+  if (mode & 0o077) {
+    await chmod(REMOTE_SECRET_FILE, 0o600);
+    if ((await stat(REMOTE_SECRET_FILE)).mode & 0o077) throw new Error("the phone PIN secret file can't be made private");
+  }
+}
+async function forgetAllPhones() {
+  remoteSecret = newSecret();
+  await saveRemoteSecret();
+}
+const remotePinGuard = pinFailureGuard({ dayOf: (now) => dayKey(now) });
+const DEFAULT_PIN_HINT = "Today's PIN is on the Flags screen in the booth. Ask whoever is running the screens.";
+function remotePinMode() {
+  const pin = config.networkModule?.pin;
+  if (pin === "daily") return "daily";
+  return /^\d{4,8}$/.test(String(pin ?? "")) ? "fixed" : "none";
+}
+function expectedRemotePin(now = Date.now()) {
+  const mode = remotePinMode();
+  if (mode === "daily") return dailyPin(loadRemoteSecret(), dayKey(now));
+  if (mode === "fixed") return String(config.networkModule.pin);
+  return null;
+}
+
+/**
+ * Starts the phone listener when networkModule is on. Separate app, separate
+ * port, a handful of routes; see server/remote.js for the boundary.
+ */
+let remoteServer = null;
+function startRemoteListener() {
+  const { status, problems } = getNetworkModuleStatus(config, port);
+  if (status !== "active") {
+    if (status === "misconfigured") console.warn(`Phone flags are misconfigured: ${problems.join(" ")}`);
+    return;
+  }
+  const remoteApp = createRemoteApp({
+    getState: () => ({
+      liveState,
+      recent: recentSlides,
+      progress: serviceProgress(serviceModuleOn() && serviceDay.day ? serviceState() : null, liveState),
+    }),
+    saveFlag: (flag) => saveFlag(flag, { folder: slideFlagsFolder() }),
+    flagTypes: configuredFlagTypes,
+    knownSlide: (presentationId, slideIndex) => getIndexedSlide(presentationId, slideIndex),
+    pinGuard: remotePinGuard,
+    auth: {
+      expectedPin: () => expectedRemotePin(),
+      secret: () => loadRemoteSecret(),
+      hint: () => (typeof config.networkModule?.pinHint === "string" && config.networkModule.pinHint.trim() ? config.networkModule.pinHint.trim() : DEFAULT_PIN_HINT),
+      daily: () => remotePinMode() === "daily",
+    },
+  });
+  const host = typeof config.networkModule?.host === "string" && config.networkModule.host ? config.networkModule.host : "0.0.0.0";
+  const remotePort = Number(config.networkModule?.port ?? 9997);
+  remoteServer = remoteApp.listen(remotePort, host, () => {
+    console.log(`Phone flags on: ${networkUrls().join(", ") || `port ${remotePort}`}${remotePinMode() === "none" ? "" : remotePinMode() === "daily" ? " (daily PIN)" : " (PIN)"}.`);
+  });
+  remoteServer.on("error", (err) => console.error(`Phone flags couldn't start on port ${remotePort}: ${err.message}`));
+}
 
 function serviceModuleOn() {
   return getServiceModuleStatus(config) !== "off";
@@ -958,6 +1083,10 @@ async function heartbeat() {
     liveSince: enriched ? (sameSlide ? liveState.liveSince : now) : null,
     checkedAt: now,
   };
+
+  // The last few slides that were on the screens, for a flag sent late from
+  // a phone (server/remote.js). In memory only: it's a scrollback, not a record.
+  if (liveState.live && enriched) recentSlides = pushRecent(recentSlides, enriched, now);
 
   // The service timeline: what goes live, when, and in which service. It reads
   // only what this beat already fetched. Skipped while ProPresenter is not
@@ -1288,6 +1417,38 @@ app.get("/api/duplicate-names", (_req, res) => {
  */
 let orphanedMediaInFlight = false;
 
+/**
+ * Which theme each deck uses, and the decks that don't match their library's
+ * most-used theme (see server/theme-report.js for why that's the working
+ * definition of "current"). A button on Health, never automatic: it reads
+ * ProPresenter's theme list once and every indexed .pro file.
+ */
+let themeReportInFlight = false;
+app.post("/api/theme-report", async (_req, res) => {
+  if (themeReportInFlight) return res.status(409).json({ error: "A theme check is already running." });
+  if (performance.armed) return res.status(409).json({ error: "Performance mode is on, so Refrain is holding still. Run this when nothing is live." });
+  if (!liveState.connected) return res.status(409).json({ error: "ProPresenter isn't answering, and the theme list comes from it." });
+  themeReportInFlight = true;
+  try {
+    const layouts = layoutThemes(await client.getThemes());
+    const decks = [];
+    let unreadable = 0;
+    for (const [presentationId, entry] of Object.entries(getIndex().presentations ?? {})) {
+      if (!entry.presentationPath) continue;
+      try {
+        decks.push({ presentationId, name: entry.name, folder: entry.folder ?? null, themes: themesInDeck(await readFile(entry.presentationPath), layouts) });
+      } catch {
+        unreadable++;
+      }
+    }
+    res.json({ libraries: themeReport(decks), decksRead: decks.length, themedDecks: decks.filter((d) => d.themes.size).length, unreadable, layouts: layouts.size });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  } finally {
+    themeReportInFlight = false;
+  }
+});
+
 app.post("/api/orphaned-media/scan", async (_req, res) => {
   if (orphanedMediaInFlight) {
     return res.status(409).json({ error: "A scan is already running. Wait for it to finish." });
@@ -1501,10 +1662,48 @@ function servicePayload(now = Date.now()) {
     phaseProblems: playbookPhases(config.serviceModule?.phases).problems,
     dayEnded: state.dayEnds.length ? { at: jsonTime(state.dayEnds.at(-1).at), summaryFile: state.dayEnds.at(-1).summaryFile } : null,
     reopened: state.reopened,
+    report: reportPayload(state),
     holdingPace: holdHeartbeatPace(now),
     beatMs: heartbeatInterval({ lastClientAt, hold: holdHeartbeatPace(now), now }),
     performance: { armed: performance.armed, source: performance.source },
   };
+}
+
+function reportPayload(state) {
+  const { status, problems } = getReportModuleStatus(config);
+  const Backend = deliveryBackendFor(config);
+  const recipients = (config.reportModule?.recipients ?? []).length;
+  return {
+    status,
+    problems,
+    backend: Backend ? { id: Backend.backendId, name: Backend.displayName, sendsOffMachine: Boolean(Backend.sendsOffMachine) } : null,
+    recipients,
+    requireReview: config.reportModule?.requireReview !== false,
+    lastSent: state.lastSent ? { ...state.lastSent, at: jsonTime(state.lastSent.at) } : null,
+  };
+}
+
+/** Delivers a day's latest summary through the configured backend, and records the outcome either way. */
+async function deliverSummary(day, events) {
+  const Backend = deliveryBackendFor(config);
+  const last = events.filter((e) => e.type === "day-ended" && e.summaryFile).sort((a, b) => a.at.localeCompare(b.at)).at(-1);
+  if (!Backend || !last) throw new Error(!last ? "End the day first, so there's a summary to send." : "No delivery backend is set.");
+  const { folder } = serviceOptions();
+  let markdown = null;
+  for (const dir of [path.join(folder, day), path.join("./data/service-days-pending", day)]) {
+    markdown = await readFile(path.join(dir, last.summaryFile), "utf-8").catch(() => null);
+    if (markdown) break;
+  }
+  if (!markdown) throw new Error("The summary file is missing.");
+  const label = new Date(`${day}T12:00:00`).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  try {
+    const out = await new Backend().deliver({ day, subject: `Refrain summary: ${label}`, markdown, moduleConfig: config.reportModule ?? {}, env: process.env });
+    recordServiceEvents([buildEvent("summary-sent", { ok: true, detail: out.detail, backend: Backend.backendId, summaryFile: last.summaryFile })]);
+    return out;
+  } catch (err) {
+    recordServiceEvents([buildEvent("summary-sent", { ok: false, detail: err.message, backend: Backend.backendId, summaryFile: last.summaryFile })]);
+    throw err;
+  }
 }
 
 function currentPhases() {
@@ -1542,6 +1741,7 @@ async function runServiceChecks(service) {
     indexedIds: new Set(Object.keys(index?.presentations ?? {})),
     staleness: indexStaleness(index?.builtAt ?? null),
     groups: findDuplicateNames(),
+    preferred: preferredArrangements(),
   });
 }
 
@@ -1786,8 +1986,33 @@ app.post("/api/service/end-day", async (_req, res) => {
     }
   }
   recordServiceEvents([{ ...ended, summaryFile, delivered }]);
+  // Straight after End only when the church has opted out of reviewing
+  // first. Its outcome is recorded either way and shown on the screen.
+  if (getReportModuleStatus(config).status === "active" && config.reportModule?.requireReview === false) {
+    deliverSummary(serviceDay.day, serviceDay.events).catch((err) => console.error("Sending the day summary failed:", err.message));
+  }
   console.log(`Ended ${serviceDay.day}. Summary written${delivered ? (delivered.ok ? ` and copied to ${summaryFolder}` : `; copying to ${summaryFolder} is waiting (${delivered.reason})`) : ""}.`);
   res.json({ ok: true, summary: markdown, delivered, ...servicePayload() });
+});
+
+/**
+ * Sends the day summary (issue #4). A person presses Send, after reading it,
+ * unless the church has set reportModule.requireReview to false. This is the
+ * first thing in Refrain that can send data off the machine; it only exists
+ * for a church that turned the report module on and filled in where to send.
+ */
+app.post("/api/service/send-summary", async (_req, res) => {
+  if (!requireServiceModule(res)) return;
+  await ensureServiceDay();
+  const { status, problems } = getReportModuleStatus(config);
+  if (status !== "active") return res.status(409).json({ error: status === "off" ? "Sending summaries is off (reportModule.enabled)." : problems.join(" ") });
+  if (!serviceDay.events.some((e) => e.type === "day-ended")) return res.status(409).json({ error: "End the day first, so there's a summary to send." });
+  try {
+    const out = await deliverSummary(serviceDay.day, serviceDay.events);
+    res.json({ ok: true, detail: out.detail, ...servicePayload() });
+  } catch (err) {
+    res.status(502).json({ error: err.message, ...servicePayload() });
+  }
 });
 
 /** The latest summary for a day, as Markdown. */
@@ -1942,7 +2167,21 @@ app.post("/api/performance-mode", (req, res) => {
 app.get("/api/search", (req, res) => {
   const { q, playlistId, dateField, dateFrom, dateTo, folders } = req.query;
   const folderList = Array.isArray(folders) ? folders : folders ? String(folders).split(",") : undefined;
-  res.json({ results: search({ query: q ?? "", playlistId, dateField, dateFrom, dateTo, folders: folderList }) });
+  const params = { query: q ?? "", playlistId, dateField, dateFrom, dateTo, folders: folderList };
+  let results = search(params);
+  // Close matches, only when nothing matched exactly (see suggestQuery).
+  let corrected = null;
+  if (!results.length && q && q.trim()) {
+    const suggestion = suggestQuery(q);
+    if (suggestion) {
+      const retry = search({ ...params, query: suggestion });
+      if (retry.length) {
+        results = retry;
+        corrected = suggestion;
+      }
+    }
+  }
+  res.json({ results, corrected });
 });
 
 app.get("/api/search/folders", (_req, res) => {
@@ -2031,7 +2270,7 @@ async function resolveTriggerIndex(presentationId, requestedIndex, anchor) {
       text: anchor.slideText ?? "",
     });
     if (found === null) {
-      return { index: requestedIndex, corrected: false, arrangementName: live.arrangementName, anchorChecked: true };
+      return { index: requestedIndex, corrected: false, arrangementName: live.arrangementName, anchorChecked: true, missing: true };
     }
     return { index: found, corrected: found !== requestedIndex, arrangementName: live.arrangementName, anchorChecked: true };
   } catch {
@@ -2043,7 +2282,7 @@ async function resolveTriggerIndex(presentationId, requestedIndex, anchor) {
 }
 
 app.post("/api/trigger", async (req, res) => {
-  const { presentationId, slideIndex, groupId, groupOffset, slideText } = req.body ?? {};
+  const { presentationId, slideIndex, groupId, groupOffset, slideText, requireAnchor } = req.body ?? {};
   if (!presentationId || slideIndex === undefined) {
     return res.status(400).json({ error: "presentationId and slideIndex are required" });
   }
@@ -2082,6 +2321,14 @@ app.post("/api/trigger", async (req, res) => {
       returnPin = { ...current, leftAt: new Date().toISOString() };
       // Also into the history, so a jump between heartbeats is not missed.
       returnHistory = pushLiveItem(returnHistory, returnPin);
+    }
+
+    // A safe slide must be exactly the slide that was saved. If ProPresenter
+    // no longer has it (the deck was edited and the group is gone), refuse,
+    // rather than firing whatever now sits at that number. Search's Go Live
+    // doesn't ask for this and behaves as it always has.
+    if (requireAnchor === true && target.missing) {
+      return res.status(409).json({ error: "Can't find that slide any more. The presentation was changed; save it as a safe slide again." });
     }
 
     await client.triggerSlide(presentationId, target.index);
@@ -2183,12 +2430,138 @@ const CLEAR_LAYERS = ["slide", "media", "props", "messages", "announcements", "v
 // empty lists (not an error) if ProPresenter is unreachable, so the Clear
 // buttons still render and work.
 app.get("/api/live/controls", async (_req, res) => {
-  const [looks, macros, messages] = await Promise.all([
+  const [looks, macros, messages, currentLook] = await Promise.all([
     client.getLooks().catch(() => []),
     client.getMacros().catch(() => []),
     client.getMessages().catch(() => []),
+    client.getCurrentLook().catch(() => null),
   ]);
-  res.json({ looks, macros, messages });
+  res.json({ looks, currentLook, macros: markHidden(macros, config.liveModule?.hiddenMacros), messages, messageRecent: config.liveModule?.messageRecent ?? {} });
+});
+
+/** Just the current Look, for Live to refresh after a Look or a macro. */
+app.get("/api/live/current-look", async (_req, res) => {
+  res.json({ currentLook: await client.getCurrentLook().catch(() => null) });
+});
+
+// --- Safe slides (handoff §39a) ---------------------------------------------
+
+/**
+ * Every change to `liveModule` (hidden macros, safe slides, recent message
+ * values) goes through this one queue. Each change is computed from the
+ * config as it is when its turn comes, not when it was asked for, so two
+ * changes made together can't each save a copy that drops the other's. The
+ * write itself is saveConfig's atomic temp-then-rename.
+ * @param {(liveModule: object) => object} change  returns the new liveModule
+ * @returns {Promise<object>} the saved liveModule
+ */
+let liveModuleQueue = Promise.resolve();
+function updateLiveModule(change) {
+  const run = liveModuleQueue.then(async () => {
+    const liveModule = change({ ...(config.liveModule ?? {}) });
+    const newConfig = { ...config, liveModule };
+    await saveConfig(newConfig);
+    config = newConfig;
+    return liveModule;
+  });
+  liveModuleQueue = run.catch(() => {});
+  return run;
+}
+
+/**
+ * updateLiveModule for a route: answers itself on failure and returns null.
+ * A change can refuse by throwing an error with a `status` (e.g. 400 for "the
+ * list is full"); anything else is a failed save.
+ */
+async function saveLiveModule(res, change) {
+  try {
+    return await updateLiveModule(change);
+  } catch (err) {
+    res.status(err.status ?? 500).json({ error: err.status ? err.message : `Failed to save config.json: ${err.message}` });
+    return null;
+  }
+}
+const refuse = (status, message) => Object.assign(new Error(message), { status });
+
+/**
+ * Today's phone PIN, for the booth: shown on the Flags screen and Health so
+ * whoever is running the screens can read it out. This route is on the main
+ * app, which only this machine can reach; the phone listener never serves it.
+ */
+app.get("/api/network/pin", (_req, res) => {
+  if (getNetworkModuleStatus(config, port).status !== "active") return res.status(409).json({ error: "Phone flags are off." });
+  const mode = remotePinMode();
+  res.json({ mode, pin: expectedRemotePin(), changesAt: mode === "daily" ? new Date(endOfDay()).toISOString() : null, urls: networkUrls(), wrongToday: remotePinGuard.count() });
+});
+
+/** New secret: every phone is signed out, and the daily PIN changes now. */
+app.post("/api/network/forget-phones", async (_req, res) => {
+  try {
+    await forgetAllPhones();
+    res.json({ ok: true, pin: expectedRemotePin() });
+  } catch (err) {
+    res.status(500).json({ error: `Couldn't save the new secret: ${err.message}` });
+  }
+});
+
+app.get("/api/live/safe-slides", (_req, res) => {
+  res.json({ safeSlides: safeSlides(config.liveModule?.safeSlides) });
+});
+
+/** Saves a slide from Search as a safe slide. Reads nothing from ProPresenter. */
+app.post("/api/live/safe-slides", async (req, res) => {
+  const b = req.body ?? {};
+  const input = {
+    presentationId: b.presentationId,
+    presentationName: b.presentationName,
+    slideIndex: parseSlideIndex(b.slideIndex),
+    groupId: b.groupId || null,
+    groupOffset: b.groupOffset === "" || b.groupOffset == null ? null : Number(b.groupOffset),
+    slideText: b.slideText,
+    label: b.label,
+  };
+  let added = null;
+  const saved = await saveLiveModule(res, (m) => {
+    const r = addSafeSlide(m.safeSlides, input);
+    if (r.error) throw refuse(400, r.error);
+    added = r.added;
+    return { ...m, safeSlides: r.list };
+  });
+  if (!saved) return;
+  res.json({ ok: true, added, safeSlides: saved.safeSlides });
+});
+
+/** Rename, move or remove one. */
+app.post("/api/live/safe-slides/:id", async (req, res) => {
+  const { action, label, dir } = req.body ?? {};
+  if (!["remove", "rename", "move"].includes(action)) return res.status(400).json({ error: 'action must be "remove", "rename" or "move"' });
+  const saved = await saveLiveModule(res, (m) => {
+    const current = safeSlides(m.safeSlides);
+    if (!current.some((x) => x.id === req.params.id)) throw refuse(404, "No safe slide by that id.");
+    const list =
+      action === "remove"
+        ? removeSafeSlide(current, req.params.id)
+        : action === "rename"
+          ? renameSafeSlide(current, req.params.id, label)
+          : moveSafeSlide(current, req.params.id, Number(dir));
+    return { ...m, safeSlides: list };
+  });
+  if (!saved) return;
+  res.json({ ok: true, safeSlides: saved.safeSlides });
+});
+
+/**
+ * Hides or shows one macro on the Live screen. Saved to config.json (atomic
+ * write), so it survives a restart and applies to every browser on this
+ * machine. Only changes what Refrain shows; nothing in ProPresenter moves.
+ */
+app.post("/api/live/visibility", async (req, res) => {
+  const { kind, id, hidden } = req.body ?? {};
+  if (kind !== "macro") return res.status(400).json({ error: 'kind must be "macro"' });
+  if (!isControlId(id) || typeof hidden !== "boolean") return res.status(400).json({ error: "id and hidden are required" });
+  const saved = await saveLiveModule(res, (m) => ({ ...m, hiddenMacros: setHidden(m.hiddenMacros, id, hidden) }));
+  if (!saved) return;
+  res.json({ ok: true, hiddenMacros: saved.hiddenMacros });
 });
 
 app.post("/api/live/clear", async (req, res) => {
@@ -2237,7 +2610,18 @@ app.post("/api/live/message", async (req, res) => {
   if (!id) return res.status(400).json({ error: "id is required" });
   try {
     await client.triggerMessage(id, values);
-    res.json({ ok: true });
+    // Remembered only after ProPresenter accepted it. A failed save of the
+    // recents mustn't turn a message that is on screen into an error.
+    // The message is already on the screens, so a failed save of the recents
+    // is reported and logged, never turned into "the post failed".
+    let recent = null;
+    try {
+      const saved = await updateLiveModule((m) => ({ ...m, messageRecent: rememberValues(m.messageRecent, id, values) }));
+      recent = saved.messageRecent?.[id] ?? {};
+    } catch (err) {
+      console.error("Couldn't save recent message values:", err.message);
+    }
+    res.json({ ok: true, recent, recentSaved: recent !== null });
   } catch (err) {
     res.status(502).json({ error: err.message });
   }
@@ -3893,6 +4277,8 @@ app.get("/api/health", async (_req, res) => {
       },
     },
     envRequirements: getEnvRequirements(config),
+    networkModule: { ...getNetworkModuleStatus(config, port), urls: getNetworkModuleStatus(config, port).status === "active" ? networkUrls() : [], pinMode: remotePinMode() },
+    reportModule: getReportModuleStatus(config),
   });
 });
 
@@ -4110,6 +4496,8 @@ const server = app.listen(port, "127.0.0.1", async () => {
       console.error("Service days could not start:", err.message);
     }
   }
+
+  startRemoteListener();
 
   // Flags captured while the shared folder was unreachable, copied now.
   retryPendingFlags({ folder: slideFlagsFolder() })

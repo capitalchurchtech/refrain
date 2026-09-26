@@ -116,6 +116,103 @@ let derived = new Map();
 function setCurrentIndex(next) {
   currentIndex = next;
   derived = new Map();
+  vocab = null;
+}
+
+// --- close matches, only when nothing matched (handoff §39d) --------------
+//
+// A search under pressure is often a typo: `ocenas`, `goodnes of god`,
+// `waymaker`. Exact search returns nothing for those, so as a fallback each
+// word the library has never used is swapped for the nearest word it has.
+// It never runs when there were exact matches, so a correct query is never
+// diluted, and the words come from this library only, so a name or a lyric
+// the church uses is a valid correction and a dictionary word it doesn't
+// isn't. Built once per index, like `derived` above.
+
+let vocab = null;
+
+/** Every word in the library, with how often it appears. */
+function vocabulary() {
+  if (vocab) return vocab;
+  vocab = new Map();
+  const add = (text) => {
+    for (const w of String(text ?? "").toLowerCase().split(/[^\p{L}\p{N}]+/u)) {
+      if (w.length >= 2) vocab.set(w, (vocab.get(w) ?? 0) + 1);
+    }
+  };
+  for (const entry of Object.values(currentIndex.presentations ?? {})) {
+    add(entry.name);
+    for (const slide of entry.slides ?? []) add(slide.text);
+  }
+  return vocab;
+}
+
+/**
+ * Edit distance with adjacent swaps (Damerau, optimal string alignment),
+ * giving up once it's certain to exceed `max`. Swaps count once, because
+ * "teh" for "the" is one slip of the fingers, not two.
+ */
+export function editDistance(a, b, max = Infinity) {
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  const rows = [];
+  for (let i = 0; i <= a.length; i++) rows.push([i]);
+  for (let j = 1; j <= b.length; j++) rows[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    let best = Infinity;
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      let v = Math.min(rows[i - 1][j] + 1, rows[i][j - 1] + 1, rows[i - 1][j - 1] + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) v = Math.min(v, rows[i - 2][j - 2] + 1);
+      rows[i][j] = v;
+      if (v < best) best = v;
+    }
+    if (best > max) return max + 1;
+  }
+  return rows[a.length][b.length];
+}
+
+/**
+ * The query with each unknown word replaced by the library's nearest word,
+ * or split into two words the library has ("waymaker" → "way maker"), or
+ * null when nothing would change. Pure: the vocabulary is a parameter.
+ * Words under three letters are left alone; there is nothing to go on.
+ */
+export function correctQuery(query, words) {
+  const parts = String(query ?? "").toLowerCase().trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return null;
+  let changed = false;
+  const out = parts.map((w) => {
+    if (w.length < 3 || words.has(w)) return w;
+    const max = w.length >= 7 ? 2 : 1;
+    let best = null;
+    for (const [candidate, count] of words) {
+      if (Math.abs(candidate.length - w.length) > max) continue;
+      const d = editDistance(w, candidate, max);
+      if (d > max) continue;
+      if (!best || d < best.d || (d === best.d && count > best.count)) best = { word: candidate, d, count };
+    }
+    let split = null;
+    for (let i = 2; i <= w.length - 2; i++) {
+      const a = w.slice(0, i);
+      const b = w.slice(i);
+      const score = Math.min(words.get(a) ?? 0, words.get(b) ?? 0);
+      if (score >= 2 && (!split || score > split.score)) split = { text: `${a} ${b}`, score };
+    }
+    // One slip beats a split; a split beats two slips. "waymaker" is "way
+    // maker" run together, not "hatmaker" with two letters wrong.
+    const pick = best && best.d === 1 ? best.word : split ? split.text : best?.word;
+    if (pick) {
+      changed = true;
+      return pick;
+    }
+    return w;
+  });
+  return changed ? out.join(" ") : null;
+}
+
+/** The corrected query for this library, or null. */
+export function suggestQuery(query) {
+  return correctQuery(normalizeText(query ?? ""), vocabulary());
 }
 
 /** Lowercased, unified and folded forms for one presentation's slides. */

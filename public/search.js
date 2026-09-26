@@ -220,11 +220,13 @@ export function initSearch() {
       // A 500 returns an HTML error page, and parsing that as JSON throws
       // somewhere less obvious than here.
       if (!res.ok) throw new Error(`the server answered ${res.status}`);
-      const { results } = await res.json();
+      const { results, corrected } = await res.json();
       // Superseded by a newer keystroke: that search owns the screen now,
       // including the "Searching" line, so leave both alone.
       if (token !== latestSearchToken) return;
-      renderResults(results, hasDateFilter, query);
+      // Close matches: the server only sends these when nothing matched as
+      // typed. Highlight what was actually found, and say so in one line.
+      renderResults(results, hasDateFilter, corrected ?? query, corrected);
     } catch (err) {
       if (token !== latestSearchToken) return;
       // Without this the acknowledgement was permanent: "Searching" stayed on
@@ -305,12 +307,15 @@ export function initSearch() {
     if (pendingEl) pendingEl.textContent = "";
   }
 
-  function renderResults(results, showModifiedDate, query) {
+  function renderResults(results, showModifiedDate, query, corrected = null) {
     clearPending();
     if (results.length === 0) {
       resultsEl.innerHTML = `<div class="opacity-60 text-center py-8">No matches</div>`;
       return;
     }
+    const correctedNotice = corrected
+      ? `<div class="rf-hint px-1 pb-2">No exact matches. Showing results for <strong>${escapeHtml(corrected)}</strong>.</div>`
+      : "";
 
     const allSongs = groupResultsBySong(results);
     const { shown: songs, hiddenSongs, shownSlides } = capForRender(allSongs);
@@ -321,7 +326,7 @@ export function initSearch() {
       ? `<div class="rf-hint px-1 pb-2">Showing ${shownSlides} matching slide${shownSlides === 1 ? "" : "s"} in the first ${songs.length} of ${allSongs.length} songs. Add another word to narrow it.</div>`
       : "";
 
-    resultsEl.innerHTML = cappedNotice + songs
+    resultsEl.innerHTML = correctedNotice + cappedNotice + songs
       .map(
         (song) => `
       <div class="card bg-base-200 shadow-sm">
@@ -356,7 +361,7 @@ export function initSearch() {
             ${song.slides
               .map(
                 (r) => `
-              <div class="flex items-start justify-between gap-3">
+              <div class="flex items-start justify-between gap-3 search-slide-row" tabindex="-1">
                 <div>
                   <div class="text-xs opacity-70">
                     Slide ${r.slideIndex + 1}${r.repeatCount > 1 ? ` &middot; sung ${r.repeatCount}&times;` : ""}${showModifiedDate && r.modifiedDate ? ` &middot; modified ${new Date(r.modifiedDate).toLocaleDateString()}` : ""}
@@ -377,6 +382,7 @@ export function initSearch() {
                   <button class="btn btn-chip show-in-editor-btn" data-presentation-id="${r.presentationId}" title="Open in ProPresenter's editor without changing what is on the screens. Then click slide ${r.slideIndex + 1}.">
                     Show slide ${r.slideIndex + 1}
                   </button>
+                  <button class="btn btn-chip make-safe-btn" aria-label="Keep as a safe slide on Live" title="Keep as a safe slide on Live" data-presentation-id="${r.presentationId}" data-presentation-name="${escapeHtml(r.presentationName ?? "")}" data-slide-index="${r.slideIndex}" data-group-id="${escapeHtml(r.groupId ?? "")}" data-group-offset="${r.groupOffset ?? ""}" data-slide-text="${escapeHtml(r.snippet ?? "")}"><i data-lucide="shield-check" class="w-3.5 h-3.5"></i></button>
                   <button class="btn btn-brand btn-xs go-live-btn" data-presentation-id="${r.presentationId}" data-slide-index="${r.slideIndex}" data-group-id="${escapeHtml(r.groupId ?? "")}" data-group-offset="${r.groupOffset ?? ""}" data-slide-text="${escapeHtml(r.snippet ?? "")}" data-presentation-name="${escapeHtml(r.presentationName ?? "")}" data-arrangement-name="${escapeHtml(r.arrangementName ?? "")}">
                     Go Live
                   </button>
@@ -536,6 +542,31 @@ export function initSearch() {
         liveBtn.disabled = false;
       }
       crumb("golive", { presentation: liveBtn.dataset.presentationId, slide: Number(liveBtn.dataset.slideIndex) });
+      return;
+    }
+
+    // Keep this slide as a safe slide on Live (handoff §39a). Saves to this
+    // machine's config; nothing in ProPresenter changes.
+    const safeBtn = e.target.closest(".make-safe-btn");
+    if (safeBtn) {
+      safeBtn.disabled = true;
+      const d = safeBtn.dataset;
+      try {
+        const res = await fetch("/api/live/safe-slides", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ presentationId: d.presentationId, presentationName: d.presentationName, slideIndex: Number(d.slideIndex), groupId: d.groupId || null, groupOffset: d.groupOffset === "" ? null : Number(d.groupOffset), slideText: d.slideText }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error ?? res.statusText);
+        safeBtn.classList.add("rf-safe-kept");
+        safeBtn.title = `Kept on Live as "${data.added?.label ?? "safe slide"}"`;
+        safeBtn.setAttribute("aria-label", safeBtn.title);
+      } catch (err) {
+        showFailure(`Couldn't keep that slide: ${err.message}`);
+      } finally {
+        safeBtn.disabled = false;
+      }
       return;
     }
 
@@ -706,6 +737,57 @@ export function initSearch() {
    * keep closing the overlay. The guard is both conditions, not just focus,
    * because a dialog can open while the field still holds focus behind it.
    */
+  /**
+   * Keyboard through the results (owner's design, handoff §39c). Enter in the
+   * box moves to the first slide; Up and Down choose a slide; Enter opens it
+   * in ProPresenter's editor; Esc goes back to the box with the query kept.
+   *
+   * **Enter never goes live.** The keyboard's default action is the harmless
+   * one, so a stray Enter can't put anything on the screens. Go Live stays a
+   * deliberate press on its own button. The lit collar moves with the chosen
+   * row, so the one Go Live that glows is always the slide you're looking at.
+   */
+  const slideRows = () => [...resultsEl.querySelectorAll(".search-slide-row")];
+  function chooseRow(i) {
+    const rows = slideRows();
+    if (!rows.length) return;
+    const n = Math.max(0, Math.min(i, rows.length - 1));
+    rows.forEach((r) => r.classList.remove("rf-kb-row"));
+    const row = rows[n];
+    row.classList.add("rf-kb-row");
+    resultsEl.querySelectorAll(".go-live-btn.rf-armed").forEach((b) => b.classList.remove("rf-armed"));
+    row.querySelector(".go-live-btn")?.classList.add("rf-armed");
+    row.focus({ preventScroll: true });
+    row.scrollIntoView({ block: "nearest" });
+  }
+
+  queryInput.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+    if (!slideRows().length) return;
+    e.preventDefault();
+    chooseRow(0);
+  });
+
+  resultsEl.addEventListener("keydown", (e) => {
+    const row = e.target.closest?.(".search-slide-row");
+    if (!row || e.target !== row || e.metaKey || e.ctrlKey || e.altKey) return;
+    const i = slideRows().indexOf(row);
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      chooseRow(i + (e.key === "ArrowDown" ? 1 : -1));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      row.querySelector(".show-in-editor-btn")?.click();
+    } else if (e.key === "Escape") {
+      // Back to the box, query kept. Stopped here so the global Esc (which
+      // closes overlays) and the box's own Esc (which clears) don't also run.
+      e.preventDefault();
+      e.stopPropagation();
+      row.classList.remove("rf-kb-row");
+      queryInput.focus();
+    }
+  });
+
   queryInput.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || e.metaKey || e.ctrlKey || e.altKey) return;
     if (!queryInput.value) return;

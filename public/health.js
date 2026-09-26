@@ -182,6 +182,54 @@ export function initHealth() {
       orphanResults.innerHTML = renderOrphanResults(lastOrphanScan);
       wireOrphanResults();
     }
+    // Today's phone PIN, to read out; and a way to sign every phone out.
+    const pinEl = document.getElementById("phone-pin-today");
+    const paintPin = async () => {
+      try {
+        const p = await fetch("/api/network/pin").then((r) => (r.ok ? r.json() : null));
+        if (p && pinEl) pinEl.innerHTML = `${p.mode === "daily" ? "Today's PIN" : "PIN"}: <strong class="font-mono text-base">${escapeHtml(p.pin ?? "")}</strong>${p.changesAt ? ` <span class="opacity-60">(changes at midnight)</span>` : ""}${
+          p.wrongToday ? ` <span class="opacity-80">· ${p.wrongToday} wrong PIN${p.wrongToday === 1 ? "" : "s"} today${p.wrongToday >= 30 ? ", so phones can't sign in again until tomorrow" : ""}</span>` : ""
+        }`;
+      } catch {
+        // leave it blank
+      }
+    };
+    if (pinEl) paintPin();
+    document.getElementById("phone-forget-btn")?.addEventListener("click", async (e) => {
+      const btn = e.currentTarget;
+      const status = document.getElementById("phone-forget-status");
+      btn.disabled = true;
+      try {
+        const res = await fetch("/api/network/forget-phones", { method: "POST" });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? res.statusText);
+        status.textContent = "Every phone will need the new PIN.";
+        await paintPin();
+      } catch (err) {
+        status.textContent = err.message;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    document.getElementById("theme-report-btn")?.addEventListener("click", async (e) => {
+      const btn = e.currentTarget;
+      const statusEl = document.getElementById("theme-report-status");
+      const out = document.getElementById("theme-report-results");
+      btn.disabled = true;
+      statusEl.textContent = "Reading every deck...";
+      try {
+        const res = await fetch("/api/theme-report", { method: "POST" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error ?? res.statusText);
+        statusEl.textContent = `${data.themedDecks} of ${data.decksRead} decks use a theme's layouts.${data.unreadable ? ` Couldn't read ${data.unreadable}.` : ""}`;
+        out.innerHTML = renderThemeReport(data);
+      } catch (err) {
+        statusEl.textContent = err.message;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
     document.getElementById("orphan-scan-btn")?.addEventListener("click", async (e) => {
       const btn = e.currentTarget; // captured before the await
       const statusEl = document.getElementById("orphan-scan-status");
@@ -1055,6 +1103,27 @@ export function formatBytes(bytes) {
   return `${(bytes / 1e9).toFixed(1)} GB`;
 }
 
+/** The theme report, library by library. Pure, for tests. */
+export function renderThemeReport(data) {
+  const libs = data?.libraries ?? [];
+  if (!libs.length) return `<div class="text-sm opacity-70">No deck uses a theme's layouts, so there's nothing to compare.</div>`;
+  return libs
+    .map((l) => {
+      const rows = l.off
+        .slice(0, 30)
+        .map((o) => `<li>${escapeHtml(o.name)}: ${o.themes.map(escapeHtml).join(", ")}${o.alsoCurrent ? " <span class=\"opacity-60\">(mixed with the current one)</span>" : ""}</li>`)
+        .join("");
+      const more = l.off.length > 30 ? `<li class="opacity-60">and ${l.off.length - 30} more</li>` : "";
+      return `
+        <div class="text-sm">
+          <div><strong>${escapeHtml(l.folder)}:</strong> current theme ${escapeHtml(l.current)} (${l.currentCount} of ${l.themedDecks} decks).
+          ${l.off.length ? `${l.off.length} use another:` : "Every deck matches."}</div>
+          ${l.off.length ? `<ul class="list-disc pl-5 text-xs opacity-80">${rows}${more}</ul>` : ""}
+        </div>`;
+    })
+    .join("");
+}
+
 /**
  * The results of an unused-media scan, per workspace.
  *
@@ -1221,6 +1290,8 @@ export function summarizeModules(health) {
   const mods = [
     { name: "Arrangement", status: health.arrangementModule?.status },
     { name: "Share Library", status: health.shareLibrary?.status },
+    { name: "Phone flags", status: health.networkModule?.status },
+    { name: "Summary sending", status: health.reportModule?.status },
   ].filter((m) => m.status);
   const rank = { misconfigured: 0, active: 1, off: 2 };
   mods.sort((a, b) => (rank[a.status] ?? 3) - (rank[b.status] ?? 3));
@@ -1499,6 +1570,49 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
    * the pre-service list. Refrain never deletes anything; the most it does is
    * show a file in Finder so a person can look and decide.
    */
+  const net = health.networkModule;
+  const phoneCard =
+    net && net.status !== "off"
+      ? `
+    <div class="card bg-base-200">
+      <div class="card-body p-3 gap-2">
+        <h2 class="card-title text-base"><i data-lucide="smartphone" class="w-4 h-4 opacity-70"></i> Phone flags</h2>
+        ${
+          net.status === "active"
+            ? `<div class="text-sm rf-measure">Anyone on the church network can open this on a phone to flag a slide or see where the service is. It can't change the screens.${
+                net.pinMode === "none" ? " There's no PIN; set networkModule.pin to \"daily\" to require one." : ""
+              }</div>
+               <div class="text-sm font-mono">${(net.urls ?? []).map(escapeHtml).join("<br>") || "No network address found."}</div>
+               ${
+                 net.pinMode === "none"
+                   ? ""
+                   : `<div class="flex items-center gap-3 flex-wrap"><span id="phone-pin-today" class="text-sm"></span>
+                      <button id="phone-forget-btn" class="btn btn-outline btn-xs" title="Signs every phone out and changes today's PIN">Forget all phones</button>
+                      <span id="phone-forget-status" class="text-xs opacity-60"></span></div>`
+               }`
+            : `<div class="text-sm">Not running: ${escapeHtml((net.problems ?? []).join(" "))}</div>`
+        }
+      </div>
+    </div>`
+      : "";
+
+  const themesCard = `
+    <div class="card bg-base-200">
+      <div class="card-body p-3 gap-2">
+        <h2 class="card-title text-base"><i data-lucide="palette" class="w-4 h-4 opacity-70"></i> Themes</h2>
+        <div class="text-sm opacity-70 rf-measure">
+          Decks that use a different theme from the rest of their library. Refrain takes each library's
+          current theme to be the one most of its decks use. It only reads.
+        </div>
+        <div class="rf-control-row">
+          <button id="theme-report-btn" class="btn btn-outline btn-xs"><i data-lucide="scan-search" class="w-3.5 h-3.5"></i> Check themes</button>
+          <span id="theme-report-status" class="text-xs opacity-60"></span>
+        </div>
+        <div id="theme-report-results" class="flex flex-col gap-3"></div>
+      </div>
+    </div>
+  `;
+
   const orphanedMediaCard = `
     <div class="card bg-base-200">
       <div class="card-body p-3 gap-2">
@@ -1914,6 +2028,8 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
       ${indexCard}
       ${duplicateNamesCard}
       ${orphanedMediaCard}
+      ${themesCard}
+      ${phoneCard}
       ${arrangementCard}
       ${configCard}
       ${libraryCard}

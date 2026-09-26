@@ -149,6 +149,50 @@ export function getLibrarySyncModuleStatus(config) {
 }
 
 /**
+ * Delivery backends found by plugin discovery, registered at boot, like
+ * providers, so the report module's status stays synchronous.
+ */
+let registeredDelivery = [];
+export function registerDeliveryBackends(backends) {
+  registeredDelivery = Array.isArray(backends) ? backends : [];
+}
+export function deliveryBackendFor(config) {
+  const id = config.reportModule?.deliveryBackend ?? "email";
+  return registeredDelivery.find((B) => B.backendId === id) ?? null;
+}
+
+/**
+ * Sending the day summary somewhere (issue #4). Off unless a church turns it
+ * on. Misconfigured, with the reasons, when its backend is unknown or not set
+ * up; never a crash.
+ * @returns {{ status: "off" | "misconfigured" | "active", problems: string[] }}
+ */
+export function getReportModuleStatus(config) {
+  if (!config.reportModule?.enabled) return { status: "off", problems: [] };
+  const Backend = deliveryBackendFor(config);
+  if (!Backend) return { status: "misconfigured", problems: [`No delivery backend called "${config.reportModule.deliveryBackend ?? "email"}".`] };
+  const problems = Backend.problems(config.reportModule, process.env);
+  return { status: problems.length ? "misconfigured" : "active", problems };
+}
+
+/**
+ * Phone flags and the progress feed (issues #8 and #7): a separate listener
+ * that can be reached from the church network. Off unless turned on; the
+ * main app stays on 127.0.0.1 either way.
+ * @returns {{ status: "off" | "misconfigured" | "active", problems: string[] }}
+ */
+export function getNetworkModuleStatus(config, mainPort = 9999) {
+  const mod = config.networkModule;
+  if (!mod?.enabled) return { status: "off", problems: [] };
+  const problems = [];
+  const port = Number(mod.port ?? 9997);
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) problems.push("networkModule.port should be a number from 1024 to 65535.");
+  if (port === Number(mainPort)) problems.push("networkModule.port can't be the same as Refrain's own port.");
+  if (mod.pin != null && mod.pin !== "" && mod.pin !== "daily" && !/^\d{4,8}$/.test(String(mod.pin))) problems.push('networkModule.pin should be "daily", 4 to 8 digits, or left empty.');
+  return { status: problems.length ? "misconfigured" : "active", problems };
+}
+
+/**
  * The service system (handoff section 37). Off unless a church turns it on:
  * a church that only wants search never sees a playbook. A malformed
  * schedule is "misconfigured" with a message on Health, never a crash.
@@ -194,6 +238,12 @@ export function getEnvRequirements(config) {
       set: Boolean(process.env[name]),
       note: `${Provider.displayName} provider — required on ${config.role === "logger" ? "the logger machine" : "this machine"}.`,
     });
+  }
+
+  const report = config.reportModule;
+  const Backend = report?.enabled ? deliveryBackendFor(config) : null;
+  for (const { name } of Backend?.requiredEnv ?? []) {
+    reqs.push({ name, set: Boolean(process.env[name]), note: `${Backend.displayName} delivery for the day summary.` });
   }
 
   return reqs;
