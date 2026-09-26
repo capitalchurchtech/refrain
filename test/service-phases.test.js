@@ -65,7 +65,7 @@ test("under performance mode, or with ProPresenter away, every reading check say
   assert.ok(away.every((r) => r.status === "couldnt"));
   assert.equal(checksHeadline(away), `${away.length} couldn't be checked`);
   const ran = evaluateChecks({ connected: true, performanceArmed: false, scan, indexedIds: new Set(["HYMN", "TALK", "LOOP"]), groups: [] });
-  assert.equal(ran.length, 7);
+  assert.equal(ran.length, 8);
   assert.equal(checksHeadline(ran), "3 need a look");
 });
 
@@ -142,4 +142,22 @@ test("the day summary: rundown, flags by service and type, checks that needed a 
   assert.match(noneInPlan, /None of the songs shown were in the most recent plan \(October 3 & 4\)/, "0 compared is not 'every song matched'");
   assert.match(md, /Stage display showing/);
   assert.match(md, /## Not in a service/);
+});
+
+import { checkPreferredArrangement } from "../server/service-checks.js";
+
+test("an entry off every preferred arrangement is flagged only when the presentation has a preferred one", () => {
+  const items2 = [
+    { id: "A", name: "Song A", arrangementName: "Ver 1" }, // FS exists: flagged
+    { id: "B", name: "Song B", arrangementName: "T" }, // T is preferred too: fine
+    { id: "C", name: "Song C", arrangementName: "Ver 1" }, // no preferred arrangement exists: fine
+    { id: "D", name: "Message", arrangementName: "FS Homework" }, // a variant of FS: fine
+  ];
+  const arr = (...names) => ({ presentation: { arrangements: names.map((n) => ({ id: { name: n } })) } });
+  const docs2 = new Map([["A", arr("Ver 1", "FS")], ["B", arr("FS", "T")], ["C", arr("Ver 1", "Ver 2")], ["D", arr("FS", "FS Homework")]]);
+  const r = checkPreferredArrangement({ items: items2, docs: docs2, preferred: ["FS", "T"] });
+  assert.equal(r.status, "attention");
+  assert.deepEqual(r.details.map((d) => d.name), ["Song A"]);
+  assert.match(r.details[0].text, /"FS" exists/);
+  assert.equal(checkPreferredArrangement({ items: items2, docs: docs2, preferred: [] }).status, "pass");
 });

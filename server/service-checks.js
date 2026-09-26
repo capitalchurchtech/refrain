@@ -12,7 +12,7 @@
  * playbook can list the ones it wants (see service-playbook.js).
  */
 
-export const CHECK_IDS = ["propresenter", "index", "typos", "past-dates", "missing-media", "arrangement-refs", "duplicate-names"];
+export const CHECK_IDS = ["propresenter", "index", "typos", "past-dates", "missing-media", "arrangement-refs", "preferred-arrangement", "duplicate-names"];
 
 export const CHECK_LABELS = {
   propresenter: "ProPresenter answering",
@@ -21,6 +21,7 @@ export const CHECK_LABELS = {
   "past-dates": "Dates that have passed",
   "missing-media": "Media on this Mac",
   "arrangement-refs": "Playlist arrangements exist",
+  "preferred-arrangement": "Entries on a preferred arrangement",
   "duplicate-names": "Presentations with a twin in another library",
 };
 
@@ -110,6 +111,37 @@ export function checkArrangementRefs({ items, docs }) {
   return result("arrangement-refs", "pass", "Every entry's arrangement exists.");
 }
 
+/**
+ * Entries on an arrangement that isn't one of the church's preferred ones
+ * (`preferredArrangements`, e.g. ["FS", "T"]) when the presentation has one.
+ * Any preferred name counts as fine, so a week that deliberately uses T isn't
+ * flagged; what's caught is "Ver 1" still in the playlist when an FS exists.
+ * Read-only: Refrain can't change a playlist's arrangement (handoff §38).
+ */
+export function checkPreferredArrangement({ items, docs, preferred }) {
+  const names = (preferred ?? []).map((n) => String(n).trim().toLowerCase()).filter(Boolean);
+  if (!names.length) return result("preferred-arrangement", "pass", "No preferred arrangement is set.");
+  // "FS Message" and "T Homework" are deliberate variants of FS and T, so an
+  // arrangement whose first word is a preferred name counts as preferred.
+  const isPreferred = (name) => {
+    const n = String(name ?? "").trim().toLowerCase();
+    return names.some((p) => n === p || n.startsWith(`${p} `) || n.startsWith(`${p}(`));
+  };
+  const off = [];
+  for (const item of items ?? []) {
+    const doc = docs.get(item.id);
+    if (!doc || !item.arrangementName) continue;
+    const available = (doc.presentation?.arrangements ?? []).map((a) => String(a?.id?.name ?? "")).filter(Boolean);
+    const preferredHere = available.find((a) => names.includes(a.trim().toLowerCase()));
+    if (!preferredHere) continue; // nothing better to be on
+    if (isPreferred(item.arrangementName)) continue;
+    off.push({ name: item.name, text: `on "${item.arrangementName}"; "${preferredHere}" exists` });
+  }
+  return off.length
+    ? result("preferred-arrangement", "attention", `${plural(off.length, "entry", "entries")} could be on a preferred arrangement. Change it in the playlist if that's intended.`, off)
+    : result("preferred-arrangement", "pass", "Every entry that has a preferred arrangement is on one.");
+}
+
 /** Playlist presentations whose name also exists in another library folder. */
 export function checkDuplicateNames({ items, groups }) {
   const ids = new Set((items ?? []).map((i) => i.id));
@@ -123,7 +155,7 @@ export function checkDuplicateNames({ items, groups }) {
 }
 
 /** The whole list, in a fixed order, with "couldn't check" for anything that needed ProPresenter and didn't get it. */
-export function evaluateChecks({ connected, performanceArmed, scan, scanError, indexedIds, staleness, groups, only = null }) {
+export function evaluateChecks({ connected, performanceArmed, scan, scanError, indexedIds, staleness, groups, preferred = [], only = null }) {
   const out = [checkPropresenter({ connected })];
   const blocked = !connected
     ? "ProPresenter isn't answering."
@@ -133,13 +165,14 @@ export function evaluateChecks({ connected, performanceArmed, scan, scanError, i
         ? `Couldn't read the playlist: ${scanError}`
         : null;
   if (blocked || !scan) {
-    for (const id of ["typos", "past-dates", "missing-media", "arrangement-refs", "index", "duplicate-names"]) {
+    for (const id of ["typos", "past-dates", "missing-media", "arrangement-refs", "preferred-arrangement", "index", "duplicate-names"]) {
       out.push(result(id, "couldnt", blocked ?? "Not run."));
     }
   } else {
     out.push(checkIndex({ items: scan.items, indexedIds, staleness }));
     out.push(...checksFromScan(scan));
     out.push(checkArrangementRefs({ items: scan.items, docs: scan.docs }));
+    out.push(checkPreferredArrangement({ items: scan.items, docs: scan.docs, preferred }));
     out.push(checkDuplicateNames({ items: scan.items, groups }));
   }
   const order = new Map(CHECK_IDS.map((id, i) => [id, i]));

@@ -1545,6 +1545,7 @@ async function runServiceChecks(service) {
     indexedIds: new Set(Object.keys(index?.presentations ?? {})),
     staleness: indexStaleness(index?.builtAt ?? null),
     groups: findDuplicateNames(),
+    preferred: preferredArrangements(),
   });
 }
 
