@@ -702,6 +702,12 @@ html.blackroom .spellcheck-live-btn {
 }
 
 /* The collar, reusable by whichever one is armed. */
+/* A slide just kept as a safe slide from Search: the shield takes the plum
+   ink, so the press visibly landed. Applied from search.js; static home. */
+#results .make-safe-btn.rf-safe-kept {
+  color: var(--rf-plum-lit);
+}
+
 /* The slide chosen from the keyboard (handoff §39c). An outline on the row,
    not a fill, so it reads as "this one" without looking like a pressed or
    live control; the Go Live collar moves with it. `rf-kb-row` is applied

@@ -178,6 +178,17 @@ export function initLive() {
           </div>
         </div>
 
+        <!-- Safe slides (handoff §39a): the church's own known-good slides to
+             cut to in a hurry. Above Clear, because a known picture is usually
+             a better answer to "something's wrong" than an empty screen. -->
+        <div id="live-safe-wrap">
+          <div class="flex items-center justify-between gap-2">
+            <h2 class="rf-subhead">Safe slides</h2>
+            <button id="live-safe-edit" type="button" class="btn btn-chip hidden" aria-pressed="false">Edit</button>
+          </div>
+          <div id="live-safe" class="grid grid-cols-2 sm:grid-cols-4 gap-3"></div>
+        </div>
+
         <div>
           <h2 class="rf-subhead">Clear</h2>
           <!-- Across the top of the bank whenever the LINK lamp is dark. The
@@ -253,6 +264,11 @@ export function initLive() {
     refreshLiveSummaryOnNewFlags("live-flag-summary");
 
     wireClearButtons();
+    loadSafeSlides();
+    document.getElementById("live-safe-edit")?.addEventListener("click", () => {
+      editingSafe = !editingSafe;
+      paintSafeSlides();
+    });
     wirePerformanceMode();
     paintClearOffline(lastKnownConnected());
 
@@ -358,6 +374,87 @@ export function initLive() {
     } catch {
       // Leave the list as it was; the next visit re-reads it.
     }
+  }
+
+  let safeList = [];
+  let editingSafe = false;
+
+  async function loadSafeSlides() {
+    try {
+      safeList = (await fetch("/api/live/safe-slides").then((r) => r.json())).safeSlides ?? [];
+    } catch {
+      safeList = [];
+    }
+    paintSafeSlides();
+  }
+
+  /**
+   * One press each, no arm step: a safe slide is safe by definition. It fires
+   * through the same route as Search's Go Live, by the slide's anchor, and
+   * with requireAnchor, so a deck that changed refuses rather than putting
+   * up whatever now sits at that number. Edit renames, reorders and removes;
+   * nothing fires while editing.
+   */
+  function paintSafeSlides() {
+    const grid = document.getElementById("live-safe");
+    const edit = document.getElementById("live-safe-edit");
+    if (!grid) return;
+    edit.classList.toggle("hidden", !safeList.length);
+    edit.textContent = editingSafe ? "Done" : "Edit";
+    edit.setAttribute("aria-pressed", String(editingSafe));
+    if (!safeList.length) {
+      editingSafe = false;
+      grid.innerHTML = `<p class="text-sm opacity-70 col-span-full">None yet. On Search, press <i data-lucide="shield-check" class="w-4 h-4 inline"></i> on a slide to keep it here.</p>`;
+    } else if (editingSafe) {
+      grid.innerHTML = safeList
+        .map(
+          (sl, i) => `
+        <div class="flex items-center gap-1 col-span-full" data-safe-row="${escapeHtml(sl.id)}">
+          <input class="input input-bordered input-sm flex-1 live-safe-name" maxlength="40" value="${escapeHtml(sl.label)}" aria-label="Name for this safe slide" />
+          <button type="button" class="btn btn-chip live-safe-move" data-dir="-1" ${i === 0 ? "disabled" : ""} aria-label="Move earlier">↑</button>
+          <button type="button" class="btn btn-chip live-safe-move" data-dir="1" ${i === safeList.length - 1 ? "disabled" : ""} aria-label="Move later">↓</button>
+          <button type="button" class="btn btn-chip live-safe-remove">Remove</button>
+        </div>`
+        )
+        .join("");
+    } else {
+      grid.innerHTML = safeList
+        .map(
+          (sl) => `<button type="button" class="btn btn-outline h-16 text-base live-safe-key" data-safe="${escapeHtml(sl.id)}" title="${escapeHtml(sl.presentationName ?? "")}, slide ${sl.slideIndex + 1}"><span class="flex items-center gap-2 min-w-0"><i data-lucide="shield-check" class="w-5 h-5 shrink-0"></i><span class="truncate">${escapeHtml(sl.label)}</span></span></button>`
+        )
+        .join("");
+    }
+    if (window.lucide) window.lucide.createIcons();
+
+    grid.querySelectorAll(".live-safe-key").forEach((btn) => {
+      const sl = safeList.find((x) => x.id === btn.dataset.safe);
+      btn.addEventListener("click", async () => {
+        const ok = await fire(
+          btn,
+          "/api/trigger",
+          { presentationId: sl.presentationId, slideIndex: sl.slideIndex, groupId: sl.groupId, groupOffset: sl.groupOffset, slideText: sl.slideText ?? "", requireAnchor: true },
+          sl.label
+        );
+        if (ok) setStatus(`On screen: ${sl.label}.`);
+      });
+    });
+    const change = async (id, body) => {
+      try {
+        const res = await fetch(`/api/live/safe-slides/${encodeURIComponent(id)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error ?? res.statusText);
+        safeList = data.safeSlides ?? [];
+      } catch (err) {
+        setStatus(`That wasn't saved: ${err.message}`);
+      }
+      paintSafeSlides();
+    };
+    grid.querySelectorAll("[data-safe-row]").forEach((row) => {
+      const id = row.dataset.safeRow;
+      row.querySelector(".live-safe-name").addEventListener("change", (e) => change(id, { action: "rename", label: e.target.value }));
+      row.querySelectorAll(".live-safe-move").forEach((b) => b.addEventListener("click", () => change(id, { action: "move", dir: Number(b.dataset.dir) })));
+      row.querySelector(".live-safe-remove").addEventListener("click", () => change(id, { action: "remove" }));
+    });
   }
 
   function renderButtons(gridId, wrapId, items, kind) {
@@ -510,9 +607,12 @@ export function initLive() {
       if (!res.ok) {
         const { error } = await res.json().catch(() => ({}));
         setStatus(`${label} failed: ${error ?? res.statusText}`);
+        return false;
       }
+      return true;
     } catch (err) {
       setStatus(`${label} failed: ${err.message}`);
+      return false;
     } finally {
       btn.disabled = false;
     }

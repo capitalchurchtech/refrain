@@ -99,6 +99,7 @@ import {
 } from "./slide-flags.js";
 import { heartbeatInterval } from "./heartbeat-pacing.js";
 import { markHidden, setHidden, isControlId } from "./live-visibility.js";
+import { safeSlides, addSafeSlide, removeSafeSlide, renameSafeSlide, moveSafeSlide } from "./safe-slides.js";
 import {
   DEFAULT_DAYS_FOLDER,
   DEFAULT_LEAD_MINUTES,
@@ -2047,7 +2048,7 @@ async function resolveTriggerIndex(presentationId, requestedIndex, anchor) {
       text: anchor.slideText ?? "",
     });
     if (found === null) {
-      return { index: requestedIndex, corrected: false, arrangementName: live.arrangementName, anchorChecked: true };
+      return { index: requestedIndex, corrected: false, arrangementName: live.arrangementName, anchorChecked: true, missing: true };
     }
     return { index: found, corrected: found !== requestedIndex, arrangementName: live.arrangementName, anchorChecked: true };
   } catch {
@@ -2059,7 +2060,7 @@ async function resolveTriggerIndex(presentationId, requestedIndex, anchor) {
 }
 
 app.post("/api/trigger", async (req, res) => {
-  const { presentationId, slideIndex, groupId, groupOffset, slideText } = req.body ?? {};
+  const { presentationId, slideIndex, groupId, groupOffset, slideText, requireAnchor } = req.body ?? {};
   if (!presentationId || slideIndex === undefined) {
     return res.status(400).json({ error: "presentationId and slideIndex are required" });
   }
@@ -2098,6 +2099,14 @@ app.post("/api/trigger", async (req, res) => {
       returnPin = { ...current, leftAt: new Date().toISOString() };
       // Also into the history, so a jump between heartbeats is not missed.
       returnHistory = pushLiveItem(returnHistory, returnPin);
+    }
+
+    // A safe slide must be exactly the slide that was saved. If ProPresenter
+    // no longer has it (the deck was edited and the group is gone), refuse,
+    // rather than firing whatever now sits at that number. Search's Go Live
+    // doesn't ask for this and behaves as it always has.
+    if (requireAnchor === true && target.missing) {
+      return res.status(409).json({ error: "Can't find that slide any more. The presentation was changed; save it as a safe slide again." });
     }
 
     await client.triggerSlide(presentationId, target.index);
@@ -2205,6 +2214,60 @@ app.get("/api/live/controls", async (_req, res) => {
     client.getMessages().catch(() => []),
   ]);
   res.json({ looks, macros: markHidden(macros, config.liveModule?.hiddenMacros), messages });
+});
+
+// --- Safe slides (handoff §39a) ---------------------------------------------
+
+async function saveLiveModule(res, change) {
+  const liveModule = { ...(config.liveModule ?? {}), ...change };
+  const newConfig = { ...config, liveModule };
+  try {
+    await saveConfig(newConfig);
+  } catch (err) {
+    res.status(500).json({ error: `Failed to save config.json: ${err.message}` });
+    return false;
+  }
+  config = newConfig;
+  return true;
+}
+
+app.get("/api/live/safe-slides", (_req, res) => {
+  res.json({ safeSlides: safeSlides(config.liveModule?.safeSlides) });
+});
+
+/** Saves a slide from Search as a safe slide. Reads nothing from ProPresenter. */
+app.post("/api/live/safe-slides", async (req, res) => {
+  const b = req.body ?? {};
+  const { list, added, error } = addSafeSlide(config.liveModule?.safeSlides, {
+    presentationId: b.presentationId,
+    presentationName: b.presentationName,
+    slideIndex: parseSlideIndex(b.slideIndex),
+    groupId: b.groupId || null,
+    groupOffset: b.groupOffset === "" || b.groupOffset == null ? null : Number(b.groupOffset),
+    slideText: b.slideText,
+    label: b.label,
+  });
+  if (error) return res.status(400).json({ error });
+  if (!(await saveLiveModule(res, { safeSlides: list }))) return;
+  res.json({ ok: true, added, safeSlides: list });
+});
+
+/** Rename, move or remove one. */
+app.post("/api/live/safe-slides/:id", async (req, res) => {
+  const { action, label, dir } = req.body ?? {};
+  const current = safeSlides(config.liveModule?.safeSlides);
+  if (!current.some((x) => x.id === req.params.id)) return res.status(404).json({ error: "No safe slide by that id." });
+  const list =
+    action === "remove"
+      ? removeSafeSlide(current, req.params.id)
+      : action === "rename"
+        ? renameSafeSlide(current, req.params.id, label)
+        : action === "move"
+          ? moveSafeSlide(current, req.params.id, Number(dir))
+          : null;
+  if (!list) return res.status(400).json({ error: 'action must be "remove", "rename" or "move"' });
+  if (!(await saveLiveModule(res, { safeSlides: list }))) return;
+  res.json({ ok: true, safeSlides: list });
 });
 
 /**

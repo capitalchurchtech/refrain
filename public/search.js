@@ -382,6 +382,7 @@ export function initSearch() {
                   <button class="btn btn-chip show-in-editor-btn" data-presentation-id="${r.presentationId}" title="Open in ProPresenter's editor without changing what is on the screens. Then click slide ${r.slideIndex + 1}.">
                     Show slide ${r.slideIndex + 1}
                   </button>
+                  <button class="btn btn-chip make-safe-btn" aria-label="Keep as a safe slide on Live" title="Keep as a safe slide on Live" data-presentation-id="${r.presentationId}" data-presentation-name="${escapeHtml(r.presentationName ?? "")}" data-slide-index="${r.slideIndex}" data-group-id="${escapeHtml(r.groupId ?? "")}" data-group-offset="${r.groupOffset ?? ""}" data-slide-text="${escapeHtml(r.snippet ?? "")}"><i data-lucide="shield-check" class="w-3.5 h-3.5"></i></button>
                   <button class="btn btn-brand btn-xs go-live-btn" data-presentation-id="${r.presentationId}" data-slide-index="${r.slideIndex}" data-group-id="${escapeHtml(r.groupId ?? "")}" data-group-offset="${r.groupOffset ?? ""}" data-slide-text="${escapeHtml(r.snippet ?? "")}" data-presentation-name="${escapeHtml(r.presentationName ?? "")}" data-arrangement-name="${escapeHtml(r.arrangementName ?? "")}">
                     Go Live
                   </button>
@@ -541,6 +542,31 @@ export function initSearch() {
         liveBtn.disabled = false;
       }
       crumb("golive", { presentation: liveBtn.dataset.presentationId, slide: Number(liveBtn.dataset.slideIndex) });
+      return;
+    }
+
+    // Keep this slide as a safe slide on Live (handoff §39a). Saves to this
+    // machine's config; nothing in ProPresenter changes.
+    const safeBtn = e.target.closest(".make-safe-btn");
+    if (safeBtn) {
+      safeBtn.disabled = true;
+      const d = safeBtn.dataset;
+      try {
+        const res = await fetch("/api/live/safe-slides", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ presentationId: d.presentationId, presentationName: d.presentationName, slideIndex: Number(d.slideIndex), groupId: d.groupId || null, groupOffset: d.groupOffset === "" ? null : Number(d.groupOffset), slideText: d.slideText }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error ?? res.statusText);
+        safeBtn.classList.add("rf-safe-kept");
+        safeBtn.title = `Kept on Live as "${data.added?.label ?? "safe slide"}"`;
+        safeBtn.setAttribute("aria-label", safeBtn.title);
+      } catch (err) {
+        showFailure(`Couldn't keep that slide: ${err.message}`);
+      } finally {
+        safeBtn.disabled = false;
+      }
       return;
     }
 
