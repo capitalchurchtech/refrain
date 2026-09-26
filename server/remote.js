@@ -12,9 +12,11 @@
  *   - report what's live, the last few slides, and service progress,
  *   - add a flag (a type, a note, a name) for one of those slides.
  * There is no route to Go Live, Clear, Looks, Macros, messages, settings or
- * anything on the main app, and nothing here calls ProPresenter: it reads
- * the state Refrain's heartbeat already has. The main app stays bound to
- * 127.0.0.1 regardless.
+ * anything on the main app. Two things reach ProPresenter, both narrow:
+ * pictures of the current and next slide (cached), and, for a phone the
+ * booth approved by name, next/previous slide and the church's own safe
+ * slides, each needing a second, confirming press. The main app stays bound
+ * to 127.0.0.1 regardless.
  *
  * "Nobody knows the URL" is not access control, so when a PIN is set (daily
  * or fixed; see server/remote-auth.js) every API call needs a phone token
@@ -25,7 +27,8 @@ import express from "express";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { buildFlag } from "./slide-flags.js";
-import { pinMatches, issueToken, tokenValid } from "./remote-auth.js";
+import { pinMatches, issueToken, tokenDevice } from "./remote-auth.js";
+import { createConfirmer, createCooldown } from "./remote-devices.js";
 
 export const RECENT_SLIDES = 12;
 
@@ -154,9 +157,32 @@ export function rateLimiter({ max = 20, windowMs = 60_000 } = {}) {
  * @param {(presentationId: string, slideIndex: number) => object|null} [deps.knownSlide]
  *   the indexed slide, so a flag queued on a phone before a restart can still land
  * @param {{ blocked, fail, count }} [deps.pinGuard]  see pinFailureGuard
+ * @param {object} [deps.devices]   { see(id, {name, signIn}), approved(id), removed(id), name(id) }
+ * @param {(q: string) => Array} [deps.search]      read-only search, for the Search tab
+ * @param {() => object} [deps.preview]              previewTargets for what's live
+ * @param {(pid, idx) => Promise<{type, bytes}|null>} [deps.thumb]
+ * @param {() => Array} [deps.safeSlides]
+ * @param {(action: object, deviceId: string) => Promise<{label: string}>} [deps.control]
+ *   performs an approved, confirmed control action; throws with a sentence on failure
  * @param {string} [deps.publicDir]
  */
-export function createRemoteApp({ getState, saveFlag, flagTypes, auth, knownSlide = () => null, pinGuard = null, publicDir = "./public" }) {
+export function createRemoteApp({
+  getState,
+  saveFlag,
+  flagTypes,
+  auth,
+  knownSlide = () => null,
+  pinGuard = null,
+  devices = { see() {}, approved: () => false, removed: () => false, name: () => null },
+  search = () => [],
+  preview = () => ({ current: null, next: null, atEnd: false }),
+  thumb = async () => null,
+  safeSlides = () => [],
+  control = async () => {
+    throw new Error("Control isn't available.");
+  },
+  publicDir = "./public",
+}) {
   const app = express();
   app.disable("x-powered-by");
   app.use(express.json({ limit: "8kb" }));
@@ -171,9 +197,24 @@ export function createRemoteApp({ getState, saveFlag, flagTypes, auth, knownSlid
   const open = new Set(["/", "/remote.js", "/api/lock", "/api/unlock"]);
   app.use((req, res, next) => {
     if (!pinOn() || open.has(req.path)) return next();
-    if (!tokenValid(auth.secret(), req.get("x-refrain-device"))) return res.status(401).json({ error: "This phone needs today's PIN.", locked: true });
+    const id = tokenDevice(auth.secret(), req.get("x-refrain-device"));
+    // A phone the booth removed is refused even with a valid token, until
+    // it signs in again with the PIN (and then it starts unapproved).
+    if (!id || devices.removed(id)) return res.status(401).json({ error: "This phone needs today's PIN.", locked: true });
+    req.deviceId = id;
+    devices.see(id, {});
     next();
   });
+
+  // Control is only for a phone the booth approved by name, which needs a
+  // PIN (without one, phones have no identity to approve).
+  const approvedOnly = (req, res, next) => {
+    if (!pinOn()) return res.status(403).json({ error: "Control from a phone needs phone PINs turned on." });
+    if (!devices.approved(req.deviceId)) return res.status(403).json({ error: "The booth hasn't approved this phone for control." });
+    next();
+  };
+  const confirmer = createConfirmer();
+  const cooldown = createCooldown(1200);
 
   app.get("/api/lock", (_req, res) => {
     res.json({ required: pinOn(), daily: auth.daily(), hint: auth.hint() });
@@ -184,12 +225,13 @@ export function createRemoteApp({ getState, saveFlag, flagTypes, auth, knownSlid
     if (!pinOn()) return res.json({ ok: true, token: null });
     if (pinGuard?.blocked()) return res.status(429).json({ error: "Too many wrong PINs today, so phones can't sign in until tomorrow. Phones already signed in still work." });
     if (!allowUnlock(req.ip)) return res.status(429).json({ error: "Too many tries. Wait a minute, then ask the booth for today's PIN." });
-    const { pin, trust } = req.body ?? {};
+    const { pin, trust, name } = req.body ?? {};
     if (!pinMatches(pin, auth.expectedPin())) {
       pinGuard?.fail();
       return res.status(403).json({ error: "That isn't today's PIN." });
     }
-    const { token, expires } = issueToken(auth.secret(), { trust: trust === true });
+    const { token, expires, deviceId } = issueToken(auth.secret(), { trust: trust === true });
+    devices.see(deviceId, { name, signIn: true });
     res.json({ ok: true, token, expiresAt: new Date(expires).toISOString(), trusted: trust === true });
   });
 
@@ -198,7 +240,7 @@ export function createRemoteApp({ getState, saveFlag, flagTypes, auth, knownSlid
   app.get("/", (_req, res) => res.type("html").send(readFileSync(page, "utf-8")));
   app.get("/remote.js", (_req, res) => res.type("application/javascript").send(readFileSync(script, "utf-8")));
 
-  app.get("/api/state", (_req, res) => {
+  app.get("/api/state", (req, res) => {
     const { liveState, recent, progress } = getState();
     res.json({
       connected: Boolean(liveState?.connected),
@@ -207,7 +249,78 @@ export function createRemoteApp({ getState, saveFlag, flagTypes, auth, knownSlid
       types: flagTypes().map((t) => t.label),
       recent: (recent ?? []).map((r) => ({ ref: r.ref, at: new Date(r.at).toISOString(), presentationId: r.presentationId, slideIndex: r.slideIndex, presentationName: r.presentationName, slideNumber: r.slideIndex + 1, text: r.text })),
       progress,
+      phone: req.deviceId ? { name: devices.name(req.deviceId), canControl: pinOn() && devices.approved(req.deviceId) } : { name: null, canControl: false },
     });
+  });
+
+  // --- helper level: read-only --------------------------------------------
+
+  app.get("/api/search", (req, res) => {
+    const q = String(req.query.q ?? "").slice(0, 80);
+    const results = q.trim()
+      ? search(q)
+          .slice(0, 20)
+          .map((r) => ({ presentationName: r.presentationName, slideNumber: r.slideIndex + 1, text: r.snippet }))
+      : [];
+    res.json({ results });
+  });
+
+  app.get("/api/preview", (_req, res) => {
+    const p = preview();
+    const img = (t) => (t ? `/api/preview/image/${encodeURIComponent(t.presentationId)}/${t.slideIndex}` : null);
+    res.json({
+      presentationName: p.presentationName ?? null,
+      atEnd: p.atEnd,
+      current: p.current ? { slideNumber: p.current.slideIndex + 1, text: p.current.text, image: img(p.current) } : null,
+      next: p.next ? { slideNumber: p.next.slideIndex + 1, text: p.next.text, image: img(p.next) } : null,
+    });
+  });
+
+  // Only the current and next slide's pictures: a phone can't use this to
+  // make ProPresenter render whatever it likes.
+  app.get("/api/preview/image/:pid/:idx", async (req, res) => {
+    const p = preview();
+    const idx = Number(req.params.idx);
+    const allowed = [p.current, p.next].some((t) => t && t.presentationId === req.params.pid && t.slideIndex === idx);
+    if (!allowed) return res.status(404).json({ error: "Only the current and next slide can be previewed." });
+    const imgData = await thumb(req.params.pid, idx);
+    if (!imgData) return res.status(404).json({ error: "No picture for that slide." });
+    res.set("Cache-Control", "private, max-age=300").type(imgData.type).send(imgData.bytes);
+  });
+
+  // --- control level: approved phones, confirmed presses -------------------
+
+  app.get("/api/safe-slides", approvedOnly, (_req, res) => {
+    res.json({ safeSlides: safeSlides().map((s) => ({ id: s.id, label: s.label })) });
+  });
+
+  /**
+   * Step one of a control press: says what it will do and hands back a
+   * one-time id. Nothing happens until the same phone confirms it.
+   */
+  app.post("/api/control/prepare", approvedOnly, (req, res) => {
+    const { kind, safeId } = req.body ?? {};
+    let action = null;
+    if (kind === "next" || kind === "previous") action = { kind, label: kind === "next" ? "Next slide" : "Previous slide" };
+    else if (kind === "safe") {
+      const s = safeSlides().find((x) => x.id === safeId);
+      if (s) action = { kind, safeId: s.id, label: s.label };
+    }
+    if (!action) return res.status(400).json({ error: "That isn't something a phone can do." });
+    res.json({ confirmId: confirmer.prepare(req.deviceId, action), label: action.label });
+  });
+
+  /** Step two: the confirm press. Performs it, once, for this phone only. */
+  app.post("/api/control/confirm", approvedOnly, async (req, res) => {
+    const action = confirmer.take(req.deviceId, String(req.body?.confirmId ?? ""));
+    if (!action) return res.status(409).json({ error: "That press timed out. Press it again." });
+    if (!cooldown(req.deviceId)) return res.status(429).json({ error: "Wait a moment between presses." });
+    try {
+      const out = await control(action, req.deviceId);
+      res.json({ ok: true, label: out?.label ?? action.label });
+    } catch (err) {
+      res.status(502).json({ error: err.message });
+    }
   });
 
   app.post("/api/flag", async (req, res) => {

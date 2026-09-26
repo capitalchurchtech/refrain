@@ -385,6 +385,10 @@
           <span id="theme-icon" class="shrink-0"></span>
           <span class="nav-label whitespace-nowrap hidden" id="theme-label">Theme: System</span>
         </button>
+        <button id="nav-phone-toggle" class="btn btn-ghost btn-sm justify-start gap-3 px-2" title="Use a phone with Refrain">
+          <span class="shrink-0"><i data-lucide="smartphone"></i></span>
+          <span class="nav-label whitespace-nowrap hidden">Phone</span>
+        </button>
         <button id="nav-side-toggle" class="btn btn-ghost btn-sm justify-start gap-3 px-2" title="Move the menu to the right">
           <span id="nav-side-icon" class="shrink-0"></span>
           <span class="nav-label whitespace-nowrap hidden" id="nav-side-label">Move right</span>
@@ -549,6 +553,20 @@
   </div>
 
   <!-- Keyboard shortcuts help, opened by the "?" key or the Shortcuts nav button -->
+  <!-- The Phone panel: how to start a phone session, and which phones may
+       control ProPresenter. Filled by public/phone-panel.js. -->
+  <div id="phone-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="phone-title">
+    <div class="card bg-base-200 border border-base-300 shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+      <div class="card-body p-4 gap-3">
+        <div class="flex items-center justify-between">
+          <h2 id="phone-title" class="text-base font-semibold flex items-center gap-2"><i data-lucide="smartphone" class="w-5 h-5"></i> Use a phone</h2>
+          <button id="phone-close" class="btn btn-ghost btn-xs btn-square" title="Close" aria-label="Close"><i data-lucide="x"></i></button>
+        </div>
+        <div id="phone-panel-body" class="flex flex-col gap-3 text-sm">Loading...</div>
+      </div>
+    </div>
+  </div>
+
   <div id="shortcuts-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title">
     <div class="card bg-base-200 border border-base-300 shadow-xl max-w-sm w-full" id="shortcuts-card">
       <div class="card-body p-4 gap-3">

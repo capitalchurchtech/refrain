@@ -102,6 +102,9 @@ import {
   DEFAULT_KEEP_RESOLVED_DAYS,
 } from "./slide-flags.js";
 import { heartbeatInterval } from "./heartbeat-pacing.js";
+import QRCode from "qrcode";
+import { emptyRegistry, seeDevice, setApproved, removeDevice, isApproved, isRemoved, deviceList, loadRegistry, saveRegistry } from "./remote-devices.js";
+import { previewTargets, createThumbCache } from "./slide-preview.js";
 import { crossSiteRefused } from "./request-guard.js";
 import { markHidden, setHidden, isControlId, rememberValues } from "./live-visibility.js";
 import { safeSlides, addSafeSlide, removeSafeSlide, renameSafeSlide, moveSafeSlide } from "./safe-slides.js";
@@ -897,6 +900,43 @@ function expectedRemotePin(now = Date.now()) {
   return null;
 }
 
+// --- Phones, one by one (server/remote-devices.js) ---------------------------
+const REMOTE_DEVICES_FILE = "./data/remote-devices.json";
+let remoteDevices = emptyRegistry();
+let remoteDevicesLoaded = false;
+let remoteDevicesDirty = false;
+async function ensureRemoteDevices() {
+  if (remoteDevicesLoaded) return;
+  remoteDevices = await loadRegistry(REMOTE_DEVICES_FILE);
+  remoteDevicesLoaded = true;
+}
+// "Last seen" changes on every request; it's saved at most every 30s. A
+// sign-in, an approval or a removal is saved straight away.
+function changeDevices(next, { now = false } = {}) {
+  remoteDevices = next;
+  remoteDevicesDirty = true;
+  if (now) flushRemoteDevices();
+}
+function flushRemoteDevices() {
+  if (!remoteDevicesDirty) return;
+  remoteDevicesDirty = false;
+  saveRegistry(REMOTE_DEVICES_FILE, remoteDevices).catch((err) => console.error("Couldn't save the phone list:", err.message));
+}
+setInterval(flushRemoteDevices, 30_000).unref?.();
+
+/** The last phone control presses, newest first, for Live and the phone panel. */
+let phoneActivity = [];
+function notePhoneAction(entry) {
+  phoneActivity = [{ at: new Date().toISOString(), ...entry }, ...phoneActivity].slice(0, 20);
+  console.log(`Phone "${entry.phone}": ${entry.label}${entry.ok ? "" : ` (failed: ${entry.error})`}`);
+}
+
+// Pictures of slides, for the current/next previews (server/slide-preview.js).
+const slideThumb = createThumbCache((pid, idx) => client.getSlideThumbnail(pid, idx));
+function currentPreview() {
+  return previewTargets(liveState.live ? liveState.slide : null, (pid, idx) => getIndexedSlide(pid, idx)?.text ?? null);
+}
+
 /**
  * Starts the phone listener when networkModule is on. Separate app, separate
  * port, a handful of routes; see server/remote.js for the boundary.
@@ -908,6 +948,7 @@ function startRemoteListener() {
     if (status === "misconfigured") console.warn(`Phone flags are misconfigured: ${problems.join(" ")}`);
     return;
   }
+  ensureRemoteDevices().catch(() => {});
   const remoteApp = createRemoteApp({
     getState: () => ({
       liveState,
@@ -917,6 +958,36 @@ function startRemoteListener() {
     saveFlag: (flag) => saveFlag(flag, { folder: slideFlagsFolder() }),
     flagTypes: configuredFlagTypes,
     knownSlide: (presentationId, slideIndex) => getIndexedSlide(presentationId, slideIndex),
+    devices: {
+      see: (id, { name, signIn } = {}) => changeDevices(seeDevice(remoteDevices, id, { name, signIn }), { now: Boolean(signIn) }),
+      approved: (id) => isApproved(remoteDevices, id),
+      removed: (id) => isRemoved(remoteDevices, id),
+      name: (id) => remoteDevices.devices?.[id]?.name ?? null,
+    },
+    search: (q) => search({ query: q }),
+    preview: currentPreview,
+    thumb: slideThumb,
+    safeSlides: () => safeSlides(config.liveModule?.safeSlides),
+    // An approved phone's confirmed press. Next and previous are
+    // ProPresenter's own; safe slides fire exactly as they do on Live.
+    control: async (action, deviceId) => {
+      const phone = remoteDevices.devices?.[deviceId]?.name ?? "A phone";
+      try {
+        if (action.kind === "next") await client.triggerNext();
+        else if (action.kind === "previous") await client.triggerPrevious();
+        else if (action.kind === "safe") {
+          const sl = safeSlides(config.liveModule?.safeSlides).find((x) => x.id === action.safeId);
+          if (!sl) throw new Error("That safe slide isn't there any more.");
+          const out = await fireSlide({ presentationId: sl.presentationId, slideIndex: sl.slideIndex, groupId: sl.groupId, groupOffset: sl.groupOffset, slideText: sl.slideText ?? "", requireAnchor: true });
+          if (out.refused) throw new Error(out.refused);
+        }
+        notePhoneAction({ phone, label: action.label, ok: true });
+        return { label: action.label };
+      } catch (err) {
+        notePhoneAction({ phone, label: action.label, ok: false, error: err.message });
+        throw err;
+      }
+    },
     pinGuard: remotePinGuard,
     auth: {
       expectedPin: () => expectedRemotePin(),
@@ -2281,6 +2352,74 @@ async function resolveTriggerIndex(presentationId, requestedIndex, anchor) {
   }
 }
 
+/**
+ * Puts one slide on the screens by its anchor, recording where the operator
+ * was for Return. Shared by Search's Go Live, safe slides on Live, and an
+ * approved phone's safe slides, so all three fire exactly the same way.
+ * Returns `{ refused }` instead of firing when `requireAnchor` is set and the
+ * slide can't be found. Throws if ProPresenter fails.
+ */
+async function fireSlide({ presentationId, slideIndex, groupId, groupOffset, slideText, requireAnchor = false }) {
+  // Both reads are independent of each other, and ProPresenter can take
+  // seconds per call on a busy machine, so run them together rather than
+  // stacking their latency ahead of the slide actually going live. Reading
+  // the current slide is best-effort: if it fails, keep whatever pin we had
+  // rather than clobbering a good one.
+  const [target, current] = await Promise.all([
+    resolveTriggerIndex(presentationId, slideIndex, { groupId, groupOffset, slideText }),
+    client.getCurrentSlide({ timeoutMs: RETURN_PIN_READ_BUDGET_MS }).catch(() => null),
+  ]);
+
+  // Capture where we were before jumping, so "Return" can bring us back.
+  // Compared against the corrected index, since that's what will fire.
+  if (current && !(current.presentationId === presentationId && current.slideIndex === target.index)) {
+    returnPin = { ...current, leftAt: new Date().toISOString() };
+    // Also into the history, so a jump between heartbeats is not missed.
+    returnHistory = pushLiveItem(returnHistory, returnPin);
+  }
+
+  // A safe slide must be exactly the slide that was saved. If ProPresenter
+  // no longer has it (the deck was edited and the group is gone), refuse,
+  // rather than firing whatever now sits at that number. Search's Go Live
+  // doesn't ask for this and behaves as it always has.
+  if (requireAnchor && target.missing) {
+    return { refused: "Can't find that slide any more. The presentation was changed; save it as a safe slide again." };
+  }
+
+  await client.triggerSlide(presentationId, target.index);
+
+  /**
+   * Record where we just went, not only where we came from.
+   *
+   * The heartbeat already puts everything on the screens into the history,
+   * but it runs every 4 seconds -- so a jump followed by Return inside that
+   * window left no trace of the song that was just used. That is not an edge
+   * case, it is the shape of the whole feature: find it, send it, go back.
+   * The operator could return to the plan and then had no way forward to the
+   * thing they had just sent.
+   *
+   * Pushed after the pin so it lands in front of it, which is the truth: this
+   * is what is live now, and the pin is what it replaced.
+   */
+  returnHistory = pushLiveItem(returnHistory, {
+    presentationId,
+    slideIndex: target.index,
+    name: getPresentationName(presentationId),
+    leftAt: new Date().toISOString(),
+  });
+  // Deliberately not awaited: the slide is already live, and focusing the
+  // editor measured ~3s on a real machine. It's a nice-to-have, so it must
+  // not hold up the operator's response.
+  client.focusPresentation(presentationId).catch(() => {});
+  return {
+    ok: true,
+    firedIndex: target.index,
+    corrected: target.corrected,
+    anchorChecked: target.anchorChecked,
+    arrangementName: target.arrangementName,
+  };
+}
+
 app.post("/api/trigger", async (req, res) => {
   const { presentationId, slideIndex, groupId, groupOffset, slideText, requireAnchor } = req.body ?? {};
   if (!presentationId || slideIndex === undefined) {
@@ -2304,65 +2443,9 @@ app.post("/api/trigger", async (req, res) => {
     return res.status(400).json({ error: "slideIndex must be a whole number, zero or greater" });
   }
   try {
-
-    // Both reads are independent of each other, and ProPresenter can take
-    // seconds per call on a busy machine, so run them together rather than
-    // stacking their latency ahead of the slide actually going live. Reading
-    // the current slide is best-effort: if it fails, keep whatever pin we had
-    // rather than clobbering a good one.
-    const [target, current] = await Promise.all([
-      resolveTriggerIndex(presentationId, requested, { groupId, groupOffset, slideText }),
-      client.getCurrentSlide({ timeoutMs: RETURN_PIN_READ_BUDGET_MS }).catch(() => null),
-    ]);
-
-    // Capture where we were before jumping, so "Return" can bring us back.
-    // Compared against the corrected index, since that's what will fire.
-    if (current && !(current.presentationId === presentationId && current.slideIndex === target.index)) {
-      returnPin = { ...current, leftAt: new Date().toISOString() };
-      // Also into the history, so a jump between heartbeats is not missed.
-      returnHistory = pushLiveItem(returnHistory, returnPin);
-    }
-
-    // A safe slide must be exactly the slide that was saved. If ProPresenter
-    // no longer has it (the deck was edited and the group is gone), refuse,
-    // rather than firing whatever now sits at that number. Search's Go Live
-    // doesn't ask for this and behaves as it always has.
-    if (requireAnchor === true && target.missing) {
-      return res.status(409).json({ error: "Can't find that slide any more. The presentation was changed; save it as a safe slide again." });
-    }
-
-    await client.triggerSlide(presentationId, target.index);
-
-    /**
-     * Record where we just went, not only where we came from.
-     *
-     * The heartbeat already puts everything on the screens into the history,
-     * but it runs every 4 seconds -- so a jump followed by Return inside that
-     * window left no trace of the song that was just used. That is not an edge
-     * case, it is the shape of the whole feature: find it, send it, go back.
-     * The operator could return to the plan and then had no way forward to the
-     * thing they had just sent.
-     *
-     * Pushed after the pin so it lands in front of it, which is the truth: this
-     * is what is live now, and the pin is what it replaced.
-     */
-    returnHistory = pushLiveItem(returnHistory, {
-      presentationId,
-      slideIndex: target.index,
-      name: getPresentationName(presentationId),
-      leftAt: new Date().toISOString(),
-    });
-    // Deliberately not awaited: the slide is already live, and focusing the
-    // editor measured ~3s on a real machine. It's a nice-to-have, so it must
-    // not hold up the operator's response.
-    client.focusPresentation(presentationId).catch(() => {});
-    res.json({
-      ok: true,
-      firedIndex: target.index,
-      corrected: target.corrected,
-      anchorChecked: target.anchorChecked,
-      arrangementName: target.arrangementName,
-    });
+    const out = await fireSlide({ presentationId, slideIndex: requested, groupId, groupOffset, slideText, requireAnchor: requireAnchor === true });
+    if (out.refused) return res.status(409).json({ error: out.refused });
+    res.json(out);
   } catch (err) {
     res.status(502).json({ error: err.message });
   }
@@ -2492,6 +2575,106 @@ app.get("/api/network/pin", (_req, res) => {
   if (getNetworkModuleStatus(config, port).status !== "active") return res.status(409).json({ error: "Phone flags are off." });
   const mode = remotePinMode();
   res.json({ mode, pin: expectedRemotePin(), changesAt: mode === "daily" ? new Date(endOfDay()).toISOString() : null, urls: networkUrls(), wrongToday: remotePinGuard.count() });
+});
+
+/**
+ * Everything the booth's Phone panel needs, on or off: addresses, today's
+ * PIN, a QR code for the first address (made here, no service), the phones
+ * that have signed in, and the last phone presses.
+ */
+app.get("/api/network/setup", async (_req, res) => {
+  await ensureRemoteDevices();
+  const { status, problems } = getNetworkModuleStatus(config, port);
+  const urls = status === "active" ? networkUrls() : [];
+  const loopbackOnly = urls.length > 0 && urls.every((u) => u.includes("127.0.0.1"));
+  const qrSvg = urls[0] && !loopbackOnly ? await QRCode.toString(urls[0], { type: "svg", margin: 1, errorCorrectionLevel: "M" }).catch(() => null) : null;
+  res.json({
+    status,
+    problems,
+    running: Boolean(remoteServer?.listening),
+    urls,
+    loopbackOnly,
+    pinMode: remotePinMode(),
+    pin: status === "active" ? expectedRemotePin() : null,
+    wrongToday: remotePinGuard.count(),
+    qrSvg,
+    phones: deviceList(remoteDevices),
+    activity: phoneActivity,
+  });
+});
+
+/** Saves networkModule over the latest config, atomically. */
+async function saveNetworkModule(change) {
+  const newConfig = { ...config, networkModule: { ...(config.networkModule ?? {}), ...change } };
+  await saveConfig(newConfig);
+  config = newConfig;
+}
+
+/**
+ * Turns phones on from the booth's panel: every network address, port 9997,
+ * a daily PIN unless one is already chosen. Starts now, no restart. This is
+ * what makes Refrain reachable from other devices on the network, so it's
+ * only ever a deliberate press on this Mac.
+ */
+app.post("/api/network/enable", async (_req, res) => {
+  try {
+    const current = config.networkModule ?? {};
+    await saveNetworkModule({ enabled: true, host: current.host ?? "0.0.0.0", port: current.port ?? 9997, pin: current.pin ?? "daily" });
+  } catch (err) {
+    return res.status(500).json({ error: `Failed to save config.json: ${err.message}` });
+  }
+  if (!remoteServer?.listening) startRemoteListener();
+  await new Promise((r) => setTimeout(r, 200)); // let it bind before reporting its address
+  res.json({ ok: true });
+});
+
+/** Turns phones off and stops the listener now. */
+app.post("/api/network/disable", async (_req, res) => {
+  try {
+    await saveNetworkModule({ enabled: false });
+  } catch (err) {
+    return res.status(500).json({ error: `Failed to save config.json: ${err.message}` });
+  }
+  remoteServer?.close();
+  remoteServer = null;
+  res.json({ ok: true });
+});
+
+/** Approve a phone for control, take approval back, or remove it (signs it out). */
+app.post("/api/network/phones/:id", async (req, res) => {
+  await ensureRemoteDevices();
+  const { action } = req.body ?? {};
+  if (!remoteDevices.devices?.[req.params.id]) return res.status(404).json({ error: "No phone by that id." });
+  if (action === "approve") changeDevices(setApproved(remoteDevices, req.params.id, true), { now: true });
+  else if (action === "unapprove") changeDevices(setApproved(remoteDevices, req.params.id, false), { now: true });
+  else if (action === "remove") changeDevices(removeDevice(remoteDevices, req.params.id), { now: true });
+  else return res.status(400).json({ error: 'action must be "approve", "unapprove" or "remove"' });
+  res.json({ ok: true, phones: deviceList(remoteDevices) });
+});
+
+/** The current and next slide, for Live's preview (same rules as the phone's). */
+app.get("/api/preview", (_req, res) => {
+  noteClientActivity();
+  const p = currentPreview();
+  const img = (t) => (t ? `/api/preview/image/${encodeURIComponent(t.presentationId)}/${t.slideIndex}` : null);
+  res.json({
+    presentationName: p.presentationName ?? null,
+    atEnd: p.atEnd,
+    current: p.current ? { slideNumber: p.current.slideIndex + 1, text: p.current.text, image: img(p.current) } : null,
+    next: p.next ? { slideNumber: p.next.slideIndex + 1, text: p.next.text, image: img(p.next) } : null,
+    lastPhoneAction: phoneActivity[0] ?? null,
+  });
+});
+
+app.get("/api/preview/image/:pid/:idx", async (req, res) => {
+  const p = currentPreview();
+  const idx = Number(req.params.idx);
+  if (![p.current, p.next].some((t) => t && t.presentationId === req.params.pid && t.slideIndex === idx)) {
+    return res.status(404).json({ error: "Only the current and next slide can be previewed." });
+  }
+  const img = await slideThumb(req.params.pid, idx);
+  if (!img) return res.status(404).json({ error: "No picture for that slide." });
+  res.set("Cache-Control", "private, max-age=300").type(img.type).send(img.bytes);
 });
 
 /** New secret: every phone is signed out, and the daily PIN changes now. */

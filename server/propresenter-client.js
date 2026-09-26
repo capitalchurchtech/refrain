@@ -242,6 +242,34 @@ export class ProPresenterClient {
   }
 
   /** Triggers a slide live by presentation id + 0-based flat slide index. */
+  /**
+   * The next or previous slide of the presentation that's on the screens.
+   * Deliberately not /v1/trigger/next: that follows ProPresenter's focused
+   * playlist, so with a song put up from Refrain it jumped to the next
+   * playlist item (Announcements) instead of the song's next slide. Measured
+   * on ProPresenter 21.3. Used by an approved phone, after a confirm press.
+   */
+  async triggerNext() {
+    await this.#get("/v1/presentation/active/next/trigger", { timeoutMs: LIVE_TIMEOUT_MS });
+  }
+
+  async triggerPrevious() {
+    await this.#get("/v1/presentation/active/previous/trigger", { timeoutMs: LIVE_TIMEOUT_MS });
+  }
+
+  /**
+   * A small picture of one slide (JPEG), for the current and next previews.
+   * About 50ms and 25KB at 400px. Callers cache it: it's asked for only when
+   * the live slide changes. Null if ProPresenter can't render it.
+   */
+  async getSlideThumbnail(presentationId, slideIndex, { quality = 400 } = {}) {
+    const res = await fetch(`${this.baseUrl}/v1/presentation/${seg(presentationId)}/thumbnail/${seg(slideIndex)}?quality=${seg(quality)}`, {
+      signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+    });
+    if (!res.ok) return null;
+    return { type: res.headers.get("content-type") || "image/jpeg", bytes: Buffer.from(await res.arrayBuffer()) };
+  }
+
   async triggerSlide(presentationId, slideIndex) {
     await this.#get(`/v1/presentation/${seg(presentationId)}/${seg(slideIndex)}/trigger`, { timeoutMs: LIVE_TIMEOUT_MS });
   }

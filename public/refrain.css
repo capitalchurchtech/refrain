@@ -844,6 +844,7 @@ html.blackroom .nav-label {
 #nav-rail .nav-item,
 #nav-rail #theme-toggle,
 #nav-rail #nav-side-toggle,
+#nav-rail #nav-phone-toggle,
 #nav-rail #nav-pin-toggle,
 #nav-rail #nav-help-toggle {
   flex-wrap: nowrap;
@@ -856,6 +857,7 @@ html.blackroom .nav-label {
 #nav-rail .nav-item,
 #nav-rail #theme-toggle,
 #nav-rail #nav-side-toggle,
+#nav-rail #nav-phone-toggle,
 #nav-rail #nav-pin-toggle,
 #nav-rail #nav-help-toggle {
   gap: 0.5rem;
@@ -877,8 +879,10 @@ html.blackroom #nav-rail .nav-item,
 html.blackroom #nav-rail #nav-help-toggle,
 [data-theme="dark"] #nav-rail #theme-toggle,
 [data-theme="dark"] #nav-rail #nav-side-toggle,
+[data-theme="dark"] #nav-rail #nav-phone-toggle,
 html.blackroom #nav-rail #theme-toggle,
 html.blackroom #nav-rail #nav-side-toggle,
+html.blackroom #nav-rail #nav-phone-toggle,
 [data-theme="dark"] #nav-rail #nav-pin-toggle,
 html.blackroom #nav-rail #nav-pin-toggle {
   background-color: transparent;
@@ -893,8 +897,10 @@ html.blackroom #nav-rail .nav-item:hover,
 html.blackroom #nav-rail #nav-help-toggle:hover,
 [data-theme="dark"] #nav-rail #theme-toggle:hover,
 [data-theme="dark"] #nav-rail #nav-side-toggle:hover,
+[data-theme="dark"] #nav-rail #nav-phone-toggle:hover,
 html.blackroom #nav-rail #theme-toggle:hover,
 html.blackroom #nav-rail #nav-side-toggle:hover,
+html.blackroom #nav-rail #nav-phone-toggle:hover,
 [data-theme="dark"] #nav-rail #nav-pin-toggle:hover,
 html.blackroom #nav-rail #nav-pin-toggle:hover {
   background-image: linear-gradient(180deg, #332B3D 0%, #251F2F 100%);
@@ -922,6 +928,7 @@ html.blackroom #nav-rail #nav-pin-toggle:hover {
 #nav-rail #nav-help-toggle:active,
 #nav-rail #theme-toggle:active,
 #nav-rail #nav-side-toggle:active,
+#nav-rail #nav-phone-toggle:active,
 #nav-rail #nav-pin-toggle:active,
 #nav-rail #brand-row:active {
   transform: none;
@@ -932,8 +939,10 @@ html.blackroom #nav-rail .nav-item:active,
 html.blackroom #nav-rail #nav-help-toggle:active,
 [data-theme="dark"] #nav-rail #theme-toggle:active,
 [data-theme="dark"] #nav-rail #nav-side-toggle:active,
+[data-theme="dark"] #nav-rail #nav-phone-toggle:active,
 html.blackroom #nav-rail #theme-toggle:active,
 html.blackroom #nav-rail #nav-side-toggle:active,
+html.blackroom #nav-rail #nav-phone-toggle:active,
 [data-theme="dark"] #nav-rail #nav-pin-toggle:active,
 html.blackroom #nav-rail #nav-pin-toggle:active {
   box-shadow:
@@ -1075,8 +1084,10 @@ html.blackroom #nav-rail .nav-item svg,
 html.blackroom #nav-rail #nav-help-toggle svg,
 [data-theme="dark"] #nav-rail #theme-toggle svg,
 [data-theme="dark"] #nav-rail #nav-side-toggle svg,
+[data-theme="dark"] #nav-rail #nav-phone-toggle svg,
 html.blackroom #nav-rail #theme-toggle svg,
 html.blackroom #nav-rail #nav-side-toggle svg,
+html.blackroom #nav-rail #nav-phone-toggle svg,
 [data-theme="dark"] #nav-rail #nav-pin-toggle svg,
 html.blackroom #nav-rail #nav-pin-toggle svg {
   color: var(--rf-muted);
@@ -2040,6 +2051,7 @@ html.blackroom .go-live-btn {
 #nav-rail #nav-help-toggle,
 #nav-rail #theme-toggle,
 #nav-rail #nav-side-toggle,
+#nav-rail #nav-phone-toggle,
 #nav-rail #nav-pin-toggle {
   min-height: 36px;
   height: auto;
@@ -2083,6 +2095,7 @@ html.blackroom .go-live-btn {
   #nav-rail #nav-help-toggle,
   #nav-rail #theme-toggle,
   #nav-rail #nav-side-toggle,
+  #nav-rail #nav-phone-toggle,
   #nav-rail #nav-pin-toggle,
   .rf-tile,
   .btn-chip,
@@ -2722,6 +2735,7 @@ html.blackroom .rf-preset + .rf-preset {
 #nav-rail.collapsed #nav-help-toggle,
 #nav-rail.collapsed #theme-toggle,
 #nav-rail.collapsed #nav-side-toggle,
+#nav-rail.collapsed #nav-phone-toggle,
 #nav-rail.collapsed #nav-pin-toggle {
   justify-content: center;
   padding-left: 0;
@@ -3137,6 +3151,7 @@ html.blackroom .rf-notice-close {
 #nav-rail #nav-help-toggle,
 #nav-rail #theme-toggle,
 #nav-rail #nav-side-toggle,
+#nav-rail #nav-phone-toggle,
 #nav-rail #nav-pin-toggle {
   border-radius: 0;
 }
@@ -3629,6 +3644,7 @@ html.blackroom .rf-record-row:hover {
 #nav-rail.sliver #nav-help-toggle,
 #nav-rail.sliver #theme-toggle,
 #nav-rail.sliver #nav-side-toggle,
+#nav-rail.sliver #nav-phone-toggle,
 #nav-rail.sliver .nav-label,
 #nav-rail.sliver .rf-group-label {
   display: none;
@@ -3673,7 +3689,9 @@ html.blackroom .rf-record-row:hover {
 #nav-rail.sliver:focus-within #nav-help-toggle,
 #nav-rail.sliver.peek #theme-toggle,
 #nav-rail.sliver.peek #nav-side-toggle,
+#nav-rail.sliver.peek #nav-phone-toggle,
 #nav-rail.sliver:focus-within #nav-side-toggle,
+#nav-rail.sliver:focus-within #nav-phone-toggle,
 #nav-rail.sliver:focus-within #theme-toggle {
   display: flex;
 }
@@ -3802,4 +3820,44 @@ html.rail-right.blackroom #nav-rail .nav-item.btn-active[data-id="search"] {
 html.rail-right #rf-notices {
   right: auto;
   left: 14px;
+}
+
+/* The Phone panel's QR code: an SVG made by the server, filled to its box.
+   White behind it whatever the theme, because a camera needs the contrast. */
+#phone-modal .phone-qr svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Live's Now / Next preview: two pictures side by side, their own aspect
+   ratio, on a dark ground so a transparent slide still reads. Rendered from
+   live.js, so its layout lives here rather than in JS-only utilities. */
+#view-live .live-preview:not(.hidden) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+#view-live .live-preview-pane {
+  margin: 0;
+}
+#view-live .live-preview-pane img,
+#view-live .live-preview-empty {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  background: #000;
+  border: 1px solid var(--rf-hairline);
+  border-radius: 2px;
+}
+#view-live .live-preview-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--rf-muted);
+  font-size: 12px;
+  text-align: center;
+  padding: 8px;
 }

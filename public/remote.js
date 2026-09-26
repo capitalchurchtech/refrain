@@ -50,7 +50,9 @@ async function showLock() {
 $("unlock").addEventListener("click", async () => {
   $("unlock").disabled = true;
   try {
-    const res = await fetch("/api/unlock", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin: $("pin").value, trust: $("trust").checked }) });
+    store.set("refrain.remote.name", $("lock-name").value);
+    $("name").value = $("lock-name").value;
+    const res = await fetch("/api/unlock", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin: $("pin").value, trust: $("trust").checked, name: $("lock-name").value }) });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || res.statusText);
     token = data.token ?? "";
@@ -180,11 +182,129 @@ async function refresh() {
     if (!$("types").childElementCount) paintTypes();
     ready();
     flush();
+    paintPreview();
+    paintControl();
   } catch (err) {
     if (err.status !== 401) $("progress").textContent = "Can't reach the booth right now. Retrying.";
   }
 }
 
+// --- preview: the current slide and the next -------------------------------
+let previewKey = "";
+async function paintPreview() {
+  try {
+    const p = await api("/api/preview");
+    const key = JSON.stringify([p.current?.image, p.next?.image, p.atEnd]);
+    if (key === previewKey) return;
+    previewKey = key;
+    const pane = (s, empty) => (s?.image ? `<img src="${esc(s.image)}" alt="${esc(s.text ?? "")}" />` : esc(empty));
+    // Images go through fetch so they carry this phone's sign-in.
+    $("pv-now").innerHTML = pane(p.current, "Nothing on screen");
+    $("pv-next").innerHTML = pane(p.next, p.atEnd ? "End of this presentation" : "");
+    for (const img of document.querySelectorAll(".pv img")) loadImage(img);
+  } catch { /* the readout says if the booth is away */ }
+}
+async function loadImage(img) {
+  const src = img.getAttribute("src");
+  img.removeAttribute("src");
+  try {
+    const res = await fetch(src, { headers: token ? { "x-refrain-device": token } : {} });
+    if (res.ok) img.src = URL.createObjectURL(await res.blob());
+  } catch { /* leave it blank */ }
+}
+
+// --- tabs ---------------------------------------------------------------------
+document.querySelectorAll(".tab").forEach((t) =>
+  t.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach((x) => x.setAttribute("aria-selected", String(x === t)));
+    for (const name of ["flag", "search", "control"]) $(`tab-${name}`).hidden = name !== t.dataset.tab;
+    if (t.dataset.tab === "search") $("q").focus();
+  })
+);
+
+// --- search: read-only --------------------------------------------------------
+let searchTimer = null;
+$("q").addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(async () => {
+    const q = $("q").value.trim();
+    if (!q) return ($("search-results").innerHTML = "");
+    try {
+      const { results } = await api(`/api/search?q=${encodeURIComponent(q)}`);
+      $("search-results").innerHTML = results.length
+        ? results.map((r) => `<div class="slide"><small>${esc(r.presentationName)}, slide ${r.slideNumber}</small>${esc((r.text ?? "").slice(0, 160))}</div>`).join("")
+        : `<div class="muted">No matches.</div>`;
+    } catch (err) {
+      $("search-results").innerHTML = `<div class="muted">${esc(err.message)}</div>`;
+    }
+  }, 250);
+});
+
+// --- control: approved phones, two presses ------------------------------------
+// The first tap asks the booth's Refrain what it will do and gets a one-time
+// id; the second tap, within a few seconds, confirms it. The server enforces
+// both steps, so no single tap (or request) can take over ProPresenter.
+let armed = null; // { el, confirmId, label, timer }
+function disarm() {
+  if (!armed) return;
+  clearTimeout(armed.timer);
+  armed.el.classList.remove("armed");
+  armed.el.textContent = armed.idle;
+  armed = null;
+}
+async function press(el, body) {
+  const status = $("control-status");
+  if (armed && armed.el === el) {
+    const { confirmId, label } = armed;
+    disarm();
+    try {
+      await api("/api/control/confirm", { method: "POST", body: JSON.stringify({ confirmId }) });
+      status.textContent = `Done: ${label}.`;
+      status.className = "status";
+      previewKey = "";
+      setTimeout(paintPreview, 600);
+    } catch (err) {
+      status.textContent = err.message;
+      status.className = "status fault";
+    }
+    return;
+  }
+  disarm();
+  try {
+    const { confirmId, label } = await api("/api/control/prepare", { method: "POST", body: JSON.stringify(body) });
+    armed = { el, confirmId, label, idle: el.textContent, timer: setTimeout(disarm, 5000) };
+    el.classList.add("armed");
+    el.textContent = `Tap again: ${label}`;
+  } catch (err) {
+    status.textContent = err.message;
+    status.className = "status fault";
+  }
+}
+document.querySelectorAll(".ctl").forEach((b) => b.addEventListener("click", () => press(b, { kind: b.dataset.kind })));
+
+let safeKey = "";
+async function paintControl() {
+  const can = Boolean(state?.phone?.canControl);
+  $("control").hidden = !can;
+  $("control-locked").textContent = can
+    ? ""
+    : state?.pinRequired
+      ? `Control isn't on for this phone. Ask the booth to press "Allow control" beside ${state?.phone?.name ? `"${state.phone.name}"` : "this phone"} in the Phone panel.`
+      : "Control from a phone needs phone PINs turned on in the booth.";
+  if (!can) return;
+  try {
+    const { safeSlides } = await api("/api/safe-slides");
+    const key = JSON.stringify(safeSlides);
+    if (key === safeKey) return;
+    safeKey = key;
+    $("safe").innerHTML = safeSlides.length
+      ? safeSlides.map((sl) => `<button class="slide" data-safe="${esc(sl.id)}">${esc(sl.label)}</button>`).join("")
+      : `<div class="muted">No safe slides yet. The booth adds them from Search.</div>`;
+    $("safe").querySelectorAll("[data-safe]").forEach((b) => b.addEventListener("click", () => press(b, { kind: "safe", safeId: b.dataset.safe })));
+  } catch { /* keep the last list */ }
+}
+
+$("lock-name").value = store.get("refrain.remote.name", "");
 $("name").value = store.get("refrain.remote.name", "");
 refresh();
 setInterval(refresh, 3000);

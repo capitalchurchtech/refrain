@@ -13,6 +13,7 @@ import { initScripture } from "./scripture.js";
 import { initLibrarySync } from "./library-sync.js";
 import { initSlideFlags } from "./slide-flags.js";
 import { initService } from "./service.js";
+import { initPhonePanel } from "./phone-panel.js";
 import { initReturnBar } from "./return-bar.js";
 import { initStatusCluster } from "./status-cluster.js";
 import { installGlobalErrorBoundary, safeRender } from "./error-boundary.js";
@@ -79,6 +80,7 @@ function startApp() {
   const slideFlags = initSlideFlags();
   const service = initService();
   initReturnBar();
+  initPhonePanel();
   initStatusCluster();
 
   const renderers = {

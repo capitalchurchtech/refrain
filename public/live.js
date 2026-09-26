@@ -52,6 +52,23 @@ export function plainMessagesHtml(plain) {
     .join("");
 }
 
+/** The Now / Next pair, and the last phone press. Pure, for tests. */
+export function livePreviewHtml(p) {
+  const esc = (str) => String(str ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  const pane = (label, s, empty) => `
+    <figure class="live-preview-pane">
+      <figcaption class="rf-subhead">${label}${s ? ` · slide ${s.slideNumber}` : ""}</figcaption>
+      ${s?.image ? `<img src="${esc(s.image)}" alt="${esc(s.text ?? "")}" />` : `<div class="live-preview-empty">${esc(empty)}</div>`}
+    </figure>`;
+  const phone = p.lastPhoneAction
+    ? `<div class="text-xs opacity-80 col-span-full">Phone: ${esc(p.lastPhoneAction.phone)} pressed ${esc(p.lastPhoneAction.label)} at ${esc(
+        new Date(p.lastPhoneAction.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+      )}${p.lastPhoneAction.ok ? "" : " (it didn't work)"}</div>`
+    : "";
+  if (!p.current) return phone;
+  return `${pane("Now", p.current, "")}${pane("Next", p.next, p.atEnd ? "End of this presentation" : "")}${phone}`;
+}
+
 export function initLive() {
   const container = document.getElementById("view-live");
 
@@ -144,6 +161,29 @@ export function initLive() {
   }
 
   let readoutEl = null;
+  let previewTimer = null;
+  let previewKey = "";
+
+  function startPreview() {
+    clearInterval(previewTimer);
+    previewKey = "";
+    const tick = async () => {
+      const host = document.getElementById("live-preview");
+      if (!host || container.classList.contains("hidden")) return clearInterval(previewTimer);
+      try {
+        const p = await fetch("/api/preview").then((r) => r.json());
+        const key = JSON.stringify([p.current?.image, p.next?.image, p.atEnd, p.lastPhoneAction?.at]);
+        if (key === previewKey) return;
+        previewKey = key;
+        host.innerHTML = livePreviewHtml(p);
+        host.classList.toggle("hidden", !p.current && !p.lastPhoneAction);
+      } catch {
+        // Leave the last preview up; the readout above says if the link is down.
+      }
+    };
+    tick();
+    previewTimer = setInterval(tick, 3000);
+  }
   async function render() {
     // Live is rebuilt on each visit; let go of the old readout element so the
     // shared poll doesn't keep painting a detached copy.
@@ -159,6 +199,10 @@ export function initLive() {
              feeds both). Every press below used to be checked by looking at
              ProPresenter; this is where the answer shows instead. -->
         <div id="live-readout" class="rf-readout" data-mode="standby"></div>
+        <!-- The current slide and the next one, as pictures (owner request).
+             Checked every few seconds while Live is showing; a picture only
+             loads when the slide changes. -->
+        <div id="live-preview" class="hidden live-preview"></div>
 
         <div id="perf-mode-wrap">
           <h2 class="rf-subhead">Performance mode</h2>
@@ -272,6 +316,7 @@ export function initLive() {
     if (window.lucide) window.lucide.createIcons();
     readoutEl = document.getElementById("live-readout");
     mountLiveReadout(readoutEl);
+    startPreview();
     mountLiveFlagSummary(document.getElementById("live-flag-summary"));
     refreshLiveSummaryOnNewFlags("live-flag-summary");
 

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Refrain · Flag a slide</title>
+<title>Refrain · Phone</title>
 <!-- Served by the separate phone listener (server/remote.js), which serves
      only this page and remote.js. Self-contained on purpose: no fonts, no
      Tailwind, nothing else from the app is reachable from here. -->
@@ -31,16 +31,28 @@
   .status { margin-top:10px; font-size:14px; min-height:20px; }
   .status.fault { color:var(--fault); }
   label { display:block; font-size:13px; color:var(--muted); margin:12px 0 4px; }
+  .preview { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:12px; }
+  .preview figure { margin:0; }
+  .preview figcaption { font:600 10px/1 ui-monospace, Menlo, monospace; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin-bottom:4px; }
+  .pv { aspect-ratio:16/9; background:#000; border:1px solid var(--hair); border-radius:3px; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:12px; text-align:center; overflow:hidden; }
+  .pv img { width:100%; height:100%; object-fit:contain; display:block; }
+  .tabs { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin:14px 0 4px; }
+  .tab { min-height:44px; background:var(--surface); color:var(--muted); border:1px solid var(--hair); border-radius:3px; font:inherit; font-size:15px; }
+  .tab[aria-selected="true"] { color:var(--text); border-color:var(--plum-lit); box-shadow:inset 0 -2px 0 var(--plum); }
+  .ctl { min-height:72px; background:var(--raised); color:var(--text); border:1px solid var(--hair); border-radius:3px; font:inherit; font-size:17px; font-weight:600; }
+  .ctl.armed, .slide.armed { background:var(--plum); border-color:var(--plum-lit); color:#fff; }
+  input[type="search"] { font-size:17px; }
 </style>
 </head>
 <body>
-  <h1>Flag a slide</h1>
-  <div class="muted">Pick the slide you saw, say what's wrong, and send it to the booth. Nothing on the screens changes.</div>
+  <h1>Refrain</h1>
 
   <!-- Shown instead of everything below until this phone has today's PIN. -->
   <div id="lock" class="card" hidden>
     <label for="pin" style="margin-top:0">Today's PIN</label>
     <input id="pin" inputmode="numeric" autocomplete="one-time-code" maxlength="8" />
+    <label for="lock-name">Your name (the booth sees it)</label>
+    <input id="lock-name" maxlength="40" autocomplete="name" />
     <div id="lock-hint" class="muted" style="margin-top:8px"></div>
     <label style="display:flex;align-items:center;gap:8px;margin-top:12px;color:var(--text);font-size:15px">
       <input id="trust" type="checkbox" style="width:auto" /> Trust this phone for 30 days
@@ -50,8 +62,39 @@
   </div>
 
   <div id="main">
-  <h2>Where the service is</h2>
-  <div id="progress" class="card progress">Loading...</div>
+  <div id="progress" class="card progress" style="margin-top:12px">Loading...</div>
+
+  <div class="preview">
+    <figure><figcaption>Now</figcaption><div id="pv-now" class="pv"></div></figure>
+    <figure><figcaption>Next</figcaption><div id="pv-next" class="pv"></div></figure>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" data-tab="flag" aria-selected="true">Flag</button>
+    <button class="tab" role="tab" data-tab="search" aria-selected="false">Search</button>
+    <button class="tab" role="tab" data-tab="control" aria-selected="false">Control</button>
+  </div>
+
+  <section id="tab-search" hidden>
+    <input id="q" type="search" placeholder="Search any lyric..." autocomplete="off" />
+    <div id="search-results" class="slides" style="margin-top:10px"></div>
+  </section>
+
+  <section id="tab-control" hidden>
+    <div id="control-locked" class="muted"></div>
+    <div id="control" hidden>
+      <div class="muted" style="margin-bottom:10px">Each press asks you to tap again to confirm.</div>
+      <div class="types">
+        <button class="ctl" data-kind="previous">Previous slide</button>
+        <button class="ctl" data-kind="next">Next slide</button>
+      </div>
+      <h2>Safe slides</h2>
+      <div id="safe" class="slides"></div>
+      <div id="control-status" class="status" role="status" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <section id="tab-flag">
 
   <h2>Which slide</h2>
   <div id="slides" class="slides"></div>
@@ -65,6 +108,7 @@
 
   <button id="send" class="send" disabled>Send flag</button>
   <div id="status" class="status" role="status" aria-live="polite"></div>
+  </section>
   </div>
 
   <script type="module" src="/remote.js"></script>

@@ -54,7 +54,7 @@ test("progress is item N of M and time up, never a percentage, and honest when n
 test("only the phone routes exist: nothing that could change the screens is reachable", async () => {
   const { server, base } = await start({ recent: pushRecent([], slide(1)) });
   try {
-    for (const [method, path] of [["POST", "/api/trigger"], ["POST", "/api/live/clear"], ["POST", "/api/live/macro"], ["GET", "/api/health"], ["POST", "/api/preferences"], ["GET", "/api/search?q=a"]]) {
+    for (const [method, path] of [["POST", "/api/trigger"], ["POST", "/api/live/clear"], ["POST", "/api/live/macro"], ["GET", "/api/health"], ["POST", "/api/preferences"], ["POST", "/api/live/look"], ["POST", "/api/live/message"]]) {
       const res = await fetch(base + path, { method, headers: { "Content-Type": "application/json" }, body: method === "POST" ? "{}" : undefined });
       assert.equal(res.status, 404, `${method} ${path} must not exist here`);
     }
@@ -185,4 +185,73 @@ test("another site's page can't send the main app a change; Refrain's own pages 
   assert.equal(crossSiteRefused("POST", undefined, "127.0.0.1:9999"), false, "curl sends no Origin");
   assert.equal(crossSiteRefused("GET", "https://evil.example", "127.0.0.1:9999"), false, "reads are left alone");
   assert.equal(crossSiteRefused("POST", "null", "127.0.0.1:9999"), true);
+});
+
+import { emptyRegistry, seeDevice, setApproved, removeDevice, isApproved, isRemoved } from "../server/remote-devices.js";
+
+function startControl() {
+  let reg = emptyRegistry();
+  const done = [];
+  const app = createRemoteApp({
+    getState: () => ({ liveState: { connected: true, live: true }, recent: [] }),
+    saveFlag: async () => ({}),
+    flagTypes: () => [],
+    auth: { expectedPin: () => "2468", secret: () => "s", hint: () => "", daily: () => true },
+    devices: {
+      see: (id, o) => (reg = seeDevice(reg, id, o)),
+      approved: (id) => isApproved(reg, id),
+      removed: (id) => isRemoved(reg, id),
+      name: (id) => reg.devices[id]?.name ?? null,
+    },
+    preview: () => ({ current: { presentationId: "H", slideIndex: 2, text: "now" }, next: { presentationId: "H", slideIndex: 3, text: "next" }, atEnd: false }),
+    thumb: async () => ({ type: "image/jpeg", bytes: Buffer.from("jpg") }),
+    safeSlides: () => [{ id: "logo", label: "Logo" }],
+    control: async (action, deviceId) => (done.push({ ...action, deviceId }), { label: action.label }),
+  });
+  return new Promise((resolve) => {
+    const server = app.listen(0, "127.0.0.1", () =>
+      resolve({ server, base: `http://127.0.0.1:${server.address().port}`, done, approve: (id) => (reg = setApproved(reg, id, true)), remove: (id) => (reg = removeDevice(reg, id)), reg: () => reg })
+    );
+  });
+}
+
+test("control: unapproved phones can't; approved ones prepare then confirm, once; removal signs them out", async () => {
+  const t = await startControl();
+  const post = (path, body, token) => fetch(t.base + path, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { "x-refrain-device": token } : {}) }, body: JSON.stringify(body) });
+  try {
+    const { token } = await (await post("/api/unlock", { pin: "2468", name: "Sam" })).json();
+    const id = Object.keys(t.reg().devices)[0];
+    assert.equal(t.reg().devices[id].name, "Sam");
+    assert.equal((await post("/api/control/prepare", { kind: "next" }, token)).status, 403, "not approved yet");
+    t.approve(id);
+    const state = await (await fetch(`${t.base}/api/state`, { headers: { "x-refrain-device": token } })).json();
+    assert.deepEqual(state.phone, { name: "Sam", canControl: true });
+    const { confirmId, label } = await (await post("/api/control/prepare", { kind: "safe", safeId: "logo" }, token)).json();
+    assert.equal(label, "Logo");
+    assert.equal(t.done.length, 0, "preparing does nothing");
+    assert.equal((await post("/api/control/confirm", { confirmId }, token)).status, 200);
+    assert.deepEqual(t.done, [{ kind: "safe", safeId: "logo", label: "Logo", deviceId: id }]);
+    assert.equal((await post("/api/control/confirm", { confirmId }, token)).status, 409, "a confirm can't be replayed");
+    assert.equal((await post("/api/control/prepare", { kind: "clear-all" }, token)).status, 400, "nothing beyond next, previous and safe slides");
+    t.remove(id);
+    assert.equal((await fetch(`${t.base}/api/state`, { headers: { "x-refrain-device": token } })).status, 401, "removed phones are signed out");
+  } finally {
+    t.server.close();
+  }
+});
+
+test("previews: the current and next slide's words and pictures, and no other slide's picture", async () => {
+  const t = await startControl();
+  try {
+    const { token } = await (await fetch(`${t.base}/api/unlock`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin: "2468" }) })).json();
+    const h = { headers: { "x-refrain-device": token } };
+    const p = await (await fetch(`${t.base}/api/preview`, h)).json();
+    assert.equal(p.current.text, "now");
+    assert.equal(p.next.slideNumber, 4);
+    assert.equal((await fetch(t.base + p.next.image, h)).status, 200);
+    assert.equal((await fetch(`${t.base}/api/preview/image/H/9`, h)).status, 404, "not an arbitrary slide");
+    assert.equal((await fetch(`${t.base}/api/preview`)).status, 401, "behind the PIN");
+  } finally {
+    t.server.close();
+  }
 });
