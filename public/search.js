@@ -220,11 +220,13 @@ export function initSearch() {
       // A 500 returns an HTML error page, and parsing that as JSON throws
       // somewhere less obvious than here.
       if (!res.ok) throw new Error(`the server answered ${res.status}`);
-      const { results } = await res.json();
+      const { results, corrected } = await res.json();
       // Superseded by a newer keystroke: that search owns the screen now,
       // including the "Searching" line, so leave both alone.
       if (token !== latestSearchToken) return;
-      renderResults(results, hasDateFilter, query);
+      // Close matches: the server only sends these when nothing matched as
+      // typed. Highlight what was actually found, and say so in one line.
+      renderResults(results, hasDateFilter, corrected ?? query, corrected);
     } catch (err) {
       if (token !== latestSearchToken) return;
       // Without this the acknowledgement was permanent: "Searching" stayed on
@@ -305,12 +307,15 @@ export function initSearch() {
     if (pendingEl) pendingEl.textContent = "";
   }
 
-  function renderResults(results, showModifiedDate, query) {
+  function renderResults(results, showModifiedDate, query, corrected = null) {
     clearPending();
     if (results.length === 0) {
       resultsEl.innerHTML = `<div class="opacity-60 text-center py-8">No matches</div>`;
       return;
     }
+    const correctedNotice = corrected
+      ? `<div class="rf-hint px-1 pb-2">No exact matches. Showing results for <strong>${escapeHtml(corrected)}</strong>.</div>`
+      : "";
 
     const allSongs = groupResultsBySong(results);
     const { shown: songs, hiddenSongs, shownSlides } = capForRender(allSongs);
@@ -321,7 +326,7 @@ export function initSearch() {
       ? `<div class="rf-hint px-1 pb-2">Showing ${shownSlides} matching slide${shownSlides === 1 ? "" : "s"} in the first ${songs.length} of ${allSongs.length} songs. Add another word to narrow it.</div>`
       : "";
 
-    resultsEl.innerHTML = cappedNotice + songs
+    resultsEl.innerHTML = correctedNotice + cappedNotice + songs
       .map(
         (song) => `
       <div class="card bg-base-200 shadow-sm">

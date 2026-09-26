@@ -62,6 +62,7 @@ import {
   getIndexedSlide,
   lastCrawlAbort,
   findDuplicateNames,
+  suggestQuery,
 } from "./search-index.js";
 import { startLibraryWatch, fullRebuildSuggestion,
   indexStaleness,
@@ -1943,7 +1944,21 @@ app.post("/api/performance-mode", (req, res) => {
 app.get("/api/search", (req, res) => {
   const { q, playlistId, dateField, dateFrom, dateTo, folders } = req.query;
   const folderList = Array.isArray(folders) ? folders : folders ? String(folders).split(",") : undefined;
-  res.json({ results: search({ query: q ?? "", playlistId, dateField, dateFrom, dateTo, folders: folderList }) });
+  const params = { query: q ?? "", playlistId, dateField, dateFrom, dateTo, folders: folderList };
+  let results = search(params);
+  // Close matches, only when nothing matched exactly (see suggestQuery).
+  let corrected = null;
+  if (!results.length && q && q.trim()) {
+    const suggestion = suggestQuery(q);
+    if (suggestion) {
+      const retry = search({ ...params, query: suggestion });
+      if (retry.length) {
+        results = retry;
+        corrected = suggestion;
+      }
+    }
+  }
+  res.json({ results, corrected });
 });
 
 app.get("/api/search/folders", (_req, res) => {
