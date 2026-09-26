@@ -1,5 +1,6 @@
 import { mountLiveFlagSummary, refreshLiveSummaryOnNewFlags } from "./slide-flags.js";
 import { lastKnownConnected, LINK_EVENT } from "./status-cluster.js";
+import { mountLiveReadout, unmountLiveReadout } from "./live-readout.js";
 
 /**
  * Live page — big, obvious controls for the operator during a service.
@@ -142,13 +143,22 @@ export function initLive() {
     perfTimer = setInterval(load, 30_000);
   }
 
+  let readoutEl = null;
   async function render() {
+    // Live is rebuilt on each visit; let go of the old readout element so the
+    // shared poll doesn't keep painting a detached copy.
+    if (readoutEl) unmountLiveReadout(readoutEl);
     container.innerHTML = `
       <div class="flex flex-col gap-6">
         <div>
           <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="monitor" class="w-5 h-5"></i> Live</h1>
           <p class="text-sm opacity-70">Get things off the screen, or switch what the screens are showing. Big buttons on purpose.</p>
         </div>
+
+        <!-- What's on the screens now, the same readout as Search's (one poll
+             feeds both). Every press below used to be checked by looking at
+             ProPresenter; this is where the answer shows instead. -->
+        <div id="live-readout" class="rf-readout" data-mode="standby"></div>
 
         <div id="perf-mode-wrap">
           <h2 class="rf-subhead">Performance mode</h2>
@@ -260,6 +270,8 @@ export function initLive() {
       </div>
     `;
     if (window.lucide) window.lucide.createIcons();
+    readoutEl = document.getElementById("live-readout");
+    mountLiveReadout(readoutEl);
     mountLiveFlagSummary(document.getElementById("live-flag-summary"));
     refreshLiveSummaryOnNewFlags("live-flag-summary");
 
