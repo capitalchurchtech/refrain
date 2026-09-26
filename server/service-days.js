@@ -98,6 +98,7 @@ export const EVENT_TYPES = new Set([
   "checks-run",
   "step-set",
   "day-ended",
+  "summary-sent",
 ]);
 
 export function buildEvent(type, fields = {}, { now = Date.now(), machine = hostname(), id } = {}) {
@@ -185,6 +186,7 @@ export function foldDay(events, { schedule = [], day = null, now = Date.now() } 
   const checks = new Map(); // serviceId -> the latest run
   const steps = new Map(); // `${phaseId}:${stepId}:${serviceId ?? "day"}` -> done
   const dayEnds = [];
+  let lastSent = null;
   const segments = [];
   const closeOpen = (atMs) => {
     if (!open) return;
@@ -239,6 +241,8 @@ export function foldDay(events, { schedule = [], day = null, now = Date.now() } 
       checks.set(e.serviceId ?? null, { at: atMs, results: Array.isArray(e.results) ? e.results : [] });
     } else if (e.type === "step-set") {
       steps.set(stepKey(e.phaseId, e.stepId, e.serviceId), Boolean(e.done));
+    } else if (e.type === "summary-sent") {
+      lastSent = { at: atMs, ok: Boolean(e.ok), detail: e.detail ?? null, backend: e.backend ?? null, summaryFile: e.summaryFile ?? null };
     } else if (e.type === "day-ended") {
       dayEnds.push({ at: atMs, eventId: e.id, summaryFile: e.summaryFile ?? null });
     }
@@ -257,6 +261,7 @@ export function foldDay(events, { schedule = [], day = null, now = Date.now() } 
     steps,
     dayEnds,
     reopened,
+    lastSent,
   };
 }
 

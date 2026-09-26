@@ -221,13 +221,32 @@ export function renderChecklistHtml(checklist) {
     .join("");
 }
 
+/** Send, for a church that turned summaries on (issue #4). Says plainly when it leaves the machine. */
+export function renderSendHtml(report) {
+  if (!report || report.status === "off") return "";
+  if (report.status !== "active") {
+    return `<div class="text-xs opacity-70">Sending the summary isn't set up: ${escapeHtml((report.problems ?? []).join(" "))}</div>`;
+  }
+  const to = report.backend?.id === "email" ? ` to ${report.recipients} recipient${report.recipients === 1 ? "" : "s"}` : "";
+  const last = report.lastSent
+    ? `<div class="text-xs ${report.lastSent.ok ? "opacity-70" : ""}">${report.lastSent.ok ? "Sent" : "Didn't send"} at ${escapeHtml(formatClock(report.lastSent.at, { seconds: false }))}: ${escapeHtml(report.lastSent.detail ?? "")}</div>`
+    : "";
+  return `
+    <div class="flex items-center justify-between gap-3 flex-wrap">
+      <div class="text-xs opacity-70">${report.backend?.sendsOffMachine ? "This sends the summary off this machine." : "This saves a copy of the summary."}</div>
+      <button type="button" id="service-send-btn" class="btn btn-outline btn-sm">${report.lastSent?.ok ? "Send again" : `Send by ${escapeHtml(report.backend?.name ?? "")}`}${escapeHtml(to)}</button>
+    </div>
+    ${last}`;
+}
+
 export function renderEndHtml(data) {
   if (data.dayEnded && !data.reopened) {
     return `
       <div class="flex items-center justify-between gap-3 flex-wrap">
         <div class="text-sm">Day ended at ${escapeHtml(formatClock(data.dayEnded.at, { seconds: false }))}. The summary is saved.</div>
         <div class="flex gap-2"><button type="button" id="service-summary-btn" class="btn btn-outline btn-sm">View summary</button></div>
-      </div>`;
+      </div>
+      ${renderSendHtml(data.report)}`;
   }
   const again = data.reopened ? `<div class="text-sm">Things were recorded after the last End, so the day is open again. End it again to write a new summary; the earlier one is kept.</div>` : "";
   return `
@@ -358,6 +377,17 @@ export function initService() {
         if (data.delivered && !data.delivered.ok) showFailure(`The summary is saved here, but copying it to the summary folder is waiting: ${data.delivered.reason}`);
       } catch (err) {
         showFailure(`Couldn't end the day: ${err.message}`);
+        load();
+      }
+    });
+    document.getElementById("service-send-btn")?.addEventListener("click", async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      btn.textContent = "Sending...";
+      try {
+        paint(await post("/api/service/send-summary"));
+      } catch (err) {
+        showFailure(`The summary didn't send: ${err.message}`);
         load();
       }
     });

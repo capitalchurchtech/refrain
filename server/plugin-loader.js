@@ -1,5 +1,5 @@
 /**
- * Auto-discovers providers/, storage/, slide-splitters/, and modules/
+ * Auto-discovers providers/, storage/, slide-splitters/, delivery/ and modules/
  * at startup, per docs/refrain-architecture.md Section 17.11.
  *
  * Deliberately no central registry file — a contributor adds one file
@@ -26,6 +26,10 @@ export async function discoverProviders() {
 
 export async function discoverStorageBackends() {
   return discoverIn("./storage");
+}
+
+export async function discoverDeliveryBackends() {
+  return discoverIn("./delivery");
 }
 
 export async function discoverSlideSplitters() {

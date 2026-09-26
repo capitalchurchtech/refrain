@@ -40,6 +40,25 @@ Optional capabilities, which you only implement if they apply, and which you fla
 
 `providers/planning-center.js` implements all of these and is the reference. `providers/manual.js` is the opposite end: no API at all, the user just types the arrangement in, which is the option for a church with no church management software.
 
+## Adding a delivery backend
+
+Delivery backends live in `delivery/`. A backend answers: once End has written the day summary and someone presses Send, where does it go? `delivery/email.js` and `delivery/folder.js` are the references.
+
+```js
+// delivery/base.js
+class DeliveryBackend {
+  static sendsOffMachine = false; // true if delivering leaves this machine
+  static requiredEnv = [];        // [{ name }], listed on Health
+  static problems(moduleConfig, env) { return []; } // sentences; empty means ready
+  async deliver({ day, subject, markdown, moduleConfig, env }) { throw new Error("Not implemented"); }
+}
+```
+
+1. Make `delivery/your-backend.js`, extend `DeliveryBackend`, and set a `backendId`, used in `config.json` under `reportModule.deliveryBackend`.
+2. Set `sendsOffMachine = true` if it sends anything anywhere else. The Service screen says so beside the Send button, and the README's promise that nothing leaves your network unless you connect it depends on that being honest.
+3. Report missing settings from `problems()`. The module then shows as misconfigured on Health instead of failing when someone presses Send.
+4. Add no dependency you can avoid: `delivery/email.js` uses `server/smtp.js`, on Node's own `net` and `tls`.
+
 ## Adding a storage backend
 
 Storage backends live in `storage/`. A backend answers: where do the per song arrangement history files live, and how do we read and write them?

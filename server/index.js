@@ -25,6 +25,9 @@ import {
   getServiceModuleStatus,
   getEnvRequirements,
   registerProviders,
+  registerDeliveryBackends,
+  getReportModuleStatus,
+  deliveryBackendFor,
   cleanFolderSetting,
   ensureMachineId,
   readConfigFileRaw,
@@ -140,7 +143,7 @@ import {
   DEFAULT_MINIMUM_FILES,
   DEFAULT_SNAPSHOTS_TO_KEEP,
 } from "./library-sync.js";
-import { discoverModules, discoverSlideSplitters, discoverProviders, discoverStorageBackends } from "./plugin-loader.js";
+import { discoverModules, discoverSlideSplitters, discoverProviders, discoverStorageBackends, discoverDeliveryBackends } from "./plugin-loader.js";
 import { runComparison, suggestMapping, getPendingUploadCount, retryPendingUploads } from "./arrangement-diff.js";
 import { startWatcher as startImageCropWatcher, getImageCropStatus, foldersOverlap, websafeToken } from "./image-crop.js";
 import { generateQr, getQrHistoryList, getQrHistoryEntry, addQrHistoryEntry, clearQrHistory, QR_LIMITS } from "./qr-code.js";
@@ -211,6 +214,7 @@ let config = loadConfig();
 // Before anything asks for module status: the arrangement checks read each
 // provider's declared requiredEnv instead of naming a vendor.
 registerProviders(await discoverProviders());
+registerDeliveryBackends(await discoverDeliveryBackends());
 let client = new ProPresenterClient(config.propresenter);
 
 app.use(express.static("public"));
@@ -1537,10 +1541,48 @@ function servicePayload(now = Date.now()) {
     phaseProblems: playbookPhases(config.serviceModule?.phases).problems,
     dayEnded: state.dayEnds.length ? { at: jsonTime(state.dayEnds.at(-1).at), summaryFile: state.dayEnds.at(-1).summaryFile } : null,
     reopened: state.reopened,
+    report: reportPayload(state),
     holdingPace: holdHeartbeatPace(now),
     beatMs: heartbeatInterval({ lastClientAt, hold: holdHeartbeatPace(now), now }),
     performance: { armed: performance.armed, source: performance.source },
   };
+}
+
+function reportPayload(state) {
+  const { status, problems } = getReportModuleStatus(config);
+  const Backend = deliveryBackendFor(config);
+  const recipients = (config.reportModule?.recipients ?? []).length;
+  return {
+    status,
+    problems,
+    backend: Backend ? { id: Backend.backendId, name: Backend.displayName, sendsOffMachine: Boolean(Backend.sendsOffMachine) } : null,
+    recipients,
+    requireReview: config.reportModule?.requireReview !== false,
+    lastSent: state.lastSent ? { ...state.lastSent, at: jsonTime(state.lastSent.at) } : null,
+  };
+}
+
+/** Delivers a day's latest summary through the configured backend, and records the outcome either way. */
+async function deliverSummary(day, events) {
+  const Backend = deliveryBackendFor(config);
+  const last = events.filter((e) => e.type === "day-ended" && e.summaryFile).sort((a, b) => a.at.localeCompare(b.at)).at(-1);
+  if (!Backend || !last) throw new Error(!last ? "End the day first, so there's a summary to send." : "No delivery backend is set.");
+  const { folder } = serviceOptions();
+  let markdown = null;
+  for (const dir of [path.join(folder, day), path.join("./data/service-days-pending", day)]) {
+    markdown = await readFile(path.join(dir, last.summaryFile), "utf-8").catch(() => null);
+    if (markdown) break;
+  }
+  if (!markdown) throw new Error("The summary file is missing.");
+  const label = new Date(`${day}T12:00:00`).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  try {
+    const out = await new Backend().deliver({ day, subject: `Refrain summary: ${label}`, markdown, moduleConfig: config.reportModule ?? {}, env: process.env });
+    recordServiceEvents([buildEvent("summary-sent", { ok: true, detail: out.detail, backend: Backend.backendId, summaryFile: last.summaryFile })]);
+    return out;
+  } catch (err) {
+    recordServiceEvents([buildEvent("summary-sent", { ok: false, detail: err.message, backend: Backend.backendId, summaryFile: last.summaryFile })]);
+    throw err;
+  }
 }
 
 function currentPhases() {
@@ -1823,8 +1865,33 @@ app.post("/api/service/end-day", async (_req, res) => {
     }
   }
   recordServiceEvents([{ ...ended, summaryFile, delivered }]);
+  // Straight after End only when the church has opted out of reviewing
+  // first. Its outcome is recorded either way and shown on the screen.
+  if (getReportModuleStatus(config).status === "active" && config.reportModule?.requireReview === false) {
+    deliverSummary(serviceDay.day, serviceDay.events).catch((err) => console.error("Sending the day summary failed:", err.message));
+  }
   console.log(`Ended ${serviceDay.day}. Summary written${delivered ? (delivered.ok ? ` and copied to ${summaryFolder}` : `; copying to ${summaryFolder} is waiting (${delivered.reason})`) : ""}.`);
   res.json({ ok: true, summary: markdown, delivered, ...servicePayload() });
+});
+
+/**
+ * Sends the day summary (issue #4). A person presses Send, after reading it,
+ * unless the church has set reportModule.requireReview to false. This is the
+ * first thing in Refrain that can send data off the machine; it only exists
+ * for a church that turned the report module on and filled in where to send.
+ */
+app.post("/api/service/send-summary", async (_req, res) => {
+  if (!requireServiceModule(res)) return;
+  await ensureServiceDay();
+  const { status, problems } = getReportModuleStatus(config);
+  if (status !== "active") return res.status(409).json({ error: status === "off" ? "Sending summaries is off (reportModule.enabled)." : problems.join(" ") });
+  if (!serviceDay.events.some((e) => e.type === "day-ended")) return res.status(409).json({ error: "End the day first, so there's a summary to send." });
+  try {
+    const out = await deliverSummary(serviceDay.day, serviceDay.events);
+    res.json({ ok: true, detail: out.detail, ...servicePayload() });
+  } catch (err) {
+    res.status(502).json({ error: err.message, ...servicePayload() });
+  }
 });
 
 /** The latest summary for a day, as Markdown. */

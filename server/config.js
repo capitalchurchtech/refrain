@@ -149,6 +149,33 @@ export function getLibrarySyncModuleStatus(config) {
 }
 
 /**
+ * Delivery backends found by plugin discovery, registered at boot, like
+ * providers, so the report module's status stays synchronous.
+ */
+let registeredDelivery = [];
+export function registerDeliveryBackends(backends) {
+  registeredDelivery = Array.isArray(backends) ? backends : [];
+}
+export function deliveryBackendFor(config) {
+  const id = config.reportModule?.deliveryBackend ?? "email";
+  return registeredDelivery.find((B) => B.backendId === id) ?? null;
+}
+
+/**
+ * Sending the day summary somewhere (issue #4). Off unless a church turns it
+ * on. Misconfigured, with the reasons, when its backend is unknown or not set
+ * up; never a crash.
+ * @returns {{ status: "off" | "misconfigured" | "active", problems: string[] }}
+ */
+export function getReportModuleStatus(config) {
+  if (!config.reportModule?.enabled) return { status: "off", problems: [] };
+  const Backend = deliveryBackendFor(config);
+  if (!Backend) return { status: "misconfigured", problems: [`No delivery backend called "${config.reportModule.deliveryBackend}".`] };
+  const problems = Backend.problems(config.reportModule, process.env);
+  return { status: problems.length ? "misconfigured" : "active", problems };
+}
+
+/**
  * The service system (handoff section 37). Off unless a church turns it on:
  * a church that only wants search never sees a playbook. A malformed
  * schedule is "misconfigured" with a message on Health, never a crash.
@@ -194,6 +221,12 @@ export function getEnvRequirements(config) {
       set: Boolean(process.env[name]),
       note: `${Provider.displayName} provider — required on ${config.role === "logger" ? "the logger machine" : "this machine"}.`,
     });
+  }
+
+  const report = config.reportModule;
+  const Backend = report?.enabled ? deliveryBackendFor(config) : null;
+  for (const { name } of Backend?.requiredEnv ?? []) {
+    reqs.push({ name, set: Boolean(process.env[name]), note: `${Backend.displayName} delivery for the day summary.` });
   }
 
   return reqs;

@@ -46,3 +46,14 @@ test("the timing note is honest about the pace it was recorded at", () => {
   assert.match(paceNote({ holdingPace: true }), /about 4 seconds/);
   assert.match(paceNote({ holdingPace: false, beatMs: 30_000 }), /30 seconds/);
 });
+
+import { renderSendHtml } from "../public/service.js";
+
+test("Send appears only when summaries are on, says when it leaves the machine, and shows the last outcome", () => {
+  assert.equal(renderSendHtml({ status: "off" }), "");
+  assert.match(renderSendHtml({ status: "misconfigured", problems: ["SMTP_HOST isn't set in .env."] }), /isn't set up: SMTP_HOST/);
+  const html = renderSendHtml({ status: "active", backend: { id: "email", name: "Email", sendsOffMachine: true }, recipients: 3, lastSent: { ok: false, at: new Date().toISOString(), detail: "The mail server refused the password" } });
+  assert.match(html, /sends the summary off this machine/);
+  assert.match(html, /Send by Email to 3 recipients/);
+  assert.match(html, /Didn't send at .*refused the password/);
+});
