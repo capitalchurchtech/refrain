@@ -182,6 +182,25 @@ export function initHealth() {
       orphanResults.innerHTML = renderOrphanResults(lastOrphanScan);
       wireOrphanResults();
     }
+    document.getElementById("theme-report-btn")?.addEventListener("click", async (e) => {
+      const btn = e.currentTarget;
+      const statusEl = document.getElementById("theme-report-status");
+      const out = document.getElementById("theme-report-results");
+      btn.disabled = true;
+      statusEl.textContent = "Reading every deck...";
+      try {
+        const res = await fetch("/api/theme-report", { method: "POST" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error ?? res.statusText);
+        statusEl.textContent = `${data.themedDecks} of ${data.decksRead} decks use a theme's layouts.${data.unreadable ? ` Couldn't read ${data.unreadable}.` : ""}`;
+        out.innerHTML = renderThemeReport(data);
+      } catch (err) {
+        statusEl.textContent = err.message;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
     document.getElementById("orphan-scan-btn")?.addEventListener("click", async (e) => {
       const btn = e.currentTarget; // captured before the await
       const statusEl = document.getElementById("orphan-scan-status");
@@ -1062,6 +1081,27 @@ export function formatBytes(bytes) {
  * by this Mac's ProPresenter, and a volunteer about to delete things should be
  * told which things that sentence cannot see.
  */
+/** The theme report, library by library. Pure, for tests. */
+export function renderThemeReport(data) {
+  const libs = data?.libraries ?? [];
+  if (!libs.length) return `<div class="text-sm opacity-70">No deck uses a theme's layouts, so there's nothing to compare.</div>`;
+  return libs
+    .map((l) => {
+      const rows = l.off
+        .slice(0, 30)
+        .map((o) => `<li>${escapeHtml(o.name)}: ${o.themes.map(escapeHtml).join(", ")}${o.alsoCurrent ? " <span class=\"opacity-60\">(mixed with the current one)</span>" : ""}</li>`)
+        .join("");
+      const more = l.off.length > 30 ? `<li class="opacity-60">and ${l.off.length - 30} more</li>` : "";
+      return `
+        <div class="text-sm">
+          <div><strong>${escapeHtml(l.folder)}:</strong> current theme ${escapeHtml(l.current)} (${l.currentCount} of ${l.themedDecks} decks).
+          ${l.off.length ? `${l.off.length} use another:` : "Every deck matches."}</div>
+          ${l.off.length ? `<ul class="list-disc pl-5 text-xs opacity-80">${rows}${more}</ul>` : ""}
+        </div>`;
+    })
+    .join("");
+}
+
 export function renderOrphanResults(result) {
   const sections = (result?.workspaces ?? []).map((w) => {
     if (w.missing) {
@@ -1499,6 +1539,23 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
    * the pre-service list. Refrain never deletes anything; the most it does is
    * show a file in Finder so a person can look and decide.
    */
+  const themesCard = `
+    <div class="card bg-base-200">
+      <div class="card-body p-3 gap-2">
+        <h2 class="card-title text-base"><i data-lucide="palette" class="w-4 h-4 opacity-70"></i> Themes</h2>
+        <div class="text-sm opacity-70 rf-measure">
+          Decks that use a different theme from the rest of their library. Refrain takes each library's
+          current theme to be the one most of its decks use. It only reads.
+        </div>
+        <div class="rf-control-row">
+          <button id="theme-report-btn" class="btn btn-outline btn-xs"><i data-lucide="scan-search" class="w-3.5 h-3.5"></i> Check themes</button>
+          <span id="theme-report-status" class="text-xs opacity-60"></span>
+        </div>
+        <div id="theme-report-results" class="flex flex-col gap-3"></div>
+      </div>
+    </div>
+  `;
+
   const orphanedMediaCard = `
     <div class="card bg-base-200">
       <div class="card-body p-3 gap-2">
@@ -1914,6 +1971,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
       ${indexCard}
       ${duplicateNamesCard}
       ${orphanedMediaCard}
+      ${themesCard}
       ${arrangementCard}
       ${configCard}
       ${libraryCard}

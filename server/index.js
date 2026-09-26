@@ -100,6 +100,7 @@ import {
 import { heartbeatInterval } from "./heartbeat-pacing.js";
 import { markHidden, setHidden, isControlId } from "./live-visibility.js";
 import { safeSlides, addSafeSlide, removeSafeSlide, renameSafeSlide, moveSafeSlide } from "./safe-slides.js";
+import { layoutThemes, themesInDeck, themeReport } from "./theme-report.js";
 import {
   DEFAULT_DAYS_FOLDER,
   DEFAULT_LEAD_MINUTES,
@@ -1290,6 +1291,38 @@ app.get("/api/duplicate-names", (_req, res) => {
  * twice for one answer.
  */
 let orphanedMediaInFlight = false;
+
+/**
+ * Which theme each deck uses, and the decks that don't match their library's
+ * most-used theme (see server/theme-report.js for why that's the working
+ * definition of "current"). A button on Health, never automatic: it reads
+ * ProPresenter's theme list once and every indexed .pro file.
+ */
+let themeReportInFlight = false;
+app.post("/api/theme-report", async (_req, res) => {
+  if (themeReportInFlight) return res.status(409).json({ error: "A theme check is already running." });
+  if (performance.armed) return res.status(409).json({ error: "Performance mode is on, so Refrain is holding still. Run this when nothing is live." });
+  if (!liveState.connected) return res.status(409).json({ error: "ProPresenter isn't answering, and the theme list comes from it." });
+  themeReportInFlight = true;
+  try {
+    const layouts = layoutThemes(await client.getThemes());
+    const decks = [];
+    let unreadable = 0;
+    for (const [presentationId, entry] of Object.entries(getIndex().presentations ?? {})) {
+      if (!entry.presentationPath) continue;
+      try {
+        decks.push({ presentationId, name: entry.name, folder: entry.folder ?? null, themes: themesInDeck(await readFile(entry.presentationPath), layouts) });
+      } catch {
+        unreadable++;
+      }
+    }
+    res.json({ libraries: themeReport(decks), decksRead: decks.length, themedDecks: decks.filter((d) => d.themes.size).length, unreadable, layouts: layouts.size });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  } finally {
+    themeReportInFlight = false;
+  }
+});
 
 app.post("/api/orphaned-media/scan", async (_req, res) => {
   if (orphanedMediaInFlight) {

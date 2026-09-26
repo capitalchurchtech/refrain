@@ -172,6 +172,11 @@ export class ProPresenterClient {
   }
 
   /** Recursive playlist tree (folders/groups containing playlists). */
+  /** The theme tree: folders of themes, each with its slide layouts. Read-only. */
+  async getThemes() {
+    return this.#get("/v1/themes");
+  }
+
   async getPlaylists() {
     return this.#get("/v1/playlists");
   }
