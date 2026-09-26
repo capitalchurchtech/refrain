@@ -313,6 +313,7 @@ export function initLive() {
   // qualify, a small picker chooses between them.
   function renderMessages(messages) {
     const all = messages ?? [];
+    renderedMessageKey = messageKey(all);
     const postable = all.filter((m) => m.tokens?.some((t) => t.kind === "text"));
     const plain = all.filter((m) => !postable.includes(m));
     const wrap = document.getElementById("live-message-wrap");
@@ -406,9 +407,16 @@ export function initLive() {
     );
   }
 
+  // Which messages were drawn, and which had fields. If that changes in
+  // ProPresenter (one added, removed, or given a field), the poster and the
+  // list both need rebuilding, so Live redraws itself; otherwise only the
+  // rows' "On screen" state is updated.
+  let renderedMessageKey = "";
+  const messageKey = (list) => (list ?? []).map((m) => `${m.id}:${m.tokens?.some((t) => t.kind === "text") ? 1 : 0}`).join("|");
   async function refreshMessages() {
     try {
       const { messages } = await fetch("/api/live/controls").then((r) => r.json());
+      if (messageKey(messages) !== renderedMessageKey) return render();
       renderPlainMessages((messages ?? []).filter((m) => !m.tokens?.some((t) => t.kind === "text")));
     } catch {
       // Leave the list as it was; the next visit re-reads it.

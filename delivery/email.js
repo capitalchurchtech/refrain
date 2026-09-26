@@ -32,7 +32,9 @@ export default class EmailDelivery extends DeliveryBackend {
       user: env.SMTP_USERNAME || undefined,
       pass: env.SMTP_PASSWORD || undefined,
       from: env.SMTP_FROM,
-      to: moduleConfig?.recipients ?? [],
+      // Only the addresses problems() counted as valid, so a typo'd one next
+      // to good ones can't reach the mail server (or sink the whole send).
+      to: (moduleConfig?.recipients ?? []).filter((r) => cleanAddress(r)),
       subject,
       text: markdown,
     });

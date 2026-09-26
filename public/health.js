@@ -1103,13 +1103,6 @@ export function formatBytes(bytes) {
   return `${(bytes / 1e9).toFixed(1)} GB`;
 }
 
-/**
- * The results of an unused-media scan, per workspace.
- *
- * The caveat at the bottom is not boilerplate: "unused" can only mean unused
- * by this Mac's ProPresenter, and a volunteer about to delete things should be
- * told which things that sentence cannot see.
- */
 /** The theme report, library by library. Pure, for tests. */
 export function renderThemeReport(data) {
   const libs = data?.libraries ?? [];
@@ -1131,6 +1124,13 @@ export function renderThemeReport(data) {
     .join("");
 }
 
+/**
+ * The results of an unused-media scan, per workspace.
+ *
+ * The caveat at the bottom is not boilerplate: "unused" can only mean unused
+ * by this Mac's ProPresenter, and a volunteer about to delete things should be
+ * told which things that sentence cannot see.
+ */
 export function renderOrphanResults(result) {
   const sections = (result?.workspaces ?? []).map((w) => {
     if (w.missing) {
