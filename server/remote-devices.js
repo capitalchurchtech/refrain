@@ -85,13 +85,17 @@ export function createConfirmer({ ttlMs = 6000, idOf = () => Math.random().toStr
   };
 }
 
-/** A per-phone pause between control presses, so a stuck thumb can't run through a song. */
+/**
+ * A per-phone pause between control presses, so a stuck thumb can't run
+ * through a song. `ready` only looks; `mark` starts the pause. Checked before
+ * a confirm is used up, so pressing inside the pause keeps the prepared
+ * press for a retry instead of losing it.
+ */
 export function createCooldown(ms = 1200) {
   const last = new Map();
-  return (deviceId, now = Date.now()) => {
-    if (now - (last.get(deviceId) ?? -Infinity) < ms) return false;
-    last.set(deviceId, now);
-    return true;
+  return {
+    ready: (deviceId, now = Date.now()) => now - (last.get(deviceId) ?? -Infinity) >= ms,
+    mark: (deviceId, now = Date.now()) => last.set(deviceId, now),
   };
 }
 

@@ -93,6 +93,9 @@ export function initPhonePanel() {
   if (!modal || !body || !button) return;
   let timer = null;
   let returnFocus = null;
+  // The last action's failure, kept across the 5s refresh until the next
+  // action, so a "couldn't save" isn't gone before anyone reads it.
+  let lastError = "";
 
   const post = async (url, data) => {
     const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data ?? {}) });
@@ -108,6 +111,7 @@ export function initPhonePanel() {
     } catch {
       body.innerHTML = phonePanelHtml(null);
     }
+    if (lastError) body.insertAdjacentHTML("afterbegin", `<p class="font-medium" role="alert">${esc(lastError)}</p>`);
     wire();
   }
 
@@ -117,10 +121,9 @@ export function initPhonePanel() {
         el.disabled = true;
         try {
           await fn();
+          lastError = "";
         } catch (err) {
-          body.insertAdjacentHTML("afterbegin", `<p class="font-medium">${esc(err.message)}</p>`);
-          el.disabled = false;
-          return;
+          lastError = err.message;
         }
         await load();
       });

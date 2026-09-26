@@ -263,6 +263,24 @@ export function paceNote(data) {
     : `Outside a watched service Refrain checks less often, so times can be up to ${Math.round((data.beatMs ?? 30_000) / 1000)} seconds late.`;
 }
 
+// The checklist fold's state, per browser. A convenience, so storage that
+// throws (private mode) just means it starts closed.
+const CHECKLIST_KEY = "refrain.service.checklistOpen";
+function checklistOpen() {
+  try {
+    return localStorage.getItem(CHECKLIST_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+function rememberChecklist(open) {
+  try {
+    localStorage.setItem(CHECKLIST_KEY, open ? "1" : "0");
+  } catch {
+    // nothing kept; no harm
+  }
+}
+
 export function initService() {
   const container = document.getElementById("view-service");
   let timer = null;
@@ -453,15 +471,14 @@ export function initService() {
         </div>
 
         <div>
-          <h2 class="rf-subhead">Today's services</h2>
-          <div id="service-list" class="flex flex-col gap-3 text-sm opacity-70">Loading...</div>
-        </div>
-
-        <div id="service-outside"></div>
-
-        <details class="card bg-base-200">
-          <summary class="cursor-pointer p-3 text-sm font-medium">Add a service for today</summary>
-          <div class="p-3 pt-0 flex flex-col gap-2">
+          <!-- Adding a service is occasional, so it's a small button here and
+               the form only appears when asked for. It used to sit open
+               between the rundown and the checklist, in the way. -->
+          <div class="flex items-center justify-between gap-2">
+            <h2 class="rf-subhead">Today's services</h2>
+            <button type="button" id="service-add-toggle" class="btn btn-chip" aria-expanded="false" aria-controls="service-add-form">+ Add a service</button>
+          </div>
+          <div id="service-add-form" class="card bg-base-200 hidden mb-3"><div class="card-body p-3 gap-2">
             <div class="flex gap-2 flex-wrap">
               <input id="service-add-name" type="text" maxlength="60" placeholder="Name, e.g. Evening" class="input input-bordered input-sm flex-1 min-w-40" />
               <input id="service-add-time" type="time" class="input input-bordered input-sm" aria-label="Start time (optional)" />
@@ -469,13 +486,19 @@ export function initService() {
               <button type="button" id="service-add-btn" class="btn btn-outline btn-sm">Add</button>
             </div>
             <div class="text-xs opacity-60">The time and playlist are optional. A time lets Refrain watch closely from a little before it; a playlist lets the rundown number each item and spot anything off-plan. Recurring services can go in config.json instead (serviceModule.schedule).</div>
-          </div>
-        </details>
+          </div></div>
 
-        <div>
-          <h2 class="rf-subhead">Checklist</h2>
-          <div class="card bg-base-200"><div id="service-checklist" class="card-body p-3 gap-3"></div></div>
+          <div id="service-list" class="flex flex-col gap-3 text-sm opacity-70">Loading...</div>
         </div>
+
+        <div id="service-outside"></div>
+
+        <!-- Folded away by default: many teams keep their run-of-show
+             elsewhere. Open or closed is remembered in this browser. -->
+        <details id="service-checklist-fold" class="rf-fold">
+          <summary class="rf-subhead cursor-pointer">Checklist</summary>
+          <div class="card bg-base-200 mt-2"><div id="service-checklist" class="card-body p-3 gap-3"></div></div>
+        </details>
 
         <div>
           <h2 class="rf-subhead">End of the day</h2>
@@ -487,7 +510,21 @@ export function initService() {
       </div>`;
     if (window.lucide) window.lucide.createIcons();
 
-    container.querySelector("details")?.addEventListener("toggle", loadPlaylists);
+    const addToggle = document.getElementById("service-add-toggle");
+    addToggle.addEventListener("click", () => {
+      const form = document.getElementById("service-add-form");
+      const opening = form.classList.contains("hidden");
+      form.classList.toggle("hidden", !opening);
+      addToggle.setAttribute("aria-expanded", String(opening));
+      addToggle.textContent = opening ? "Cancel" : "+ Add a service";
+      if (opening) {
+        loadPlaylists();
+        document.getElementById("service-add-name").focus();
+      }
+    });
+    const fold = document.getElementById("service-checklist-fold");
+    fold.open = checklistOpen();
+    fold.addEventListener("toggle", () => rememberChecklist(fold.open));
     document.getElementById("service-add-btn").addEventListener("click", async (e) => {
       const btn = e.currentTarget;
       const select = document.getElementById("service-add-playlist");
@@ -504,6 +541,9 @@ export function initService() {
         document.getElementById("service-add-name").value = "";
         document.getElementById("service-add-time").value = "";
         select.value = "";
+        document.getElementById("service-add-form").classList.add("hidden");
+        addToggle.setAttribute("aria-expanded", "false");
+        addToggle.textContent = "+ Add a service";
       } catch (err) {
         showFailure(`Couldn't add that service: ${err.message}`);
       } finally {

@@ -312,9 +312,10 @@ export function createRemoteApp({
 
   /** Step two: the confirm press. Performs it, once, for this phone only. */
   app.post("/api/control/confirm", approvedOnly, async (req, res) => {
+    if (!cooldown.ready(req.deviceId)) return res.status(429).json({ error: "Wait a moment between presses, then tap again." });
     const action = confirmer.take(req.deviceId, String(req.body?.confirmId ?? ""));
     if (!action) return res.status(409).json({ error: "That press timed out. Press it again." });
-    if (!cooldown(req.deviceId)) return res.status(429).json({ error: "Wait a moment between presses." });
+    cooldown.mark(req.deviceId);
     try {
       const out = await control(action, req.deviceId);
       res.json({ ok: true, label: out?.label ?? action.label });

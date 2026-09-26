@@ -197,7 +197,9 @@ async function paintPreview() {
     const key = JSON.stringify([p.current?.image, p.next?.image, p.atEnd]);
     if (key === previewKey) return;
     previewKey = key;
-    const pane = (s, empty) => (s?.image ? `<img src="${esc(s.image)}" alt="${esc(s.text ?? "")}" />` : esc(empty));
+    // data-src, not src: a src in the markup would start a request without
+    // this phone's sign-in before loadImage could take it back.
+    const pane = (s, empty) => (s?.image ? `<img data-src="${esc(s.image)}" alt="${esc(s.text ?? "")}" />` : esc(empty));
     // Images go through fetch so they carry this phone's sign-in.
     $("pv-now").innerHTML = pane(p.current, "Nothing on screen");
     $("pv-next").innerHTML = pane(p.next, p.atEnd ? "End of this presentation" : "");
@@ -205,8 +207,7 @@ async function paintPreview() {
   } catch { /* the readout says if the booth is away */ }
 }
 async function loadImage(img) {
-  const src = img.getAttribute("src");
-  img.removeAttribute("src");
+  const src = img.dataset.src;
   try {
     const res = await fetch(src, { headers: token ? { "x-refrain-device": token } : {} });
     if (res.ok) img.src = URL.createObjectURL(await res.blob());

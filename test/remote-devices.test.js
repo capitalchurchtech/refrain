@@ -43,6 +43,11 @@ test("a control press must be confirmed by the same phone, once, in time", () =>
 });
 
 test("control presses from one phone are spaced out", () => {
-  const ok = createCooldown(1000);
-  assert.deepEqual([ok("p", 0), ok("p", 500), ok("p", 1000), ok("q", 1000)], [true, false, true, true]);
+  const c = createCooldown(1000);
+  assert.equal(c.ready("p", 0), true);
+  c.mark("p", 0);
+  assert.equal(c.ready("p", 500), false);
+  assert.equal(c.ready("p", 500), false, "looking doesn't restart the pause");
+  assert.equal(c.ready("p", 1000), true);
+  assert.equal(c.ready("q", 100), true, "per phone");
 });

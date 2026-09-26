@@ -241,7 +241,6 @@ export class ProPresenterClient {
     }
   }
 
-  /** Triggers a slide live by presentation id + 0-based flat slide index. */
   /**
    * The next or previous slide of the presentation that's on the screens.
    * Deliberately not /v1/trigger/next: that follows ProPresenter's focused
@@ -270,6 +269,7 @@ export class ProPresenterClient {
     return { type: res.headers.get("content-type") || "image/jpeg", bytes: Buffer.from(await res.arrayBuffer()) };
   }
 
+  /** Triggers a slide live by presentation id + 0-based flat slide index. */
   async triggerSlide(presentationId, slideIndex) {
     await this.#get(`/v1/presentation/${seg(presentationId)}/${seg(slideIndex)}/trigger`, { timeoutMs: LIVE_TIMEOUT_MS });
   }

@@ -231,7 +231,9 @@ test("control: unapproved phones can't; approved ones prepare then confirm, once
     assert.equal(t.done.length, 0, "preparing does nothing");
     assert.equal((await post("/api/control/confirm", { confirmId }, token)).status, 200);
     assert.deepEqual(t.done, [{ kind: "safe", safeId: "logo", label: "Logo", deviceId: id }]);
-    assert.equal((await post("/api/control/confirm", { confirmId }, token)).status, 409, "a confirm can't be replayed");
+    const replay = await post("/api/control/confirm", { confirmId }, token);
+    assert.ok([409, 429].includes(replay.status), "a confirm can't be replayed");
+    assert.equal(t.done.length, 1, "and the replay did nothing");
     assert.equal((await post("/api/control/prepare", { kind: "clear-all" }, token)).status, 400, "nothing beyond next, previous and safe slides");
     t.remove(id);
     assert.equal((await fetch(`${t.base}/api/state`, { headers: { "x-refrain-device": token } })).status, 401, "removed phones are signed out");

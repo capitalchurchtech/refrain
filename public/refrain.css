@@ -3861,3 +3861,13 @@ html.rail-right #rf-notices {
   text-align: center;
   padding: 8px;
 }
+
+/* A folded section's heading is the control that opens it, so it meets the
+   touch floor (the Service screen's checklist). Padding, not display:flex,
+   which would drop the disclosure triangle. */
+.rf-fold > summary {
+  box-sizing: border-box;
+  min-height: 44px;
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
