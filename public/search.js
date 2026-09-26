@@ -361,7 +361,7 @@ export function initSearch() {
             ${song.slides
               .map(
                 (r) => `
-              <div class="flex items-start justify-between gap-3">
+              <div class="flex items-start justify-between gap-3 search-slide-row" tabindex="-1">
                 <div>
                   <div class="text-xs opacity-70">
                     Slide ${r.slideIndex + 1}${r.repeatCount > 1 ? ` &middot; sung ${r.repeatCount}&times;` : ""}${showModifiedDate && r.modifiedDate ? ` &middot; modified ${new Date(r.modifiedDate).toLocaleDateString()}` : ""}
@@ -711,6 +711,57 @@ export function initSearch() {
    * keep closing the overlay. The guard is both conditions, not just focus,
    * because a dialog can open while the field still holds focus behind it.
    */
+  /**
+   * Keyboard through the results (owner's design, handoff §39c). Enter in the
+   * box moves to the first slide; Up and Down choose a slide; Enter opens it
+   * in ProPresenter's editor; Esc goes back to the box with the query kept.
+   *
+   * **Enter never goes live.** The keyboard's default action is the harmless
+   * one, so a stray Enter can't put anything on the screens. Go Live stays a
+   * deliberate press on its own button. The lit collar moves with the chosen
+   * row, so the one Go Live that glows is always the slide you're looking at.
+   */
+  const slideRows = () => [...resultsEl.querySelectorAll(".search-slide-row")];
+  function chooseRow(i) {
+    const rows = slideRows();
+    if (!rows.length) return;
+    const n = Math.max(0, Math.min(i, rows.length - 1));
+    rows.forEach((r) => r.classList.remove("rf-kb-row"));
+    const row = rows[n];
+    row.classList.add("rf-kb-row");
+    resultsEl.querySelectorAll(".go-live-btn.rf-armed").forEach((b) => b.classList.remove("rf-armed"));
+    row.querySelector(".go-live-btn")?.classList.add("rf-armed");
+    row.focus({ preventScroll: true });
+    row.scrollIntoView({ block: "nearest" });
+  }
+
+  queryInput.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+    if (!slideRows().length) return;
+    e.preventDefault();
+    chooseRow(0);
+  });
+
+  resultsEl.addEventListener("keydown", (e) => {
+    const row = e.target.closest?.(".search-slide-row");
+    if (!row || e.target !== row || e.metaKey || e.ctrlKey || e.altKey) return;
+    const i = slideRows().indexOf(row);
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      chooseRow(i + (e.key === "ArrowDown" ? 1 : -1));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      row.querySelector(".show-in-editor-btn")?.click();
+    } else if (e.key === "Escape") {
+      // Back to the box, query kept. Stopped here so the global Esc (which
+      // closes overlays) and the box's own Esc (which clears) don't also run.
+      e.preventDefault();
+      e.stopPropagation();
+      row.classList.remove("rf-kb-row");
+      queryInput.focus();
+    }
+  });
+
   queryInput.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || e.metaKey || e.ctrlKey || e.altKey) return;
     if (!queryInput.value) return;

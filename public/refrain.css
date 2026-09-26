@@ -702,6 +702,22 @@ html.blackroom .spellcheck-live-btn {
 }
 
 /* The collar, reusable by whichever one is armed. */
+/* The slide chosen from the keyboard (handoff §39c). An outline on the row,
+   not a fill, so it reads as "this one" without looking like a pressed or
+   live control; the Go Live collar moves with it. `rf-kb-row` is applied
+   from search.js, so it has this static home. */
+#results .search-slide-row.rf-kb-row {
+  outline: 2px solid var(--rf-plum-lit);
+  outline-offset: 4px;
+  border-radius: 2px;
+}
+#results .search-slide-row:focus {
+  outline: none;
+}
+#results .search-slide-row.rf-kb-row:focus {
+  outline: 2px solid var(--rf-plum-lit);
+}
+
 [data-theme="dark"] .go-live-btn.rf-armed,
 html.blackroom .go-live-btn.rf-armed,
 [data-theme="dark"] .go-live-btn:hover,
