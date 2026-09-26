@@ -2120,6 +2120,113 @@ Search already reads, not a hardcoded "FS".
 - This is the more useful half of the FS request: it changes what actually
   plays this weekend, where the library default doesn't.
 
+## 39. Live and Search audit, 2026-09-26 (four personas, read-only). Owner's calls
+
+Personas: monthly volunteer (afraid), staff tech (fast), director at the
+back on a narrow screen (interrupted), second operator on Live. The
+reported overflow at 455px and 390px was **refuted**: headless
+`--window-size` screenshots lay out wider than they crop; at a true 455px
+the document is exactly 455 wide.
+
+- **NOTE, search ranking.** Owner: "too many libraries, user error". No
+  change. The Libraries chip already scopes Search.
+- **Safe slides, planned below (§39a).** Owner wants to cut quickly to known
+  safe slides (logo, blank, a standing announcement) rather than only
+  clearing layers.
+- **CRAFT, flag grid is under every live control. Fix drafted (§39b).**
+- **CRAFT, no keyboard path through results.** Owner's design: Enter leaves
+  the box and highlights results, arrows move, Enter opens Show in Editor,
+  Esc goes back to the box. (§39c)
+- **CRAFT, typos return nothing.** Fuzzy fallback only on zero results.
+  (§39d)
+- **CRAFT, message poster hides.** Owner is interested in message templates,
+  e.g. child pager codes. (§39e)
+- **Owner request: hide or show individual macros on Live.** (§39f)
+
+### 39a. PLAN, safe slides
+
+A row of **Safe** keys at the top of Live: the church's own chosen slides,
+one press each, through the same Go Live path as Search (so it survives
+arrangement changes and records to the timeline). Unlike Clear, a safe slide
+is a *known good picture*, not an empty layer.
+
+- **Chosen from where they already are.** A "Make this a safe slide" action
+  on a Search slide row: it stores `{ presentationId, groupId, groupOffset,
+  label }` in `liveModule.safeSlides` in config.json, and the label defaults
+  to the slide's text or the deck name. Rename, reorder and remove happen on
+  Live.
+- **One press, no arm step.** A safe slide is safe by definition. Clear All
+  keeps its two presses.
+- **The anchor rule:** fire by group anchor, not raw index, the same as
+  Search's Go Live, so re-arranging the deck doesn't turn "Logo" into a
+  lyric. If the anchor no longer resolves, the key shows "Can't find this
+  slide" and doesn't fire.
+- **Order:** the Safe row sits above Clear. Clear stays for "take a layer
+  away".
+- **Open for the owner:** is the list shared across machines (config.json,
+  per machine), or per campus? And should one safe slide be the "panic" key,
+  larger and first?
+
+### 39b. Flag grid, the fix
+
+Move the type grid to the **top of the Flags screen**, which has no live
+controls at all, and take it off Live. Live keeps one line: "Flag the live
+slide on the Flags screen" with a link. This removes about 250px and 11
+tiles from the most dangerous screen, and puts capture next to the list it
+feeds. Search's "Flag this slide" chip stays, since it already sits above the
+fold and away from Go Live.
+
+### 39c. Keyboard path through results (owner's design)
+
+- In the box, **Enter** moves focus to the first result deck and highlights
+  it. The cursor leaves the box, and nothing fires.
+- **Up and Down** move between slide rows. The highlighted row shows its
+  full text.
+- **Enter** on a row runs **Show slide N**, which only moves the editor.
+- **Esc** goes back to the box with the query kept, and a second Esc clears
+  it (today's behaviour).
+- Go Live stays a pointer action, or a deliberate chord (Shift+Enter, if we
+  add one at all; that's for the owner to decide). Enter never goes live.
+  This resolves the audit's fast-versus-afraid conflict by making the
+  keyboard's default action the harmless one.
+- The lit collar on the first result's Go Live should follow the
+  highlighted row, or go away, since today it promises a key that doesn't
+  exist.
+
+### 39d. Typos: fuzzy only when nothing matched
+
+It costs nothing on the normal path, because it only runs when exact search
+returns zero. The indexed vocabulary is a few tens of thousands of distinct
+words. Edit distance ≤1 (≤2 for words of 7 letters or more), only against
+words within ±2 letters in length, is a few milliseconds. Also try splitting
+a compound ("waymaker" → "way maker") and joining ("ocean s"). Results say
+so plainly: "No exact matches. Showing results for **way maker**." Never
+fuzzy when there were exact matches, so a correct query never gets diluted.
+
+### 39e. Message templates (pager codes)
+
+Why the poster hides: it lists only ProPresenter messages that have **text
+fields** (tokens), and all six here have none, including Kids PAGER, so
+there's nothing to fill in.
+
+- **Step 1, owner, in ProPresenter:** add a text token to the pager message
+  (e.g. "Parent of {Code}, please come to Kids"). The poster then shows it
+  with a Code field. No Refrain code needed.
+- **Step 2, Refrain:** show token-less messages too, as Show / Take down
+  keys (countdowns), instead of hiding the whole section.
+- **Step 3, templates:** per message, a remembered format and validation
+  (e.g. pager code = 3 digits, upper-cased) plus the last few codes used,
+  so the operator taps a recent code instead of typing it. Kept in config.
+  Nothing is sent anywhere but ProPresenter.
+
+### 39f. Hide macros on Live (owner request)
+
+An "Edit" chip on the Macros heading switches the grid to show/hide
+toggles; stored as `liveModule.hiddenMacros` (ProPresenter macro ids, so a
+rename doesn't un-hide it). Hidden macros are gone from Live, not greyed. A
+"Show 12 hidden" link in edit mode brings them back. Same pattern could
+apply to Looks (the seasonal Christmas ones).
+
 ## Status log
 
 `YYYY-MM-DD · <item> · done | partial | blocked · <one line>`
@@ -2654,3 +2761,4 @@ Search already reads, not a hardcoded "FS".
 - 2026-09-25 — **Section 37 phase 1 landed** (not released). `server/service-days.js` (pure: day folding, windows, assignment, timeline rows) on a shared `server/append-store.js` extracted from slide-flags (flag tests unchanged and passing). Services from lock-in, today's list, or `serviceModule.schedule` (playlistMatch resolved when the window opens, never under performance mode). The heartbeat records presentation changes only while connected (a blip is not a departure); it holds the 4s pace inside a window or lock-in, and now reschedules a pending slow beat when a browser, service or lock-in arrives (found in rehearsal: the first item was seen 10s late). A service with no time claims off-plan items while it is running (last activity within 15 min), which was also found in rehearsal. Lock-in arms performance mode by hand only if it wasn't already on by hand, survives a restart, and release disarms only its own. New Service screen (after Flags in the rail; its final position is still open). Verified against ProPresenter 21.3 with the SL-09 playlist: 4s detection, off-plan item inside the service, return kept with the first time intact, lock-in/restart/release including the manual-already-on case, and 455px width. Module off by default and only turned on in the dev config. Still open: rail position, End/summary (phase 4), the T−60 reindex and T−45 checks prompt (phase 2), the Live-screen lock-in control, and the 24h Search index notice.
 - 2026-09-25 — Mirror rail (owner request): a Move right / Move left key in the rail's utility group flips the rail to the other edge, saved as `navSide` in config and applied before first paint. refrain.css section 36 flips position, content margin, junction shading, the latch edge (including Search's glow) and the notice stack. The new key joined every selector list #theme-toggle is in (18). Verified by headless screenshots on both sides; the in-app pane was hidden, so its measurements were stale and not used.
 - 2026-09-25 — **Section 37 phases 2–4 and the folder half of 5 landed.** Phase 2: `server/service-checks.js` (pure) on a shared `scanPlaylist()` extracted from Spell Check's route; seven checks, pass / needs a look / couldn't check; #5's arrangement audit done via the API (`getPlaylistItems` now returns `arrangementUuid`), no protobuf needed; refuses under performance mode; one-hour-before incremental reindex (Refrain-initiated, stands down if live); 45-minute "checks due" line. Phase 3: `server/service-playbook.js`, phases as data with scopes day / service / between (between skips the last service; found in rehearsal). Phase 4: End (two presses) closes services and lock-in, drift-compares songs actually shown via `compareWeekendSongs()` extracted from compare-all (now also de-duplicates a song planned in several services), writes `summary-<id>.md` beside the day's events; reopen after End shown, never merged; Health's once-per-day "never ended" line. Phase 5 (folder only): `serviceModule.summaryFolder` gets a new copy per End, staged and retried. Also: date-aware `matchPlaylist` (this library writes dates five ways; "9/2" never matches "9/27"), retried each minute during the window; Live-screen Lock in button; Search's index notice names a lock-in older than 24h. Rehearsed end to end on the dev server against ProPresenter 21.3 (checks in 2.5s; found real Import-library copies in the old SL-09 playlist, and the message now says to add the library instead of only "refresh"). **Not built, on purpose:** email delivery (sends data off the machine; needs SMTP credentials and an owner decision) and second-device flags / progress feed (would open Refrain beyond 127.0.0.1). Defaults taken for open decisions: End closes the day and a later service reopens it visibly; the unfinished-day line shows once; Service stays after Flags in the rail.
+- 2026-09-26 — Section 39: Live/Search persona audit (read-only, before the 5PM service), owner's calls, and plans for safe slides, flag-grid move, keyboard results, fuzzy fallback, message templates and hiding macros. Nothing built.
