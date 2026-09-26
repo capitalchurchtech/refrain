@@ -170,7 +170,7 @@ export function deliveryBackendFor(config) {
 export function getReportModuleStatus(config) {
   if (!config.reportModule?.enabled) return { status: "off", problems: [] };
   const Backend = deliveryBackendFor(config);
-  if (!Backend) return { status: "misconfigured", problems: [`No delivery backend called "${config.reportModule.deliveryBackend}".`] };
+  if (!Backend) return { status: "misconfigured", problems: [`No delivery backend called "${config.reportModule.deliveryBackend ?? "email"}".`] };
   const problems = Backend.problems(config.reportModule, process.env);
   return { status: problems.length ? "misconfigured" : "active", problems };
 }

@@ -2376,18 +2376,42 @@ app.get("/api/live/current-look", async (_req, res) => {
 
 // --- Safe slides (handoff §39a) ---------------------------------------------
 
-async function saveLiveModule(res, change) {
-  const liveModule = { ...(config.liveModule ?? {}), ...change };
-  const newConfig = { ...config, liveModule };
-  try {
+/**
+ * Every change to `liveModule` (hidden macros, safe slides, recent message
+ * values) goes through this one queue. Each change is computed from the
+ * config as it is when its turn comes, not when it was asked for, so two
+ * changes made together can't each save a copy that drops the other's. The
+ * write itself is saveConfig's atomic temp-then-rename.
+ * @param {(liveModule: object) => object} change  returns the new liveModule
+ * @returns {Promise<object>} the saved liveModule
+ */
+let liveModuleQueue = Promise.resolve();
+function updateLiveModule(change) {
+  const run = liveModuleQueue.then(async () => {
+    const liveModule = change({ ...(config.liveModule ?? {}) });
+    const newConfig = { ...config, liveModule };
     await saveConfig(newConfig);
-  } catch (err) {
-    res.status(500).json({ error: `Failed to save config.json: ${err.message}` });
-    return false;
-  }
-  config = newConfig;
-  return true;
+    config = newConfig;
+    return liveModule;
+  });
+  liveModuleQueue = run.catch(() => {});
+  return run;
 }
+
+/**
+ * updateLiveModule for a route: answers itself on failure and returns null.
+ * A change can refuse by throwing an error with a `status` (e.g. 400 for "the
+ * list is full"); anything else is a failed save.
+ */
+async function saveLiveModule(res, change) {
+  try {
+    return await updateLiveModule(change);
+  } catch (err) {
+    res.status(err.status ?? 500).json({ error: err.status ? err.message : `Failed to save config.json: ${err.message}` });
+    return null;
+  }
+}
+const refuse = (status, message) => Object.assign(new Error(message), { status });
 
 app.get("/api/live/safe-slides", (_req, res) => {
   res.json({ safeSlides: safeSlides(config.liveModule?.safeSlides) });
@@ -2396,7 +2420,7 @@ app.get("/api/live/safe-slides", (_req, res) => {
 /** Saves a slide from Search as a safe slide. Reads nothing from ProPresenter. */
 app.post("/api/live/safe-slides", async (req, res) => {
   const b = req.body ?? {};
-  const { list, added, error } = addSafeSlide(config.liveModule?.safeSlides, {
+  const input = {
     presentationId: b.presentationId,
     presentationName: b.presentationName,
     slideIndex: parseSlideIndex(b.slideIndex),
@@ -2404,28 +2428,35 @@ app.post("/api/live/safe-slides", async (req, res) => {
     groupOffset: b.groupOffset === "" || b.groupOffset == null ? null : Number(b.groupOffset),
     slideText: b.slideText,
     label: b.label,
+  };
+  let added = null;
+  const saved = await saveLiveModule(res, (m) => {
+    const r = addSafeSlide(m.safeSlides, input);
+    if (r.error) throw refuse(400, r.error);
+    added = r.added;
+    return { ...m, safeSlides: r.list };
   });
-  if (error) return res.status(400).json({ error });
-  if (!(await saveLiveModule(res, { safeSlides: list }))) return;
-  res.json({ ok: true, added, safeSlides: list });
+  if (!saved) return;
+  res.json({ ok: true, added, safeSlides: saved.safeSlides });
 });
 
 /** Rename, move or remove one. */
 app.post("/api/live/safe-slides/:id", async (req, res) => {
   const { action, label, dir } = req.body ?? {};
-  const current = safeSlides(config.liveModule?.safeSlides);
-  if (!current.some((x) => x.id === req.params.id)) return res.status(404).json({ error: "No safe slide by that id." });
-  const list =
-    action === "remove"
-      ? removeSafeSlide(current, req.params.id)
-      : action === "rename"
-        ? renameSafeSlide(current, req.params.id, label)
-        : action === "move"
-          ? moveSafeSlide(current, req.params.id, Number(dir))
-          : null;
-  if (!list) return res.status(400).json({ error: 'action must be "remove", "rename" or "move"' });
-  if (!(await saveLiveModule(res, { safeSlides: list }))) return;
-  res.json({ ok: true, safeSlides: list });
+  if (!["remove", "rename", "move"].includes(action)) return res.status(400).json({ error: 'action must be "remove", "rename" or "move"' });
+  const saved = await saveLiveModule(res, (m) => {
+    const current = safeSlides(m.safeSlides);
+    if (!current.some((x) => x.id === req.params.id)) throw refuse(404, "No safe slide by that id.");
+    const list =
+      action === "remove"
+        ? removeSafeSlide(current, req.params.id)
+        : action === "rename"
+          ? renameSafeSlide(current, req.params.id, label)
+          : moveSafeSlide(current, req.params.id, Number(dir));
+    return { ...m, safeSlides: list };
+  });
+  if (!saved) return;
+  res.json({ ok: true, safeSlides: saved.safeSlides });
 });
 
 /**
@@ -2437,16 +2468,9 @@ app.post("/api/live/visibility", async (req, res) => {
   const { kind, id, hidden } = req.body ?? {};
   if (kind !== "macro") return res.status(400).json({ error: 'kind must be "macro"' });
   if (!isControlId(id) || typeof hidden !== "boolean") return res.status(400).json({ error: "id and hidden are required" });
-  const liveModule = { ...(config.liveModule ?? {}) };
-  liveModule.hiddenMacros = setHidden(liveModule.hiddenMacros, id, hidden);
-  const newConfig = { ...config, liveModule };
-  try {
-    await saveConfig(newConfig);
-  } catch (err) {
-    return res.status(500).json({ error: `Failed to save config.json: ${err.message}` });
-  }
-  config = newConfig;
-  res.json({ ok: true, hiddenMacros: liveModule.hiddenMacros });
+  const saved = await saveLiveModule(res, (m) => ({ ...m, hiddenMacros: setHidden(m.hiddenMacros, id, hidden) }));
+  if (!saved) return;
+  res.json({ ok: true, hiddenMacros: saved.hiddenMacros });
 });
 
 app.post("/api/live/clear", async (req, res) => {
@@ -2497,10 +2521,16 @@ app.post("/api/live/message", async (req, res) => {
     await client.triggerMessage(id, values);
     // Remembered only after ProPresenter accepted it. A failed save of the
     // recents mustn't turn a message that is on screen into an error.
-    const messageRecent = rememberValues(config.liveModule?.messageRecent, id, values);
-    const newConfig = { ...config, liveModule: { ...(config.liveModule ?? {}), messageRecent } };
-    saveConfig(newConfig).then(() => { config = newConfig; }).catch(() => {});
-    res.json({ ok: true, recent: messageRecent[id] ?? {} });
+    // The message is already on the screens, so a failed save of the recents
+    // is reported and logged, never turned into "the post failed".
+    let recent = null;
+    try {
+      const saved = await updateLiveModule((m) => ({ ...m, messageRecent: rememberValues(m.messageRecent, id, values) }));
+      recent = saved.messageRecent?.[id] ?? {};
+    } catch (err) {
+      console.error("Couldn't save recent message values:", err.message);
+    }
+    res.json({ ok: true, recent, recentSaved: recent !== null });
   } catch (err) {
     res.status(502).json({ error: err.message });
   }
