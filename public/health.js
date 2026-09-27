@@ -182,6 +182,8 @@ export function initHealth() {
       orphanResults.innerHTML = renderOrphanResults(lastOrphanScan);
       wireOrphanResults();
     }
+    document.getElementById("health-open-phone")?.addEventListener("click", () => document.getElementById("nav-phone-toggle")?.click());
+
     // Today's phone PIN, to read out; and a way to sign every phone out.
     const pinEl = document.getElementById("phone-pin-today");
     const paintPin = async () => {
@@ -1571,30 +1573,21 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
    * show a file in Finder so a person can look and decide.
    */
   const net = health.networkModule;
-  const phoneCard =
-    net && net.status !== "off"
-      ? `
+  // Always here, off or on, because Health is where people look for setup.
+  // The Phone panel (rail) does the work; this says the state and opens it.
+  const phoneStatus = !net || net.status === "off"
+    ? "Off. Turn phones on to search lyrics, see the current and next slide, flag slides, and (for phones you approve) move slides from anywhere in the room."
+    : net.status === "active"
+      ? `On at ${escapeHtml((net.urls ?? [])[0] ?? "this Mac")}${net.pinMode === "none" ? ", with no PIN" : net.pinMode === "daily" ? ", with a daily PIN" : ", with a PIN"}.`
+      : `Not running: ${escapeHtml((net.problems ?? []).join(" "))}`;
+  const phoneCard = `
     <div class="card bg-base-200">
       <div class="card-body p-3 gap-2">
-        <h2 class="card-title text-base"><i data-lucide="smartphone" class="w-4 h-4 opacity-70"></i> Phone flags</h2>
-        ${
-          net.status === "active"
-            ? `<div class="text-sm rf-measure">Anyone on the church network can open this on a phone to flag a slide or see where the service is. It can't change the screens.${
-                net.pinMode === "none" ? " There's no PIN; set networkModule.pin to \"daily\" to require one." : ""
-              }</div>
-               <div class="text-sm font-mono">${(net.urls ?? []).map(escapeHtml).join("<br>") || "No network address found."}</div>
-               ${
-                 net.pinMode === "none"
-                   ? ""
-                   : `<div class="flex items-center gap-3 flex-wrap"><span id="phone-pin-today" class="text-sm"></span>
-                      <button id="phone-forget-btn" class="btn btn-outline btn-xs" title="Signs every phone out and changes today's PIN">Forget all phones</button>
-                      <span id="phone-forget-status" class="text-xs opacity-60"></span></div>`
-               }`
-            : `<div class="text-sm">Not running: ${escapeHtml((net.problems ?? []).join(" "))}</div>`
-        }
+        <h2 class="card-title text-base"><i data-lucide="smartphone" class="w-4 h-4 opacity-70"></i> Phones</h2>
+        <div class="text-sm rf-measure">${phoneStatus}</div>
+        <button type="button" id="health-open-phone" class="btn btn-outline btn-xs w-fit">Open the Phone panel</button>
       </div>
-    </div>`
-      : "";
+    </div>`;
 
   const themesCard = `
     <div class="card bg-base-200">
@@ -2025,11 +2018,11 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
     <div class="flex flex-col gap-4">
       ${statusStrip}
       ${propresenterCard}
+      ${phoneCard}
       ${indexCard}
       ${duplicateNamesCard}
       ${orphanedMediaCard}
       ${themesCard}
-      ${phoneCard}
       ${arrangementCard}
       ${configCard}
       ${libraryCard}
