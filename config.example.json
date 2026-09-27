@@ -18,6 +18,8 @@
   "preferredArrangements": ["FS", "T"],
   "_autoReindex": "Watches your library folders and reindexes a presentation moments after you edit it. Set to false to turn it off and reindex by hand from the Health screen. It never starts a full rebuild on its own, and never reindexes more than 25 changed presentations without being asked.",
   "autoReindex": true,
+  "_slidePictures": "Slide pictures for phones and the Live preview are kept in data/slide-pictures, so each is asked of ProPresenter once. With prerender true, Refrain also renders today's service playlists (and any playlists named here) ahead of time while nothing is on the screens. Off by default: ProPresenter keeps memory for every slide it draws until it restarts, so this only pays if ProPresenter is restarted before the service.",
+  "slidePictures": { "prerender": false, "playlists": [] },
   "librarySync": {
     "folders": null,
     "crawlPlaylists": false

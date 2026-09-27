@@ -157,6 +157,50 @@ export function initHealth() {
       });
     });
 
+    const preferredBtn = document.getElementById("preferred-check-btn");
+    preferredBtn?.addEventListener("click", async () => {
+      const status = document.getElementById("preferred-check-status");
+      const results = document.getElementById("preferred-results");
+      preferredBtn.disabled = true;
+      status.textContent = "Checking...";
+      results.innerHTML = "";
+      try {
+        const res = await fetch("/api/index/preferred-arrangements", { method: "POST" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || res.statusText);
+        status.textContent =
+          `${data.notSelected.length} of ${data.checked} checked to switch` +
+          (data.unread ? `; ${data.unread} couldn't be read` : "") +
+          (data.stopped ? "; stopped when Refrain had to hold still" : "") +
+          (data.remaining ? `; ${data.remaining} not checked yet (press Check again, or they're known after the next reindex)` : "") +
+          ".";
+        results.innerHTML = data.notSelected
+          .map(
+            (p) => `
+          <div class="flex items-center justify-between gap-2 border-t border-base-300 pt-1 first:border-0 first:pt-0">
+            <span class="text-sm min-w-0 truncate">${escapeHtml(p.name)} <span class="opacity-60">· ${escapeHtml(p.selectedName ?? "no arrangement")} selected</span></span>
+            <button class="btn btn-chip shrink-0 preferred-editor-btn" data-presentation-id="${escapeHtml(p.presentationId)}">Show in editor</button>
+          </div>`
+          )
+          .join("");
+        results.querySelectorAll(".preferred-editor-btn").forEach((b) =>
+          b.addEventListener("click", async () => {
+            b.disabled = true;
+            try {
+              const r = await fetch("/api/focus", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ presentationId: b.dataset.presentationId }) });
+              if (!r.ok) showFailure(`Didn't open the editor: ${(await r.json().catch(() => ({}))).error ?? "ProPresenter didn't answer"}. Nothing on the screens changed.`);
+            } finally {
+              b.disabled = false;
+            }
+          })
+        );
+      } catch (err) {
+        status.textContent = err.message;
+      } finally {
+        preferredBtn.disabled = false;
+      }
+    });
+
     const orphanResults = document.getElementById("orphan-results");
     const wireOrphanResults = () => {
       orphanResults?.querySelectorAll(".orphan-reveal-btn").forEach((btn) => {
@@ -548,8 +592,17 @@ export function initHealth() {
         btn.disabled = true;
         btnLabel.textContent = "Rebuilding...";
         try {
-          await fetch("/api/index/rebuild", { method: "POST" });
+          const res = await fetch("/api/index/rebuild", { method: "POST" });
+          const refused = res.ok ? null : ((await res.json().catch(() => ({}))).error ?? "The rebuild didn't start.");
           await render();
+          // After render, which redraws the card: said where the other index
+          // messages are, so a refusal (performance mode on, ProPresenter
+          // still loading) is read rather than looking like nothing happened.
+          const statusEl = document.getElementById("health-reindex-status");
+          if (refused && statusEl) {
+            statusEl.textContent = refused;
+            statusEl.className = "text-sm rf-flag";
+          }
         } finally {
           if (btn.isConnected) {
             btn.disabled = false;
@@ -1328,6 +1381,14 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
           // Connected state lives in the status strip above; repeating it here was
           // the main thing that made this screen read as two copies of itself.
           // What belongs here is only what the strip can't say: how to fix it.
+          propresenter.load ? `<div class="text-sm rf-flag rf-measure" role="status">${escapeHtml(propresenter.load.message)}</div>` : ""
+        }
+        ${
+          propresenter.slidePictures?.lastRunAt && propresenter.slidePictures.presentations
+            ? `<div class="text-sm opacity-60 rf-measure">Slide pictures: ${propresenter.slidePictures.ready} ready ahead of time for today's playlists (checked ${new Date(propresenter.slidePictures.lastRunAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}${propresenter.slidePictures.stopped ? "; stopped when something went on the screens" : ""}).</div>`
+            : ""
+        }
+        ${
           propresenter.connected
             ? `<div class="text-sm opacity-60 rf-measure">Last checked ${new Date(propresenter.lastCheckIn ?? Date.now()).toLocaleTimeString()}. Run Diagnose if ProPresenter is behaving oddly.</div>`
             : `<div class="text-sm">Check ProPresenter is running with its Network API enabled (Preferences &gt; Network), and that the host and port under Settings are correct.</div>`
@@ -1399,7 +1460,9 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
                  <div id="health-rebuild-meter" class="flex-1"></div>
                  <span id="health-rebuild-count" class="rf-meter-count"></span>
                </div>
-               <div class="text-sm mt-2">Reading every slide you own. Go coil something.</div>
+               <div class="text-sm mt-2">Reading every slide you own${
+                 index.rebuild.etaMs != null ? `: about ${formatDuration(index.rebuild.etaMs)} to go at this rate` : ""
+               }. Go coil something.</div>
                <button id="health-stop-rebuild-btn" class="btn btn-brand btn-sm w-fit mt-2">Stop indexing</button>
                <div id="health-stop-rebuild-status" class="rf-hint"></div>
                <div class="alert alert-warning py-2 text-sm mt-2 items-start">
@@ -1407,8 +1470,9 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
                  <span><strong>A rebuild is running, so ProPresenter will be sluggish until it finishes.</strong>
                  Leave ProPresenter open: Refrain reads every presentation through it, so closing it stops the
                  build. Nothing is sent to the screens — these are reads only. Go Live, Clear, and macros may be
-                 slow or not respond. It can take an hour or more on a large library. Stop it if a service is
-                 about to start — everything already read is kept, and the rest keeps what it had.</span>
+                 slow or not respond. Stop it if a service is about to start — everything already read is kept,
+                 and the rest keeps what it had. ProPresenter holds on to memory for each presentation read until
+                 it restarts, so after a big run, restart ProPresenter before the service.</span>
                </div>`
             : (() => {
                 // The scary warning belongs to whichever button is actually
@@ -1565,6 +1629,33 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
       </div>
     </div>
   `;
+
+  /**
+   * Presentations whose preferred arrangement exists but isn't selected
+   * (handoff §38). A button, because it reads each candidate through
+   * ProPresenter; the list only points, since the switch is made in
+   * ProPresenter's editor. Only shown when a preferred arrangement is set.
+   */
+  const preferredNames = health.preferredArrangements ?? [];
+  const preferredCard = preferredNames.length
+    ? `
+    <div class="card bg-base-200">
+      <div class="card-body p-3 gap-2">
+        <h2 class="card-title text-base"><i data-lucide="list-ordered" class="w-4 h-4 opacity-70"></i> ${escapeHtml(preferredNames.join(" or "))} not selected</h2>
+        <div class="text-sm opacity-70 rf-measure">
+          Presentations that have a ${escapeHtml(preferredNames.join(" or "))} arrangement but have another one selected. Switch them in ProPresenter's editor.
+          This changes what new playlist entries get, not playlists already built. Most answers come from the index;
+          any it doesn't know yet are read through ProPresenter, 40 at a time, which holds on to a little memory
+          for each until it restarts, so run it outside a service day.
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="preferred-check-btn" class="btn btn-outline btn-sm w-fit">Check</button>
+          <span id="preferred-check-status" class="text-xs opacity-70"></span>
+        </div>
+        <div id="preferred-results" class="flex flex-col gap-1"></div>
+      </div>
+    </div>`
+    : "";
 
   /**
    * Unused media: a button, never automatic, and nowhere near Search or Live --
@@ -2021,6 +2112,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
       ${phoneCard}
       ${indexCard}
       ${duplicateNamesCard}
+      ${preferredCard}
       ${orphanedMediaCard}
       ${themesCard}
       ${arrangementCard}

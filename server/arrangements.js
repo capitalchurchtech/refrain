@@ -37,6 +37,37 @@ const norm = (s) => String(s ?? "").trim().toLowerCase();
  * @returns {{arrangementId: string|null, arrangementName: string|null,
  *   source: "preferred"|"current"|"raw", groups: object[], droppedGroupRefs: number}}
  */
+/**
+ * When a presentation has one of the church's preferred arrangements (config
+ * `preferredArrangements`, e.g. ["FS"]) but ProPresenter has a different one
+ * selected, the two names; otherwise null. Read-only: there's no API to
+ * change the selection and Refrain won't rewrite a .pro to fake one (handoff
+ * §38), so this only feeds a list with Show in Editor on each.
+ */
+export function preferredNotSelected(presentationDoc, preferred = []) {
+  const presentation = presentationDoc?.presentation ?? {};
+  const arrangements = presentation.arrangements ?? [];
+  let hit = null;
+  for (const want of preferred ?? []) {
+    hit = arrangements.find((a) => norm(a.id?.name) === norm(want) && norm(want));
+    if (hit) break;
+  }
+  if (!hit || hit.id?.uuid === presentation.current_arrangement) return null;
+  const selected = arrangements.find((a) => a.id?.uuid === presentation.current_arrangement);
+  // Any preferred name counts as fine, the way the pre-service check reads
+  // it: a song deliberately on T isn't wrong because FS comes first in the
+  // list. "FS Message" and "T Homework" are variants of FS and T.
+  if (selectedIsPreferred(selected?.id?.name, preferred)) return null;
+  return { preferredName: hit.id?.name ?? null, selectedName: selected?.id?.name ?? null };
+}
+
+/** Whether an arrangement name is one of the preferred ones, or a variant ("T Homework" of "T"). */
+export function selectedIsPreferred(name, preferred = []) {
+  const n = norm(name);
+  if (!n) return false;
+  return (preferred ?? []).some((p) => norm(p) && (n === norm(p) || n.startsWith(`${norm(p)} `) || n.startsWith(`${norm(p)}(`)));
+}
+
 export function resolveArrangement(presentationDoc, preferred = []) {
   const presentation = presentationDoc?.presentation ?? {};
   const rawGroups = presentation.groups ?? [];

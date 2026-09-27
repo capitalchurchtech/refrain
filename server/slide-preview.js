@@ -21,10 +21,39 @@ export function previewTargets(slide, textOf = () => null) {
 /**
  * A small cache of slide pictures, oldest dropped first, with one fetch at a
  * time per slide so two screens asking at once cost one request.
+ *
+ * **At most `concurrency` pictures are asked of ProPresenter at once**, the
+ * rest wait their turn. Each miss is a render on the live machine, and a
+ * phone scrolling the tray (up to 300 slides) could otherwise ask for dozens
+ * together mid-service. `max` holds a whole tray, so scrolling back doesn't
+ * render again. A wait that grows past `maxQueued` refuses new misses (null,
+ * the same as "no picture") rather than piling up work nobody will see.
+ * `stored(presentationId, slideIndex)`, when given, is asked first and outside
+ * the limit: a picture already on disk costs ProPresenter nothing.
  */
-export function createThumbCache(fetchThumb, { max = 120 } = {}) {
+export function createThumbCache(fetchThumb, { max = 300, concurrency = 2, maxQueued = 60, stored = null } = {}) {
   const cache = new Map();
   const inflight = new Map();
+  const queue = [];
+  let running = 0;
+  const pump = () => {
+    while (running < concurrency && queue.length) {
+      const job = queue.shift();
+      running++;
+      Promise.resolve()
+        .then(job.run)
+        .then(job.resolve, job.reject)
+        .finally(() => {
+          running--;
+          pump();
+        });
+    }
+  };
+  const limited = (run) =>
+    new Promise((resolve, reject) => {
+      queue.push({ run, resolve, reject });
+      pump();
+    });
   return async function get(presentationId, slideIndex) {
     const key = `${presentationId}:${slideIndex}`;
     if (cache.has(key)) {
@@ -34,7 +63,17 @@ export function createThumbCache(fetchThumb, { max = 120 } = {}) {
       return hit;
     }
     if (inflight.has(key)) return inflight.get(key);
-    const p = fetchThumb(presentationId, slideIndex)
+    // A picture already on disk is a local read: taken before the queue, so
+    // it never waits for a render slot or counts toward maxQueued.
+    const fromDisk = stored ? await stored(presentationId, slideIndex) : null;
+    if (fromDisk) {
+      cache.set(key, fromDisk);
+      while (cache.size > max) cache.delete(cache.keys().next().value);
+      return fromDisk;
+    }
+    if (inflight.has(key)) return inflight.get(key);
+    if (queue.length >= maxQueued) return null;
+    const p = limited(() => fetchThumb(presentationId, slideIndex))
       .then((img) => {
         if (img) {
           cache.set(key, img);

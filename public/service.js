@@ -308,7 +308,9 @@ export function initService() {
       : "";
     note.textContent = paceNote(data);
     const due = document.getElementById("service-due");
-    if (due) due.innerHTML = renderChecksDueHtml(data.checksDue);
+    // ProPresenter's own load, when it's heavy: the Service screen is where
+    // someone decides whether there's time to restart it before the next one.
+    if (due) due.innerHTML = (data.propresenterLoad ? `<div class="text-sm rf-flag mb-2" role="status">${escapeHtml(data.propresenterLoad.message)}</div>` : "") + renderChecksDueHtml(data.checksDue);
     const cl = document.getElementById("service-checklist");
     if (cl) cl.innerHTML = renderChecklistHtml(data.checklist) + (data.phaseProblems?.length ? `<div class="text-xs opacity-70">${escapeHtml(data.phaseProblems.join(" "))}</div>` : "");
     const end = document.getElementById("service-end");

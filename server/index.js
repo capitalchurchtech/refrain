@@ -5,11 +5,14 @@
  * Step 0 is verifying ProPresenter API capabilities against your
  * actual installed version before relying on anything below.
  */
+// First, so every line after it carries a timestamp.
+import "./log-stamp.js";
 import { readFileSync, existsSync, statSync } from "node:fs";
-import { copyFile, readdir, mkdir, stat, readFile, chmod } from "node:fs/promises";
+import { copyFile, readdir, mkdir, stat, readFile, chmod, appendFile, rm as rmPath } from "node:fs/promises";
 import { exec, execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { platform, homedir, networkInterfaces } from "node:os";
+import { platform, homedir, networkInterfaces, totalmem } from "node:os";
+import { monitorEventLoopDelay } from "node:perf_hooks";
 import path from "node:path";
 
 const execFileAsync = promisify(execFile);
@@ -33,7 +36,8 @@ import {
   ensureMachineId,
   readConfigFileRaw,
 } from "./config.js";
-import { ProPresenterClient } from "./propresenter-client.js";
+import { ProPresenterClient, onProPresenterCall } from "./propresenter-client.js";
+import { classifyCall, createCallStats, createAskedCounter, parseProPresenterPs, propresenterLoadNotice, formatServiceLine } from "./service-log.js";
 import { scanForProPresenter } from "./propresenter-scan.js";
 import {
   buildFindings,
@@ -82,8 +86,9 @@ import {
   armManually,
   disarmManually,
   describe as describePerformance,
+  transitionReason as performanceTransitionReason,
 } from "./performance-mode.js";
-import { resolveArrangement, flattenGroups, findLiveIndex, parseSlideIndex } from "./arrangements.js";
+import { resolveArrangement, flattenGroups, findLiveIndex, parseSlideIndex, preferredNotSelected, selectedIsPreferred } from "./arrangements.js";
 import { pushLiveItem, findReturnEntry } from "./return-history.js";
 import { checkLibrarySafeToTouch, shouldAutoRunLibrarySync } from "./library-guard.js";
 import { scanOrphanedMedia, resolveMediaPath, workspaceRootsFromLibraryDirs } from "./orphaned-media.js";
@@ -105,6 +110,7 @@ import { heartbeatInterval } from "./heartbeat-pacing.js";
 import QRCode from "qrcode";
 import { emptyRegistry, seeDevice, setApproved, removeDevice, isApproved, isRemoved, deviceList, loadRegistry, saveRegistry } from "./remote-devices.js";
 import { previewTargets, createThumbCache } from "./slide-preview.js";
+import { createThumbStore } from "./thumb-store.js";
 import { crossSiteRefused } from "./request-guard.js";
 import { markHidden, setHidden, isControlId, rememberValues } from "./live-visibility.js";
 import { safeSlides, addSafeSlide, removeSafeSlide, renameSafeSlide, moveSafeSlide } from "./safe-slides.js";
@@ -771,10 +777,86 @@ let rebuildStopRequested = false;
  */
 function startRebuild({ incremental = false, operatorInitiated = false } = {}) {
   rebuildStopRequested = false;
-  return rebuildIndex(client, config.librarySync, preferredArrangements(), {
+  const started = Date.now();
+  diag("index-start", { incremental, operatorInitiated, performance: { armed: performance.armed, source: performance.source } });
+  const run = rebuildIndex(client, config.librarySync, preferredArrangements(), {
     incremental,
-    shouldStop: operatorInitiated ? () => rebuildStopRequested : () => rebuildStopRequested || frozen(),
+    // An operator's run still stands down when content goes live or
+    // performance mode is switched on by hand: pressing Refresh at 07:38 is
+    // not consent to crawl through the service (issue #13: it did). It
+    // ignores only the "not answering" arm, which a crawl ProPresenter is
+    // too busy to answer would otherwise trip on itself.
+    shouldStop: operatorInitiated
+      ? () => rebuildStopRequested || (performance.armed && performance.source !== "unknown")
+      : () => rebuildStopRequested || frozen(),
   });
+  run.then(
+    (index) => diag("index-end", { ms: Date.now() - started, mode: index?.buildMode, attempted: index?.reindexAttempted, completed: index?.reindexCompleted, partial: index?.partial ?? null }),
+    (err) => diag("index-end", { ms: Date.now() - started, error: err?.message })
+  );
+  return run;
+}
+
+/**
+ * Why an operator's index run can't start now, or null. Refused up front
+ * rather than started and stopped, and in words: performance mode is on, or
+ * ProPresenter only just launched and is still busy loading (issue #11: a
+ * crawl started at 113% CPU three minutes after launch).
+ */
+async function operatorIndexRefusal() {
+  if (performance.armed && performance.source !== "unknown") {
+    return `Performance mode is on: ${describePerformance(performance)} The index won't run now; it catches up on its own after an hour with nothing on the screens.`;
+  }
+  // Performance mode arms after two minutes of content, so just after a
+  // restart it can be off with a service on the screens.
+  if (liveState.live) return "Something is on the screens, so the index won't run now: each presentation it reads makes ProPresenter wait. Run it when nothing is live.";
+  const readyFor = await propresenterReadyForMs();
+  if (readyFor != null && readyFor < WATCH_SETTLE_MS) {
+    const wait = Math.max(1, Math.ceil((WATCH_SETTLE_MS - readyFor) / 60_000));
+    return `ProPresenter started ${Math.round(readyFor / 1000)}s ago and is still loading. Try again in about ${wait} min.`;
+  }
+  return null;
+}
+
+// Refrain's own catch-up: the only time it starts an index run unasked,
+// besides the watcher's handful of edited files. Not when performance mode
+// ends, which on a Sunday is the moment ProPresenter launches (issue #11),
+// but after an hour with nothing on the screens, outside any service window,
+// with ProPresenter settled. A stale index that stays stale until the
+// afternoon is a far smaller problem than a sluggish ProPresenter at setup.
+const QUIET_CATCHUP_MS = 60 * 60_000;
+let performanceOffSince = Date.now();
+let catchUpCheckedAt = 0;
+// After a catch-up that didn't finish (ProPresenter stopped answering, or it
+// was stood down), wait this long before trying again rather than asking a
+// struggling ProPresenter for the library every minute.
+const CATCHUP_RETRY_MS = 3 * 3_600_000;
+let catchUpNotBefore = 0;
+// Not tied to autoReindex, which is about the file watcher: a stale or
+// older-schema index was always caught up at boot whatever that says, and this
+// is where that now happens.
+async function maybeCatchUpIndex(now = Date.now()) {
+  if (now - catchUpCheckedAt < 60_000 || now < catchUpNotBefore) return;
+  catchUpCheckedAt = now;
+  if (frozen() || liveState.live || holdHeartbeatPace(now) || getRebuildProgress().inProgress) return;
+  if (performanceOffSince == null || now - performanceOffSince < QUIET_CATCHUP_MS) return;
+  if (!shouldAutoRebuild(getIndex())) return;
+  const readyFor = await propresenterReadyForMs();
+  if (readyFor == null || readyFor < WATCH_SETTLE_MS) return;
+  indexWorkDeferred = null;
+  console.log("Nothing has been on the screens for an hour: catching the search index up now.");
+  startRebuild({ incremental: true })
+    .then((index) => {
+      if (index?.partial) {
+        catchUpNotBefore = Date.now() + CATCHUP_RETRY_MS;
+        console.log(`The catch-up didn't finish (${index.partial.read} of ${index.partial.of}). Trying again in ${CATCHUP_RETRY_MS / 3_600_000} hours, or press Refresh.`);
+      }
+      startWatching();
+    })
+    .catch((err) => {
+      catchUpNotBefore = Date.now() + CATCHUP_RETRY_MS;
+      console.error("Catch-up reindex failed:", err.message);
+    });
 }
 
 /**
@@ -785,6 +867,13 @@ function startRebuild({ incremental = false, operatorInitiated = false } = {}) {
  * answer, and it is right about Wednesday evenings and empty Saturdays alike.
  */
 let performance = initialPerformanceState();
+// Every change of performance mode goes through here, so the quiet timers
+// (index catch-up, slide pictures) see a lock-in or a manual arm ending, not
+// only the heartbeat's own transitions.
+function setPerformance(next, now = Date.now()) {
+  if (next.armed !== performance.armed) performanceOffSince = next.armed ? null : now;
+  performance = next;
+}
 let heartbeatTimer = null;
 
 /**
@@ -936,20 +1025,141 @@ function notePhoneAction(entry) {
 }
 
 // Pictures of slides, for the current/next previews (server/slide-preview.js).
-const slideThumb = createThumbCache((pid, idx) => client.getSlideThumbnail(pid, idx));
+// Pictures rendered ahead of time come off disk; anything else is asked of
+// ProPresenter (at most two at once, see slide-preview.js) and kept for next
+// time. Keyed to the index fingerprint, so an edited presentation re-renders.
+const thumbStore = createThumbStore({ dir: "./data/slide-pictures" });
+const pictureFingerprint = (pid) => getIndex().presentations?.[pid]?.fingerprint ?? null;
+const slideThumb = createThumbCache(
+  async (pid, idx) => {
+    const img = await client.getSlideThumbnail(pid, idx);
+    const fp = pictureFingerprint(pid);
+    if (img && fp) thumbStore.put(pid, idx, fp, img).catch(() => {});
+    return img;
+  },
+  // Checked before a picture waits for one of the two ProPresenter slots:
+  // a stored one is a disk read, and shouldn't queue behind renders.
+  { stored: (pid, idx) => thumbStore.get(pid, idx, pictureFingerprint(pid)).catch(() => null) }
+);
+// The store's size cap is kept whether or not pre-rendering is on.
+setInterval(() => thumbStore.prune().catch(() => {}), 3_600_000).unref();
+
+// --- Slide pictures ahead of the service (owner request, 2026-09-27) ---------
+// Today's service playlists, plus any named in config `slidePictures.playlists`,
+// rendered one picture at a time while nothing is on the screens and no
+// service window is open. **Off unless `slidePictures.prerender` is true**:
+// ProPresenter keeps ~1-2 MB for every slide it draws until it restarts, so
+// rendering ahead only pays when ProPresenter is restarted before the service
+// (rendered the day before, say). The disk store works either way. It stops the moment either changes. Sunday morning
+// is usually live from the first slide, so in practice this runs the day
+// before or between services, which is when the work belongs.
+const PRERENDER_CHECK_MS = 5 * 60_000;
+const PRERENDER_PACING_MS = 100;
+let prerenderRunning = false;
+let prerenderCheckedAt = 0;
+let slidePicturesStatus = { lastRunAt: null, presentations: 0, ready: 0, rendered: 0, stopped: false };
+async function prerenderTargets() {
+  const ids = new Map();
+  if (serviceModuleOn() && serviceDay.day) {
+    for (const s of serviceState().services) for (const it of s.playlist?.items ?? []) if (it.presentationId) ids.set(it.presentationId, it.name);
+  }
+  const pinned = Array.isArray(config.slidePictures?.playlists) ? config.slidePictures.playlists : [];
+  if (pinned.length) {
+    const all = flattenPlaylists(await client.getPlaylists());
+    for (const want of pinned) {
+      const pl = all.find((p) => p.id === want || String(p.name ?? "").toLowerCase() === String(want).toLowerCase());
+      if (!pl) continue;
+      const { items } = await client.getPlaylistItems(pl.id);
+      for (const it of items) if (it.id) ids.set(it.id, it.name);
+    }
+  }
+  return ids;
+}
+// Quiet means nothing on the screens right now, performance mode off for 10
+// minutes (it only arms after 2 minutes of content, so just after a restart
+// mid-service it is still off), no service window, and no index run.
+const PRERENDER_QUIET_MS = 10 * 60_000;
+const quietForPictures = (now = Date.now()) =>
+  !frozen() &&
+  !liveState.live &&
+  performanceOffSince != null &&
+  now - performanceOffSince >= PRERENDER_QUIET_MS &&
+  !holdHeartbeatPace(now) &&
+  !getRebuildProgress().inProgress;
+async function maybePrerender(now = Date.now()) {
+  if (now - prerenderCheckedAt < PRERENDER_CHECK_MS) return;
+  prerenderCheckedAt = now;
+  if (config.slidePictures?.prerender !== true || prerenderRunning || !quietForPictures(now) || !client.isLocalHost) return;
+  const readyFor = await propresenterReadyForMs();
+  if (readyFor == null || readyFor < WATCH_SETTLE_MS) return;
+  prerenderRunning = true;
+  const started = Date.now();
+  let rendered = 0;
+  let ready = 0;
+  let stopped = false;
+  let targets = new Map();
+  try {
+    targets = await prerenderTargets();
+    for (const [pid] of targets) {
+      const entry = getIndex().presentations?.[pid];
+      const fp = entry?.fingerprint;
+      const count = Math.min(entry?.slides?.length ?? 0, 300);
+      if (!fp || !count) continue;
+      if (await thumbStore.complete(pid, fp, count)) {
+        ready += count;
+        continue;
+      }
+      for (let i = 0; i < count; i++) {
+        if (!quietForPictures()) {
+          stopped = true;
+          break;
+        }
+        if (await thumbStore.get(pid, i, fp)) {
+          ready += 1;
+          continue;
+        }
+        const img = await client.getSlideThumbnail(pid, i).catch(() => null);
+        if (img) {
+          await thumbStore.put(pid, i, fp, img);
+          rendered += 1;
+          ready += 1;
+        }
+        await new Promise((r) => setTimeout(r, PRERENDER_PACING_MS));
+      }
+      if (stopped) break;
+    }
+    await thumbStore.prune();
+  } catch (err) {
+    console.log(`Slide pictures: couldn't finish (${err.message}).`);
+  } finally {
+    prerenderRunning = false;
+    slidePicturesStatus = { lastRunAt: new Date().toISOString(), presentations: targets.size, ready, rendered, stopped };
+    if (rendered || stopped) {
+      console.log(
+        `Slide pictures: rendered ${rendered} ahead of time in ${((Date.now() - started) / 1000).toFixed(0)}s; ${ready} ready across ${targets.size} presentation(s) in today's playlists${stopped ? ". Stopped: something went on the screens" : ""}.`
+      );
+    }
+  }
+}
 /**
  * How many slides a presentation has, for one the index doesn't know (not in
  * a searched library). Asked of ProPresenter once per presentation, then
  * remembered; until it answers, the slides up to the live one are listed.
  */
 const slideCountCache = new Map();
+// One document read at a time, whatever the phones ask for: it's the heaviest
+// call Refrain makes during a service, so a deck change with several phones
+// open costs one read, not one per phone.
+let slideCountInFlight = false;
 function learnSlideCount(presentationId) {
-  if (slideCountCache.has(presentationId)) return;
+  if (slideCountCache.has(presentationId) || slideCountInFlight) return;
+  slideCountInFlight = true;
   slideCountCache.set(presentationId, null);
   client
     .getPresentation(presentationId)
     .then((doc) => slideCountCache.set(presentationId, flattenGroups(resolveArrangement(doc, []).groups).length))
-    .catch(() => slideCountCache.delete(presentationId));
+    .catch(() => slideCountCache.delete(presentationId))
+    .finally(() => (slideCountInFlight = false));
 }
 
 /** Every slide of the presentation on the screens, words from the index. At most 300. */
@@ -1001,6 +1211,7 @@ function startRemoteListener() {
     search: (q) => search({ query: q }),
     presentationName: (pid) => getIndex().presentations?.[pid]?.name ?? null,
     currentSlides,
+    noteActivity: noteClientActivity,
     preview: currentPreview,
     thumb: slideThumb,
     safeSlides: () => safeSlides(config.liveModule?.safeSlides),
@@ -1233,16 +1444,160 @@ async function heartbeat() {
     });
   }
 
-  const was = performance.armed;
-  performance = advancePerformance({ state: performance, layers, now });
-  if (performance.armed !== was) {
-    console.log(`Performance mode ${performance.armed ? "ON" : "OFF"} — ${describePerformance(performance)}`);
+  const before = performance;
+  setPerformance(advancePerformance({ state: performance, layers, now }), now);
+  if (performance.armed !== before.armed) {
+    console.log(`Performance mode ${performance.armed ? "ON" : "OFF"} — ${performanceTransitionReason(before, performance)}`);
+    diag("performance", { armed: performance.armed, source: performance.source, reason: performanceTransitionReason(before, performance) });
   }
+  maybeCatchUpIndex(now).catch(() => {});
+  maybePrerender(now).catch(() => {});
   return performance;
 }
 
 // Kept as the old name so the boot path reads the same.
 const pollPerformance = heartbeat;
+
+// --- Service log (issue #13; server/service-log.js) ---------------------------
+// One line a minute while a service holds the pace or performance mode is on,
+// every 30 minutes otherwise, and a line at once for anything slow. Local log
+// only; nothing leaves the machine.
+const SLOW_BEAT_MS = 2000;
+const SLOW_CALL_MS = 3000;
+const STALL_MS = 500;
+const SERVICE_LOG_MS = 60_000;
+const IDLE_LOG_EVERY = 30; // minutes
+const callStats = createCallStats();
+const askedOfProPresenter = createAskedCounter();
+const slowCallSaidAt = new Map();
+
+// The diagnostics file: one JSON line a minute, always, plus one per notable
+// event, in data/diagnostics/YYYY-MM-DD.jsonl, kept 14 days. The text log is
+// for reading; this is for lining up a bad Sunday against a good one. Local
+// only, never sent anywhere. Appends only, so nothing here can lose anything.
+const DIAGNOSTICS_DIR = "./data/diagnostics";
+const DIAGNOSTICS_KEEP_DAYS = 14;
+let diagnosticsDirReady = false;
+function diag(event, data = {}) {
+  const now = new Date();
+  const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const line = JSON.stringify({ t: now.toISOString(), event, ...data }) + "\n";
+  (diagnosticsDirReady ? Promise.resolve() : mkdir(DIAGNOSTICS_DIR, { recursive: true }).then(() => (diagnosticsDirReady = true)))
+    .then(() => appendFile(path.join(DIAGNOSTICS_DIR, `${day}.jsonl`), line))
+    .catch(() => {});
+}
+async function pruneDiagnostics(now = Date.now()) {
+  try {
+    for (const name of await readdir(DIAGNOSTICS_DIR)) {
+      const m = name.match(/^(\d{4}-\d{2}-\d{2})\.jsonl$/);
+      if (m && now - new Date(`${m[1]}T12:00:00`).getTime() > DIAGNOSTICS_KEEP_DAYS * 86_400_000) await rmPath(path.join(DIAGNOSTICS_DIR, name), { force: true });
+    }
+  } catch {
+    /* nothing to prune */
+  }
+}
+setTimeout(() => pruneDiagnostics(), 30_000).unref();
+setInterval(() => pruneDiagnostics(), 86_400_000).unref();
+
+onProPresenterCall(({ path: p, ms, ok, timedOut }) => {
+  const kind = classifyCall(p);
+  callStats.record({ kind, ms, ok, timedOut });
+  if (ok) askedOfProPresenter.note(p);
+  if (ms >= SLOW_CALL_MS || timedOut) {
+    diag("slow-call", { kind, path: p, ms: Math.round(ms), ok, timedOut });
+    const last = slowCallSaidAt.get(kind) ?? 0;
+    if (Date.now() - last > 30_000) {
+      slowCallSaidAt.set(kind, Date.now());
+      console.log(`Slow ProPresenter call: ${kind} ${p} took ${(ms / 1000).toFixed(1)}s${timedOut ? " and timed out" : ok ? "" : " and failed"}.`);
+    }
+  }
+});
+const loopDelay = monitorEventLoopDelay({ resolution: 20 });
+loopDelay.enable();
+// A stall is Refrain's own thread not getting back to its timers: whatever it
+// was doing held up the heartbeat, Go Live and phone presses alike.
+let stallTickAt = Date.now();
+setInterval(() => {
+  const late = Date.now() - stallTickAt - 250;
+  if (late > STALL_MS) {
+    console.log(`Refrain was stalled for ${late}ms${getRebuildProgress().inProgress ? " (while indexing)" : ""}.`);
+    diag("stall", { ms: late, indexing: getRebuildProgress().inProgress });
+  }
+  stallTickAt = Date.now();
+}, 250).unref();
+const propresenterSamples = [];
+let propresenterLoad = null;
+let lastCpu = process.cpuUsage();
+let lastCpuAt = Date.now();
+let minutesSinceLine = 0;
+async function sampleProPresenter() {
+  if (!client.isLocalHost || platform() === "win32") return null;
+  try {
+    const { stdout } = await execFileAsync("ps", ["-Ao", "pid,%cpu,rss,comm"], { timeout: 5000, maxBuffer: 4 * 1024 * 1024 });
+    return parseProPresenterPs(stdout);
+  } catch {
+    return null;
+  }
+}
+async function serviceLogTick() {
+  const pp = await sampleProPresenter();
+  if (pp) askedOfProPresenter.seen(pp.pid);
+  propresenterSamples.push(pp);
+  if (propresenterSamples.length > 10) propresenterSamples.shift();
+  const asked = askedOfProPresenter.counts();
+  const notice = propresenterLoadNotice(propresenterSamples, Math.round(totalmem() / 1024 / 1024), { asked });
+  if (notice?.message !== propresenterLoad?.message && notice) {
+    console.log(`Heads up: ${notice.message}`);
+    diag("load-notice", notice);
+  }
+  propresenterLoad = notice;
+
+  const now = Date.now();
+  const cpu = process.cpuUsage(lastCpu);
+  const refrainCpu = ((cpu.user + cpu.system) / 1000 / (now - lastCpuAt)) * 100;
+  lastCpu = process.cpuUsage();
+  lastCpuAt = now;
+  const calls = callStats.take();
+  const loopMaxMs = loopDelay.max / 1e6;
+  const loopP99Ms = loopDelay.percentile(99) / 1e6;
+  loopDelay.reset();
+
+  const inService = holdHeartbeatPace(now) || performance.armed;
+  const run = getRebuildProgress();
+  const refrainSample = { cpu: Math.round(refrainCpu * 10) / 10, rssMB: Math.round(process.memoryUsage().rss / 1024 / 1024), loopMaxMs: Math.round(loopMaxMs), loopP99Ms: Math.round(loopP99Ms) };
+  const paceMs = heartbeatInterval({ lastClientAt, hold: holdHeartbeatPace(now) });
+  diag("minute", {
+    inService,
+    paceMs,
+    live: liveState.live,
+    connected: liveState.connected,
+    performance: { armed: performance.armed, source: performance.source },
+    calls: Object.fromEntries(Object.entries(calls).map(([k, v]) => [k, { ...v, totalMs: Math.round(v.totalMs), maxMs: Math.round(v.maxMs) }])),
+    refrain: refrainSample,
+    propresenter: pp,
+    asked,
+    index: run.inProgress ? { current: run.current, total: run.total } : null,
+  });
+  minutesSinceLine += 1;
+  if (!inService && minutesSinceLine < IDLE_LOG_EVERY) return;
+  minutesSinceLine = 0;
+  console.log(
+    formatServiceLine({
+      why: inService ? (performance.armed ? "performance mode" : "service") : "idle, every 30 min",
+      paceMs,
+      calls,
+      refrain: refrainSample,
+      propresenter: pp,
+      performance,
+      index: run.inProgress ? `${run.current}/${run.total}` : null,
+      asked: pp ? asked : null,
+    })
+  );
+}
+setInterval(() => serviceLogTick().catch(() => {}), SERVICE_LOG_MS).unref();
+// One sample soon after start, so Health has ProPresenter's numbers before
+// the first minute is up. Not logged: the minute line needs a minute of calls.
+setTimeout(() => sampleProPresenter().then((pp) => pp && propresenterSamples.push(pp)).catch(() => {}), 5000).unref();
 
 function startPerformancePolling() {
   clearTimeout(heartbeatTimer);
@@ -1253,7 +1608,13 @@ function startPerformancePolling() {
     if (beating) return; // one at a time; the scheduled one reschedules itself
     beating = true;
     clearTimeout(heartbeatTimer);
+    const beatStarted = Date.now();
     await heartbeat().catch(() => {});
+    const beatMs = Date.now() - beatStarted;
+    if (beatMs > SLOW_BEAT_MS) {
+      console.log(`Slow check: asking ProPresenter what's on screen took ${(beatMs / 1000).toFixed(1)}s.`);
+      diag("slow-beat", { ms: beatMs });
+    }
     beating = false;
     const next = heartbeatInterval({ lastClientAt, hold: holdHeartbeatPace() });
     scheduledFor = Date.now() + next;
@@ -1530,8 +1891,21 @@ function indexStatusPayload() {
       ? (libraryWatch?.status() ?? { watching: 0, outcome: "not started", pending: null })
       : null,
     presentationCount: Object.keys(index.presentations).length,
-    rebuild: getRebuildProgress(),
+    rebuild: rebuildProjection(getRebuildProgress()),
+    partial: index.partial ?? null,
   };
+}
+
+/**
+ * The run in progress, with its own rate and time left. Health once showed
+ * the last run's duration (24 min) beside a crawl that was going to take four,
+ * and the morning's decisions followed the wrong number (issue #13).
+ */
+function rebuildProjection(p, now = Date.now()) {
+  if (!p.inProgress || !p.startedAt) return p;
+  const elapsedMs = now - p.startedAt;
+  const perSec = p.current > 0 ? p.current / (elapsedMs / 1000) : null;
+  return { ...p, elapsedMs, perSec, etaMs: perSec ? Math.round(((p.total - p.current) / perSec) * 1000) : null };
 }
 
 app.get("/api/propresenter/status", async (_req, res) => {
@@ -1620,6 +1994,8 @@ app.post("/api/theme-report", async (_req, res) => {
 });
 
 app.post("/api/orphaned-media/scan", async (_req, res) => {
+  // Reads the whole library into memory; the same hold as the theme report.
+  if (performance.armed) return res.status(409).json({ ok: false, error: "Performance mode is on, so Refrain is holding still. Run this when nothing is live." });
   if (orphanedMediaInFlight) {
     return res.status(409).json({ error: "A scan is already running. Wait for it to finish." });
   }
@@ -1742,6 +2118,8 @@ app.post("/api/index/stop", (_req, res) => {
 });
 
 app.post("/api/index/rebuild", async (_req, res) => {
+  const refusal = await operatorIndexRefusal();
+  if (refusal) return res.status(409).json({ error: refusal });
   try {
     indexWorkDeferred = null; // the operator has taken it in hand
     const index = await startRebuild({ operatorInitiated: true });
@@ -1758,6 +2136,8 @@ app.post("/api/index/rebuild", async (_req, res) => {
 // the response says which happened so the operator isn't surprised by an
 // hour-long crawl they didn't ask for.
 app.post("/api/index/reindex-changed", async (_req, res) => {
+  const refusal = await operatorIndexRefusal();
+  if (refusal) return res.status(409).json({ error: refusal });
   try {
     indexWorkDeferred = null; // the operator has taken it in hand
     const index = await startRebuild({ incremental: true, operatorInitiated: true });
@@ -1955,7 +2335,7 @@ app.get("/api/service/day", async (_req, res) => {
   noteClientActivity();
   if (!requireServiceModule(res)) return;
   await ensureServiceDay();
-  res.json(servicePayload());
+  res.json({ ...servicePayload(), propresenterLoad });
 });
 
 /** Adds a service for today: a name, and optionally a time and a playlist. */
@@ -2015,7 +2395,7 @@ app.post("/api/service/lockin", async (req, res) => {
   // Remember whether lock-in is the reason performance mode is on, so release
   // turns off only what lock-in turned on.
   const armedPerformance = !(performance.armed && performance.source === "manual");
-  if (armedPerformance) performance = armManually(performance, now);
+  if (armedPerformance) setPerformance(armManually(performance, now), now);
   recordServiceEvents([added, buildEvent("lockin-started", { serviceId: newServiceId(added), name, armedPerformance }, { now: now + 1 })]);
   console.log(`Locked in for "${name}". Performance mode on by hand until released.`);
   res.json({ ok: true, ...servicePayload() });
@@ -2029,7 +2409,7 @@ app.post("/api/service/lockin/release", async (_req, res) => {
   const now = Date.now();
   recordServiceEvents([buildEvent("lockin-released", { serviceId: lockin.serviceId }, { now })]);
   if (lockin.armedPerformance && performance.armed && performance.source === "manual") {
-    performance = disarmManually(performance, now);
+    setPerformance(disarmManually(performance, now), now);
   }
   console.log(`Released lock-in "${lockin.name}".`);
   res.json({ ok: true, ...servicePayload() });
@@ -2092,7 +2472,7 @@ app.post("/api/service/end-day", async (_req, res) => {
   }
   if (state.lockin) {
     closing.push(buildEvent("lockin-released", { serviceId: state.lockin.serviceId }, { now }));
-    if (state.lockin.armedPerformance && performance.armed && performance.source === "manual") performance = disarmManually(performance, now);
+    if (state.lockin.armedPerformance && performance.armed && performance.source === "manual") setPerformance(disarmManually(performance, now), now);
   }
   if (closing.length) recordServiceEvents(closing);
   state = serviceState(now);
@@ -2324,7 +2704,7 @@ app.post("/api/performance-mode", (req, res) => {
   if (typeof armed !== "boolean") {
     return res.status(400).json({ error: "armed must be true or false" });
   }
-  performance = armed ? armManually(performance, Date.now()) : disarmManually(performance, Date.now());
+  setPerformance(armed ? armManually(performance, Date.now()) : disarmManually(performance, Date.now()));
   console.log(`Performance mode ${armed ? "ON" : "OFF"} (by hand) — ${describePerformance(performance)}`);
   res.json({
     armed: performance.armed,
@@ -2547,6 +2927,69 @@ app.post("/api/trigger", async (req, res) => {
     res.json(out);
   } catch (err) {
     res.status(502).json({ error: err.message });
+  }
+});
+
+/**
+ * Presentations whose preferred arrangement (FS, say) exists but isn't the
+ * one selected (handoff §38). Answered from the index where it recorded the
+ * selected arrangement (every presentation read since this was added). Any
+ * others are read through ProPresenter, at most PREFERRED_READS_PER_PRESS per
+ * press, paced, and never during performance mode, with something on the
+ * screens, in a service window, or beside an index run: each read costs
+ * ProPresenter ~10 MB it keeps until it restarts, and in a church that uses
+ * FS as standard the candidates can be most of the library.
+ */
+const PREFERRED_READS_PER_PRESS = 40;
+let preferredReportRunning = false;
+app.post("/api/index/preferred-arrangements", async (_req, res) => {
+  const preferred = preferredArrangements();
+  if (!preferred.length) return res.status(409).json({ error: "No preferred arrangement is set (preferredArrangements in config.json)." });
+  if (preferredReportRunning) return res.status(409).json({ error: "Already checking." });
+  const candidates = Object.entries(getIndex().presentations ?? {}).filter(([, p]) => p.arrangementSource === "preferred");
+  const known = candidates.filter(([, p]) => p.selectedArrangementId !== undefined);
+  const unknown = candidates.filter(([, p]) => p.selectedArrangementId === undefined);
+  const busy = () =>
+    frozen()
+      ? `Performance mode is on, so Refrain is holding still. ${describePerformance(performance)}`
+      : liveState.live
+        ? "Something is on the screens. Check when nothing is live: each read makes ProPresenter wait."
+        : holdHeartbeatPace()
+          ? "A service window is open. Check outside it."
+          : getRebuildProgress().inProgress
+            ? "The index is being rebuilt. Check once it finishes."
+            : null;
+  if (unknown.length && busy()) return res.status(409).json({ error: busy() });
+  preferredReportRunning = true;
+  try {
+    const entry = (id, p, hit) => ({ presentationId: id, name: p.name ?? "Untitled", folder: p.folder ?? null, ...hit });
+    const notSelected = [];
+    for (const [id, p] of known) {
+      if (p.selectedArrangementId !== p.arrangementId && !selectedIsPreferred(p.selectedArrangementName, preferred)) {
+        notSelected.push(entry(id, p, { preferredName: p.arrangementName, selectedName: p.selectedArrangementName }));
+      }
+    }
+    let read = 0;
+    let unread = 0;
+    let stopped = false;
+    for (const [id, p] of unknown.slice(0, PREFERRED_READS_PER_PRESS)) {
+      if (busy()) {
+        stopped = true;
+        break;
+      }
+      try {
+        const hit = preferredNotSelected(await client.getPresentation(id), preferred);
+        if (hit) notSelected.push(entry(id, p, hit));
+      } catch {
+        unread += 1;
+      }
+      read += 1;
+      await new Promise((r) => setTimeout(r, 120));
+    }
+    notSelected.sort((a, b) => a.name.localeCompare(b.name));
+    res.json({ checked: known.length + read - unread, unread, remaining: unknown.length - read, stopped, notSelected });
+  } finally {
+    preferredReportRunning = false;
   }
 });
 
@@ -3371,7 +3814,11 @@ async function scanPlaylist(playlistId) {
       const proPath = doc?.presentation?.presentation_path;
       if (proPath) {
         try {
-          missingMedia = missingMediaBySlide(await readFile(proPath), mediaEnv);
+          const bytes = await readFile(proPath);
+          // The decode is synchronous; give waiting requests (a heartbeat,
+          // a Go Live) their turn before each file, not after all of them.
+          await new Promise((r) => setImmediate(r));
+          missingMedia = missingMediaBySlide(bytes, mediaEnv);
         } catch {
           // Counted, not hidden: "no missing media" and "could not look"
           // must never read the same.
@@ -3410,6 +3857,9 @@ async function scanPlaylist(playlistId) {
 }
 
 app.post("/api/spellcheck/scan", async (req, res) => {
+  // Reads and decodes up to 120 presentation files on the thread that also
+  // runs the heartbeat, Go Live and phone confirms: not during a service.
+  if (performance.armed) return res.status(409).json({ error: "Performance mode is on, so Refrain is holding still. Run this when nothing is live." });
   const { playlistId } = req.body ?? {};
   if (!playlistId) return res.status(400).json({ error: "playlistId is required" });
   try {
@@ -4519,9 +4969,15 @@ app.get("/api/health", async (_req, res) => {
     };
   }
 
+  // ProPresenter's own process, from the service log's last sample: its load
+  // is the thing to watch on a long service day, and only this machine sees it.
+  propresenter.process = propresenterSamples.at(-1) ?? null;
+  propresenter.load = propresenterLoad;
+  propresenter.slidePictures = slidePicturesStatus;
   res.json({
     version,
     role: config.role ?? null,
+    preferredArrangements: preferredArrangements(),
     propresenter,
     index: indexStatusPayload(),
     // Where Refrain actually lives and which port it answers on, so the
@@ -4737,16 +5193,13 @@ const server = app.listen(port, "127.0.0.1", async () => {
       }
     }
   } else if (shouldAutoRebuild(existing)) {
-    if (frozen()) {
-      indexWorkDeferred = "performance mode is on";
-      console.log(`Cached index is stale, but performance mode is on — not reindexing. ${describePerformance(performance)}`);
-      console.log("The existing index still works; it will catch up once performance mode ends.");
-    } else {
-      console.log("Cached index is stale (older than a day, or built by a previous version) — reindexing changed presentations in background...");
-      startRebuild({ incremental: true })
-        .then(startWatching)
-        .catch((err) => console.error("Background rebuild failed:", err.message));
-    }
+    // Not straight away: a restart is often on a service morning, with
+    // ProPresenter just launched (issue #11). The quiet catch-up picks it up.
+    indexWorkDeferred = "the index is behind; it catches up after an hour with nothing on the screens, or press Refresh";
+    console.log(
+      `Loaded cached index (built ${existing.builtAt ?? "never completely"}${existing.partial ? `, ${existing.partial.read} of ${existing.partial.of} read before it stopped` : ""}). ` +
+        "It's behind; it still works, and it catches up after an hour with nothing on the screens, or when you press Refresh on Search."
+    );
   } else {
     console.log(`Loaded cached index (built ${existing.builtAt}, ${Object.keys(existing.presentations).length} presentations).`);
   }
@@ -4779,7 +5232,7 @@ const server = app.listen(port, "127.0.0.1", async () => {
       await loadServiceDay();
       const { lockin } = serviceState();
       if (lockin && !(performance.armed && performance.source === "manual")) {
-        performance = armManually(performance, Date.now());
+        setPerformance(armManually(performance, Date.now()));
         console.log(`Still locked in for "${lockin.name}" after the restart. Performance mode back on by hand.`);
       }
       const { folder } = serviceOptions();

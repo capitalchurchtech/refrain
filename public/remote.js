@@ -153,7 +153,16 @@ $("open-tray").addEventListener("click", () => {
     .join("");
   trayObserver?.disconnect();
   trayObserver = new IntersectionObserver((entries) => {
-    for (const e of entries) if (e.isIntersecting) { loadImage(e.target); trayObserver.unobserve(e.target); }
+    // Stop watching a picture only once it's in: one the booth refused
+    // (busy, or too many at once) is tried again when it scrolls back.
+    for (const e of entries) {
+      if (!e.isIntersecting || e.target.dataset.loading) continue;
+      e.target.dataset.loading = "1";
+      loadImage(e.target).then((ok) => {
+        delete e.target.dataset.loading;
+        if (ok) trayObserver?.unobserve(e.target);
+      });
+    }
   }, { root: $("tray-grid"), rootMargin: "200px" });
   $("tray-grid").querySelectorAll("img").forEach((img) => trayObserver.observe(img));
   $("tray-grid").querySelectorAll("[data-idx]").forEach((b) =>
@@ -286,12 +295,17 @@ async function paintPreview() {
     $("pv-next").classList.toggle("can-step", Boolean(state?.phone?.canControl && p.next));
   } catch { /* the readout says if the booth is away */ }
 }
+/** True once the picture is in; false leaves it blank for a later try. */
 async function loadImage(img) {
   const src = img.dataset.src;
   try {
     const res = await fetch(src, { headers: token ? { "x-refrain-device": token } : {} });
-    if (res.ok) img.src = URL.createObjectURL(await res.blob());
-  } catch { /* leave it blank */ }
+    if (!res.ok) return false;
+    img.src = URL.createObjectURL(await res.blob());
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // After a press, check every 0.4s for a few seconds instead of waiting for

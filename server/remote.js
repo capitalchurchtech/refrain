@@ -155,6 +155,7 @@ export function rateLimiter({ max = 20, windowMs = 60_000 } = {}) {
  * @param {{ expectedPin: () => string|null, secret: () => string, hint: () => string, daily: () => boolean }} deps.auth
  *   expectedPin is today's PIN (daily or fixed), or null for no PIN.
  * @param {(presentationId: string, slideIndex: number) => object|null} [deps.knownSlide]
+ * @param {() => void} [deps.noteActivity]  a phone is looking (keeps the heartbeat's active pace)
  *   the indexed slide, so a flag queued on a phone before a restart can still land
  * @param {{ blocked, fail, count }} [deps.pinGuard]  see pinFailureGuard
  * @param {object} [deps.devices]   { see(id, {name, signIn}), approved(id), removed(id), name(id) }
@@ -180,6 +181,7 @@ export function createRemoteApp({
   safeSlides = () => [],
   presentationName = () => null,
   currentSlides = () => null,
+  noteActivity = () => {},
   control = async () => {
     throw new Error("Control isn't available.");
   },
@@ -189,6 +191,9 @@ export function createRemoteApp({
   app.disable("x-powered-by");
   app.use(express.json({ limit: "8kb" }));
   const allow = rateLimiter();
+  // Pictures per phone: a whole tray scrolled end to end is ~30-60, so this
+  // only stops a runaway loop or a scripted flood, not a person.
+  const allowImage = rateLimiter({ max: 240, windowMs: 60_000 });
   // Five PIN tries a minute per device, and a daily cap across every device
   // (pinGuard). Four digits is the point, since it's read aloud across a room;
   // the cap, not the device limit, is what keeps guessing it unlikely.
@@ -198,6 +203,10 @@ export function createRemoteApp({
   // Open to anyone: the page, its script, and what the lock needs to say.
   const open = new Set(["/", "/remote.js", "/api/lock", "/api/unlock"]);
   app.use((req, res, next) => {
+    // A phone polling counts as someone watching, so the heartbeat keeps
+    // its active pace and what the phone shows (and confirms) is current,
+    // not up to 30s old when no booth browser is open.
+    if (req.path.startsWith("/api/") && !open.has(req.path)) noteActivity();
     if (!pinOn() || open.has(req.path)) return next();
     const id = tokenDevice(auth.secret(), req.get("x-refrain-device"));
     // A phone the booth removed is refused even with a valid token, until
@@ -309,6 +318,7 @@ export function createRemoteApp({
     // sees what each will put up.
     const aSafeSlide = safeSlides().some((x) => x.presentationId === req.params.pid && x.slideIndex === idx);
     if (!onScreenDeck && !aSafeSlide) return res.status(404).json({ error: "Only slides of the presentation on screen can be previewed." });
+    if (!allowImage(req.deviceId ?? req.ip)) return res.status(429).json({ error: "Too many pictures at once. Wait a moment." });
     const imgData = await thumb(req.params.pid, idx);
     if (!imgData) return res.status(404).json({ error: "No picture for that slide." });
     res.set("Cache-Control", "private, max-age=300").type(imgData.type).send(imgData.bytes);
