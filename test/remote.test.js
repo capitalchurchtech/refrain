@@ -192,6 +192,7 @@ import { emptyRegistry, seeDevice, setApproved, removeDevice, isApproved, isRemo
 function startControl() {
   let reg = emptyRegistry();
   const done = [];
+  const activity = { count: 0 };
   const app = createRemoteApp({
     getState: () => ({ liveState: { connected: true, live: true }, recent: [] }),
     saveFlag: async () => ({}),
@@ -207,11 +208,12 @@ function startControl() {
     thumb: async () => ({ type: "image/jpeg", bytes: Buffer.from("jpg") }),
     currentSlides: () => ({ presentationId: "H", presentationName: "Hymn", currentIndex: 2, slides: [0, 1, 2, 3, 4].map((i) => ({ slideIndex: i, text: `line ${i + 1}` })) }),
     safeSlides: () => [{ id: "logo", label: "Logo", presentationId: "LOGO", slideIndex: 0 }],
+    noteActivity: () => activity.count++,
     control: async (action, deviceId) => (done.push({ ...action, deviceId }), { label: action.label }),
   });
   return new Promise((resolve) => {
     const server = app.listen(0, "127.0.0.1", () =>
-      resolve({ server, base: `http://127.0.0.1:${server.address().port}`, done, approve: (id) => (reg = setApproved(reg, id, true)), remove: (id) => (reg = removeDevice(reg, id)), reg: () => reg })
+      resolve({ server, base: `http://127.0.0.1:${server.address().port}`, done, activity, approve: (id) => (reg = setApproved(reg, id, true)), remove: (id) => (reg = removeDevice(reg, id)), reg: () => reg })
     );
   });
 }
@@ -266,6 +268,7 @@ test("previews: words and pictures for the presentation on screen, and nothing e
     assert.equal((await flag({ presentationId: "H", slideIndex: 4 })).status, 200);
     assert.equal((await flag({ presentationId: "OTHER", slideIndex: 0 })).status, 404);
     assert.equal((await fetch(`${t.base}/api/preview`)).status, 401, "behind the PIN");
+    assert.ok(t.activity.count > 0, "a phone polling keeps the heartbeat at its active pace");
   } finally {
     t.server.close();
   }

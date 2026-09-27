@@ -135,6 +135,19 @@ export function disarmManually(state, now) {
 }
 
 /**
+ * Why it just changed, for the log. `describe` is for the banner, where off
+ * needs no words; a log line reading "Performance mode OFF — " with nothing
+ * after it read as Refrain contradicting itself (issue #11).
+ */
+export function transitionReason(prev, next, config = {}) {
+  if (next.armed) return describe(next);
+  const clearMin = Math.round((config.disarmAfterClearMs ?? PERFORMANCE_DEFAULTS.disarmAfterClearMs) / 60_000);
+  if (prev.source === "manual") return "Off by hand.";
+  if (prev.source === "unknown") return "ProPresenter is answering again, and nothing is on the screens.";
+  return `The screens have been clear for ${clearMin} minutes.`;
+}
+
+/**
  * A sentence saying what state it is in and why, for the banner.
  *
  * A mode that claims to be protecting you without saying how it decided is

@@ -13,6 +13,7 @@ import {
   carriedEntryFields,
   planIncremental,
   fingerprintTargets,
+  sameBuildOptions,
 } from "./index-fingerprint.js";
 
 const CACHE_DIR = "./cache";
@@ -279,6 +280,32 @@ export async function loadIndexFromDisk() {
   }
 }
 
+// How often a crawl saves what it has read so far.
+const CHECKPOINT_EVERY = 50;
+
+/** The fields every saved index carries besides builtAt and the entries. */
+function indexHeader({ currentIndex, plan, startedAt, libraryFolderIssues, crawlPlaylists, buildOptions, complete = false }) {
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    libraryFolderIssues,
+    // How long this run took. Named for what it is: Health once showed the
+    // 30 Aug run's 24 minutes as though it were the crawl in progress.
+    buildDurationMs: Date.now() - startedAt,
+    crawledPlaylists: crawlPlaylists,
+    // Recorded so the next incremental run can tell whether the settings
+    // that decide what an entry CONTAINS have changed since this build.
+    buildOptions,
+    buildMode: plan.mode,
+    // Only a complete full rebuild refreshes this. builtAt moves on every
+    // incremental run, so it cannot answer "when did we last read the whole
+    // library".
+    lastFullBuildAt:
+      plan.mode === "full" && complete
+        ? new Date().toISOString()
+        : (currentIndex?.lastFullBuildAt ?? currentIndex?.builtAt ?? null),
+  };
+}
+
 async function persistIndex(index) {
   await mkdir(CACHE_DIR, { recursive: true });
   const tmpPath = `${CACHE_PATH}.tmp`;
@@ -459,10 +486,12 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
         Object.assign(presentations[id], carried);
       }
       idsNeedingSlides = plan.needFetch;
-      const { carriedOver, changed, added, unverifiable } = plan.counts;
+      const { carriedOver, changed, added, unverifiable, unverifiableWhy, olderFormat } = plan.counts;
+      const why = unverifiable ? ` (${unverifiableWhy.noRecord} with no record of their file, ${unverifiableWhy.fileMissing} whose file wasn't found)` : "";
+      const older = olderFormat ? ` ${olderFormat} of the unchanged were recorded by an older Refrain and compared by size and date.` : "";
       console.log(
         `Incremental reindex: ${carriedOver} unchanged, ${changed} changed, ${added} new, ` +
-          `${unverifiable} unverifiable. Re-reading ${idsNeedingSlides.length} of ${skeletonIds.length}.`
+          `${unverifiable} unverifiable${why}. Re-reading ${idsNeedingSlides.length} of ${skeletonIds.length}.${older}`
       );
     } else if (incremental) {
       console.log(`Full rebuild instead of incremental: ${plan.reason}.`);
@@ -474,7 +503,37 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
     let consecutiveFailures = 0;
     let crawlAborted = null;
     const sweepLater = [];
-    rebuildProgress = { inProgress: true, stage: "presentations", current: 0, total: idsNeedingSlides.length };
+    rebuildProgress = { inProgress: true, stage: "presentations", current: 0, total: idsNeedingSlides.length, startedAt: Date.now() };
+
+    // Saved every CHECKPOINT_EVERY reads, so a restart mid-crawl resumes
+    // instead of starting over (issue #13: 250 and then 100 reads were lost
+    // that way on a Sunday morning). Not when settings or the schema changed
+    // since the last index: then unread entries were built the old way, and
+    // the snapshot would claim they were built the new way.
+    const pending = new Set(idsNeedingSlides);
+    const canCheckpoint =
+      Object.keys(previousPresentations).length === 0 ||
+      (currentIndex?.schemaVersion === SCHEMA_VERSION && sameBuildOptions(currentIndex?.buildOptions, buildOptions));
+    const checkpoint = async () => {
+      if (!canCheckpoint) return;
+      const snapshot = {};
+      for (const id of skeletonIds) {
+        const prev = previousPresentations[id];
+        snapshot[id] = pending.has(id) && prev ? { ...presentations[id], ...carriedEntryFields(prev) } : presentations[id];
+      }
+      try {
+        await persistIndex({
+          ...indexHeader({ currentIndex, plan, startedAt, libraryFolderIssues, crawlPlaylists, buildOptions }),
+          // Stays at the last complete run, so the index still reads as due
+          // for a refresh and the next run carries on from here.
+          builtAt: currentIndex?.builtAt ?? null,
+          partial: { savedAt: new Date().toISOString(), read: fetched, of: idsNeedingSlides.length },
+          presentations: snapshot,
+        });
+      } catch (err) {
+        console.log(`Couldn't save indexing progress (${err.message}); carrying on.`);
+      }
+    };
 
     /**
      * Read one presentation and store it. Returns whether it worked.
@@ -501,6 +560,13 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
     presentations[id].arrangementName = resolved.arrangementName;
     presentations[id].arrangementId = resolved.arrangementId;
     presentations[id].arrangementSource = resolved.source;
+    // Which arrangement ProPresenter has selected, which the resolved one
+    // above may not be (a preferred FS wins over it). Recorded so Health's
+    // "FS not selected" list can answer from the index instead of reading
+    // every candidate through ProPresenter again.
+    const selectedId = doc?.presentation?.current_arrangement || null;
+    presentations[id].selectedArrangementId = selectedId;
+    presentations[id].selectedArrangementName = (doc?.presentation?.arrangements ?? []).find((a) => a.id?.uuid === selectedId)?.id?.name ?? null;
     const presentationPath = doc?.presentation?.presentation_path ?? null;
     const { createdDate, modifiedDate } = await client.getFileDates(presentationPath);
     presentations[id].createdDate = createdDate;
@@ -538,13 +604,19 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
         console.log(`Indexing stopped at ${fetched}/${idsNeedingSlides.length} — asked to stand down.`);
       }
       if (crawlAborted) {
+        // Not attempted, so keep everything the previous index knew, slides or
+        // not. Dropping the fingerprint and path of a presentation with no
+        // words made it "unverifiable" forever after, since every run that
+        // stopped early threw them away again (issue #12).
         const prev = previousPresentations[id];
-        if (prev?.slides?.length) Object.assign(presentations[id], carriedEntryFields(prev));
+        if (prev) Object.assign(presentations[id], carriedEntryFields(prev));
         return;
       }
       // Used to tell "the file is as we read it" from "the operator saved it
       // while we were reading it" for presentations we had no prior path for.
-      if (await readAndStore(id)) {
+      const readOk = await readAndStore(id);
+      pending.delete(id);
+      if (readOk) {
         consecutiveFailures = 0;
       } else {
         // The presentation may have been deleted since the library listing was
@@ -587,11 +659,14 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
       fetched += 1;
       rebuildProgress.current = fetched;
       // Breathe between documents so ProPresenter stays responsive to the
-      // operator while this runs.
-      await pause(FETCH_PACING_MS);
+      // operator while this runs. Injectable only so tests needn't wait.
+      await pause(options.pacingMs ?? FETCH_PACING_MS);
       if (fetched % 50 === 0 || fetched === idsNeedingSlides.length) {
-        console.log(`Indexing... ${fetched}/${idsNeedingSlides.length} presentations`);
+        const secs = (Date.now() - rebuildProgress.startedAt) / 1000;
+        const left = fetched < idsNeedingSlides.length ? `, about ${Math.ceil(((idsNeedingSlides.length - fetched) / (fetched / secs)) / 60)} min to go` : "";
+        console.log(`Indexing... ${fetched}/${idsNeedingSlides.length} presentations (${(fetched / secs).toFixed(1)}/s${left})`);
       }
+      if (fetched % CHECKPOINT_EVERY === 0 && fetched < idsNeedingSlides.length) await checkpoint();
     });
 
     /**
@@ -647,21 +722,12 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
     }
 
     const newIndex = {
-      schemaVersion: SCHEMA_VERSION,
-      libraryFolderIssues,
-      builtAt: new Date().toISOString(),
-      buildDurationMs: Date.now() - startedAt,
-      crawledPlaylists: crawlPlaylists,
-      // Recorded so the next incremental run can tell whether the settings
-      // that decide what an entry CONTAINS have changed since this build.
-      buildOptions,
-      buildMode: plan.mode,
-      // Only a full rebuild refreshes this. builtAt moves on every incremental
-      // run, so it cannot answer "when did we last read the whole library".
-      lastFullBuildAt:
-        plan.mode === "full"
-          ? new Date().toISOString()
-          : (currentIndex?.lastFullBuildAt ?? currentIndex?.builtAt ?? null),
+      ...indexHeader({ currentIndex, plan, startedAt, libraryFolderIssues, crawlPlaylists, buildOptions, complete: !crawlAborted }),
+      // A run that stopped early is not a refresh: builtAt moving on hid a
+      // 28-day-old index behind "built 07:29" when 336 files were never read
+      // (issue #13). It stays at the last complete run, and `partial` says so.
+      builtAt: crawlAborted ? (currentIndex?.builtAt ?? null) : new Date().toISOString(),
+      ...(crawlAborted ? { partial: { savedAt: new Date().toISOString(), read: fetched, of: idsNeedingSlides.length } } : {}),
       /**
        * What the run PLANNED to do, and what it actually managed.
        *
@@ -927,6 +993,7 @@ export function indexAccuracyNotice(index = currentIndex) {
 
 export function shouldAutoRebuild(index) {
   if (!index?.builtAt) return true;
+  if (index.partial) return true; // a crawl stopped or was saved part-way: carry on from it
   // An older-schema cache still loads and still searches — slides just lack
   // their anchor, so Go Live degrades to the old behavior — but rebuild it in
   // the background so the anchors come back without blocking boot.

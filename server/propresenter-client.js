@@ -62,6 +62,30 @@ const DEFAULT_TIMEOUT_MS = 8000;
 // must not fail on a slow-but-working ProPresenter, so give them more room.
 const LIVE_TIMEOUT_MS = 20000;
 
+// Told about every call (path, time taken, whether it worked), for the
+// service log (server/service-log.js). One listener; null when nobody asked.
+let callObserver = null;
+export function onProPresenterCall(fn) {
+  callObserver = fn;
+}
+// Timed through `read`, which consumes the body: a document read can get its
+// headers in 200ms and spend seconds streaming the rest, or time out while it
+// does, and that's exactly the call the service log exists to catch.
+async function timedFetch(path, url, init, read) {
+  const started = performance.now();
+  let ok = false;
+  try {
+    const res = await fetch(url, init);
+    ok = res.ok;
+    const out = await read(res);
+    callObserver?.({ path, ms: performance.now() - started, ok, timedOut: false });
+    return out;
+  } catch (err) {
+    callObserver?.({ path, ms: performance.now() - started, ok: false, timedOut: err?.name === "TimeoutError" });
+    throw err;
+  }
+}
+
 export class ProPresenterClient {
   constructor({ host, port }) {
     this.baseUrl = `http://${host}:${port}`;
@@ -69,26 +93,33 @@ export class ProPresenterClient {
   }
 
   async #get(path, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
-    const res = await fetch(`${this.baseUrl}${path}`, { signal: AbortSignal.timeout(timeoutMs) });
-    if (!res.ok) {
-      throw new Error(`ProPresenter API ${path} responded ${res.status}`);
-    }
-    return res.status === 204 ? null : res.json();
+    return timedFetch(path, `${this.baseUrl}${path}`, { signal: AbortSignal.timeout(timeoutMs) }, async (res) => {
+      if (!res.ok) {
+        throw new Error(`ProPresenter API ${path} responded ${res.status}`);
+      }
+      return res.status === 204 ? null : res.json();
+    });
   }
 
   // Some endpoints (message triggering) are POST with a JSON body, unlike
   // the GET-based trigger/clear calls used everywhere else.
   async #post(path, body) {
-    const res = await fetch(`${this.baseUrl}${path}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) {
-      throw new Error(`ProPresenter API ${path} responded ${res.status}`);
-    }
-    return res.status === 204 ? null : res.json().catch(() => null);
+    return timedFetch(
+      path,
+      `${this.baseUrl}${path}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(8000),
+      },
+      async (res) => {
+        if (!res.ok) {
+          throw new Error(`ProPresenter API ${path} responded ${res.status}`);
+        }
+        return res.status === 204 ? null : res.json().catch(() => null);
+      }
+    );
   }
 
   async testConnection() {
@@ -261,12 +292,15 @@ export class ProPresenterClient {
    * About 50ms and 25KB at 400px. Callers cache it: it's asked for only when
    * the live slide changes. Null if ProPresenter can't render it.
    */
-  async getSlideThumbnail(presentationId, slideIndex, { quality = 400 } = {}) {
-    const res = await fetch(`${this.baseUrl}/v1/presentation/${seg(presentationId)}/thumbnail/${seg(slideIndex)}?quality=${seg(quality)}`, {
-      signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+  // 240px wide: sharp enough for a phone tile or the Live preview. Each new
+  // slide drawn costs ProPresenter memory it keeps until it restarts, measured
+  // at ~2.4 MB at 400 and ~0.7 MB at 160 (2026-09-27).
+  async getSlideThumbnail(presentationId, slideIndex, { quality = 240 } = {}) {
+    const thumbPath = `/v1/presentation/${seg(presentationId)}/thumbnail/${seg(slideIndex)}`;
+    return timedFetch(thumbPath, `${this.baseUrl}${thumbPath}?quality=${seg(quality)}`, { signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS) }, async (res) => {
+      if (!res.ok) return null;
+      return { type: res.headers.get("content-type") || "image/jpeg", bytes: Buffer.from(await res.arrayBuffer()) };
     });
-    if (!res.ok) return null;
-    return { type: res.headers.get("content-type") || "image/jpeg", bytes: Buffer.from(await res.arrayBuffer()) };
   }
 
   /** Triggers a slide live by presentation id + 0-based flat slide index. */

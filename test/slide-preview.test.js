@@ -28,3 +28,37 @@ test("pictures are cached, shared between screens asking at once, and the oldest
   const failing = createThumbCache(async () => { throw new Error("no"); });
   assert.equal(await failing("X", 0), null);
 });
+
+test("ProPresenter is asked for at most two pictures at once; a runaway wait is refused", async () => {
+  let running = 0;
+  let peak = 0;
+  const get = createThumbCache(async (id, i) => {
+    running++;
+    peak = Math.max(peak, running);
+    await new Promise((r) => setTimeout(r, 5));
+    running--;
+    return { bytes: Buffer.from(`${id}${i}`) };
+  }, { maxQueued: 100 });
+  const got = await Promise.all(Array.from({ length: 50 }, (_, i) => get("A", i)));
+  assert.equal(peak, 2, "never more than two renders in flight");
+  assert.ok(got.every(Boolean), "and every one arrives");
+
+  const small = createThumbCache(() => new Promise(() => {}), { concurrency: 1, maxQueued: 3 });
+  const pending = Array.from({ length: 4 }, (_, i) => small("B", i)); // 1 running, 3 waiting
+  assert.equal(await small("B", 9), null, "a fifth miss is refused, not piled on");
+  void pending;
+});
+
+test("a picture already stored skips the render queue entirely", async () => {
+  let renders = 0;
+  const get = createThumbCache(() => (renders++, new Promise(() => {})), {
+    concurrency: 1,
+    maxQueued: 1,
+    stored: async (id, i) => (id === "DISK" ? { bytes: Buffer.from(`d${i}`) } : null),
+  });
+  void get("LIVE", 0); // takes the only render slot, forever
+  void get("LIVE", 1); // and fills the queue
+  const got = await Promise.all(Array.from({ length: 20 }, (_, i) => get("DISK", i)));
+  assert.ok(got.every(Boolean), "all 20 stored pictures served while ProPresenter is busy");
+  assert.equal(renders, 1, "and none of them asked for a render");
+});

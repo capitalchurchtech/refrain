@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { rebuildIndex, getIndex, lastCrawlAbort } from "../server/search-index.js";
@@ -119,7 +119,7 @@ test("an incremental run re-reads only the presentation whose file changed", asy
 
     assert.equal(index.buildMode, "incremental");
     assert.deepEqual(client.fetched, ["b"], "only the edited presentation should be re-read");
-    assert.deepEqual(index.reindexCounts, { carriedOver: 2, changed: 1, added: 0, unverifiable: 0 });
+    assert.deepEqual(index.reindexCounts, { carriedOver: 2, changed: 1, added: 0, unverifiable: 0, unverifiableWhy: { noRecord: 0, fileMissing: 0 }, olderFormat: 0 });
     assert.equal(index.presentations.b.slides[0].text, "bravo rewritten", "the edit must land in the index");
     assert.equal(index.presentations.a.slides[0].text, "alpha", "untouched entries keep their slides");
     assert.equal(index.presentations.c.slides[0].text, "charlie");
@@ -448,5 +448,53 @@ test("a document that fails both its read and its retry is recovered by the end-
     const withSlides = Object.values(index.presentations).filter((p) => p.slides?.length).length;
     assert.equal(withSlides, 12, "the two that outlasted their retry came back on the sweep");
     assert.equal(attempts.get("s3"), 3, "read, retry, then one sweep read");
+  });
+});
+
+test("an index recorded by v0.12 (size:mtime:sha1) carries over after the upgrade instead of re-reading everything", async () => {
+  await withTempCwd(async (dir) => {
+    const songs = await makeSongs(dir, {
+      a: { name: "Song A", text: "alpha", body: "AAA" },
+      b: { name: "Song B", text: "bravo", body: "BBB" },
+    });
+    await rebuildIndex(fakeProPresenter(songs), {}, []);
+    // What the booth had on disk (issue #12): the same index, older fingerprints.
+    for (const e of Object.values(getIndex().presentations)) e.fingerprint = `${e.fingerprint}:${"a".repeat(40)}`;
+
+    const client = fakeProPresenter(songs);
+    const index = await rebuildIndex(client, {}, [], { incremental: true });
+    assert.deepEqual(client.fetched, [], "nothing changed, so nothing is re-read");
+    assert.equal(index.reindexCounts.olderFormat, 2);
+    assert.match(index.presentations.a.fingerprint, /^\d+:\d+$/, "and the entry is now in the current format");
+  });
+});
+
+test("a long crawl saves its progress as it goes, and a stopped one doesn't pass for a fresh index", async () => {
+  await withTempCwd(async (dir) => {
+    const specs = {};
+    for (let i = 0; i < 120; i++) specs[`s${i}`] = { name: `Song ${i}`, text: `words ${i}`, body: `BODY${i}` };
+    const songs = await makeSongs(dir, specs);
+    const client = fakeProPresenter(songs);
+    let seenMidway = null;
+    const inner = client.getPresentation.bind(client);
+    client.getPresentation = async (id) => {
+      if (client.fetched.length === 60) seenMidway = JSON.parse(await readFile(path.join(dir, "cache", "search-index.json"), "utf8"));
+      return inner(id);
+    };
+    const before = getIndex().builtAt;
+    const stopped = await rebuildIndex(client, {}, [], { pacingMs: 0, shouldStop: () => client.fetched.length >= 80 });
+
+    assert.ok(seenMidway?.partial, "a checkpoint was on disk before the crawl finished");
+    assert.equal(seenMidway.partial.read, 50);
+    assert.equal(Object.values(seenMidway.presentations).filter((p) => p.slides?.length).length, 50);
+    assert.ok(stopped.partial, "the stopped run says it's partial");
+    assert.equal(stopped.builtAt, before, "and doesn't claim to be a complete build");
+
+    // The next run (after a restart, say) reads only what's left.
+    const again = fakeProPresenter(songs);
+    const done = await rebuildIndex(again, {}, [], { incremental: true, pacingMs: 0 });
+    assert.equal(again.fetched.length, 40);
+    assert.equal(done.partial, undefined);
+    assert.ok(done.builtAt);
   });
 });

@@ -344,3 +344,11 @@ test("carriedEntryFields handles a missing previous entry", () => {
   assert.deepEqual(carriedEntryFields(undefined), {});
   assert.deepEqual(carriedEntryFields(null), {});
 });
+
+test("a first build saved part-way is built on, not started over", () => {
+  const previous = { builtAt: null, partial: { read: 2, of: 3 }, schemaVersion: 7, buildOptions: { preferredArrangements: [], crawlPlaylists: false }, presentations: { a: { fingerprint: "1:1", presentationPath: "/a.pro", slides: [{}] }, b: { fingerprint: "2:2", presentationPath: "/b.pro", slides: [{}] }, c: {} } };
+  const plan = planIncremental({ ids: ["a", "b", "c"], previous, fingerprints: { a: "1:1", b: "2:2" }, buildOptions: { preferredArrangements: [], crawlPlaylists: false }, schemaVersion: 7 });
+  assert.equal(plan.mode, "incremental");
+  assert.deepEqual(plan.needFetch, ["c"], "only the one it never read");
+  assert.equal(planIncremental({ ids: ["a"], previous: { ...previous, partial: undefined }, buildOptions: previous.buildOptions, schemaVersion: 7 }).mode, "full", "no builtAt and not partial: nothing to build on");
+});

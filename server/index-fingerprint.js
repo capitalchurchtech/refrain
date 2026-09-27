@@ -52,6 +52,19 @@ export function fileFingerprint({ size, mtimeMs }) {
   return `${size}:${Math.round(mtimeMs)}`;
 }
 
+/**
+ * Up to v0.12 a fingerprint was `size:mtime:sha1`. v0.13 dropped the hash
+ * without changing the schema version, so every entry from an older index read
+ * as "changed" and the first reindex after the upgrade re-read the whole
+ * library (issue #12: 0 unchanged of 657). The size and mtime are the same two
+ * values the current format holds, so the old one compares on those. Returns
+ * null for anything that isn't the old three-part shape.
+ */
+export function olderFormatPrefix(fingerprint) {
+  const parts = String(fingerprint ?? "").split(":");
+  return parts.length === 3 && /^[0-9a-f]{40}$/.test(parts[2]) ? `${parts[0]}:${parts[1]}` : null;
+}
+
 /** Fingerprints one .pro file from its metadata, or null if it cannot be read. */
 export async function readFingerprint(filePath) {
   if (!filePath) return null;
@@ -97,6 +110,8 @@ export const CARRIED_FIELDS = [
   "arrangementName",
   "arrangementId",
   "arrangementSource",
+  "selectedArrangementId",
+  "selectedArrangementName",
   "createdDate",
   "modifiedDate",
   "presentationPath",
@@ -164,7 +179,11 @@ export async function readFingerprintUnchangedSince(filePath, sinceMs) {
  *   needFetch?: string[], counts?: object}}
  */
 export function planIncremental({ ids, previous, fingerprints = {}, buildOptions, schemaVersion }) {
-  if (!previous?.builtAt) {
+  // A first build that was stopped or saved part-way has no builtAt (it never
+  // completed) but is still worth building on: what it read carries over and
+  // the rest reads as unverifiable, so a restart resumes instead of starting
+  // over (issue #13).
+  if (!previous?.builtAt && !previous?.partial) {
     return { mode: "full", reason: "no previous index to build on" };
   }
   if (previous.schemaVersion !== schemaVersion) {
@@ -176,7 +195,11 @@ export function planIncremental({ ids, previous, fingerprints = {}, buildOptions
 
   const carryOver = {};
   const needFetch = [];
-  const counts = { carriedOver: 0, changed: 0, added: 0, unverifiable: 0 };
+  // `unverifiableWhy` splits the one number by cause, because 275 of 657
+  // "unverifiable" on the booth (issue #12) said nothing about which fix it
+  // needed: no record of the file, or a file that is no longer there.
+  // `olderFormat` counts entries carried over from the v0.12 fingerprint.
+  const counts = { carriedOver: 0, changed: 0, added: 0, unverifiable: 0, unverifiableWhy: { noRecord: 0, fileMissing: 0 }, olderFormat: 0 };
 
   for (const id of ids) {
     const prev = previous.presentations?.[id];
@@ -191,12 +214,21 @@ export function planIncremental({ ids, previous, fingerprints = {}, buildOptions
     if (!prev.fingerprint || !prev.presentationPath) {
       needFetch.push(id);
       counts.unverifiable += 1;
+      counts.unverifiableWhy.noRecord += 1;
       continue;
     }
     const current = fingerprints[id];
     if (!current) {
       needFetch.push(id);
       counts.unverifiable += 1;
+      counts.unverifiableWhy.fileMissing += 1;
+      continue;
+    }
+    const older = olderFormatPrefix(prev.fingerprint);
+    if (older && current === older) {
+      carryOver[id] = { ...carriedEntryFields(prev), fingerprint: current };
+      counts.carriedOver += 1;
+      counts.olderFormat += 1;
       continue;
     }
     if (current !== prev.fingerprint) {

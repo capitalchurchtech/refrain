@@ -131,3 +131,15 @@ test("findLiveIndex never matches a blank slide on empty anchor text", () => {
   ];
   assert.equal(findLiveIndex(live, { groupId: "g-missing", groupOffset: 0, index: 0, text: "" }), null);
 });
+
+test("a preferred arrangement that exists but isn't selected is named, with what is", async () => {
+  const { preferredNotSelected } = await import("../server/arrangements.js");
+  const doc = (current) => ({ presentation: { current_arrangement: current, arrangements: [{ id: { uuid: "v1", name: "Ver 1" } }, { id: { uuid: "fs", name: "FS" } }] } });
+  assert.deepEqual(preferredNotSelected(doc("v1"), ["FS"]), { preferredName: "FS", selectedName: "Ver 1" });
+  assert.equal(preferredNotSelected(doc("fs"), ["FS"]), null, "already selected");
+  assert.equal(preferredNotSelected(doc("v1"), ["T"]), null, "no preferred arrangement here");
+  assert.deepEqual(preferredNotSelected(doc(""), ["fs"]), { preferredName: "FS", selectedName: null }, "case-insensitive, nothing selected");
+  const withT = { presentation: { current_arrangement: "t", arrangements: [{ id: { uuid: "fs", name: "FS" } }, { id: { uuid: "t", name: "T" } }, { id: { uuid: "tm", name: "T Homework" } }] } };
+  assert.equal(preferredNotSelected(withT, ["FS", "T"]), null, "on T deliberately: another preferred one is fine");
+  assert.equal(preferredNotSelected({ presentation: { ...withT.presentation, current_arrangement: "tm" } }, ["FS", "T"]), null, "a variant of a preferred name too");
+});

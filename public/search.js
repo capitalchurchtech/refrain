@@ -143,7 +143,9 @@ export function initSearch() {
         const res = await fetch("/api/index/reindex-changed", { method: "POST" });
         if (!res.ok) {
           const { error } = await res.json().catch(() => ({}));
-          showFailure(`Couldn't refresh the index: ${error ?? "no answer"}. Try the Health screen.`);
+          // A 409 is Refrain declining for a reason it states (performance
+          // mode, ProPresenter still loading); Health can't do better.
+          showFailure(res.status === 409 && error ? error : `Couldn't refresh the index: ${error ?? "no answer"}. Try the Health screen.`);
           return;
         }
         await refreshStatus();
