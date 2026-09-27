@@ -205,7 +205,8 @@ function startControl() {
     },
     preview: () => ({ current: { presentationId: "H", slideIndex: 2, text: "now" }, next: { presentationId: "H", slideIndex: 3, text: "next" }, atEnd: false }),
     thumb: async () => ({ type: "image/jpeg", bytes: Buffer.from("jpg") }),
-    safeSlides: () => [{ id: "logo", label: "Logo" }],
+    currentSlides: () => ({ presentationId: "H", presentationName: "Hymn", currentIndex: 2, slides: [0, 1, 2, 3, 4].map((i) => ({ slideIndex: i, text: `line ${i + 1}` })) }),
+    safeSlides: () => [{ id: "logo", label: "Logo", presentationId: "LOGO", slideIndex: 0 }],
     control: async (action, deviceId) => (done.push({ ...action, deviceId }), { label: action.label }),
   });
   return new Promise((resolve) => {
@@ -242,7 +243,7 @@ test("control: unapproved phones can't; approved ones prepare then confirm, once
   }
 });
 
-test("previews: the current and next slide's words and pictures, and no other slide's picture", async () => {
+test("previews: words and pictures for the presentation on screen, and nothing else", async () => {
   const t = await startControl();
   try {
     const { token } = await (await fetch(`${t.base}/api/unlock`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin: "2468" }) })).json();
@@ -251,7 +252,19 @@ test("previews: the current and next slide's words and pictures, and no other sl
     assert.equal(p.current.text, "now");
     assert.equal(p.next.slideNumber, 4);
     assert.equal((await fetch(t.base + p.next.image, h)).status, 200);
-    assert.equal((await fetch(`${t.base}/api/preview/image/H/9`, h)).status, 404, "not an arbitrary slide");
+    assert.equal((await fetch(`${t.base}/api/preview/image/H/9`, h)).status, 404, "not past the end of the presentation");
+    assert.equal((await fetch(`${t.base}/api/preview/image/OTHER/0`, h)).status, 404, "not another presentation");
+    assert.equal((await fetch(`${t.base}/api/preview/image/H/0`, h)).status, 200, "any slide of the one on screen, for the tray");
+    const all = await (await fetch(`${t.base}/api/flag-slides`, h)).json();
+    assert.equal(all.currentIndex, 2);
+    assert.deepEqual(all.slides.map((x) => x.slideNumber), [1, 2, 3, 4, 5]);
+    assert.equal((await fetch(`${t.base}/api/preview/image/LOGO/0`, h)).status, 200, "a safe slide's own picture");
+    assert.equal((await fetch(`${t.base}/api/preview/image/LOGO/1`, h)).status, 404, "but not the rest of its presentation");
+    // A tray pick with no words is never in the index; it's accepted as a
+    // slide of the presentation on screen, and one of another isn't.
+    const flag = (slide) => fetch(`${t.base}/api/flag`, { method: "POST", headers: { "Content-Type": "application/json", "x-refrain-device": token }, body: JSON.stringify({ slide }) });
+    assert.equal((await flag({ presentationId: "H", slideIndex: 4 })).status, 200);
+    assert.equal((await flag({ presentationId: "OTHER", slideIndex: 0 })).status, 404);
     assert.equal((await fetch(`${t.base}/api/preview`)).status, 401, "behind the PIN");
   } finally {
     t.server.close();

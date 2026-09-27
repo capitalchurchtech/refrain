@@ -806,6 +806,10 @@ let lastClientAt = null;
 // than the one already scheduled (a browser arriving, a lock-in, a service
 // added), instead of waiting out a 30s idle gap first.
 let quickenHeartbeat = () => {};
+// Runs a beat now (set by startPerformancePolling), for right after Refrain
+// itself changed the slide, so the readout and previews catch up in a
+// fraction of a second instead of at the next scheduled beat.
+let beatNow = () => {};
 export function noteClientActivity() {
   lastClientAt = Date.now();
   quickenHeartbeat();
@@ -887,7 +891,7 @@ async function forgetAllPhones() {
   await saveRemoteSecret();
 }
 const remotePinGuard = pinFailureGuard({ dayOf: (now) => dayKey(now) });
-const DEFAULT_PIN_HINT = "Today's PIN is on the Flags screen in the booth. Ask whoever is running the screens.";
+const DEFAULT_PIN_HINT = "Today's PIN is in the Phone panel in the booth. Ask whoever is running the screens.";
 function remotePinMode() {
   const pin = config.networkModule?.pin;
   if (pin === "daily") return "daily";
@@ -933,6 +937,36 @@ function notePhoneAction(entry) {
 
 // Pictures of slides, for the current/next previews (server/slide-preview.js).
 const slideThumb = createThumbCache((pid, idx) => client.getSlideThumbnail(pid, idx));
+/**
+ * How many slides a presentation has, for one the index doesn't know (not in
+ * a searched library). Asked of ProPresenter once per presentation, then
+ * remembered; until it answers, the slides up to the live one are listed.
+ */
+const slideCountCache = new Map();
+function learnSlideCount(presentationId) {
+  if (slideCountCache.has(presentationId)) return;
+  slideCountCache.set(presentationId, null);
+  client
+    .getPresentation(presentationId)
+    .then((doc) => slideCountCache.set(presentationId, flattenGroups(resolveArrangement(doc, []).groups).length))
+    .catch(() => slideCountCache.delete(presentationId));
+}
+
+/** Every slide of the presentation on the screens, words from the index. At most 300. */
+function currentSlides() {
+  const slide = liveState.live ? liveState.slide : null;
+  if (!slide?.presentationId || !Number.isInteger(slide.slideIndex)) return null;
+  let known = Number.isInteger(slide.slideCount) ? slide.slideCount : slideCountCache.get(slide.presentationId);
+  if (!Number.isInteger(known)) {
+    learnSlideCount(slide.presentationId);
+    known = slide.slideIndex + 1;
+  }
+  const count = Math.min(Math.max(known, slide.slideIndex + 1), 300);
+  const slides = [];
+  for (let i = 0; i < count; i++) slides.push({ slideIndex: i, text: getIndexedSlide(slide.presentationId, i)?.text ?? null });
+  return { presentationId: slide.presentationId, presentationName: slide.presentationName ?? slide.name ?? null, currentIndex: slide.slideIndex, slides };
+}
+
 function currentPreview() {
   return previewTargets(liveState.live ? liveState.slide : null, (pid, idx) => getIndexedSlide(pid, idx)?.text ?? null);
 }
@@ -965,6 +999,8 @@ function startRemoteListener() {
       name: (id) => remoteDevices.devices?.[id]?.name ?? null,
     },
     search: (q) => search({ query: q }),
+    presentationName: (pid) => getIndex().presentations?.[pid]?.name ?? null,
+    currentSlides,
     preview: currentPreview,
     thumb: slideThumb,
     safeSlides: () => safeSlides(config.liveModule?.safeSlides),
@@ -975,6 +1011,7 @@ function startRemoteListener() {
       try {
         if (action.kind === "next") await client.triggerNext();
         else if (action.kind === "previous") await client.triggerPrevious();
+        else if (action.kind === "focus") await client.focusPresentation(action.presentationId);
         else if (action.kind === "safe") {
           const sl = safeSlides(config.liveModule?.safeSlides).find((x) => x.id === action.safeId);
           if (!sl) throw new Error("That safe slide isn't there any more.");
@@ -982,6 +1019,7 @@ function startRemoteListener() {
           if (out.refused) throw new Error(out.refused);
         }
         notePhoneAction({ phone, label: action.label, ok: true });
+        if (action.kind !== "focus") beatNow();
         return { label: action.label };
       } catch (err) {
         notePhoneAction({ phone, label: action.label, ok: false, error: err.message });
@@ -1210,8 +1248,13 @@ function startPerformancePolling() {
   clearTimeout(heartbeatTimer);
   // Rescheduled after each beat rather than fixed, so the rate can follow
   // whether anyone is actually watching without tearing down a timer.
+  let beating = false;
   const beat = async () => {
+    if (beating) return; // one at a time; the scheduled one reschedules itself
+    beating = true;
+    clearTimeout(heartbeatTimer);
     await heartbeat().catch(() => {});
+    beating = false;
     const next = heartbeatInterval({ lastClientAt, hold: holdHeartbeatPace() });
     scheduledFor = Date.now() + next;
     heartbeatTimer = setTimeout(beat, next);
@@ -1225,6 +1268,12 @@ function startPerformancePolling() {
     scheduledFor = due;
     heartbeatTimer = setTimeout(beat, due - Date.now());
     heartbeatTimer.unref?.();
+  };
+  // Twice: a slide fired from a safe slide can take ProPresenter longer than
+  // 150ms to report, and the phone's quick refresh only looks for ~3s.
+  beatNow = () => {
+    setTimeout(beat, 150);
+    setTimeout(beat, 800);
   };
   beat();
 }
@@ -2650,6 +2699,24 @@ app.post("/api/network/phones/:id", async (req, res) => {
   else if (action === "remove") changeDevices(removeDevice(remoteDevices, req.params.id), { now: true });
   else return res.status(400).json({ error: 'action must be "approve", "unapprove" or "remove"' });
   res.json({ ok: true, phones: deviceList(remoteDevices) });
+});
+
+/**
+ * Next and previous slide from the booth: clicking Live's Next preview. One
+ * press, like the other Live keys. The active presentation's own next, not
+ * ProPresenter's playlist-wide one (see propresenter-client.js).
+ */
+app.post("/api/live/step", async (req, res) => {
+  const dir = req.body?.dir;
+  if (dir !== "next" && dir !== "previous") return res.status(400).json({ error: 'dir must be "next" or "previous"' });
+  try {
+    if (dir === "next") await client.triggerNext();
+    else await client.triggerPrevious();
+    beatNow();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
 });
 
 /** The current and next slide, for Live's preview (same rules as the phone's). */

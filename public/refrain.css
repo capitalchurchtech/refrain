@@ -3871,3 +3871,25 @@ html.rail-right #rf-notices {
   padding-top: 14px;
   padding-bottom: 14px;
 }
+
+/* The Next preview is also a key: a plain button that looks like its
+   picture, with the same focus ring as everything else. */
+#view-live .live-preview-step {
+  display: block;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+#view-live .live-preview-step:hover img,
+#view-live .live-preview-step:hover .live-preview-empty {
+  border-color: var(--rf-plum-lit);
+}
+#view-live .live-preview-step:disabled {
+  cursor: progress;
+}

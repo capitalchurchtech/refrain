@@ -2,14 +2,25 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!-- maximum-scale stops Safari's zoom-on-focus; pinch zoom still works
+     (Safari has ignored user-scalable for pinch since iOS 10). -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
 <title>Refrain · Phone</title>
 <!-- Served by the separate phone listener (server/remote.js), which serves
      only this page and remote.js. Self-contained on purpose: no fonts, no
      Tailwind, nothing else from the app is reachable from here. -->
 <style>
+  /* A display rule below would otherwise beat the hidden attribute. */
+  [hidden] { display:none !important; }
   :root { --ground:#0C0A11; --surface:#16121C; --raised:#221D2B; --hair:#3D3348; --text:#F4EFF3; --muted:#A295AC; --plum:#8446C9; --plum-lit:#A96FE8; --fault:#C9922E; }
   * { box-sizing: border-box; }
+  /* A phone page that behaves like an app: no rubber-band bounce, no zoom on
+     a quick double tap (which is exactly how a confirm is pressed), no text
+     resizing on rotate. */
+  html, body { overscroll-behavior: none; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  button, a, input, textarea, .slide, .pv { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+  /* 16px or more, or Safari zooms in when a box gets the cursor. */
+  input, textarea, select { font-size: 16px; }
   body { margin:0; background:var(--ground); color:var(--text); font:16px/1.4 -apple-system, system-ui, sans-serif; padding:16px; max-width:560px; margin-inline:auto; }
   h1 { font-size:18px; margin:0 0 4px; }
   h2 { font:600 11px/1 ui-monospace, Menlo, monospace; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin:20px 0 8px; }
@@ -42,6 +53,26 @@
   .ctl { min-height:72px; background:var(--raised); color:var(--text); border:1px solid var(--hair); border-radius:3px; font:inherit; font-size:17px; font-weight:600; }
   .ctl.armed, .slide.armed { background:var(--plum); border-color:var(--plum-lit); color:#fff; }
   input[type="search"] { font-size:17px; }
+  .slide .thumb { display:grid; grid-template-columns:96px 1fr; gap:10px; align-items:center; }
+  .slide .thumb .pv { width:96px; }
+  .tray { position:fixed; inset:12% 0 0 0; background:var(--ground); border-top:1px solid var(--hair); border-radius:10px 10px 0 0; box-shadow:0 -8px 30px rgba(0,0,0,.6); display:flex; flex-direction:column; z-index:10; overscroll-behavior:contain; }
+  .tray-head { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:12px 16px; font-weight:600; }
+  .tray-grid { flex:1 1 auto; min-height:0; align-content:start; grid-auto-rows:max-content; overflow-y:auto; padding:0 16px 24px; display:grid; grid-template-columns:1fr 1fr; gap:10px; -webkit-overflow-scrolling:touch; }
+  .tray-grid .slide { min-height:0; padding:6px; display:block; }
+  .tray-grid .slide .pv { width:100%; margin-bottom:4px; }
+  .pv.can-step { cursor:pointer; outline:1px solid var(--plum); }
+  .emergency { width:100%; min-height:60px; margin-bottom:12px; background:#7A2B2B; color:#fff; border:1px solid #B04A4A; border-radius:3px; font:inherit; font-size:17px; font-weight:700; }
+  .emergency[aria-expanded="true"] { background:var(--raised); color:var(--text); border-color:var(--hair); }
+  /* Fixed, not in the flow: arming must not move the thing about to be
+     tapped a second time. */
+  .confirm { position:fixed; left:16px; right:16px; bottom:calc(12px + env(safe-area-inset-bottom)); max-width:528px; margin-inline:auto; z-index:5; box-shadow:0 8px 30px rgba(0,0,0,.6); display:grid; grid-template-columns:120px 1fr; gap:12px; align-items:center; padding:10px; background:var(--plum); color:#fff; border-radius:3px; font-weight:600; }
+  .confirm .pv { width:120px; }
+  .safe-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .safe-grid .slide { min-height:0; padding:6px; }
+  .safe-grid .pv { width:100%; margin-bottom:4px; }
+  .sent { display:grid; grid-template-columns:96px 1fr; gap:10px; align-items:center; }
+  .sent .pv { width:96px; }
+  .pv.armed { outline:2px solid var(--plum-lit); }
 </style>
 </head>
 <body>
@@ -64,10 +95,6 @@
   <div id="main">
   <div id="progress" class="card progress" style="margin-top:12px">Loading...</div>
 
-  <div class="preview">
-    <figure><figcaption>Now</figcaption><div id="pv-now" class="pv"></div></figure>
-    <figure><figcaption>Next</figcaption><div id="pv-next" class="pv"></div></figure>
-  </div>
 
   <div class="tabs" role="tablist">
     <button class="tab" role="tab" data-tab="flag" aria-selected="true">Flag</button>
@@ -80,16 +107,31 @@
     <div id="search-results" class="slides" style="margin-top:10px"></div>
   </section>
 
+  <!-- Shown while a control press is armed: the slide it will put up, so the
+       second tap is a decision about a picture, not a line of text. -->
+  <div id="confirm" class="confirm" role="button" tabindex="0" hidden>
+    <div class="pv"><img id="confirm-img" alt="" /></div>
+    <div id="confirm-text"></div>
+  </div>
+
   <section id="tab-control" hidden>
     <div id="control-locked" class="muted"></div>
     <div id="control" hidden>
-      <div class="muted" style="margin-bottom:10px">Each press asks you to tap again to confirm.</div>
+      <!-- Only this tab moves slides (owner request): Flag never does. -->
+      <button id="emergency" class="emergency" aria-expanded="false">Emergency slide</button>
+      <div id="emergency-pick" hidden>
+        <div class="muted" style="margin:8px 0">Tap the slide to put up, then tap it again.</div>
+        <div id="safe" class="safe-grid"></div>
+      </div>
+      <div class="preview" style="margin-bottom:10px">
+        <figure><figcaption>Now</figcaption><div id="pv-now" class="pv"></div></figure>
+        <figure><figcaption id="pv-next-cap">Next</figcaption><div id="pv-next" class="pv" role="button" tabindex="0" aria-label="Show the next slide"></div></figure>
+      </div>
       <div class="types">
         <button class="ctl" data-kind="previous">Previous slide</button>
         <button class="ctl" data-kind="next">Next slide</button>
       </div>
-      <h2>Safe slides</h2>
-      <div id="safe" class="slides"></div>
+      <div class="muted" style="margin-top:8px">Each press asks you to tap again to confirm.</div>
       <div id="control-status" class="status" role="status" aria-live="polite"></div>
     </div>
   </section>
@@ -98,6 +140,7 @@
 
   <h2>Which slide</h2>
   <div id="slides" class="slides"></div>
+  <button id="open-tray" class="type" style="width:100%;margin-top:8px" hidden>Show all previews</button>
 
   <h2>What's wrong</h2>
   <div id="types" class="types"></div>
@@ -109,6 +152,12 @@
   <button id="send" class="send" disabled>Send flag</button>
   <div id="status" class="status" role="status" aria-live="polite"></div>
   </section>
+  </div>
+
+  <!-- Every slide of the presentation on screen, to pick the one to flag. -->
+  <div id="tray" class="tray" hidden>
+    <div class="tray-head"><span id="tray-title">All slides</span><button id="close-tray" class="type" style="min-height:40px">Close</button></div>
+    <div id="tray-grid" class="tray-grid"></div>
   </div>
 
   <script type="module" src="/remote.js"></script>

@@ -55,18 +55,23 @@ export function plainMessagesHtml(plain) {
 /** The Now / Next pair, and the last phone press. Pure, for tests. */
 export function livePreviewHtml(p) {
   const esc = (str) => String(str ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-  const pane = (label, s, empty) => `
-    <figure class="live-preview-pane">
-      <figcaption class="rf-subhead">${label}${s ? ` · slide ${s.slideNumber}` : ""}</figcaption>
-      ${s?.image ? `<img src="${esc(s.image)}" alt="${esc(s.text ?? "")}" />` : `<div class="live-preview-empty">${esc(empty)}</div>`}
-    </figure>`;
+  const pane = (label, s, empty, step = false) => {
+    const inner = `
+      <figcaption class="rf-subhead">${label}${s ? ` · slide ${s.slideNumber}` : ""}${step ? " · click to show" : ""}</figcaption>
+      ${s?.image ? `<img src="${esc(s.image)}" alt="${esc(s.text ?? "")}" />` : `<div class="live-preview-empty">${esc(empty)}</div>`}`;
+    // The Next picture is also the Next key (owner request): one click, like
+    // the other Live keys.
+    return step
+      ? `<button type="button" class="live-preview-pane live-preview-step" data-step="next" title="Show the next slide">${inner}</button>`
+      : `<figure class="live-preview-pane">${inner}</figure>`;
+  };
   const phone = p.lastPhoneAction
     ? `<div class="text-xs opacity-80 col-span-full">Phone: ${esc(p.lastPhoneAction.phone)} pressed ${esc(p.lastPhoneAction.label)} at ${esc(
         new Date(p.lastPhoneAction.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
       )}${p.lastPhoneAction.ok ? "" : " (it didn't work)"}</div>`
     : "";
   if (!p.current) return phone;
-  return `${pane("Now", p.current, "")}${pane("Next", p.next, p.atEnd ? "End of this presentation" : "")}${phone}`;
+  return `${pane("Now", p.current, "")}${pane("Next", p.next, p.atEnd ? "End of this presentation" : "", Boolean(p.next))}${phone}`;
 }
 
 export function initLive() {
@@ -177,13 +182,28 @@ export function initLive() {
         previewKey = key;
         host.innerHTML = livePreviewHtml(p);
         host.classList.toggle("hidden", !p.current && !p.lastPhoneAction);
+        host.querySelector("[data-step]")?.addEventListener("click", async (e) => {
+          const btn = e.currentTarget;
+          btn.disabled = true;
+          const ok = await fire(btn, "/api/live/step", { dir: btn.dataset.step }, "Next slide");
+          if (ok) refreshSoon();
+        });
       } catch {
         // Leave the last preview up; the readout above says if the link is down.
       }
     };
     tick();
     previewTimer = setInterval(tick, 3000);
+    // After a press: every 0.4s for a few seconds, then back to every 3s.
+    refreshSoon = () => {
+      let n = 0;
+      const t = setInterval(() => {
+        tick();
+        if (++n >= 8) clearInterval(t);
+      }, 400);
+    };
   }
+  let refreshSoon = () => {};
   async function render() {
     // Live is rebuilt on each visit; let go of the old readout element so the
     // shared poll doesn't keep painting a detached copy.

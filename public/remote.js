@@ -16,12 +16,10 @@ const store = {
 };
 
 let state = null;
-let chosenRef = null;
 let chosenType = null;
 let token = store.get("refrain.remote.token", "");
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-const clock = (iso) => new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
 const dur = (ms) => { const t = Math.max(0, Math.round(ms / 1000)); const h = Math.floor(t / 3600); const m = Math.floor((t % 3600) / 60); const s = String(t % 60).padStart(2, "0"); return h ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`; };
 
 async function api(path, opts = {}) {
@@ -44,7 +42,8 @@ async function showLock() {
     $("lock-hint").textContent = lock.hint ?? "";
     $("pin").previousElementSibling.textContent = lock.daily ? "Today's PIN" : "PIN";
   } catch { /* the hint is a courtesy */ }
-  $("pin").focus();
+  // No automatic focus: on a phone it opens the keyboard and Safari zooms in
+  // on the box before anyone has read the page.
 }
 
 $("unlock").addEventListener("click", async () => {
@@ -82,16 +81,90 @@ function paintProgress(p) {
   ].join("");
 }
 
-function paintSlides() {
-  const recent = state.recent ?? [];
-  if (!recent.find((r) => r.ref === chosenRef)) chosenRef = recent[0]?.ref ?? null;
-  $("slides").innerHTML = recent.length
-    ? recent
-        .map((r, i) => `<button class="slide" data-ref="${esc(r.ref)}" aria-pressed="${r.ref === chosenRef}"><small>${i === 0 && state.live ? "On screen now" : `Up at ${clock(r.at)}`} · ${esc(r.presentationName ?? "")}, slide ${r.slideNumber}</small>${esc((r.text ?? "").slice(0, 140)) || "<i>No text on this slide</i>"}</button>`)
-        .join("")
-    : `<div class="muted">Nothing has been on the screens yet.</div>`;
-  $("slides").querySelectorAll(".slide").forEach((b) => b.addEventListener("click", () => { chosenRef = b.dataset.ref; paintSlides(); ready(); }));
+// The Flag tab's slides: previous, current and next of the presentation on
+// screen, and every slide in a tray (owner request). What's chosen is a slide
+// of that presentation, sent with the flag; the server checks it against the
+// index before saving.
+let flagSlides = null;
+let chosenSlide = null; // { presentationId, slideIndex }
+let slidesKey = "";
+const slideCard = (sl, caption) => `
+  <button class="slide${chosenSlide && chosenSlide.slideIndex === sl.slideIndex ? " picked" : ""}" data-idx="${sl.slideIndex}" aria-pressed="${Boolean(chosenSlide && chosenSlide.slideIndex === sl.slideIndex)}">
+    <div class="thumb"><div class="pv"><img data-src="${esc(sl.image)}" alt="" /></div>
+    <div><small>${esc(caption)} · slide ${sl.slideNumber}</small>${esc((sl.text ?? "").slice(0, 90)) || "<i>No words on this slide</i>"}</div></div>
+  </button>`;
+
+async function paintSlides() {
+  try {
+    flagSlides = await api("/api/flag-slides");
+  } catch {
+    return;
+  }
+  const d = flagSlides;
+  if (!d.presentationId) {
+    chosenSlide = null;
+    slidesKey = "";
+    $("slides").innerHTML = `<div class="muted">Nothing is on the screens.</div>`;
+    $("open-tray").hidden = true;
+    return ready();
+  }
+  // A new slide on screen moves the pick to it, unless the person already
+  // chose one in this presentation.
+  if (!chosenSlide || chosenSlide.presentationId !== d.presentationId) chosenSlide = { presentationId: d.presentationId, slideIndex: d.currentIndex };
+  const key = JSON.stringify([d.presentationId, d.currentIndex, chosenSlide.slideIndex]);
+  if (key === slidesKey) return;
+  slidesKey = key;
+  const at = (i) => d.slides.find((x) => x.slideIndex === i);
+  const cards = [
+    [at(d.currentIndex - 1), "Previous"],
+    [at(d.currentIndex), "On screen"],
+    [at(d.currentIndex + 1), "Next"],
+  ].filter(([sl]) => sl);
+  // A pick from the tray that isn't one of the three is shown too, so it's
+  // clear what will be flagged.
+  if (![d.currentIndex - 1, d.currentIndex, d.currentIndex + 1].includes(chosenSlide.slideIndex) && at(chosenSlide.slideIndex)) {
+    cards.unshift([at(chosenSlide.slideIndex), "Chosen"]);
+  }
+  $("slides").innerHTML = cards.map(([sl, cap]) => slideCard(sl, cap)).join("");
+  $("slides").querySelectorAll("[data-idx]").forEach((b) => b.addEventListener("click", () => pick(Number(b.dataset.idx))));
+  for (const img of $("slides").querySelectorAll("img")) loadImage(img);
+  $("open-tray").hidden = false;
+  $("open-tray").textContent = `Show all ${d.slides.length} previews`;
+  ready();
 }
+
+function pick(idx) {
+  chosenSlide = { presentationId: flagSlides.presentationId, slideIndex: idx };
+  slidesKey = "";
+  paintSlides();
+  // Next step is what's wrong with it.
+  $("types").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+// The tray: every slide's picture, loaded as it scrolls into view so opening
+// it doesn't ask ProPresenter for thirty pictures at once.
+let trayObserver = null;
+$("open-tray").addEventListener("click", () => {
+  const d = flagSlides;
+  if (!d?.presentationId) return;
+  $("tray-title").textContent = d.presentationName ?? "All slides";
+  $("tray-grid").innerHTML = d.slides
+    .map((sl) => `<button class="slide" data-idx="${sl.slideIndex}"><div class="pv"><img data-src="${esc(sl.image)}" alt="" /></div><small>Slide ${sl.slideNumber}${sl.slideIndex === d.currentIndex ? " · on screen" : ""}</small></button>`)
+    .join("");
+  trayObserver?.disconnect();
+  trayObserver = new IntersectionObserver((entries) => {
+    for (const e of entries) if (e.isIntersecting) { loadImage(e.target); trayObserver.unobserve(e.target); }
+  }, { root: $("tray-grid"), rootMargin: "200px" });
+  $("tray-grid").querySelectorAll("img").forEach((img) => trayObserver.observe(img));
+  $("tray-grid").querySelectorAll("[data-idx]").forEach((b) =>
+    b.addEventListener("click", () => {
+      pick(Number(b.dataset.idx));
+      $("tray").hidden = true;
+    })
+  );
+  $("tray").hidden = false;
+});
+$("close-tray").addEventListener("click", () => ($("tray").hidden = true));
 
 function paintTypes() {
   $("types").innerHTML = (state.types ?? []).map((t) => `<button class="type" data-type="${esc(t)}" aria-pressed="${t === chosenType}">${esc(t)}</button>`).join("");
@@ -99,7 +172,7 @@ function paintTypes() {
 }
 
 function ready() {
-  $("send").disabled = !chosenRef;
+  $("send").disabled = !chosenSlide;
 }
 
 function say(text, fault = false) {
@@ -143,13 +216,12 @@ async function flush() {
 }
 
 $("send").addEventListener("click", async () => {
-  const r = (state?.recent ?? []).find((x) => x.ref === chosenRef);
   // The slide it means travels with it, so a flag that waits (no signal)
-  // still lands on the right slide after its entry has left the list.
+  // still lands on the right slide; the server checks it against the index.
   const item = {
     id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`,
-    ref: chosenRef,
-    slide: r ? { presentationId: r.presentationId, slideIndex: r.slideIndex, at: r.at } : null,
+    ref: null,
+    slide: chosenSlide ? { ...chosenSlide, at: new Date().toISOString() } : null,
     type: chosenType,
     note: $("note").value,
     name: $("name").value,
@@ -158,7 +230,13 @@ $("send").addEventListener("click", async () => {
   $("send").disabled = true;
   try {
     await api("/api/flag", { method: "POST", body: JSON.stringify(item) });
-    say("Sent to the booth. Thank you.");
+    // The slide that was flagged, not only a sentence, so it's plain which one.
+    const sl = flagSlides?.slides?.find((x) => x.slideIndex === item.slide?.slideIndex);
+    $("status").className = "status";
+    $("status").innerHTML = sl
+      ? `<div class="sent"><div class="pv"><img data-src="${esc(sl.image)}" alt="" /></div><div>Sent to the booth: slide ${sl.slideNumber}. Thank you.</div></div>`
+      : "Sent to the booth. Thank you.";
+    $("status").querySelectorAll("img").forEach((img) => loadImage(img));
     $("note").value = "";
     chosenType = null;
     paintTypes();
@@ -191,6 +269,7 @@ async function refresh() {
 
 // --- preview: the current slide and the next -------------------------------
 let previewKey = "";
+let nextImage = null; // the Next preview's picture, for the confirm step
 async function paintPreview() {
   try {
     const p = await api("/api/preview");
@@ -204,6 +283,7 @@ async function paintPreview() {
     $("pv-now").innerHTML = pane(p.current, "Nothing on screen");
     $("pv-next").innerHTML = pane(p.next, p.atEnd ? "End of this presentation" : "");
     for (const img of document.querySelectorAll(".pv img")) loadImage(img);
+    $("pv-next").classList.toggle("can-step", Boolean(state?.phone?.canControl && p.next));
   } catch { /* the readout says if the booth is away */ }
 }
 async function loadImage(img) {
@@ -214,11 +294,43 @@ async function loadImage(img) {
   } catch { /* leave it blank */ }
 }
 
+// After a press, check every 0.4s for a few seconds instead of waiting for
+// the next 3s refresh, so the preview shows the new slide almost at once.
+function refreshSoon() {
+  let n = 0;
+  const t = setInterval(() => {
+    previewKey = "";
+    paintPreview();
+    if (++n >= 8) clearInterval(t);
+  }, 400);
+}
+
+// Tapping the Next preview shows the next slide: an approved phone only, and
+// like every control press it arms first and confirms second. The prompt
+// goes in the caption, so the picture stays visible.
+$("pv-next").addEventListener("click", () => {
+  if (state?.phone?.canControl) press($("pv-next"), { kind: "next" }, $("pv-next-cap"), nextImage);
+});
+
+// The banner confirms too: it's the biggest target on the screen.
+$("confirm").addEventListener("click", () => armed?.el.click());
+
+// Emergency: the booth's safe slides, one tap to open, then the usual
+// arm-and-confirm on the one to put up.
+$("emergency").addEventListener("click", () => {
+  const open = $("emergency-pick").hidden;
+  $("emergency-pick").hidden = !open;
+  $("emergency").setAttribute("aria-expanded", String(open));
+  $("emergency").textContent = open ? "Close emergency slides" : "Emergency slide";
+  if (!open) disarm();
+});
+
 // --- tabs ---------------------------------------------------------------------
 document.querySelectorAll(".tab").forEach((t) =>
   t.addEventListener("click", () => {
     document.querySelectorAll(".tab").forEach((x) => x.setAttribute("aria-selected", String(x === t)));
     for (const name of ["flag", "search", "control"]) $(`tab-${name}`).hidden = name !== t.dataset.tab;
+    disarm(); // nothing stays armed on a tab you can't see
     if (t.dataset.tab === "search") $("q").focus();
   })
 );
@@ -233,8 +345,16 @@ $("q").addEventListener("input", () => {
     try {
       const { results } = await api(`/api/search?q=${encodeURIComponent(q)}`);
       $("search-results").innerHTML = results.length
-        ? results.map((r) => `<div class="slide"><small>${esc(r.presentationName)}, slide ${r.slideNumber}</small>${esc((r.text ?? "").slice(0, 160))}</div>`).join("")
+        ? results
+            .map(
+              (r) => `<div class="slide"><small>${esc(r.presentationName)}, slide ${r.slideNumber}</small>${esc((r.text ?? "").slice(0, 160))}${
+                state?.phone?.canControl ? `<button class="ctl" style="min-height:44px;margin-top:8px;width:100%" data-focus="${esc(r.presentationId)}">Show in editor</button>` : ""
+              }</div>`
+            )
+            .join("")
         : `<div class="muted">No matches.</div>`;
+      // Opens it in ProPresenter's editor, not on the screens; confirmed like every control press.
+      $("search-results").querySelectorAll("[data-focus]").forEach((b) => b.addEventListener("click", () => press(b, { kind: "focus", presentationId: b.dataset.focus })));
     } catch (err) {
       $("search-results").innerHTML = `<div class="muted">${esc(err.message)}</div>`;
     }
@@ -245,15 +365,29 @@ $("q").addEventListener("input", () => {
 // The first tap asks the booth's Refrain what it will do and gets a one-time
 // id; the second tap, within a few seconds, confirms it. The server enforces
 // both steps, so no single tap (or request) can take over ProPresenter.
-let armed = null; // { el, confirmId, label, timer }
+let armed = null; // { el, labelEl, confirmId, label, idle, timer }
 function disarm() {
   if (!armed) return;
   clearTimeout(armed.timer);
   armed.el.classList.remove("armed");
-  armed.el.textContent = armed.idle;
+  armed.labelEl.textContent = armed.idle;
   armed = null;
+  $("confirm").hidden = true;
 }
-async function press(el, body) {
+function showConfirm(image, label) {
+  $("confirm-text").textContent = `Tap again to put this up: ${label}`;
+  $("confirm-img").removeAttribute("src");
+  $("confirm-img").parentElement.hidden = !image;
+  if (image) {
+    $("confirm-img").dataset.src = image;
+    loadImage($("confirm-img"));
+  }
+  $("confirm").hidden = false;
+}
+// `labelEl` is where "Tap again" is written: the button itself, or a
+// caption when the pressed thing is a picture. `image` is the slide it will
+// put up, shown large while armed instead of a line of text.
+async function press(el, body, labelEl = el, image = null) {
   const status = $("control-status");
   if (armed && armed.el === el) {
     const { confirmId, label } = armed;
@@ -262,8 +396,7 @@ async function press(el, body) {
       await api("/api/control/confirm", { method: "POST", body: JSON.stringify({ confirmId }) });
       status.textContent = `Done: ${label}.`;
       status.className = "status";
-      previewKey = "";
-      setTimeout(paintPreview, 600);
+      refreshSoon();
     } catch (err) {
       status.textContent = err.message;
       status.className = "status fault";
@@ -273,15 +406,16 @@ async function press(el, body) {
   disarm();
   try {
     const { confirmId, label } = await api("/api/control/prepare", { method: "POST", body: JSON.stringify(body) });
-    armed = { el, confirmId, label, idle: el.textContent, timer: setTimeout(disarm, 5000) };
+    armed = { el, labelEl, confirmId, label, idle: labelEl.textContent, timer: setTimeout(disarm, 5000) };
     el.classList.add("armed");
-    el.textContent = `Tap again: ${label}`;
+    labelEl.textContent = `Tap again: ${label}`;
+    showConfirm(image, label);
   } catch (err) {
     status.textContent = err.message;
     status.className = "status fault";
   }
 }
-document.querySelectorAll(".ctl").forEach((b) => b.addEventListener("click", () => press(b, { kind: b.dataset.kind })));
+document.querySelectorAll(".ctl[data-kind]").forEach((b) => b.addEventListener("click", () => press(b, { kind: b.dataset.kind }, b, b.dataset.kind === "next" ? nextImage : null)));
 
 let safeKey = "";
 async function paintControl() {
@@ -298,10 +432,14 @@ async function paintControl() {
     const key = JSON.stringify(safeSlides);
     if (key === safeKey) return;
     safeKey = key;
+    $("emergency").hidden = !safeSlides.length;
     $("safe").innerHTML = safeSlides.length
-      ? safeSlides.map((sl) => `<button class="slide" data-safe="${esc(sl.id)}">${esc(sl.label)}</button>`).join("")
+      ? safeSlides.map((sl) => `<button class="slide" data-safe="${esc(sl.id)}" data-image="${esc(sl.image)}"><div class="pv"><img data-src="${esc(sl.image)}" alt="" /></div><small class="safe-label">${esc(sl.label)}</small></button>`).join("")
       : `<div class="muted">No safe slides yet. The booth adds them from Search.</div>`;
-    $("safe").querySelectorAll("[data-safe]").forEach((b) => b.addEventListener("click", () => press(b, { kind: "safe", safeId: b.dataset.safe })));
+    $("safe").querySelectorAll("img").forEach((img) => loadImage(img));
+    $("safe").querySelectorAll("[data-safe]").forEach((b) =>
+      b.addEventListener("click", () => press(b, { kind: "safe", safeId: b.dataset.safe }, b.querySelector(".safe-label"), b.dataset.image))
+    );
   } catch { /* keep the last list */ }
 }
 

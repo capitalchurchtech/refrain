@@ -178,6 +178,8 @@ export function createRemoteApp({
   preview = () => ({ current: null, next: null, atEnd: false }),
   thumb = async () => null,
   safeSlides = () => [],
+  presentationName = () => null,
+  currentSlides = () => null,
   control = async () => {
     throw new Error("Control isn't available.");
   },
@@ -260,7 +262,7 @@ export function createRemoteApp({
     const results = q.trim()
       ? search(q)
           .slice(0, 20)
-          .map((r) => ({ presentationName: r.presentationName, slideNumber: r.slideIndex + 1, text: r.snippet }))
+          .map((r) => ({ presentationId: r.presentationId, presentationName: r.presentationName, slideNumber: r.slideIndex + 1, text: r.snippet }))
       : [];
     res.json({ results });
   });
@@ -276,13 +278,37 @@ export function createRemoteApp({
     });
   });
 
-  // Only the current and next slide's pictures: a phone can't use this to
-  // make ProPresenter render whatever it likes.
+  /**
+   * Every slide of the presentation on the screens, for the Flag tab:
+   * previous, current and next up front, and all of them in a tray, so the
+   * person can pick the exact slide that needs fixing (owner request).
+   */
+  app.get("/api/flag-slides", (_req, res) => {
+    const d = currentSlides();
+    if (!d) return res.json({ presentationId: null, slides: [] });
+    res.json({
+      presentationId: d.presentationId,
+      presentationName: d.presentationName,
+      currentIndex: d.currentIndex,
+      slides: d.slides.map((sl) => ({
+        slideIndex: sl.slideIndex,
+        slideNumber: sl.slideIndex + 1,
+        text: sl.text,
+        image: `/api/preview/image/${encodeURIComponent(d.presentationId)}/${sl.slideIndex}`,
+      })),
+    });
+  });
+
+  // Pictures of the presentation on the screens only: a phone can't use this
+  // to make ProPresenter render some other presentation.
   app.get("/api/preview/image/:pid/:idx", async (req, res) => {
-    const p = preview();
+    const d = currentSlides();
     const idx = Number(req.params.idx);
-    const allowed = [p.current, p.next].some((t) => t && t.presentationId === req.params.pid && t.slideIndex === idx);
-    if (!allowed) return res.status(404).json({ error: "Only the current and next slide can be previewed." });
+    const onScreenDeck = d && d.presentationId === req.params.pid && Number.isInteger(idx) && idx >= 0 && idx < d.slides.length;
+    // The church's own safe slides too (at most eight), so an approved phone
+    // sees what each will put up.
+    const aSafeSlide = safeSlides().some((x) => x.presentationId === req.params.pid && x.slideIndex === idx);
+    if (!onScreenDeck && !aSafeSlide) return res.status(404).json({ error: "Only slides of the presentation on screen can be previewed." });
     const imgData = await thumb(req.params.pid, idx);
     if (!imgData) return res.status(404).json({ error: "No picture for that slide." });
     res.set("Cache-Control", "private, max-age=300").type(imgData.type).send(imgData.bytes);
@@ -291,7 +317,7 @@ export function createRemoteApp({
   // --- control level: approved phones, confirmed presses -------------------
 
   app.get("/api/safe-slides", approvedOnly, (_req, res) => {
-    res.json({ safeSlides: safeSlides().map((s) => ({ id: s.id, label: s.label })) });
+    res.json({ safeSlides: safeSlides().map((s) => ({ id: s.id, label: s.label, image: `/api/preview/image/${encodeURIComponent(s.presentationId)}/${s.slideIndex}` })) });
   });
 
   /**
@@ -305,6 +331,11 @@ export function createRemoteApp({
     else if (kind === "safe") {
       const s = safeSlides().find((x) => x.id === safeId);
       if (s) action = { kind, safeId: s.id, label: s.label };
+    } else if (kind === "focus") {
+      // Opens a presentation in ProPresenter's editor, nothing on the screens;
+      // still the phone taking over ProPresenter, so still confirmed.
+      const name = presentationName(String(req.body?.presentationId ?? ""));
+      if (name) action = { kind, presentationId: req.body.presentationId, label: `Show "${name}" in the editor` };
     }
     if (!action) return res.status(400).json({ error: "That isn't something a phone can do." });
     res.json({ confirmId: confirmer.prepare(req.deviceId, action), label: action.label });
@@ -336,6 +367,12 @@ export function createRemoteApp({
       const indexed = knownSlide(slide.presentationId, slide.slideIndex);
       const seenAt = Date.parse(slide.at);
       if (indexed) entry = { ...indexed, presentationId: slide.presentationId, slideIndex: slide.slideIndex, at: Number.isFinite(seenAt) ? seenAt : Date.now() };
+      // Or any slide of the presentation on screen, picked from the tray:
+      // a slide with no words (a graphic) is never in the index. What's
+      // recorded is the booth's own copy of it, never the phone's.
+      const d = entry ? null : currentSlides();
+      const own = d?.presentationId === slide.presentationId ? d.slides.find((x) => x.slideIndex === slide.slideIndex) : null;
+      if (own) entry = { presentationId: d.presentationId, presentationName: d.presentationName, slideIndex: own.slideIndex, text: own.text ?? "", at: Date.now() };
     }
     if (!entry) return res.status(404).json({ error: "That slide has scrolled out of the recent list. Pick it again." });
     const types = flagTypes().map((t) => t.label);
