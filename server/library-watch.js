@@ -114,7 +114,23 @@ export function startLibraryWatch(deps, options = {}) {
   let safetyTimer = null;
   let stopped = false;
   let checking = false;
-  let last = { at: null, outcome: "not run yet", count: 0, pending: null };
+  let last = { at: null, outcome: "not run yet", count: 0, pending: null, unreadChanges: false };
+  // A .pro file changed and no check has read it yet. Fed by the fs.watch
+  // handler, which is a local event costing nothing, so this survives while
+  // performance mode forbids the check that would act on it. That is the whole
+  // point: during a service the operator gets told the index is behind rather
+  // than getting an empty search with no explanation.
+  //
+  // A counter rather than a boolean, because a save can land *while* a reindex
+  // is in flight. Clearing a boolean on completion would claim that save was
+  // read when the plan predated it, and the next check is dropped outright if
+  // one is still running -- so the miss would survive until the safety net, or
+  // past the moment performance mode arms, which is exactly the silent failure
+  // this exists to remove. Each check only ever marks off the events it
+  // actually saw.
+  let fileEventSeq = 0;
+  let readEventSeq = 0;
+  const unreadFileEvent = () => fileEventSeq > readEventSeq;
 
   async function check(trigger) {
     if (stopped || checking) return;
@@ -122,16 +138,37 @@ export function startLibraryWatch(deps, options = {}) {
     // call: the promise is that Refrain goes completely quiet, not that it
     // looks around and then decides to behave.
     if (deps.frozen?.()) {
-      last = { at: new Date().toISOString(), outcome: "performance mode is on", count: 0, pending: null, trigger };
+      last = {
+        at: new Date().toISOString(),
+        outcome: "performance mode is on",
+        count: 0,
+        // `pending` belongs to the last real check and is rendered on Health as
+        // a count or a full-rebuild warning. Performance mode did not resolve
+        // it, so carry it forward untouched -- overwriting it here printed
+        // "undefined presentations have changed" and swallowed the
+        // full-rebuild warning, which matters most during a Library Sync run
+        // (ProPresenter closed, so performance mode is armed, hundreds of
+        // files landing).
+        pending: last.pending,
+        // Its own field, because this is a different fact with a different
+        // shape: not a count -- counting means planning, and planning is an
+        // API call we promised not to make -- only that something changed and
+        // nobody has read it.
+        unreadChanges: unreadFileEvent(),
+        trigger,
+      };
       return;
     }
     checking = true;
     try {
+      // Everything this check can possibly account for. Events arriving after
+      // this line belong to the next one.
+      const seenSeq = fileEventSeq;
       let plan = null;
       try {
         plan = await deps.plan();
       } catch (err) {
-        last = { at: new Date().toISOString(), outcome: `could not check: ${err.message}`, count: 0, pending: null };
+        last = { at: new Date().toISOString(), outcome: `could not check: ${err.message}`, count: 0, pending: null, unreadChanges: unreadFileEvent() };
         return;
       }
       const decision = decideAutoReindex({
@@ -142,6 +179,11 @@ export function startLibraryWatch(deps, options = {}) {
         maxAutoFetch: cfg.maxAutoFetch,
         settleAfterReadyMs: cfg.settleAfterReadyMs,
       });
+
+      // Read and found nothing outstanding: whatever those file events were,
+      // they did not change a presentation. Anything else (not answering, too
+      // many, needs a full rebuild) leaves them unread and still worth saying.
+      if (decision.nothingToDo) readEventSeq = seenSeq;
 
       if (!decision.run) {
         last = {
@@ -154,6 +196,7 @@ export function startLibraryWatch(deps, options = {}) {
             decision.tooMany || decision.needsFullRebuild
               ? { count: decision.count ?? null, needsFullRebuild: Boolean(decision.needsFullRebuild), reason: decision.reason }
               : null,
+          unreadChanges: unreadFileEvent(),
           trigger,
         };
         return;
@@ -161,16 +204,20 @@ export function startLibraryWatch(deps, options = {}) {
 
       try {
         const index = await deps.reindex();
+        // Only what this run planned for. A save that landed while it was
+        // running is still unread.
+        readEventSeq = seenSeq;
         last = {
           at: new Date().toISOString(),
           outcome: `reindexed ${decision.count} presentation${decision.count === 1 ? "" : "s"}`,
           count: decision.count,
           pending: null,
+          unreadChanges: unreadFileEvent(),
           trigger,
           durationMs: index?.buildDurationMs ?? null,
         };
       } catch (err) {
-        last = { at: new Date().toISOString(), outcome: `reindex failed: ${err.message}`, count: 0, pending: null, trigger };
+        last = { at: new Date().toISOString(), outcome: `reindex failed: ${err.message}`, count: 0, pending: null, unreadChanges: unreadFileEvent(), trigger };
       }
     } finally {
       checking = false;
@@ -179,6 +226,7 @@ export function startLibraryWatch(deps, options = {}) {
 
   function nudge(trigger) {
     if (stopped) return;
+    fileEventSeq += 1;
     clearTimeout(debounceTimer);
     // ProPresenter writes a presentation in bursts, and a volunteer editing a
     // set saves several in a row. Wait for quiet rather than reindexing per

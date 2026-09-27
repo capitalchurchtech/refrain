@@ -1445,6 +1445,52 @@ function lockinStaleness(now = Date.now()) {
   return { message: `Not reindexing: locked in for "${lockin.name}" since ${new Date(lockin.startedAt).toLocaleDateString([], { weekday: "long" })}. Release it on the Service screen once the event is over.` };
 }
 
+/**
+ * A deck changed while performance mode was holding, so search is behind and
+ * "No matches" is a lie the operator has no way to see through.
+ *
+ * This is the special-event case above all: the operator imports a deck ten
+ * minutes before doors, or presses Lock in (which is the *right* press for an
+ * event with no set time), and from then on nothing reindexes. Search then
+ * answers "No matches" for a presentation that is sitting in the library,
+ * identically to how it answers for a word nobody ever wrote.
+ *
+ * The remedy is already on the screen: the Refresh beside this message calls
+ * /api/index/reindex-changed, which is operator-initiated and therefore
+ * allowed to run while performance mode is armed. Nothing here starts work on
+ * its own, so performance mode's promise is untouched -- it only stops the
+ * operator being kept in the dark about work that is waiting.
+ *
+ * Two conditions have to hold before saying any of that, and both are about
+ * not handing someone a remedy that cannot work:
+ *
+ * - **ProPresenter has to be answering.** Performance mode also arms when it
+ *   is unreachable, not only when something is live. Without this check, a
+ *   Library Sync run -- which requires ProPresenter closed, and writes
+ *   hundreds of presentations into a watched folder -- would put this notice
+ *   on Search with a Refresh button that can only 502, because reindexing
+ *   reads through the API that is not there. The link is already reported by
+ *   the readout and the LINK lamp; this notice stays out of that case.
+ * - **The watcher has to exist.** With `autoReindex: false` there is none, so
+ *   nothing local knows a file changed and this cannot fire at all. That is a
+ *   real gap for exactly the churches whose index drifts furthest, and it is
+ *   not closeable here: the signal would have to come from somewhere other
+ *   than a watcher that setting deliberately turns off.
+ */
+function deferredStaleness() {
+  if (!frozen()) return null;
+  if (!liveState.connected) return null;
+  if (!libraryWatch?.status()?.unreadChanges) return null;
+  // Short on purpose. This row is `flex items-center` beside the index chip,
+  // so at docked width every extra word wraps and pushes the search box down
+  // -- and the booth path is the one place that cost is unacceptable. The
+  // reason (performance mode) is already on the PERF lamp and spelled out on
+  // Health; what the operator needs here is that search is behind and that
+  // the button beside this fixes it. No trailing "Refresh." either: the
+  // button says it.
+  return { message: "A presentation changed since this index." };
+}
+
 function indexStatusPayload() {
   const index = getIndex();
   return {
@@ -1465,7 +1511,11 @@ function indexStatusPayload() {
       lastError: performance.lastError,
     },
     fullRebuildSuggestion: fullRebuildSuggestion(daysSinceFullBuild(index)),
-    staleness: lockinStaleness() ?? indexStaleness(index?.builtAt ?? null),
+    // Order is by how actionable each one is, not by severity. A named deck
+    // that changed minutes ago outranks "you have been locked in since
+    // Saturday", which outranks "this index is a few days old" -- and all
+    // three share the one Refresh button beside them.
+    staleness: deferredStaleness() ?? lockinStaleness() ?? indexStaleness(index?.builtAt ?? null),
     // Accuracy is reported separately from age because they are different
     // problems: a week-old index misses new songs, a stale-schema one can fire
     // the wrong slide. The second is worse and must not be readable as the first.
