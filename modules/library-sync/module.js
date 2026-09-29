@@ -11,6 +11,10 @@ export default {
   id: "library-sync",
   navLabel: "Share Library",
   icon: "folder-sync",
+  nav: { group: "prep", order: 8 },
+  client: { file: "library-sync.js", init: "initLibrarySync" },
+  // Its on/off switch is on the Share Library card, on Settings' Library tab.
+  settingsTab: "library",
   route: "/library-sync",
   component: null,
   enabledByDefault: false,

@@ -1,5 +1,6 @@
 import { COPY_FAILED, noProPresenterFound } from "./strings.js";
 import { showFailure } from "./notice.js";
+import { wireTabKeys } from "./tabs.js";
 import { createMeter, updateMeter, meterCount } from "./led-meter.js";
 import { describeBackupStatus } from "./library-sync.js";
 const ARRANGEMENT_STATUS_LABEL = {
@@ -53,6 +54,48 @@ export function initHealth() {
     return versionCheck;
   }
 
+  function showSettingsTab(tab) {
+    container.querySelectorAll("[data-settings-panel]").forEach((p) => p.classList.toggle("hidden", p.dataset.settingsPanel !== tab));
+    container.querySelectorAll("[data-settings-tab]").forEach((b) => {
+      b.setAttribute("aria-selected", String(b.dataset.settingsTab === tab));
+      b.tabIndex = b.dataset.settingsTab === tab ? 0 : -1;
+    });
+  }
+  function selectSettingsTab(tab) {
+    showSettingsTab(tab);
+    // replaceState, like the menu: a link to the tab, not a trail of Back
+    // presses through tabs.
+    history.replaceState(null, "", tab === SETTINGS_TABS[0][0] ? "#settings" : `#settings/${tab}`);
+  }
+  function wireSettingsTabs() {
+    const row = document.getElementById("settings-tabs");
+    if (!row) return;
+    row.querySelectorAll("[data-settings-tab]").forEach((b) => b.addEventListener("click", () => selectSettingsTab(b.dataset.settingsTab)));
+    wireTabKeys(row, (b) => selectSettingsTab(b.dataset.settingsTab));
+  }
+  // Someone following a #settings/phones link while Settings is already open.
+  window.addEventListener("hashchange", () => {
+    if (!container.classList.contains("hidden") && /^#settings/.test(location.hash)) showSettingsTab(settingsTabFromHash(location.hash));
+  });
+  function wireDisplayCard() {
+    const themeBtn = document.getElementById("settings-theme-btn");
+    const sideBtn = document.getElementById("settings-side-btn");
+    if (!themeBtn || !sideBtn) return;
+    const label = () => {
+      themeBtn.textContent = document.getElementById("theme-label")?.textContent ?? "Theme";
+      sideBtn.textContent = document.documentElement.classList.contains("rail-right") ? "Menu on the right: move it left" : "Menu on the left: move it right";
+    };
+    label();
+    themeBtn.addEventListener("click", () => {
+      document.getElementById("theme-toggle")?.click();
+      label();
+    });
+    sideBtn.addEventListener("click", () => {
+      document.getElementById("nav-side-toggle")?.click();
+      label();
+    });
+  }
+
   async function render() {
     // A full container.innerHTML replace (below) recreates the Library
     // Sync <details> from scratch every time, which would otherwise
@@ -77,7 +120,7 @@ export function initHealth() {
       : null;
     container.innerHTML = `
       <div class="flex flex-col gap-4 max-w-3xl">
-        <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="heart-pulse" class="w-5 h-5"></i> Health</h1>
+        <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="settings" class="w-5 h-5"></i> Settings</h1>
         <div id="health-unfinished-day"></div>
         ${renderHealth(health, configOptions, versionInfo, renderLibraryCard(libraryFolders, arrangementFolders), duplicateNames.groups ?? [])}
       </div>`;
@@ -86,6 +129,9 @@ export function initHealth() {
     if (libraryFoldersDetails) libraryFoldersDetails.open = wasLibraryFoldersOpen;
     window.scrollTo(0, scrollY);
 
+    showSettingsTab(settingsTabFromHash(location.hash));
+    wireSettingsTabs();
+    wireDisplayCard();
     if (window.lucide) window.lucide.createIcons();
     showUnfinishedDay();
 
@@ -1360,6 +1406,20 @@ export function summarizeModules(health) {
   return { headline, detail, attention: broken > 0 || pending > 0 };
 }
 
+/** Settings' tabs, in order. The first is where Settings always opens. */
+const SETTINGS_TABS = [
+  ["status", "Status", "activity"],
+  ["library", "Library", "library"],
+  ["features", "Features", "toggle-right"],
+  ["phones", "Phones", "smartphone"],
+  ["this-mac", "This Mac", "monitor-cog"],
+];
+/** Which tab a fragment asks for: `#settings/library`, else the first. */
+export function settingsTabFromHash(hash) {
+  const m = String(hash ?? "").match(/^#settings\/([a-z-]+)$/);
+  return m && SETTINGS_TABS.some(([id]) => id === m[1]) ? m[1] : SETTINGS_TABS[0][0];
+}
+
 function renderHealth(health, configOptions, versionInfo, libraryCard = "", duplicateNameGroups = []) {
   const { propresenter, index, arrangementModule, role, version, config, envRequirements } = health;
   const shareLibraryCard = renderShareLibraryCard(health.shareLibrary);
@@ -1391,7 +1451,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
         ${
           propresenter.connected
             ? `<div class="text-sm opacity-60 rf-measure">Last checked ${new Date(propresenter.lastCheckIn ?? Date.now()).toLocaleTimeString()}. Run Diagnose if ProPresenter is behaving oddly.</div>`
-            : `<div class="text-sm">Check ProPresenter is running with its Network API enabled (Preferences &gt; Network), and that the host and port under Settings are correct.</div>`
+            : `<div class="text-sm">Check ProPresenter is running with its Network API enabled (Preferences &gt; Network), and that the host and port on the <a href="#settings/features" class="link">Features</a> tab are correct.</div>`
         }
       </div>
     </div>
@@ -1747,7 +1807,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
   const configCard = `
       <div class="flex flex-col gap-2">
         <div class="flex items-baseline justify-between gap-2">
-          <h2 class="rf-subhead" style="margin-bottom:0">Settings</h2>
+          <h2 class="rf-subhead" style="margin-bottom:0">Options</h2>
           <button id="backup-config-btn" class="btn btn-chip">
             <i data-lucide="download" class="w-3.5 h-3.5"></i> Back up config
           </button>
@@ -1988,7 +2048,6 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
               <div id="detect-storage-path-result" class="text-xs mt-1"></div>
             </label>
           </div>
-        </div>
 
             <div class="flex items-center gap-2 pt-1">
               <button type="button" class="btn btn-outline btn-sm config-save" data-scope="arrangement">Save</button>
@@ -2105,24 +2164,36 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
     </div>
   `;
 
+  // Display settings that used to be keys in the menu: set once, rarely
+  // changed, and one less thing to look past mid-service. The keys still
+  // exist, out of sight, so the menu's own theme and side logic runs them.
+  const displayCard = `
+    <div class="card bg-base-200">
+      <div class="card-body p-3 gap-2">
+        <h2 class="card-title text-base"><i data-lucide="palette" class="w-4 h-4 opacity-70"></i> Display</h2>
+        <div class="text-sm opacity-70 rf-measure">How Refrain looks on this computer.</div>
+        <div class="flex gap-2 flex-wrap">
+          <button type="button" id="settings-theme-btn" class="btn btn-outline btn-sm"></button>
+          <button type="button" id="settings-side-btn" class="btn btn-outline btn-sm"></button>
+        </div>
+      </div>
+    </div>`;
+
+  // Settings is Health's cards on five tabs (handoff section 40). Every card
+  // is rendered, so every card's wiring below finds its elements; the tabs
+  // only show one group at a time.
+  const panel = (id, ...cards) =>
+    `<div data-settings-panel="${id}" id="settings-panel-${id}" role="tabpanel" aria-labelledby="settings-tab-${id}" class="flex flex-col gap-4">${cards.join("")}</div>`;
   return `
     <div class="flex flex-col gap-4">
-      ${statusStrip}
-      ${propresenterCard}
-      ${phoneCard}
-      ${indexCard}
-      ${duplicateNamesCard}
-      ${preferredCard}
-      ${orphanedMediaCard}
-      ${themesCard}
-      ${arrangementCard}
-      ${configCard}
-      ${libraryCard}
-      ${shareLibraryCard}
-      ${autostartCard}
-      ${terminalCard}
-      ${updatesCard}
-      ${envCard}
+      <div id="settings-tabs" class="rf-tabs" role="tablist" aria-label="Settings" style="margin-bottom:0">
+        ${SETTINGS_TABS.map(([id, label, icon]) => `<button type="button" role="tab" id="settings-tab-${id}" aria-controls="settings-panel-${id}" class="rf-tab" data-settings-tab="${id}" aria-selected="false" tabindex="-1"><i data-lucide="${icon}" class="w-4 h-4 shrink-0"></i><span>${label}</span></button>`).join("")}
+      </div>
+      ${panel("status", statusStrip, propresenterCard, indexCard, updatesCard)}
+      ${panel("library", libraryCard, shareLibraryCard, duplicateNamesCard, preferredCard, themesCard, orphanedMediaCard)}
+      ${panel("features", configCard, arrangementCard, envCard)}
+      ${panel("phones", phoneCard)}
+      ${panel("this-mac", displayCard, autostartCard, terminalCard)}
       <div class="text-xs opacity-50 text-center mt-2 flex flex-col items-center gap-1">
         <div>
           Panel textures by

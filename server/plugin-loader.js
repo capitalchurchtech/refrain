@@ -52,3 +52,29 @@ export async function discoverModules() {
   }
   return modules;
 }
+
+/** A module's menu placement, with safe defaults: an unknown group is "prep". */
+export function moduleNav(nav) {
+  const group = nav?.group === "service" ? "service" : "prep";
+  const order = Number.isFinite(nav?.order) ? nav.order : 99;
+  return { group, order };
+}
+/**
+ * A module's screen script: a plain file in public/ and the name of the
+ * function that builds it. Anything else (a path, another origin) is dropped,
+ * so a module's metadata can't make the page load a script from elsewhere.
+ */
+export function moduleClient(client) {
+  const file = String(client?.file ?? "");
+  const init = String(client?.init ?? "");
+  return /^[a-z0-9-]+\.js$/.test(file) && /^[A-Za-z_$][\w$]*$/.test(init) ? { file, init } : null;
+}
+
+
+/**
+ * Which Settings tab holds a module's on/off switch, for "X is off. Turn it on
+ * in Settings." Most are on Features; one that says otherwise names its tab.
+ */
+export function moduleSettingsTab(tab) {
+  return ["status", "library", "features", "phones", "this-mac"].includes(tab) ? tab : "features";
+}

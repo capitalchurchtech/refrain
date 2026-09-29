@@ -11,6 +11,8 @@ export default {
   id: "service",
   navLabel: "Service",
   icon: "calendar-clock",
+  nav: { group: "service", order: 2.5 },
+  client: { file: "service.js", init: "initService" },
   route: "/service",
   component: null,
   enabledByDefault: false,

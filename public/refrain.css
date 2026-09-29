@@ -3893,3 +3893,84 @@ html.rail-right #rf-notices {
 #view-live .live-preview-step:disabled {
   cursor: progress;
 }
+
+/* ============================================================
+   PREP: THE TAB ROW AND THE MENU'S SUB-ITEMS (handoff section 40)
+
+   The prep tools share one page, with a bank of butted latching keys
+   across the top: all up, one down, the same way the rail reads. Square
+   and butted because a bank of keys is (creative direction, Buttons).
+   The latched key recesses and carries the plum edge along its bottom,
+   which is the side facing the page it selects.
+
+   Material is dark-only; the signal is not. In light theme the selected
+   tab is marked with a solid plum underline and full-strength ink, so
+   "which tab" reads in both themes. 44px tall in both: the touch floor.
+   ============================================================ */
+.rf-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  margin-bottom: 12px;
+}
+.rf-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 0;
+  font-size: 13px;
+  cursor: pointer;
+  background: transparent;
+  color: inherit;
+}
+.rf-tab[aria-selected="true"] {
+  box-shadow: inset 0 -3px 0 var(--rf-plum);
+  font-weight: 600;
+}
+[data-theme="dark"] .rf-tab,
+html.blackroom .rf-tab {
+  background-image: linear-gradient(180deg, #2A2333 0%, #1F1A28 100%);
+  box-shadow: var(--rf-junction-raised);
+  color: var(--rf-muted);
+}
+[data-theme="dark"] .rf-tab + .rf-tab,
+html.blackroom .rf-tab + .rf-tab {
+  border-left: 1px solid var(--rf-shadowline, #060409);
+}
+[data-theme="dark"] .rf-tab:hover,
+html.blackroom .rf-tab:hover {
+  color: var(--rf-text);
+}
+/* Latched: recessed, plum edge on the side facing the page, ink at full
+   strength. No glow: which tab you are on is your own navigation, not a
+   state the machine is reporting. */
+[data-theme="dark"] .rf-tab[aria-selected="true"],
+html.blackroom .rf-tab[aria-selected="true"] {
+  background-image: linear-gradient(180deg, #1C1724 0%, #221C2B 100%);
+  box-shadow:
+    var(--rf-junction-recessed),
+    inset 0 -3px 0 var(--rf-plum);
+  color: var(--rf-text);
+}
+.rf-tab:focus-visible {
+  outline: 2px solid var(--rf-plum-lit);
+  outline-offset: -2px;
+}
+
+/* The prep tools, listed under Prep while you're on it, one per row like
+   the keys above them. Only when the rail shows labels: the list exists to
+   put the tools' names in view, and a collapsed rail has no names, so there
+   it would be six more icons to look past. */
+.nav-subitems {
+  display: flex;
+  flex-direction: column;
+}
+#nav-rail:not(.w-36) .nav-subitems {
+  display: none;
+}
+#nav-rail.w-36 .nav-subitem {
+  padding-left: 1.5rem;
+}

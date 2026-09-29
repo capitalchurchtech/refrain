@@ -92,7 +92,7 @@ export function libraryWriteSafety({ psOutput = null, apiReachable = null, launc
       safe: false,
       reason:
         `ProPresenter is not fully closed — ${blocking.length} of its processes are still running. ` +
-        "Wait a few seconds, or clear them from the Health screen, then try again.",
+        "Wait a few seconds, or clear them from Settings, then try again.",
       evidence: { mainAppRunning: false, processes: blocking.length, launchdManaged: managedPidSet.size },
     };
   }

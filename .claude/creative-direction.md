@@ -16,8 +16,8 @@ JOB          Find the right slide fast and send it live.
 STAKES       Live operational. Failure is visible to a room.
 SURFACE      Two, not one. BOOTH: Search and Live, docked beside
              ProPresenter during a service. Narrow panel, tall, glanced at.
-             DESK: Health, Setup, Image Crop, QR Codes, Arrangement — a
-             normal window, at a desk, not during a service.
+             DESK: Settings (formerly Health), Setup, and the Prep page's
+             tools — a normal window, at a desk, not during a service.
 STACK        Node / Express, Tailwind, DaisyUI, Firestore.
 BRAND        Independent. Open source. Judged on first look by other churches.
 ```
@@ -205,7 +205,11 @@ unlit is a hollow ring or a pale dot. Ink where the dark theme has light. And
 every two-state indicator has to be checked for whether **both** states are
 visible in **both** themes — a signal with one legible state is not a signal.
 
-### The one exception: fault, on Health only
+### The one exception: fault, on Settings only
+
+(Health became Settings on 2026-09-29, handoff section 40: the same screen,
+its cards on five tabs. Everything below that says Health means Settings, all
+five tabs of it. It is still scoped by the `#view-health` selector.)
 
 ```
 fault      #C9922E    hue 39°, saturation 63%

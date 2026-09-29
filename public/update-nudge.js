@@ -82,7 +82,7 @@ export function initUpdateNudge() {
       go.disabled = false;
       dismiss.disabled = false;
       if (status) status.textContent = "";
-      showFailure(`Couldn't update: ${err.message}. Nothing was changed — the Health screen has a command you can run by hand.`);
+      showFailure(`Couldn't update: ${err.message}. Nothing was changed — Settings > This Mac has a command you can run by hand.`);
     }
   });
 

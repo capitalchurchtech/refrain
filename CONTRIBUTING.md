@@ -107,11 +107,19 @@ export default {
   id: "your-feature",
   navLabel: "Your Feature",
   icon: "your-lucide-icon-name",
+  // Where it sits in the menu: "service" for screens used during a service,
+  // "prep" for everything done before one. Lower order comes first.
+  nav: { group: "prep", order: 9 },
+  // Your screen: public/your-feature.js, exporting a function that builds it
+  // and returns { render } (called each time the screen is opened).
+  client: { file: "your-feature.js", init: "initYourFeature" },
   route: "/your-feature",
   component: null,
   enabledByDefault: false,
 };
 ```
+
+That's the whole integration: the menu entry, its position and the screen all come from this file. `client.file` must be a plain file name in `public/`.
 
 This is the right shape for something genuinely new, not a provider or a backend or a splitter, but a whole new thing Refrain doesn't do yet. Self contained folder, no core files touched.
 

@@ -157,7 +157,7 @@ export function initSetup({ onComplete }) {
       return "ProPresenter is still starting up. Refrain waits a few minutes before reading the library, because a library read too early comes back half empty.";
     }
     if (/never became available/i.test(r)) {
-      return "Gave up waiting for ProPresenter. You can finish setup and build the index later from the Health screen.";
+      return "Gave up waiting for ProPresenter. You can finish setup and build the index later from Settings.";
     }
     if (/performance mode/i.test(r)) {
       return "Something is on the screens, so Refrain is holding off. It will build the index once nothing is live.";
@@ -197,7 +197,7 @@ export function initSetup({ onComplete }) {
         // Build started and finished, but never produced an index —
         // it failed. Don't loop forever; let the user into the app,
         // where the health screen explains what's wrong.
-        progressText.textContent = "Index build failed. Check the server logs, then retry from the Health screen.";
+        progressText.textContent = "Index build failed. Check the server logs, then retry from Settings.";
         return;
       } else if (status.indexWorkDeferred) {
         // Not started yet, and the server knows why. Say it, and say what to

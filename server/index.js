@@ -157,7 +157,7 @@ import {
   DEFAULT_MINIMUM_FILES,
   DEFAULT_SNAPSHOTS_TO_KEEP,
 } from "./library-sync.js";
-import { discoverModules, discoverSlideSplitters, discoverProviders, discoverStorageBackends, discoverDeliveryBackends } from "./plugin-loader.js";
+import { discoverModules, discoverSlideSplitters, discoverProviders, discoverStorageBackends, discoverDeliveryBackends, moduleNav, moduleClient, moduleSettingsTab } from "./plugin-loader.js";
 import { runComparison, suggestMapping, getPendingUploadCount, retryPendingUploads } from "./arrangement-diff.js";
 import { startWatcher as startImageCropWatcher, getImageCropStatus, foldersOverlap, websafeToken } from "./image-crop.js";
 import { generateQr, getQrHistoryList, getQrHistoryEntry, addQrHistoryEntry, clearQrHistory, QR_LIMITS } from "./qr-code.js";
@@ -262,6 +262,12 @@ app.get("/api/modules", async (_req, res) => {
       navLabel: m.navLabel,
       icon: m.icon,
       route: m.route,
+      // Menu placement and the screen's script, both declared by the module
+      // itself, so a new module folder needs no edit anywhere else (CLAUDE.md:
+      // auto discovery, not central lists).
+      nav: moduleNav(m.nav),
+      client: moduleClient(m.client),
+      settingsTab: moduleSettingsTab(m.settingsTab),
       // "enabled" here means "show in the nav," not "the feature is running."
       // The arrangement module is gated (hidden until configured, per its
       // three-state status) because it needs real setup — credentials, a
@@ -2397,7 +2403,7 @@ app.post("/api/service/steps", async (req, res) => {
 async function driftReadiness() {
   const status = getArrangementModuleStatus(config);
   if (status !== "active") return `the Arrangement module is ${status} on this machine`;
-  if (config.role !== "logger") return "this machine isn't the logger (see Health)";
+  if (config.role !== "logger") return "this machine isn't the logger (see Settings)";
   const Provider = await getArrangementProviderClass();
   if (!Provider.supportsPlanBrowsing) return `${Provider.displayName} has no weekend plans to compare against`;
   return null;
@@ -4357,7 +4363,7 @@ async function compareWeekendSongs({ planId = null, onlyPresentationIds = null }
 app.post("/api/arrangement/compare-all", async (req, res) => {
   if (!requireArrangementActive(res)) return;
   if (config.role !== "logger") {
-    return res.status(403).json({ error: "Only the logger machine can run comparisons — see Health for role." });
+    return res.status(403).json({ error: "Only the logger machine can run comparisons — see Settings for role." });
   }
   if (!(await requireProviderCapability(res, "supportsPlanBrowsing", "The weekend compare-all workflow"))) return;
 
@@ -4388,7 +4394,7 @@ app.post("/api/arrangement/compare-all", async (req, res) => {
 app.post("/api/arrangement/push-arrangement", async (req, res) => {
   if (!requireArrangementActive(res)) return;
   if (config.role !== "logger") {
-    return res.status(403).json({ error: "Only the logger machine can push arrangements — see Health for role." });
+    return res.status(403).json({ error: "Only the logger machine can push arrangements — see Settings for role." });
   }
   if (!(await requireProviderCapability(res, "supportsPush", "Pushing an arrangement update"))) return;
 
@@ -4415,7 +4421,7 @@ app.post("/api/arrangement/push-arrangement", async (req, res) => {
 app.post("/api/arrangement/compare", async (req, res) => {
   if (!requireArrangementActive(res)) return;
   if (config.role !== "logger") {
-    return res.status(403).json({ error: "Only the logger machine can run comparisons — see Health for role." });
+    return res.status(403).json({ error: "Only the logger machine can run comparisons — see Settings for role." });
   }
   const { presentationId, serviceDate, force } = req.body ?? {};
   if (!presentationId || !serviceDate) {
@@ -4856,8 +4862,8 @@ app.post("/api/setup", async (req, res) => {
     })
       .then((settled) => {
         if (!settled) {
-          indexWorkDeferred = "ProPresenter never became available — build the index from the Health screen";
-          console.log("Gave up waiting for ProPresenter. Build the index from the Health screen once it is up.");
+          indexWorkDeferred = "ProPresenter never became available — build the index from Settings";
+          console.log("Gave up waiting for ProPresenter. Build the index from Settings once it is up.");
           return null;
         }
         indexWorkDeferred = null;
@@ -5097,7 +5103,7 @@ const server = app.listen(port, "127.0.0.1", async () => {
     .then((u) => {
       if (!u.updateAvailable) return;
       console.log(`  An update is available: v${u.latestVersion} (this is v${u.currentVersion}).`);
-      console.log("  Nothing is required — update from the Health screen when it suits you.");
+      console.log("  Nothing is required — update from Settings when it suits you.");
       console.log("");
     })
     .catch(() => {});
@@ -5112,7 +5118,7 @@ const server = app.listen(port, "127.0.0.1", async () => {
     if (frozen()) {
       indexWorkDeferred = "performance mode is on";
       console.log(`No search index cache found, but performance mode is on — not building. ${describePerformance(performance)}`);
-      console.log("Search will be empty until you build it from the Health screen.");
+      console.log("Search will be empty until you build it from Settings.");
     } else {
       const settled = await awaitProPresenterSettled({
         onWait: (state, readyFor) => {
@@ -5128,8 +5134,8 @@ const server = app.listen(port, "127.0.0.1", async () => {
         },
       });
       if (!settled) {
-        indexWorkDeferred = "ProPresenter never became available — build the index from the Health screen";
-        console.log("Gave up waiting for ProPresenter. Search will stay empty until you build the index from the Health screen.");
+        indexWorkDeferred = "ProPresenter never became available — build the index from Settings";
+        console.log("Gave up waiting for ProPresenter. Search will stay empty until you build the index from Settings.");
         return;
       }
       indexWorkDeferred = null;

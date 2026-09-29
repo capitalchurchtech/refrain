@@ -11,6 +11,8 @@ export default {
   id: "scripture",
   navLabel: "Scripture",
   icon: "book-open",
+  nav: { group: "prep", order: 4.7 },
+  client: { file: "scripture.js", init: "initScripture" },
   route: "/scripture",
   component: null,
   enabledByDefault: true,

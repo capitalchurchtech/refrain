@@ -14,6 +14,8 @@ export default {
   id: "image-crop",
   navLabel: "Image Crop",
   icon: "crop",
+  nav: { group: "prep", order: 6 },
+  client: { file: "image-crop.js", init: "initImageCrop" },
   route: "/image-crop",
   component: null, // TODO: ImageCropScreen component
   enabledByDefault: true,

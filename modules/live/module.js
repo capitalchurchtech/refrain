@@ -10,6 +10,8 @@ export default {
   id: "live",
   navLabel: "Live",
   icon: "monitor",
+  nav: { group: "service", order: 1 },
+  client: { file: "live.js", init: "initLive" },
   route: "/live",
   component: null,
   enabledByDefault: true,

@@ -381,17 +381,9 @@
           <span class="shrink-0"><i data-lucide="keyboard"></i></span>
           <span class="nav-label whitespace-nowrap hidden">Shortcuts</span>
         </button>
-        <button id="theme-toggle" class="btn btn-ghost btn-sm justify-start gap-3 px-2" title="Toggle theme">
-          <span id="theme-icon" class="shrink-0"></span>
-          <span class="nav-label whitespace-nowrap hidden" id="theme-label">Theme: System</span>
-        </button>
         <button id="nav-phone-toggle" class="btn btn-ghost btn-sm justify-start gap-3 px-2" title="Use a phone with Refrain">
           <span class="shrink-0"><i data-lucide="smartphone"></i></span>
           <span class="nav-label whitespace-nowrap hidden">Phone</span>
-        </button>
-        <button id="nav-side-toggle" class="btn btn-ghost btn-sm justify-start gap-3 px-2" title="Move the menu to the right">
-          <span id="nav-side-icon" class="shrink-0"></span>
-          <span class="nav-label whitespace-nowrap hidden" id="nav-side-label">Move right</span>
         </button>
         <button id="nav-pin-toggle" class="btn btn-ghost btn-sm justify-start gap-3 px-2" title="Expand sidebar">
           <span id="nav-pin-icon" class="shrink-0"></span>
@@ -399,6 +391,21 @@
         </button>
       </div>
     </aside>
+
+    <!-- Theme and menu side are set from Settings > This Mac now (handoff
+         section 40). The keys stay because the menu's code runs both, but
+         outside the rail: inside it, the sliver's peek and :focus-within
+         rules (2,2,0) beat a hidden class and brought them back. -->
+    <div class="hidden" aria-hidden="true">
+      <button id="theme-toggle" type="button" tabindex="-1" title="Toggle theme">
+        <span id="theme-icon"></span>
+        <span id="theme-label">Theme: System</span>
+      </button>
+      <button id="nav-side-toggle" type="button" tabindex="-1" title="Move the menu to the right">
+        <span id="nav-side-icon"></span>
+        <span id="nav-side-label">Move right</span>
+      </button>
+    </div>
 
     <main id="main-content" class="flex-1 min-w-0 p-3 ml-14 transition-all duration-150">
       <!-- App-wide "Return" bar (Section: snap-back). Hidden until an
@@ -531,24 +538,9 @@
       </section>
 
       <section id="view-health" class="hidden flex flex-col gap-4"></section>
-
-      <section id="view-lyrics-assist" class="hidden"></section>
-
-      <section id="view-arrangement" class="hidden"></section>
-
-      <section id="view-image-crop" class="hidden"></section>
-
-      <section id="view-qr-code" class="hidden"></section>
-
-      <section id="view-spellcheck" class="hidden"></section>
-
-      <section id="view-live" class="hidden"></section>
-
-      <section id="view-scripture" class="hidden"></section>
-
-      <section id="view-library-sync" class="hidden"></section>
-      <section id="view-slide-flags" class="hidden"></section>
-      <section id="view-service" class="hidden"></section>
+      <!-- Each module's screen is added here at start, from its module.js
+           (public/main.js). Search keeps its markup above; the rest build
+           their own. -->
     </main>
   </div>
 

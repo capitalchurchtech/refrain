@@ -32,7 +32,7 @@ export function initArrangement() {
       container.innerHTML = `
         <div class="alert alert-warning max-w-xl">
           Arrangement module is ${status.status === "misconfigured" ? "misconfigured" : "not enabled"}.
-          see the Health screen for details.
+          see Settings for details.
         </div>
       `;
       return;

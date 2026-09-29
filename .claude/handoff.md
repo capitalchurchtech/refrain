@@ -2227,6 +2227,69 @@ rename doesn't un-hide it). Hidden macros are gone from Live, not greyed. A
 "Show 12 hidden" link in edit mode brings them back. Same pattern could
 apply to Looks (the seasonal Christmas ones).
 
+## 40. PLAN — A calmer menu: Prep and Settings pages with tabs (owner decision 2026-09-29)
+
+**Ask (owner):** "the edit features need to be contained in the edit page as sub
+pages or tabs. The number of menu items can be arresting mid service." Then,
+after reviewing four concepts: "A it is", and "another tabbing UI for health,
+but call it settings with tabs".
+
+**Why A (five blind persona reviews, 2026-09-29).** A was ranked first or second
+by all five personas. The alternatives each stopped someone: a Booth/Desk switch
+(C) hid Live behind a mode for four of five. Tools living only on a song (D) left
+new-song Lyrics and Scripture with no path. A launcher (B) cost every tool an
+extra press. The review's amendments are part of the plan, below.
+
+**The menu after this:** Search, Live, Flags, Service | Prep, Settings. Bottom:
+Shortcuts, Phone, Pin. (Theme and Move right move into Settings.)
+
+### 40.1 CRAFT — Groups come from the modules, not from lists in nav.js
+Context: `public/main.js:101` hardcodes `viewIds`, and `nav.js` has
+`NAV_PRIORITY` and `NAV_GROUP`. A contributor's new module folder is enabled but
+never appears until they edit that Set, which breaks CLAUDE.md's "no central
+registries". Do this first; the Prep page depends on it.
+- **Do:** each `modules/*/module.js` declares `nav: { group: "service" | "prep", order }`. The client's views register themselves, so a module appears once its folder and screen exist. Move today's orders and groups into the modules unchanged.
+- **Do not:** change what any screen does, or its hash id.
+- **Done when:** deleting `viewIds`, `NAV_PRIORITY` and `NAV_GROUP` leaves the menu identical, and a test module folder shows up in Prep with no other edit.
+
+### 40.2 CRAFT — The Prep page
+- **Do:** one menu item, Prep. Its page has a row of latching-key tabs, one per enabled prep module in `order`: Spell Check, Lyrics, Scripture, Arrangement, Image Crop, QR Codes, Share Library. Each tab renders that module's existing screen unchanged.
+- **Always opens on the first tab** (review finding 4: "last tab used" made the same press land somewhere different each week). Direct links go to a tab: `#prep/qr-code`, and the old `#spellcheck` etc. still work.
+- **While you're on Prep, the menu lists the prep tools under Prep**, indented, so the names are visible (the prep volunteer's need). They fold away when you leave. Search, Live, Flags and Service never move.
+- **Always show the tab row**, even with one tab (review finding 9: a one-tab shortcut made the page change shape when a second module was turned on).
+- **Dots roll up:** anything a prep module flags on its menu item today (Image Crop's activity dot) shows on Prep, and on the tab.
+- **Do not:** hide or rearrange the menu during a service, or add a mode.
+- **Done when:** the menu shows 6 screens; every prep tool is reachable in two presses from anywhere; the old links land on the right tab; checked in dark, Blackroom and light, at booth width and desk width.
+
+### 40.3 CRAFT — Settings replaces Health, with tabs
+Health's 15 cards become five tabs. The default is fixed, same as Prep.
+- **Status** (default): the status strip, ProPresenter (connection, load warning, slide pictures), Search index, and the Updates summary. This is what "is it working?" needs, and it's what a Health link opens.
+- **Library:** library folders, Share Library, duplicate names, the FS/T not-selected list, Themes, Unused media.
+- **Features:** the module switches and their settings (Arrangement, QR defaults and the rest), ProPresenter host and port, environment variables.
+- **Phones:** the Phones card (the rail's Phone button still opens the Phone panel).
+- **This Mac:** start at login, terminal shortcuts, updates, and display (Theme and menu side, moved here from the menu).
+- `#health` keeps working and opens Settings > Status; each tab has its own link (`#settings/library`).
+- **Do not:** change what any card does, or the Health API routes (`/api/health` stays). The name changes on screen only.
+- **Brief update in the same change:** the fault amber exception is "Health only, enforced by selector". Re-scope that selector to Settings > Status and say so in creative-direction.md.
+- **Done when:** the menu says Settings; every Health card is on one tab; the status strip still shows first; fault amber appears nowhere outside Status.
+
+### 40.4 CRAFT — Number keys follow the new menu
+Context (review finding 3): bare digits 1–9 jump to menu positions (`nav.js:740`). Folding renumbers them.
+- **Do:** 1–6 go to the six menu items. On Prep and Settings, holding ⌘/Ctrl with a digit picks a tab. The Shortcuts panel says so.
+- **Done when:** 1–4 still reach Search, Live, Flags, Service, and every prep tool has a key combination.
+
+### 40.5 CRAFT — Fix a song from where it's shown
+Context (review finding 8, and the tech director's need): Spell Check asks for the
+playlist again, and Arrangement asks for the song again.
+- **Do:** on Flags rows and Service playlist rows, add "Spell check this" and "Arrangement", opening Prep on that tab with that presentation already chosen. Not on Search rows: that's the booth screen, and the buttons would sit beside Go Live (review finding 6).
+- **Done when:** from a flag, fixing and checking a song takes three presses and no re-choosing.
+
+### 40.6 NOTE — Colour, after the menu lands
+Colour by role: blue for the page's one main job, green for ready, orange for live only, plum for structure. It's a brief change (new palette entries and where each may appear). Do it after 40.1–40.5, and send before-and-after screenshots of each main screen, dark and light, for approval before it lands. Not by tool family (review finding 7: green on a "pictures" family read as "ready").
+
+### 40.7 NOTE — QR Codes can't be turned off (decided: leave it)
+`modules/qr-code/module.js` sets `enabledByDefault: true` and there's no switch for it. Owner, 2026-09-29: "QR codes are not tracked right so they are throw away". It stays always on, with no switch.
+
 ## Status log
 
 `YYYY-MM-DD · <item> · done | partial | blocked · <one line>`
@@ -2816,3 +2879,8 @@ apply to Looks (the seasonal Christmas ones).
 - 2026-09-27 — Second stress test, same load as the first: Refrain held again (status route worst 61–74ms across phases, no errors or timeouts, memory levelling at ~200 MB). The new per-phone picture limit returned 429 to the test's unrealistic tray loop (it re-downloads every picture every 4s); a real phone keeps its pictures.
 - 2026-09-27 — Code review (high) of the phone-stability branch: 10 findings, all fixed. (1) A first build stopped or checkpointed part-way (no builtAt) now resumes instead of re-reading everything: `planIncremental` builds on a `partial` index. (2) Stored pictures older than 20h count as missing, and the next write starts the set again, so a theme edit can't leave old pictures up for good. (3) Every performance-mode change (manual, lock-in start/release/restore) goes through `setPerformance`, so the quiet timers see it. (4) A catch-up that didn't finish waits 3h before trying again. (5) Writes to the picture store are serialized per presentation (the shared meta.json temp file and the version clear-out raced). (6) The picture store is pruned hourly whether or not pre-rendering is on. (7) Stored pictures are read before the 2-at-once render queue, not inside it. (8) ProPresenter call timing covers the whole body, so slow or timed-out streams are logged. (9) The catch-up no longer depends on `autoReindex` (the file watcher), matching the old boot behaviour for stale and old-schema indexes. (10) The FS/T report answers from the index (it now records ProPresenter's selected arrangement on every read) and reads at most 40 unknown ones per press, never in performance mode, while live, in a service window, or during an index run. 547 tests pass; lint is clean on the repo's own code (a `.claude/worktrees/` copy made by another session trips the root lint run). Checked live: a picture 37ms fresh, <1ms cached, ~4KB at 240px; a ProPresenter stall showed up in the log as 8s timeouts.
 - 2026-09-27 — v0.23.0 released (tag and release page): the phone companion plus the stability work for #11, #12 and #13. The notes ask churches to restart ProPresenter after updating. Not deployed to the booth yet: update between services, then restart ProPresenter.
+- 2026-09-29 — Section 40 written (planning): a calmer menu, with Prep and Settings as tabbed pages (concept A plus the review's amendments), after five blind persona reviews of four concepts. Not started.
+- 2026-09-29 — (branch menu-prep-settings) 40.1 done: each module.js declares `nav: { group, order }` and `client: { file, init }`; /api/modules passes them on (checked by `moduleNav`/`moduleClient` in plugin-loader.js: a plain file in public/ only). main.js loads each screen script from that list and creates its container; `viewIds`, `NAV_PRIORITY` and `NAV_GROUP` are gone, as are the empty view sections in index.html. CONTRIBUTING's module example shows the two fields. Menu verified identical in the browser (same order, groups and digits) and every screen renders. Test: every shipped module declares valid fields and its script exists. 549 pass.
+- 2026-09-29 — (branch menu-prep-settings) 40.2 done: the menu is Search, Live, Flags, Service | Desk: Prep, Health. Prep is one menu key; its page has a row of butted latching keys (`.rf-tabs`/`.rf-tab` in refrain.css, material dark-only, the selected tab's plum underline in both themes, 44px). It always opens on the first tab. `#prep/<id>` links to a tab, and the old `#spellcheck` etc. still land there. While you're on Prep, the expanded menu lists its tools (hidden when collapsed, where there are no names to show). The Image Crop dot shows on Prep, the tool and its tab. Digits follow the new menu (5 = Prep, 6 = Health). Verified in the browser at desk width, 375px and light theme. Found and fixed on the way: collapsed, the sub-items laid out side by side as a grid of icons.
+- 2026-09-29 — (branch menu-prep-settings) 40.3 done: Health is Settings (menu label and icon; the screen is still `health` inside, so `#view-health` and its scoped CSS are unchanged). The cards are on five tabs: Status (status strip, ProPresenter, search index), Library (library folders, Share Library, duplicate names, FS/T not selected, themes, unused media), Features (options, the Arrangement module, .env), Phones, and This Mac (a new Display card for Theme and menu side, start at login, updates, terminal shortcuts). It always opens on Status. `#settings/<tab>` links work, including from another screen, and every old `#health` link opens Status. Theme and Move right left the menu; the keys are hidden, not removed, since the menu's code runs them. User-facing "Health" copy now says Settings (client, server messages, the pre-service check). Brief updated: the fault-amber exception covers all of Settings (not only Status, which the plan said: on the other tabs DaisyUI's saturated error red would return), still scoped by `#view-health`. Found and fixed on the way (pre-existing): the Options card's Arrangement tracking section had a stray `</div>`, so the browser closed its `<details>` and card early. Invisible on the old single page; on tabs it pushed the Arrangement and .env cards out of the Features tab onto every tab. Verified in the browser: tabs, direct links, the Display card (restored to System / left afterwards).
+- 2026-09-29 — (branch menu-prep-settings) Code review (high) of 40.1–40.3: 10 findings, all fixed. (1) A `#prep/<tool>` link for a tool that's off shows the off notice instead of quietly opening Spell Check. (2) **Core search no longer waits on /api/modules** (CLAUDE.md rule 1): Search, the Return bar, the phone panel and the status cluster start first. The module list has an 8s timeout and a shape check, and Search keeps its menu entry if the list is empty or fails. Checked by emptying `modules/`: the menu showed Search and Settings, and "grace" found 81 results. (3) Theme and Move right keys moved out of `#nav-rail` (the sliver's peek/:focus-within rules at 2,2,0 beat the hidden class and brought them back). (4) A module whose init is missing or throws gets no menu entry, with a console error saying why. (5) The off notice links to the Settings tab holding the module's switch (`settingsTab` in module.js; Share Library → Library). (6) Old or short fragments are rewritten to the canonical one while you're on that screen. (7) The Prep tab row sits directly above the tool it selects, not above the Return bar. (8) Updates moved to Status, where the update dot on the Settings key leads. (9) Menu defaults live only on the server (`moduleNav`); one sort. (10) Both tab rows follow the tab pattern (public/tabs.js): one Tab stop, arrow keys, Home/End, `aria-controls`, `role="tabpanel"`. 550 pass.

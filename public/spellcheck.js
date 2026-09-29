@@ -73,7 +73,7 @@ export function initSpellcheck() {
       if (!res.ok) {
         select.innerHTML = `<option value="">ProPresenter isn't answering</option>`;
         document.getElementById("spellcheck-status").innerHTML =
-          `Open ProPresenter, then come back to this screen. <a href="#health" class="link">Diagnose on Health</a>`;
+          `Open ProPresenter, then come back to this screen. <a href="#settings" class="link">Diagnose in Settings</a>`;
       } else if (!playlists?.length) {
         select.innerHTML = `<option value="">No playlists found</option>`;
       } else {
