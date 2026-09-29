@@ -10,6 +10,7 @@
  * browser, the same as the Flags screen.
  */
 
+import { songActionsHtml, wireOpenWith } from "./open-with.js";
 import { showFailure } from "./notice.js";
 
 const POLL_MS = 5_000;
@@ -68,6 +69,7 @@ export function renderRowsHtml(rows) {
             ${escapeHtml(r.name)}
             ${r.offPlan ? `<span class="badge badge-ghost badge-sm ml-1">Off-plan</span>` : ""}
             ${r.live ? `<span class="badge badge-ghost badge-sm ml-1">On screen</span>` : ""}
+            ${r.presentationId ? `<span class="inline-flex gap-1 ml-2 align-middle">${songActionsHtml(r.presentationId, r.name)}</span>` : ""}
           </td>
           <td class="tabular-nums whitespace-nowrap">${escapeHtml(formatClock(r.firstLive))}</td>
           <td class="tabular-nums whitespace-nowrap">${escapeHtml(formatDuration(r.onScreenMs))}</td>
@@ -317,6 +319,8 @@ export function initService() {
     // Don't repaint End while it's armed, or the second press would miss.
     if (end && !endArmed) end.innerHTML = renderEndHtml(data);
     if (window.lucide) window.lucide.createIcons();
+    wireOpenWith(list);
+    wireOpenWith(outside);
     wire();
   }
 

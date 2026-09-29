@@ -1,3 +1,4 @@
+import { songActionsHtml, wireOpenWith } from "./open-with.js";
 import { showFailure } from "./notice.js";
 
 /**
@@ -254,7 +255,10 @@ export function renderReviewHtml(flags, types = [], { hiddenResolved = 0, keepRe
             (p) => `
           <div class="card bg-base-200">
             <div class="card-body p-3 gap-2">
-              <div class="font-medium">${escapeHtml(p.presentationName ?? "Untitled")}</div>
+              <div class="flex items-center justify-between gap-2 flex-wrap">
+                <div class="font-medium">${escapeHtml(p.presentationName ?? "Untitled")}</div>
+                <div class="flex gap-1 flex-wrap">${songActionsHtml(p.presentationId, p.presentationName)}</div>
+              </div>
               ${p.flags.map((f) => renderReviewRow(f, types, machines.size > 1)).join("")}
             </div>
           </div>`
@@ -283,6 +287,7 @@ async function postChange(flagIdValue, change) {
 }
 
 function wireReview(host, reload) {
+  wireOpenWith(host);
   host.querySelectorAll(".slide-flag-editor-btn").forEach((btn) => {
     btn.addEventListener("click", async () => {
       btn.disabled = true;

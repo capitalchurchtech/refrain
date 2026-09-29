@@ -10,6 +10,8 @@
 
 import { crumb } from "./breadcrumbs.js";
 import { wireTabKeys } from "./tabs.js";
+import { setAvailableTools } from "./open-with.js";
+import { SETTINGS_TABS, settingsTabFromHash, SETTINGS_TAB_EVENT } from "./settings-tabs.js";
 
 const THEME_CYCLE = ["system", "light", "dark", "blackroom"];
 const THEME_LABEL = { system: "System", light: "Light", dark: "Dark", blackroom: "Blackroom" };
@@ -89,6 +91,9 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
   const prepItem = prepTabs.length ? [{ id: "prep", navLabel: "Prep", icon: "clipboard-list", nav: { group: "desk", order: 50 } }] : [];
   const items = [...moduleItems.filter((m) => m.nav.group === "service"), ...prepItem, ...coreItems];
   const isPrepTab = (id) => prepTabs.some((t) => t.id === id);
+  // Rows elsewhere (Flags, Service) offer "Spell check this" and the like
+  // only for tools that are switched on.
+  setAvailableTools(prepTabs.map((t) => t.id));
   /**
    * Which screen a fragment means. `prep` is its first tab: always the first,
    * never the last one used, so the same press lands in the same place every
@@ -223,12 +228,22 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
         ${keyBadge}
       </button>
       ${item.id === "prep" && isPrepTab(activeId) ? prepSubItems() : ""}
+      ${item.id === "health" && activeId === "health" ? settingsSubItems() : ""}
     `;
       })
       .join("");
 
-    navItemsEl.querySelectorAll(".nav-item").forEach((btn) => {
+    navItemsEl.querySelectorAll(".nav-item[data-id]").forEach((btn) => {
       btn.addEventListener("click", () => setActive(btn.dataset.id));
+    });
+    // Already on Settings: just change the tab (health.js follows the
+    // fragment), rather than redrawing the whole page.
+    navItemsEl.querySelectorAll("[data-settings-sub]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const to = `settings/${btn.dataset.settingsSub}`;
+        if (activeId === "health") location.hash = to;
+        else setActive(to);
+      });
     });
     renderPrepTabs();
 
@@ -253,6 +268,22 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
       </button>`
       )
       .join("")}</div>`;
+  }
+
+  /**
+   * The same for Settings: its tabs under it while you're there (owner,
+   * 2026-09-29: "why not the accordion like Prep for Settings?"). The latched
+   * one follows the tab on the page.
+   */
+  function settingsSubItems() {
+    const current = settingsTabFromHash(location.hash);
+    return `<div class="nav-subitems" role="group" aria-label="Settings">${SETTINGS_TABS.map(
+      ([id, label, icon]) => `
+      <button class="nav-item nav-subitem btn btn-ghost btn-sm justify-start gap-3 px-2 relative ${id === current ? "btn-active" : ""}" data-settings-sub="${id}" title="${label}">
+        <i data-lucide="${icon}" class="shrink-0 w-4 h-4"></i>
+        <span class="nav-label whitespace-nowrap ${effectiveNavMode() === "full" ? "" : "hidden"}">${label}</span>
+      </button>`
+    ).join("")}</div>`;
   }
 
   /**
@@ -285,8 +316,8 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
     }
     row.innerHTML = prepTabs
       .map(
-        (t) =>
-          `<button type="button" role="tab" id="prep-tab-${t.id}" aria-controls="view-${t.id}" class="rf-tab relative" data-id="${t.id}" aria-selected="${t.id === activeId}" tabindex="${t.id === activeId ? 0 : -1}"><i data-lucide="${t.icon}" class="w-4 h-4 shrink-0"></i><span>${t.navLabel}</span></button>`
+        (t, i) =>
+          `<button type="button" role="tab" id="prep-tab-${t.id}" aria-controls="view-${t.id}" class="rf-tab relative" data-id="${t.id}" aria-selected="${t.id === activeId}" tabindex="${t.id === activeId ? 0 : -1}"><i data-lucide="${t.icon}" class="w-4 h-4 shrink-0"></i><span>${t.navLabel}</span>${i < 9 ? `<kbd class="kbd kbd-xs tab-key" aria-hidden="true">${i + 1}</kbd>` : ""}</button>`
       )
       .join("");
     row.querySelectorAll(".rf-tab").forEach((b) => b.addEventListener("click", () => setActive(b.dataset.id)));
@@ -753,8 +784,17 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
   const hideKeys = () => rail.classList.remove("reveal-keys");
   window.addEventListener("keyup", (e) => {
     if (e.key === "Meta" || e.key === "Control") hideKeys();
+    if (e.key === "Shift") hideTabKeys();
   });
-  window.addEventListener("blur", hideKeys);
+  window.addEventListener("blur", () => {
+    hideKeys();
+    hideTabKeys();
+  });
+  // The same for a page's tabs, while Shift is held (see the Shift+digit key
+  // below). Not while typing, where Shift is just capital letters.
+  const hideTabKeys = () => document.documentElement.classList.remove("reveal-tab-keys");
+  // The tab row on screen, if this page has one (Prep, Settings).
+  const visibleTabRow = () => [...document.querySelectorAll('.rf-tabs[role="tablist"]')].find((r) => r.offsetParent !== null) ?? null;
 
   // Global keys. "/" or Cmd/Ctrl+K jumps to Search and focuses the box; a
   // digit 1-9 jumps to that nav item (bare, or with Cmd/Ctrl — browsers may
@@ -764,6 +804,24 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
   // be typed.
   document.addEventListener("keydown", (e) => {
     if (e.metaKey || e.ctrlKey) rail.classList.add("reveal-keys");
+    if (e.key === "Shift" && !isTypingTarget(document.activeElement) && visibleTabRow()) document.documentElement.classList.add("reveal-tab-keys");
+
+    /**
+     * Shift+digit picks a tab on a page that has them (Prep, Settings), while
+     * bare digits keep jumping through the menu. Not Cmd/Ctrl+digit, which
+     * the plan first said: browsers reserve that for their own tabs, often
+     * before the page sees it (see the digit comment above). Shift+digit is
+     * nobody's. e.code, because Shift turns e.key into "!" and "@".
+     */
+    const tabDigit = /^Digit([1-9])$/.exec(e.code ?? "");
+    if (tabDigit && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && !isTypingTarget(document.activeElement)) {
+      const tab = visibleTabRow()?.querySelectorAll('[role="tab"]')[Number(tabDigit[1]) - 1];
+      if (tab) {
+        e.preventDefault();
+        tab.click();
+        return;
+      }
+    }
 
     // While an overlay is open, trap Tab inside it and let Esc close it;
     // nothing else fires.
@@ -816,6 +874,11 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
         }
       }
     }
+  });
+
+  // A Settings tab changed on the page: move the latched sub-item with it.
+  window.addEventListener(SETTINGS_TAB_EVENT, () => {
+    if (activeId === "health") renderItems();
   });
 
   // Someone editing the fragment by hand, or following a /#health link while

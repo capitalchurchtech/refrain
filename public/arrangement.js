@@ -7,6 +7,7 @@
  * provider's supportsPlanBrowsing capability — Planning Center has it,
  * but nothing here hardcodes that it's the only provider that could.
  */
+import { takeOpenWith } from "./open-with.js";
 import { showFailure } from "./notice.js";
 
 export function initArrangement() {
@@ -27,6 +28,8 @@ export function initArrangement() {
   let providerDisplayName = "the church-management system";
 
   async function render() {
+    // Opened from a Flags or Service row with a song chosen (section 40.5).
+    const wanted = takeOpenWith("arrangement");
     const status = await fetch("/api/arrangement/status").then((r) => r.json());
     if (status.status !== "active") {
       container.innerHTML = `
@@ -72,6 +75,10 @@ export function initArrangement() {
     if (window.lucide) window.lucide.createIcons();
 
     renderSongList(currentSongs, status.role);
+    if (wanted) {
+      if (currentSongs.some((s) => s.presentationId === wanted.presentationId)) renderDetail(wanted.presentationId, status.role);
+      else showFailure(`${wanted.name ?? "That song"} has no arrangement history yet, so there's nothing to compare. It appears here after it's been shown in a service.`);
+    }
 
     document.getElementById("arrangement-song-filter").addEventListener("input", (e) => {
       const q = e.target.value.trim().toLowerCase();

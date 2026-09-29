@@ -452,6 +452,8 @@ export function timelineRows(state, serviceId, now = Date.now()) {
         lastLive: g.startMs,
         onScreenMs: duration,
         gapBeforeMs: gap,
+        // So a row can offer "Spell check this" for the song it shows.
+        presentationId: g.presentationId ?? null,
         returns: [],
         live: Boolean(g.open),
       });

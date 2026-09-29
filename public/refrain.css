@@ -3974,3 +3974,14 @@ html.blackroom .rf-tab[aria-selected="true"] {
 #nav-rail.w-36 .nav-subitem {
   padding-left: 1.5rem;
 }
+
+/* A tab's number, shown while Shift is held (nav.js adds .reveal-tab-keys to
+   <html>): Shift+1 picks the first tab. Hidden otherwise, like the menu's
+   own number badges. */
+.tab-key {
+  display: none;
+  margin-left: 4px;
+}
+html.reveal-tab-keys .tab-key {
+  display: inline-flex;
+}

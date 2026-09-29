@@ -42,7 +42,6 @@ export function initSearch() {
   const resultsEl = document.getElementById("results");
   const statusEl = document.getElementById("index-status");
   const pendingEl = document.getElementById("search-pending");
-  const connectionBanner = document.getElementById("connection-banner");
   mountLiveReadout(document.getElementById("search-readout"));
   mountFlagButton(document.getElementById("search-flag"));
   const dateFilterToggle = document.getElementById("date-filter-toggle");
@@ -156,10 +155,10 @@ export function initSearch() {
   }
 
   async function refreshStatus() {
-    const [indexRes, connRes] = await Promise.all([
-      fetch("/api/index/status").then((r) => r.json()),
-      fetch("/api/propresenter/status").then((r) => r.json()),
-    ]);
+    // Only the index: the link is the LINK lamp's to report, and asking
+    // ProPresenter here too was one more call per refresh for a line that's
+    // gone.
+    const indexRes = await fetch("/api/index/status").then((r) => r.json());
 
     statusEl.innerHTML = indexRes.builtAt
       ? `
@@ -186,16 +185,9 @@ export function initSearch() {
     renderStaleness(indexRes.staleness, indexRes.accuracy);
     if (window.lucide) window.lucide.createIcons();
 
-    if (!connRes.connected) {
-      // The readout above already says the link is down, and the LINK lamp
-      // agrees. This line only adds where Refrain is looking and the fix, in
-      // muted text: amber is reserved for Health (creative direction), and a
-      // second loud notice for one fault pushed the search box off the page.
-      connectionBanner.textContent = `Looking at ${connRes.host}:${connRes.port}. Check ProPresenter is running with Network API on (Preferences > Network).`;
-      connectionBanner.classList.remove("hidden");
-    } else {
-      connectionBanner.classList.add("hidden");
-    }
+    // No banner for a lost link: the LINK lamp in the menu says it on every
+    // screen (owner, 2026-09-29), and where Refrain is looking, with the fix,
+    // is on Settings > Status.
   }
 
   async function runSearch(query) {

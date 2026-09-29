@@ -5,6 +5,7 @@
  * it stops being flagged everywhere.
  */
 
+import { takeOpenWith } from "./open-with.js";
 import { showFailure } from "./notice.js";
 export function initSpellcheck() {
   // Which flagged slide the "next" control is on, so working through a scan is
@@ -65,6 +66,11 @@ export function initSpellcheck() {
     const select = document.getElementById("spellcheck-playlist");
     const scanBtn = document.getElementById("spellcheck-scan-btn");
 
+    // Opened from a Flags or Service row: check that one song now, with no
+    // playlist to choose (handoff section 40.5).
+    const one = takeOpenWith("spellcheck");
+    if (one) runScan(one, scanBtn);
+
     try {
       const res = await fetch("/api/spellcheck/playlists");
       const { playlists } = await res.json().catch(() => ({}));
@@ -108,18 +114,20 @@ export function initSpellcheck() {
     scanBtn.addEventListener("click", () => runScan(select.value, scanBtn));
   }
 
-  async function runScan(playlistId, scanBtn) {
-    if (!playlistId) return;
+  /** A playlist id, or `{ presentationId, name }` for one song. */
+  async function runScan(target, scanBtn) {
+    if (!target) return;
+    const one = typeof target === "object";
     const statusEl = document.getElementById("spellcheck-status");
     const resultsEl = document.getElementById("spellcheck-results");
     scanBtn.disabled = true;
-    statusEl.textContent = "Scanning slides...";
+    statusEl.textContent = one ? `Checking ${target.name ?? "this presentation"}...` : "Scanning slides...";
     resultsEl.innerHTML = "";
     try {
       const res = await fetch("/api/spellcheck/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ playlistId }),
+        body: JSON.stringify(one ? { presentationId: target.presentationId } : { playlistId: target }),
       });
       const data = await res.json();
       if (!res.ok) {

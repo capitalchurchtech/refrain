@@ -3741,8 +3741,12 @@ app.get("/api/spellcheck/playlists", async (_req, res) => {
  * the Service screen's pre-service checks, so both say the same thing.
  * `docs` carries each presentation document read, for checks that need more.
  */
-async function scanPlaylist(playlistId) {
-  const [{ items }, speller] = await Promise.all([client.getPlaylistItems(playlistId), loadSpeller()]);
+/**
+ * `only`, when given, is the presentations to check instead of a playlist's:
+ * one song from a Flags or Service row (handoff section 40.5).
+ */
+async function scanPlaylist(playlistId, { only = null } = {}) {
+  const [{ items }, speller] = await Promise.all([only ? { items: only } : client.getPlaylistItems(playlistId), loadSpeller()]);
   const knownWords = libraryKnownWords();
   const allowlist = new Set((config.spellcheckModule?.allowlist ?? []).map((w) => w.toLowerCase()));
 
@@ -3816,10 +3820,12 @@ app.post("/api/spellcheck/scan", async (req, res) => {
   // Reads and decodes up to 120 presentation files on the thread that also
   // runs the heartbeat, Go Live and phone confirms: not during a service.
   if (performance.armed) return res.status(409).json({ error: "Performance mode is on, so Refrain is holding still. Run this when nothing is live." });
-  const { playlistId } = req.body ?? {};
-  if (!playlistId) return res.status(400).json({ error: "playlistId is required" });
+  const { playlistId, presentationId } = req.body ?? {};
+  const one = typeof presentationId === "string" && /^[A-Za-z0-9-]{1,64}$/.test(presentationId) ? presentationId : null;
+  if (!playlistId && !one) return res.status(400).json({ error: "playlistId or presentationId is required" });
   try {
-    const { presentations, scannedCount, truncated, mediaUnreadable } = await scanPlaylist(playlistId);
+    const only = one ? [{ id: one, name: getIndex().presentations?.[one]?.name ?? null }] : null;
+    const { presentations, scannedCount, truncated, mediaUnreadable } = await scanPlaylist(playlistId, { only });
     res.json({ presentations, scannedCount, truncated, mediaUnreadable });
   } catch (err) {
     res.status(502).json({ error: err.message });

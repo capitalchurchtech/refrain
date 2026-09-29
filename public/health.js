@@ -1,6 +1,7 @@
 import { COPY_FAILED, noProPresenterFound } from "./strings.js";
 import { showFailure } from "./notice.js";
 import { wireTabKeys } from "./tabs.js";
+import { SETTINGS_TABS, settingsTabFromHash, SETTINGS_TAB_EVENT } from "./settings-tabs.js";
 import { createMeter, updateMeter, meterCount } from "./led-meter.js";
 import { describeBackupStatus } from "./library-sync.js";
 const ARRANGEMENT_STATUS_LABEL = {
@@ -66,6 +67,7 @@ export function initHealth() {
     // replaceState, like the menu: a link to the tab, not a trail of Back
     // presses through tabs.
     history.replaceState(null, "", tab === SETTINGS_TABS[0][0] ? "#settings" : `#settings/${tab}`);
+    window.dispatchEvent(new CustomEvent(SETTINGS_TAB_EVENT, { detail: { tab } }));
   }
   function wireSettingsTabs() {
     const row = document.getElementById("settings-tabs");
@@ -75,7 +77,10 @@ export function initHealth() {
   }
   // Someone following a #settings/phones link while Settings is already open.
   window.addEventListener("hashchange", () => {
-    if (!container.classList.contains("hidden") && /^#settings/.test(location.hash)) showSettingsTab(settingsTabFromHash(location.hash));
+    if (!container.classList.contains("hidden") && /^#settings/.test(location.hash)) {
+      showSettingsTab(settingsTabFromHash(location.hash));
+      window.dispatchEvent(new CustomEvent(SETTINGS_TAB_EVENT, { detail: { tab: settingsTabFromHash(location.hash) } }));
+    }
   });
   function wireDisplayCard() {
     const themeBtn = document.getElementById("settings-theme-btn");
@@ -1406,20 +1411,6 @@ export function summarizeModules(health) {
   return { headline, detail, attention: broken > 0 || pending > 0 };
 }
 
-/** Settings' tabs, in order. The first is where Settings always opens. */
-const SETTINGS_TABS = [
-  ["status", "Status", "activity"],
-  ["library", "Library", "library"],
-  ["features", "Features", "toggle-right"],
-  ["phones", "Phones", "smartphone"],
-  ["this-mac", "This Mac", "monitor-cog"],
-];
-/** Which tab a fragment asks for: `#settings/library`, else the first. */
-export function settingsTabFromHash(hash) {
-  const m = String(hash ?? "").match(/^#settings\/([a-z-]+)$/);
-  return m && SETTINGS_TABS.some(([id]) => id === m[1]) ? m[1] : SETTINGS_TABS[0][0];
-}
-
 function renderHealth(health, configOptions, versionInfo, libraryCard = "", duplicateNameGroups = []) {
   const { propresenter, index, arrangementModule, role, version, config, envRequirements } = health;
   const shareLibraryCard = renderShareLibraryCard(health.shareLibrary);
@@ -2187,7 +2178,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
   return `
     <div class="flex flex-col gap-4">
       <div id="settings-tabs" class="rf-tabs" role="tablist" aria-label="Settings" style="margin-bottom:0">
-        ${SETTINGS_TABS.map(([id, label, icon]) => `<button type="button" role="tab" id="settings-tab-${id}" aria-controls="settings-panel-${id}" class="rf-tab" data-settings-tab="${id}" aria-selected="false" tabindex="-1"><i data-lucide="${icon}" class="w-4 h-4 shrink-0"></i><span>${label}</span></button>`).join("")}
+        ${SETTINGS_TABS.map(([id, label, icon], i) => `<button type="button" role="tab" id="settings-tab-${id}" aria-controls="settings-panel-${id}" class="rf-tab" data-settings-tab="${id}" aria-selected="false" tabindex="-1"><i data-lucide="${icon}" class="w-4 h-4 shrink-0"></i><span>${label}</span><kbd class="kbd kbd-xs tab-key" aria-hidden="true">${i + 1}</kbd></button>`).join("")}
       </div>
       ${panel("status", statusStrip, propresenterCard, indexCard, updatesCard)}
       ${panel("library", libraryCard, shareLibraryCard, duplicateNamesCard, preferredCard, themesCard, orphanedMediaCard)}
