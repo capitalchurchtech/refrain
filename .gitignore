@@ -1,6 +1,8 @@
 # Secrets & environment
 .env
 .env.local
+.env.previous
+.env.tmp
 
 # User config (real values, per-machine)
 config.json

@@ -49,7 +49,7 @@ export function initArrangement() {
 
     container.innerHTML = `
       <div class="flex flex-col gap-4 max-w-3xl">
-        <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="git-compare" class="w-5 h-5"></i> Arrangement</h1>
+        <h2 class="rf-page-sub">Arrangement</h2>
         <div id="arrangement-list-view" class="flex flex-col gap-4">
           ${
             status.role !== "logger"

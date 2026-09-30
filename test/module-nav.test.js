@@ -28,7 +28,7 @@ test("a module's metadata can't point the page at a script elsewhere", () => {
 
 test("the off notice sends you to the Settings tab where the module's switch is", async () => {
   const modules = await discoverModules();
-  assert.equal(moduleSettingsTab("library"), "library", "a module can name another tab");
+  assert.equal(moduleSettingsTab("search"), "search", "a module can name another tab");
   assert.equal(modules.find((m) => m.id === "library-sync"), undefined, "Share Library is removed (dangerous: it wrote into ProPresenter's library)");
   assert.equal(moduleSettingsTab(modules.find((m) => m.id === "arrangement").settingsTab), "features");
   assert.equal(moduleSettingsTab("nonsense"), "features");

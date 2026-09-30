@@ -1,7 +1,7 @@
 import { COPY_FAILED, noProPresenterFound } from "./strings.js";
 import { showFailure } from "./notice.js";
 import { wireTabKeys } from "./tabs.js";
-import { SETTINGS_TABS, settingsTabFromHash, SETTINGS_TAB_EVENT } from "./settings-tabs.js";
+import { SETTINGS_TABS, settingsTabFromHash } from "./settings-tabs.js";
 import { createMeter, updateMeter, meterCount } from "./led-meter.js";
 const ARRANGEMENT_STATUS_LABEL = {
   off: null, // hidden entirely per Section 4.1
@@ -66,7 +66,6 @@ export function initHealth() {
     // replaceState, like the menu: a link to the tab, not a trail of Back
     // presses through tabs.
     history.replaceState(null, "", tab === SETTINGS_TABS[0][0] ? "#settings" : `#settings/${tab}`);
-    window.dispatchEvent(new CustomEvent(SETTINGS_TAB_EVENT, { detail: { tab } }));
   }
   function wireSettingsTabs() {
     const row = document.getElementById("settings-tabs");
@@ -76,10 +75,7 @@ export function initHealth() {
   }
   // Someone following a #settings/phones link while Settings is already open.
   window.addEventListener("hashchange", () => {
-    if (!container.classList.contains("hidden") && /^#settings/.test(location.hash)) {
-      showSettingsTab(settingsTabFromHash(location.hash));
-      window.dispatchEvent(new CustomEvent(SETTINGS_TAB_EVENT, { detail: { tab: settingsTabFromHash(location.hash) } }));
-    }
+    if (!container.classList.contains("hidden") && /^#settings/.test(location.hash)) showSettingsTab(settingsTabFromHash(location.hash));
   });
   function wireDisplayCard() {
     const themeBtn = document.getElementById("settings-theme-btn");
@@ -101,22 +97,19 @@ export function initHealth() {
   }
 
   async function render() {
-    // A full container.innerHTML replace (below) recreates the Library
-    // Sync <details> from scratch every time, which would otherwise
-    // silently re-collapse it right after the user opens it to click
-    // Save inside — capture and restore its open/closed state across
-    // the re-render.
-    const wasLibraryFoldersOpen = document.getElementById("library-folders-details")?.open ?? false;
     const scrollY = window.scrollY;
 
-    const [health, libraryFolders, configOptions, versionInfo, duplicateNames] = await Promise.all([
+    const [health, libraryFolders, configOptions, versionInfo, duplicateNames, envData] = await Promise.all([
       fetch("/api/health").then((r) => r.json()),
-      fetch("/api/library-folders").then((r) => (r.ok ? r.json() : { folders: [], selected: null, error: true })),
+      // Kept even when ProPresenter can't list its folders: the reply still
+      // says what search holds, which is the half anyone looks for first.
+      fetch("/api/library-folders").then((r) => r.json().catch(() => ({})).then((d) => (r.ok ? d : { folders: [], selected: null, ...d, error: true }))),
       fetch("/api/config-options").then((r) => r.json()),
       fetchVersionCheck(),
       // Pure and in-memory on the server, so this costs nothing extra worth
       // gating behind the index actually being built.
       fetch("/api/duplicate-names").then((r) => (r.ok ? r.json() : { groups: [] })),
+      fetch("/api/env", { cache: "no-store" }).then((r) => (r.ok ? r.json() : { entries: [] })).catch(() => ({ entries: [] })),
     ]);
     const trackArrangement = health.arrangementModule.status !== "off";
     const arrangementFolders = trackArrangement
@@ -126,11 +119,9 @@ export function initHealth() {
       <div class="flex flex-col gap-4 max-w-3xl">
         <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="settings" class="w-5 h-5"></i> Settings</h1>
         <div id="health-unfinished-day"></div>
-        ${renderHealth(health, configOptions, versionInfo, renderLibraryCard(libraryFolders, arrangementFolders), duplicateNames.groups ?? [])}
+        ${renderHealth(health, configOptions, versionInfo, renderLibraryCard(libraryFolders, arrangementFolders), duplicateNames.groups ?? [], envData.entries ?? [])}
       </div>`;
 
-    const libraryFoldersDetails = document.getElementById("library-folders-details");
-    if (libraryFoldersDetails) libraryFoldersDetails.open = wasLibraryFoldersOpen;
     window.scrollTo(0, scrollY);
 
     showSettingsTab(settingsTabFromHash(location.hash));
@@ -874,6 +865,40 @@ export function initHealth() {
       });
     });
 
+    const envShow = document.getElementById("env-show");
+    envShow?.addEventListener("change", () => {
+      container.querySelectorAll(".env-value").forEach((i) => (i.type = envShow.checked ? "text" : "password"));
+    });
+    const envSave = document.getElementById("env-save");
+    envSave?.addEventListener("click", async () => {
+      const status = document.getElementById("env-status");
+      const edits = {};
+      container.querySelectorAll(".env-value").forEach((i) => {
+        if (i.value !== i.dataset.original) edits[i.dataset.name] = i.value;
+      });
+      if (!Object.keys(edits).length) {
+        status.textContent = "Nothing changed.";
+        status.className = "text-sm";
+        return;
+      }
+      envSave.disabled = true;
+      try {
+        const res = await fetch("/api/env", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ edits }) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || res.statusText);
+        container.querySelectorAll(".env-value").forEach((i) => {
+          if (i.dataset.name in edits) i.dataset.original = i.value;
+        });
+        status.textContent = `Saved ${Object.keys(edits).length}. Restart Refrain to use ${Object.keys(edits).length === 1 ? "it" : "them"}.`;
+        status.className = "text-sm";
+      } catch (err) {
+        status.textContent = err.message;
+        status.className = "text-sm rf-flag";
+      } finally {
+        envSave.disabled = false;
+      }
+    });
+
     const openEnvBtn = document.getElementById("open-env-btn");
     if (openEnvBtn) {
       openEnvBtn.addEventListener("click", async () => {
@@ -912,26 +937,47 @@ function infoIcon(tip) {
   return `<span class="tooltip tooltip-info-wide" data-tip="${escapeHtml(tip)}"><i data-lucide="info" class="w-3.5 h-3.5 opacity-50 cursor-help align-text-top"></i></span>`;
 }
 
-function renderLibraryCard({ folders, selected, error }, arrangementFolders) {
+/**
+ * What search reads, in plain sight (owner, 2026-09-30: "I can't find where to
+ * say which libraries to scan"). It used to be a folded-away "Library folders"
+ * section. Now it's the first card on Settings > Search: a line saying what is
+ * being searched, each library with how many of its presentations are in
+ * search, and the choice itself. What's in search comes from the index, so it
+ * shows even when ProPresenter can't list its folders.
+ */
+export function searchScopeSummary({ folders = [], selected = null, indexed = {} }) {
+  const total = Object.values(indexed).reduce((t, n) => t + n, 0);
+  const plural = (n) => `${n} presentation${n === 1 ? "" : "s"}`;
+  if (selected === null) return `Searching every library: ${plural(total)}.`;
+  if (!selected.length) return "No libraries chosen, so search is empty.";
+  const of = folders.length ? ` of ${folders.length}` : "";
+  return `Searching ${selected.length}${of} ${selected.length === 1 && !of ? "library" : "libraries"} (${selected.join(", ")}): ${plural(total)}.`;
+}
+
+function renderLibraryCard({ folders = [], selected = null, indexed = {}, error }, arrangementFolders) {
+  const summary = `<div class="text-sm font-medium">${escapeHtml(searchScopeSummary({ folders, selected, indexed }))}</div>`;
+  const count = (name) => indexed[name] ?? 0;
   if (error) {
+    const known = Object.keys(indexed).sort();
     return `
-      <details id="library-folders-details" class="collapse collapse-arrow bg-base-200">
-        <summary class="collapse-title text-base font-semibold flex items-center gap-2"><i data-lucide="folder-search" class="w-4 h-4 opacity-70"></i> Library folders</summary>
-        <div class="collapse-content">
-          <div class="text-sm opacity-70">Can't reach ProPresenter to list Library folders right now.</div>
+      <div id="library-folders-details" class="card bg-base-200">
+        <div class="card-body p-3 gap-2">
+          <h2 class="card-title text-base"><i data-lucide="library" class="w-4 h-4 opacity-70"></i> Libraries to search</h2>
+          ${summary}
+          ${known.length ? `<div class="flex flex-col gap-1">${known.map((n) => `<div class="text-sm">${escapeHtml(n)} <span class="opacity-60">· ${count(n)} in search</span></div>`).join("")}</div>` : ""}
+          <div class="text-sm opacity-70">Open ProPresenter to change which libraries are searched.</div>
         </div>
-      </details>
+      </div>
     `;
   }
 
   const allSelected = selected === null;
   return `
-    <details id="library-folders-details" class="collapse collapse-arrow bg-base-200">
-      <summary class="collapse-title text-base font-semibold">Library folders</summary>
-      <div class="collapse-content">
-        <div class="text-sm opacity-70 mb-2 rf-measure">Refrain only reads these folders. Nothing is copied or moved.</div>
-        <div class="text-sm font-semibold mt-1">Searchable</div>
-        <div class="text-sm opacity-70 mb-1 rf-measure">Folders to search, songs or anything else. Fewer folders index faster.</div>
+    <div id="library-folders-details" class="card bg-base-200">
+      <div class="card-body p-3 gap-2">
+        <h2 class="card-title text-base"><i data-lucide="library" class="w-4 h-4 opacity-70"></i> Libraries to search</h2>
+        ${summary}
+        <div class="text-sm opacity-70 rf-measure">Refrain only reads these libraries. Nothing is copied or moved. Fewer libraries index faster.</div>
         <label class="label cursor-pointer justify-start gap-2 w-fit">
           <input type="checkbox" id="library-folder-all" class="checkbox checkbox-sm" ${allSelected ? "checked" : ""} />
           <span class="label-text">All libraries</span>
@@ -944,7 +990,7 @@ function renderLibraryCard({ folders, selected, error }, arrangementFolders) {
               <input type="checkbox" class="checkbox checkbox-sm library-folder-checkbox" value="${escapeHtml(name)}"
                 ${allSelected || selected.includes(name) ? "checked" : ""}
                 ${allSelected ? "disabled" : ""} />
-              <span class="label-text">${escapeHtml(name)}</span>
+              <span class="label-text">${escapeHtml(name)} <span class="opacity-60">· ${count(name) ? `${count(name)} in search` : "not in search"}</span></span>
             </label>
           `
             )
@@ -959,7 +1005,7 @@ function renderLibraryCard({ folders, selected, error }, arrangementFolders) {
 
         ${arrangementFolders ? renderArrangementFoldersSection(arrangementFolders) : ""}
       </div>
-    </details>
+    </div>
   `;
 }
 
@@ -1080,7 +1126,7 @@ function renderIndexShortfall(index) {
         `${issues.unmatchedNames.map(escapeHtml).join(", ")}.</strong> ` +
         `This library has: ${(issues.availableFolders ?? []).map(escapeHtml).join(", ") || "no folders"}. ` +
         `Their songs are missing from search. ` +
-        `Choose the folders again on the Library tab.</div>`
+        `Choose the libraries again on the Search tab.</div>`
     );
   }
   if (issues?.failedFolders?.length) {
@@ -1280,7 +1326,69 @@ export function summarizeModules(health) {
   return { headline, detail, attention: broken > 0 || pending > 0 };
 }
 
-function renderHealth(health, configOptions, versionInfo, libraryCard = "", duplicateNameGroups = []) {
+/**
+ * Secrets (.env), as the last section of the Options card (owner, 2026-09-30:
+ * "Can the Secrets card be one of the accordions, and load the .env in an
+ * editable way?"). A field for each setting .env.example lists, plus any the
+ * file has of its own; values hidden until shown. Saved by server/env-file.js,
+ * which keeps comments and order and the previous file as .env.previous.
+ */
+function renderEnvSection(envRequirements, entries) {
+  return `
+        <details id="env-details" class="collapse collapse-arrow bg-base-200 rounded">
+          <summary class="collapse-title min-h-0 py-2">
+            <span class="flex items-center gap-2 text-sm font-medium">
+              <i data-lucide="key-round" class="w-4 h-4 opacity-70 shrink-0"></i> Secrets (.env)
+              <span class="text-xs opacity-50 font-normal">passwords and API keys</span>
+            </span>
+          </summary>
+          <div class="collapse-content flex flex-col gap-3">
+            <div class="text-sm opacity-70 rf-measure">Saved to .env on this computer. <strong>Restart Refrain after saving.</strong> The previous version is kept as .env.previous.</div>
+        ${
+          envRequirements.length === 0
+            ? `<div class="text-sm mt-0 opacity-70">Nothing you've turned on needs a .env value.</div>`
+            : `<div class="flex flex-col gap-2 mt-0">
+                ${envRequirements
+                  .map(
+                    (r) => `
+                  <div class="flex items-start gap-2">
+                    <div class="badge badge-sm ${r.set ? "badge-success" : "badge-ghost"} mt-0.5 shrink-0">${r.set ? "Set" : "Missing"}</div>
+                    <div class="text-sm">
+                      <span class="font-mono">${escapeHtml(r.name)}</span>
+                      <div class="opacity-60">${escapeHtml(r.note)}</div>
+                    </div>
+                  </div>
+                `
+                  )
+                  .join("")}
+              </div>`
+        }
+            <label class="label cursor-pointer justify-start gap-2 w-fit">
+              <input type="checkbox" id="env-show" class="checkbox checkbox-xs" />
+              <span class="label-text text-sm">Show values</span>
+            </label>
+            <div class="flex flex-col gap-2">
+              ${entries
+                .map(
+                  (e) => `
+              <div class="rf-field">
+                <label for="env-${escapeHtml(e.name)}" class="font-mono">${escapeHtml(e.name)}${e.inExample ? "" : ` <span class="opacity-60">(not in .env.example)</span>`}</label>
+                <input type="password" id="env-${escapeHtml(e.name)}" class="input input-bordered input-sm font-mono env-value" data-name="${escapeHtml(e.name)}" data-original="${escapeHtml(e.value)}" value="${escapeHtml(e.value)}" autocomplete="off" spellcheck="false" />
+              </div>`
+                )
+                .join("")}
+            </div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <button type="button" id="env-save" class="btn btn-outline btn-sm">Save</button>
+              <button type="button" id="open-env-btn" class="btn btn-chip"><i data-lucide="file-cog" class="w-3.5 h-3.5"></i> Open .env</button>
+              <span id="env-status" class="text-sm"></span>
+              <span id="open-env-status" class="text-sm"></span>
+            </div>
+          </div>
+        </details>`;
+}
+
+function renderHealth(health, configOptions, versionInfo, libraryCard = "", duplicateNameGroups = [], envEntryList = []) {
   const { propresenter, index, arrangementModule, role, version, config, envRequirements } = health;
   const terminalCard = renderTerminalActions(health.port ?? window.location.port ?? 9999, health.installDir ?? "$HOME/Refrain");
   const autostartCard = renderAutostartCard(health.autostart);
@@ -1900,45 +2008,11 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
             </div>
           </div>
         </details>
+        ${renderEnvSection(envRequirements, envEntryList)}
       </div>
   `;
 
-  const envCard = `
-    <div class="card bg-base-200">
-      <div class="card-body p-3">
-        <h2 class="card-title text-base"><i data-lucide="key-round" class="w-4 h-4 opacity-70"></i> Secrets (.env)</h2>
-        <div class="text-sm opacity-70">
-          <code>.env</code> holds passwords and API keys. <strong>Restart Refrain after editing it.</strong>
-          Finder hides it, so use this button.
-        </div>
-        <div class="flex items-center gap-3 mt-2">
-          <button id="open-env-btn" class="btn btn-sm btn-outline w-fit"><i data-lucide="file-cog" class="w-3.5 h-3.5"></i> Open .env</button>
-          <span id="open-env-status" class="text-sm"></span>
-        </div>
-        ${
-          envRequirements.length === 0
-            ? `<div class="text-sm mt-2 opacity-70">Nothing you've turned on needs a .env value.</div>`
-            : `<div class="flex flex-col gap-2 mt-2">
-                ${envRequirements
-                  .map(
-                    (r) => `
-                  <div class="flex items-start gap-2">
-                    <div class="badge badge-sm ${r.set ? "badge-success" : "badge-ghost"} mt-0.5 shrink-0">${r.set ? "Set" : "Missing"}</div>
-                    <div class="text-sm">
-                      <span class="font-mono">${escapeHtml(r.name)}</span>
-                      <div class="opacity-60">${escapeHtml(r.note)}</div>
-                    </div>
-                  </div>
-                `
-                  )
-                  .join("")}
-              </div>`
-        }
-      </div>
-    </div>
-  `;
-
-    const latest = versionInfo?.latestVersion;
+  const latest = versionInfo?.latestVersion;
   const updatesCard = `
     <div class="card bg-base-200">
       <div class="card-body p-3">
@@ -2025,16 +2099,18 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
   // Settings is Health's cards on five tabs (handoff section 40). Every card
   // is rendered, so every card's wiring below finds its elements; the tabs
   // only show one group at a time.
+  // Each tab opens with its own name, one step below the page title.
   const panel = (id, ...cards) =>
-    `<div data-settings-panel="${id}" id="settings-panel-${id}" role="tabpanel" aria-labelledby="settings-tab-${id}" class="flex flex-col gap-4">${cards.join("")}</div>`;
+    `<div data-settings-panel="${id}" id="settings-panel-${id}" role="tabpanel" aria-labelledby="settings-tab-${id}" class="flex flex-col gap-4"><h2 class="rf-page-sub">${SETTINGS_TABS.find(([t]) => t === id)[1]}</h2>${cards.join("")}</div>`;
   return `
     <div class="flex flex-col gap-4">
       <div id="settings-tabs" class="rf-tabs" role="tablist" aria-label="Settings" style="margin-bottom:0">
         ${SETTINGS_TABS.map(([id, label, icon], i) => `<button type="button" role="tab" id="settings-tab-${id}" aria-controls="settings-panel-${id}" class="rf-tab" data-settings-tab="${id}" aria-selected="false" tabindex="-1"><i data-lucide="${icon}" class="w-4 h-4 shrink-0"></i><span>${label}</span><kbd class="kbd kbd-xs tab-key" aria-hidden="true">${i + 1}</kbd></button>`).join("")}
       </div>
-      ${panel("status", statusStrip, propresenterCard, indexCard, updatesCard)}
-      ${panel("library", libraryCard, duplicateNamesCard, preferredCard, themesCard, orphanedMediaCard)}
-      ${panel("features", configCard, arrangementCard, envCard)}
+      ${panel("status", statusStrip, propresenterCard, updatesCard)}
+      ${panel("search", libraryCard, indexCard)}
+      ${panel("audit", duplicateNamesCard, preferredCard, themesCard, orphanedMediaCard)}
+      ${panel("features", configCard, arrangementCard)}
       ${panel("phones", phoneCard)}
       ${panel("this-mac", displayCard, autostartCard, terminalCard)}
       <div class="text-xs opacity-50 text-center mt-2 flex flex-col items-center gap-1">

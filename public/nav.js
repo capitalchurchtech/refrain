@@ -11,7 +11,6 @@
 import { crumb } from "./breadcrumbs.js";
 import { wireTabKeys } from "./tabs.js";
 import { setAvailableTools } from "./open-with.js";
-import { SETTINGS_TABS, settingsTabFromHash, SETTINGS_TAB_EVENT } from "./settings-tabs.js";
 
 const THEME_CYCLE = ["system", "light", "dark", "blackroom"];
 const THEME_LABEL = { system: "System", light: "Light", dark: "Dark", blackroom: "Blackroom" };
@@ -155,8 +154,8 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
       offNotice.classList.add("hidden");
       return;
     }
-    // The tab where its switch is: most are on Features, Share Library's is
-    // on Library (the module says, in its module.js).
+    // The tab where its switch is: Features unless the module's module.js
+    // names another (settingsTab).
     offNotice.innerHTML = `${escapeText(off.navLabel)} is off. <a href="#settings/${escapeText(off.settingsTab ?? "features")}" class="link">Turn it on in Settings.</a>`;
     offNotice.classList.remove("hidden");
   }
@@ -227,8 +226,7 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
         <span class="nav-label whitespace-nowrap ${effectiveNavMode() === "full" ? "" : "hidden"}">${item.navLabel}</span>
         ${keyBadge}
       </button>
-      ${item.id === "prep" && isPrepTab(activeId) ? prepSubItems() : ""}
-      ${item.id === "health" && activeId === "health" ? settingsSubItems() : ""}
+
     `;
       })
       .join("");
@@ -236,15 +234,7 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
     navItemsEl.querySelectorAll(".nav-item[data-id]").forEach((btn) => {
       btn.addEventListener("click", () => setActive(btn.dataset.id));
     });
-    // Already on Settings: just change the tab (health.js follows the
-    // fragment), rather than redrawing the whole page.
-    navItemsEl.querySelectorAll("[data-settings-sub]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const to = `settings/${btn.dataset.settingsSub}`;
-        if (activeId === "health") location.hash = to;
-        else setActive(to);
-      });
-    });
+
     renderPrepTabs();
 
     applyImageCropDot(); // re-apply after every rebuild (innerHTML reset wipes it)
@@ -253,62 +243,38 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
   }
 
   /**
-   * While you're on Prep, its tools are listed under it in the menu, so their
-   * names are in view (a volunteer looking for Scripture shouldn't have to
-   * guess that it's under Prep). They fold away when you leave. Search, Live,
-   * Flags and Service never move.
-   */
-  function prepSubItems() {
-    return `<div class="nav-subitems" role="group" aria-label="Prep">${prepTabs
-      .map(
-        (t) => `
-      <button class="nav-item nav-subitem btn btn-ghost btn-sm justify-start gap-3 px-2 relative ${t.id === activeId ? "btn-active" : ""}" data-id="${t.id}" title="${t.navLabel}">
-        <i data-lucide="${t.icon}" class="shrink-0 w-4 h-4"></i>
-        <span class="nav-label whitespace-nowrap ${effectiveNavMode() === "full" ? "" : "hidden"}">${t.navLabel}</span>
-      </button>`
-      )
-      .join("")}</div>`;
-  }
-
-  /**
-   * The same for Settings: its tabs under it while you're there (owner,
-   * 2026-09-29: "why not the accordion like Prep for Settings?"). The latched
-   * one follows the tab on the page.
-   */
-  function settingsSubItems() {
-    const current = settingsTabFromHash(location.hash);
-    return `<div class="nav-subitems" role="group" aria-label="Settings">${SETTINGS_TABS.map(
-      ([id, label, icon]) => `
-      <button class="nav-item nav-subitem btn btn-ghost btn-sm justify-start gap-3 px-2 relative ${id === current ? "btn-active" : ""}" data-settings-sub="${id}" title="${label}">
-        <i data-lucide="${icon}" class="shrink-0 w-4 h-4"></i>
-        <span class="nav-label whitespace-nowrap ${effectiveNavMode() === "full" ? "" : "hidden"}">${label}</span>
-      </button>`
-    ).join("")}</div>`;
-  }
-
-  /**
    * The Prep page's tab row: a bank of butted latching keys at the top of the
    * page, one per prep tool, always shown on Prep (even with one tab, so the
    * page doesn't change shape when a second tool is switched on).
    */
   function renderPrepTabs() {
+    // The page title, then the tab row, then the tool: the same order as
+    // Settings (owner, 2026-09-30). Each tool names itself below the tabs in
+    // an h2.
+    let head = document.getElementById("prep-head");
     let row = document.getElementById("prep-tabs");
-    if (!row) {
+    if (!head) {
+      head = document.createElement("div");
+      head.id = "prep-head";
+      head.className = "flex flex-col gap-4 mb-4";
+      head.innerHTML = `<h1 class="text-lg font-semibold">Prep</h1>`;
       row = document.createElement("div");
       row.id = "prep-tabs";
       row.className = "rf-tabs";
+      row.style.marginBottom = "0";
       row.setAttribute("role", "tablist");
       row.setAttribute("aria-label", "Prep");
       wireTabKeys(row, (tab) => setActive(tab.dataset.id));
+      head.appendChild(row);
     }
     const on = isPrepTab(activeId);
-    row.classList.toggle("hidden", !on);
+    head.classList.toggle("hidden", !on);
     if (!on) return;
     // Directly above the tool it selects: not at the top of the page, where
     // the Return bar and the off notice would sit between the tabs and the
     // page they choose.
     const panel = document.getElementById(`view-${activeId}`);
-    if (panel && panel.previousElementSibling !== row) panel.before(row);
+    if (panel && panel.previousElementSibling !== head) panel.before(head);
     for (const t of prepTabs) {
       const section = document.getElementById(`view-${t.id}`);
       section?.setAttribute("role", "tabpanel");
@@ -330,7 +296,7 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
   // On Prep as well as on the tool itself, wherever it's shown: the dot's
   // whole point is being seen without opening the screen.
   function applyImageCropDot() {
-    const places = [...document.querySelectorAll('#nav-items [data-id="image-crop"], #prep-tabs [data-id="image-crop"]')];
+    const places = [...document.querySelectorAll('#prep-tabs [data-id="image-crop"]')];
     if (isPrepTab("image-crop")) places.push(navItemsEl.querySelector('[data-id="prep"]'));
     for (const btn of places.filter(Boolean)) applyImageCropDotTo(btn);
   }
@@ -874,11 +840,6 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
         }
       }
     }
-  });
-
-  // A Settings tab changed on the page: move the latched sub-item with it.
-  window.addEventListener(SETTINGS_TAB_EVENT, () => {
-    if (activeId === "health") renderItems();
   });
 
   // Someone editing the fragment by hand, or following a /#health link while

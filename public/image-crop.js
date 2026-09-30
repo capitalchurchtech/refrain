@@ -25,7 +25,7 @@ export function initImageCrop() {
 
     container.innerHTML = `
       <div class="flex flex-col gap-4 max-w-3xl">
-        <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="crop" class="w-5 h-5"></i> Image Crop</h1>
+        <h2 class="rf-page-sub">Image Crop</h2>
 
         <!-- One line. The paragraph this replaces had a sentence fragment that
              had been shipping for a while: "...every preset below.

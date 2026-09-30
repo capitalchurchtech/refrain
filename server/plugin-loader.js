@@ -76,5 +76,5 @@ export function moduleClient(client) {
  * in Settings." Most are on Features; one that says otherwise names its tab.
  */
 export function moduleSettingsTab(tab) {
-  return ["status", "library", "features", "phones", "this-mac"].includes(tab) ? tab : "features";
+  return ["status", "search", "audit", "features", "phones", "this-mac"].includes(tab) ? tab : "features";
 }

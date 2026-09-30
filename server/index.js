@@ -111,6 +111,7 @@ import QRCode from "qrcode";
 import { emptyRegistry, seeDevice, setApproved, removeDevice, isApproved, isRemoved, deviceList, loadRegistry, saveRegistry } from "./remote-devices.js";
 import { previewTargets, createThumbCache } from "./slide-preview.js";
 import { createThumbStore } from "./thumb-store.js";
+import { envEntries, applyEnvEdits, saveEnvFile, readText as readEnvText } from "./env-file.js";
 import { crossSiteRefused } from "./request-guard.js";
 import { markHidden, setHidden, isControlId, rememberValues } from "./live-visibility.js";
 import { safeSlides, addSafeSlide, removeSafeSlide, renameSafeSlide, moveSafeSlide } from "./safe-slides.js";
@@ -681,6 +682,35 @@ const ENV_EXAMPLE_PATH = "./.env.example";
  * flag); other platforms get a clear message instead of a silent
  * failure since this whole app assumes a local, single-admin machine.
  */
+/**
+ * .env from Settings > Features (server/env-file.js). The values are only ever
+ * served by this app, which listens on this Mac; the phone listener has no
+ * route to them. Saving keeps the old file as .env.previous and takes effect
+ * at the next restart, since .env is read once at startup.
+ */
+app.get("/api/env", async (_req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json({ entries: envEntries(await readEnvText(ENV_PATH), await readEnvText(ENV_EXAMPLE_PATH)) });
+});
+
+app.post("/api/env", async (req, res) => {
+  const edits = req.body?.edits;
+  if (!edits || typeof edits !== "object" || Array.isArray(edits)) return res.status(400).json({ error: "Nothing to save." });
+  let text;
+  try {
+    text = applyEnvEdits(await readEnvText(ENV_PATH), edits);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  try {
+    await saveEnvFile(ENV_PATH, text);
+  } catch (err) {
+    return res.status(500).json({ error: `Couldn't save .env: ${err.message}. Nothing changed.` });
+  }
+  console.log(`.env saved from Settings (${Object.keys(edits).length} value${Object.keys(edits).length === 1 ? "" : "s"}; previous copy in .env.previous). Takes effect at the next restart.`);
+  res.json({ ok: true, entries: envEntries(text, await readEnvText(ENV_EXAMPLE_PATH)) });
+});
+
 app.post("/api/env/open", async (_req, res) => {
   try {
     if (!existsSync(ENV_PATH)) {
@@ -2003,14 +2033,20 @@ app.post("/api/orphaned-media/reveal", async (req, res) => {
 });
 
 app.get("/api/library-folders", async (_req, res) => {
+  // What search holds now, per library, from the index itself: shown on
+  // Settings > Search whether or not ProPresenter is answering, so "what's
+  // being searched" never depends on it (owner, 2026-09-30).
+  const indexed = {};
+  for (const p of Object.values(getIndex().presentations ?? {})) {
+    const f = p.folder ?? "Other";
+    indexed[f] = (indexed[f] ?? 0) + 1;
+  }
+  const selected = config.librarySync?.folders ?? null; // null = every folder searched
   try {
     const folders = await client.getLibraryFolders();
-    res.json({
-      folders: (folders ?? []).map((f) => f.name),
-      selected: config.librarySync?.folders ?? null, // null = every folder synced
-    });
+    res.json({ folders: (folders ?? []).map((f) => f.name), selected, indexed });
   } catch (err) {
-    res.status(502).json({ error: err.message });
+    res.status(502).json({ error: err.message, selected, indexed });
   }
 });
 

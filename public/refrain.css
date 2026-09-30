@@ -3960,20 +3960,6 @@ html.blackroom .rf-tab[aria-selected="true"] {
   outline-offset: -2px;
 }
 
-/* The prep tools, listed under Prep while you're on it, one per row like
-   the keys above them. Only when the rail shows labels: the list exists to
-   put the tools' names in view, and a collapsed rail has no names, so there
-   it would be six more icons to look past. */
-.nav-subitems {
-  display: flex;
-  flex-direction: column;
-}
-#nav-rail:not(.w-36) .nav-subitems {
-  display: none;
-}
-#nav-rail.w-36 .nav-subitem {
-  padding-left: 1.5rem;
-}
 
 /* A tab's number, shown while Shift is held (nav.js adds .reveal-tab-keys to
    <html>): Shift+1 picks the first tab. Hidden otherwise, like the menu's
@@ -3984,4 +3970,27 @@ html.blackroom .rf-tab[aria-selected="true"] {
 }
 html.reveal-tab-keys .tab-key {
   display: inline-flex;
+}
+
+/* A sub-page's own heading, under its page's tab row: Prep > Spell Check,
+   Settings > Library (owner, 2026-09-30). One step below the page title,
+   by name like every heading here (see "There is no blanket sub-heading
+   rule"): the page title's face, smaller. Size crosses themes; the face is
+   dark-scoped with the h1 it follows. */
+.rf-page-sub {
+  font-size: 1.125rem;
+  font-weight: 700;
+  line-height: 1.1;
+  margin: 0;
+}
+[data-theme="dark"] main .rf-page-sub,
+html.blackroom main .rf-page-sub {
+  font-family: var(--rf-sans);
+  font-size: clamp(16px, 3.2vw, 24px);
+  font-weight: 800;
+  font-stretch: 112%;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--rf-text);
 }
