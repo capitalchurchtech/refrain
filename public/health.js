@@ -2109,10 +2109,10 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
       </div>
       ${panel("status", statusStrip, propresenterCard, updatesCard)}
       ${panel("search", libraryCard, indexCard)}
-      ${panel("audit", duplicateNamesCard, preferredCard, themesCard, orphanedMediaCard)}
       ${panel("features", configCard, arrangementCard)}
       ${panel("phones", phoneCard)}
       ${panel("this-mac", displayCard, autostartCard, terminalCard)}
+      ${panel("audit", duplicateNamesCard, preferredCard, themesCard, orphanedMediaCard)}
       <div class="text-xs opacity-50 text-center mt-2 flex flex-col items-center gap-1">
         <div>
           Panel textures by

@@ -278,8 +278,10 @@ The test is the core. `box-shadow: 0 0 6px rgba(169,111,232,.30)` on a 2px plum
 rule is a lit edge. Add a near-white centre and it becomes an indicator that
 now has to mean something.
 
-Existing lit edges: the latched nav key's plum left edge, and the section
-heading's vertical rule. Neither reports anything, both are allowed.
+Existing lit edges: the latched nav key's plum left edge. (Section headings
+had a vertical rule too, until 2026-09-30: on a heading, plum and a glow read
+as a button, so card headings now use the plain `.rf-subhead` silkscreen,
+muted, no marker. A heading labels; it is never pressed.)
 
 ### Phosphor is for values, not labels
 

@@ -4,10 +4,11 @@
 export const SETTINGS_TABS = [
   ["status", "Status", "activity"],
   ["search", "Search", "search"],
-  ["audit", "Audit", "clipboard-check"],
   ["features", "Features", "toggle-right"],
   ["phones", "Phones", "smartphone"],
   ["this-mac", "This Mac", "monitor-cog"],
+  // Last: the least used (owner, 2026-09-30).
+  ["audit", "Audit", "clipboard-check"],
 ];
 
 // Tabs that were renamed, so an old link still lands somewhere sensible.

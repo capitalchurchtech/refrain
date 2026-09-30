@@ -1776,71 +1776,36 @@ html.blackroom main h1 > svg {
  * thinking about.
  *
  * So headings take a treatment by name -- `.card-title` for a card's own
- * heading with its lit edge, `.rf-subhead` for a subsection -- and an
+ * heading, `.rf-subhead` for a subsection, both the same quiet silkscreen -- and an
  * unclassed `h2` inherits body type. That is a legible default, and it makes
  * the next person choose rather than inherit a surprise.
  */
 
 /**
- * Section headings. After the keys, the most recognisable element in the
- * reference, and the thing that finally settles the four-heading-systems
- * problem from the first review: there is exactly one treatment.
- *
- * The reference's square marker glows. It is rendered unlit here, because
- * the emitter budget is already spent on the lit collar, the phosphor
- * readout, the LEDs and the link indicator, and a section heading is not
- * reporting a state. An emitter that means nothing is the same lie as a
- * raised element that does nothing.
+ * Section headings: the same quiet silkscreen label as `.rf-subhead`, the one
+ * Live uses above "Performance mode" (owner, 2026-09-30). They used to be
+ * plum with a glowing edge and an underline, and read as buttons ("the
+ * '| Check a playlist' headers feel like buttons"): plum is the colour of
+ * what you can press, and a lit edge on text says "this is live". A heading
+ * labels what's below it and is pressed by nobody, so it takes neither.
+ * One treatment for every card heading, by rule rather than by markup, so a
+ * new card can't bring the old one back.
  */
 [data-theme="dark"] .card-title,
 html.blackroom .card-title {
   display: flex;
-  align-items: stretch;
-  gap: 10px;
-  padding-bottom: 10px;
-  margin-bottom: 2px;
-  border-bottom: 1px solid var(--rf-hairline);
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  margin-bottom: 4px;
+  border: 0;
   font-family: var(--rf-mono);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 600;
+  line-height: 1.4;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--rf-plum-lit);
-}
-/**
- * A lit edge rather than a dot.
- *
- * The dot was absolutely positioned at `top: 3px`, a number eyeballed against
- * Martian Mono's metrics -- so it sat above the cap height and would drift
- * again with any change to size or leading. Fixed by construction instead of
- * re-tuned: a flex item taking its height from the text line cannot be
- * vertically misaligned, so `position`, `top` and `height` are gone rather
- * than adjusted.
- *
- * `align-self: stretch` fills the flex line's cross size, which excludes the
- * heading's padding-bottom, so the edge matches the text instead of running
- * down into the hairline underline. No gradient fade at the ends either: at
- * ~14px there is no room for a fade to register and it reads as a fuzzy dash.
- *
- * On the glow, versus the wordmark stripe two sections down, which is
- * deliberately unlit: an emitter has a hot near-white core plus a saturated
- * halo, reads as an LED, and reports a state, so it counts against the ceiling
- * of four. A lit edge has no core -- just a soft low-alpha bleed -- and is
- * structural and free. The test is the core. This is the same object at the
- * same scale as the latched nav key's plum left edge, so the bleed is
- * consistent; add a near-white centre and it becomes an indicator that has to
- * mean something.
- */
-[data-theme="dark"] .card-title::before,
-html.blackroom .card-title::before {
-  content: "";
-  position: static;
-  flex: none;
-  width: 2px;
-  align-self: stretch;
-  border-radius: 1px;
-  background: var(--rf-plum-lit);
-  box-shadow: 0 0 6px rgba(169, 111, 232, 0.3);
+  color: var(--rf-muted);
 }
 /* Same reasoning as the page title: the marker is the mark now. */
 [data-theme="dark"] .card-title > [data-lucide],
@@ -2512,9 +2477,8 @@ html.blackroom .rf-tile.rf-flagged {
   color: var(--rf-text);
 }
 
-/* A subsection inside a card. Not a `.card-title`, which carries the lit edge
-   and is the card's own heading -- a second one inside the same card would
-   claim there are two cards. Silkscreen, quieter, no marker. */
+/* A subsection label. The same treatment as a card's own `.card-title`
+   heading (see section 20): quiet silkscreen, no marker. */
 .rf-subhead {
   margin-bottom: 4px;
   font-family: var(--rf-mono);
@@ -3357,8 +3321,8 @@ html.blackroom .rf-led.rf-led-col.lit::before {
 /**
  * The song's own name, in the hero, in ordinary type.
  *
- * It sat in the `.card-title` slot, which in dark theme is mono, uppercase,
- * letterspaced and plum -- the section-heading treatment. That restyles a name
+ * It sat in the `.card-title` slot, which in dark theme is mono, uppercase
+ * and letterspaced -- the section-heading treatment. That restyles a name
  * the user wrote, and "GREAT IS THY FAITHFULNESS" is not what they typed. The
  * heading slot now says what the card is; the name is content beneath it.
  */
