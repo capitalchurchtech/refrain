@@ -8,7 +8,7 @@ export default {
   id: "lyrics-assist",
   navLabel: "Lyrics",
   icon: "music",
-  nav: { group: "prep", order: 4.5 },
+  nav: { group: "prep", order: 4 },
   client: { file: "lyrics-assist.js", init: "initLyricsAssist" },
   route: "/lyrics-assist",
   component: null, // TODO: LyricsAssistScreen component

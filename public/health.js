@@ -1,6 +1,7 @@
 import { COPY_FAILED, noProPresenterFound } from "./strings.js";
 import { showFailure } from "./notice.js";
 import { wireTabKeys } from "./tabs.js";
+import { display } from "./nav.js";
 import { SETTINGS_TABS, settingsTabFromHash } from "./settings-tabs.js";
 import { createMeter, updateMeter, meterCount } from "./led-meter.js";
 const ARRANGEMENT_STATUS_LABEL = {
@@ -78,22 +79,23 @@ export function initHealth() {
     if (!container.classList.contains("hidden") && /^#settings/.test(location.hash)) showSettingsTab(settingsTabFromHash(location.hash));
   });
   function wireDisplayCard() {
-    const themeBtn = document.getElementById("settings-theme-btn");
-    const sideBtn = document.getElementById("settings-side-btn");
-    if (!themeBtn || !sideBtn) return;
-    const label = () => {
-      themeBtn.textContent = document.getElementById("theme-label")?.textContent ?? "Theme";
-      sideBtn.textContent = document.documentElement.classList.contains("rail-right") ? "Menu on the right: move it left" : "Menu on the left: move it right";
+    const paint = () => {
+      const now = display.get();
+      const current = { theme: now.theme, side: now.navSide, width: now.navMode };
+      container.querySelectorAll("[data-display]").forEach((b) => {
+        const on = current[b.dataset.display] === b.dataset.value;
+        b.setAttribute("aria-checked", String(on));
+      });
     };
-    label();
-    themeBtn.addEventListener("click", () => {
-      document.getElementById("theme-toggle")?.click();
-      label();
-    });
-    sideBtn.addEventListener("click", () => {
-      document.getElementById("nav-side-toggle")?.click();
-      label();
-    });
+    paint();
+    const set = { theme: display.setTheme, side: display.setSide, width: display.setWidth };
+    container.querySelectorAll("[data-display]").forEach((b) =>
+      b.addEventListener("click", async () => {
+        await set[b.dataset.display](b.dataset.value);
+        paint();
+      })
+    );
+    document.getElementById("settings-welcome-btn")?.addEventListener("click", () => display.openWelcome());
   }
 
   async function render() {
@@ -1160,14 +1162,20 @@ function renderIndexShortfall(index) {
  * a copy button beside a command you can read is more trustworthy than a button
  * that promises to do something to your machine.
  */
-function renderTerminalActions(port, installDir) {
-  const appMode = `open -na "Google Chrome" --args --app=http://localhost:${port}`;
-  // `git checkout -- package-lock.json` first: npm rewrites the lockfile
-  // whenever it syncs it to package.json, and a modified lockfile makes
-  // `git pull` refuse. Discarding it loses nothing -- it is generated, and the
-  // npm install here rebuilds it.
-  const update = `cd "${installDir}" && git checkout -- package-lock.json 2>/dev/null; git pull --ff-only && npm install --silent && echo "Updated. Restart Refrain"`;
-  const row = (id, label, help, cmd) => `
+/** Open Refrain as its own window: Chrome with no tabs or address bar. */
+function appModeCommand(port) {
+  return `open -na "Google Chrome" --args --app=http://localhost:${port}`;
+}
+// `git checkout -- package-lock.json` first: npm rewrites the lockfile
+// whenever it syncs it to package.json, and a modified lockfile makes
+// `git pull` refuse. Discarding it loses nothing -- it is generated, and the
+// npm install here rebuilds it.
+function updateCommand(installDir) {
+  return `cd "${installDir}" && git checkout -- package-lock.json 2>/dev/null; git pull --ff-only && npm install --silent && echo "Updated. Restart Refrain"`;
+}
+/** A command to run in Terminal, shown with a one-click copy. */
+function commandRow(label, help, cmd) {
+  return `
     <div class="flex flex-col gap-1">
       <div class="rf-silkscreen">${label}</div>
       <div class="text-xs opacity-60 rf-measure">${help}</div>
@@ -1176,14 +1184,6 @@ function renderTerminalActions(port, installDir) {
         <button class="btn btn-chip shrink-0 terminal-copy" data-command="${escapeHtml(cmd)}" title="Copy this command">
           <i data-lucide="copy" class="w-3 h-3"></i> Copy
         </button>
-      </div>
-    </div>`;
-  return `
-    <div class="card bg-base-200">
-      <div class="card-body p-3 gap-3">
-        <h2 class="card-title text-base"><i data-lucide="terminal" class="w-4 h-4 opacity-70"></i> Terminal shortcuts</h2>
-        ${row("appmode", "Open in its own window", "Chrome with no tabs or address bar, so it can dock narrow beside ProPresenter.", appMode)}
-        ${row("update", "Update Refrain", "Downloads the latest version. Restart Refrain afterwards. Your settings are kept.", update)}
       </div>
     </div>`;
 }
@@ -1270,7 +1270,15 @@ export function renderOrphanResults(result) {
  * is worse than silence.
  */
 function renderAutostartCard(state) {
-  if (!state || !state.supported) return "";
+  if (!state || !state.supported) {
+    return `
+    <div class="card bg-base-200">
+      <div class="card-body p-3 gap-2">
+        <h2 class="card-title text-base">Start at login</h2>
+        <div class="text-sm opacity-70 rf-measure">Only on a Mac for now. On this computer, start Refrain with <span class="font-mono">scripts/start.bat</span>.</div>
+      </div>
+    </div>`;
+  }
   const on = state.installed;
   const badge = on
     ? `<div class="badge badge-success gap-1">On</div>`
@@ -1390,7 +1398,8 @@ function renderEnvSection(envRequirements, entries) {
 
 function renderHealth(health, configOptions, versionInfo, libraryCard = "", duplicateNameGroups = [], envEntryList = []) {
   const { propresenter, index, arrangementModule, role, version, config, envRequirements } = health;
-  const terminalCard = renderTerminalActions(health.port ?? window.location.port ?? 9999, health.installDir ?? "$HOME/Refrain");
+  const port = health.port ?? window.location.port ?? 9999;
+  const installDir = health.installDir ?? "$HOME/Refrain";
   const autostartCard = renderAutostartCard(health.autostart);
 
   const propresenterCard = `
@@ -2038,6 +2047,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
                <div class="text-xs opacity-60 rf-measure">Or double-click <span class="font-mono">scripts/update.command</span>. Restart Refrain afterward.</div>`
             : `<div class="text-sm mt-1">To update, download the latest ZIP from <a href="${escapeHtml(versionInfo?.repoUrl ?? "")}" target="_blank" rel="noopener" class="link">GitHub</a> and copy your <span class="font-mono">config.json</span> and <span class="font-mono">.env</span> into it.</div>`
         }
+        ${commandRow("Update by hand", "If the Update button doesn't work. Restart Refrain afterwards. Your settings are kept.", updateCommand(installDir))}
       </div>
     </div>
   `;
@@ -2081,18 +2091,46 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
     </div>
   `;
 
-  // Display settings that used to be keys in the menu: set once, rarely
-  // changed, and one less thing to look past mid-service. The keys still
-  // exist, out of sight, so the menu's own theme and side logic runs them.
+  // How Refrain looks here (owner, 2026-09-30). Choices, not a button that
+  // cycles: the old "Theme: System" button said where you were, not what
+  // pressing it would do. The menu owns these settings (nav.js, `display`).
+  const choice = (group, value, label, swatch = "") =>
+    `<button type="button" role="radio" class="rf-tab" data-display="${group}" data-value="${value}" aria-checked="false">${swatch}<span>${label}</span></button>`;
+  // Sized inline, not by utility class: a class that exists only in a JS
+  // string may get no Tailwind rule in time (CLAUDE.md).
+  const swatch = (bg) => `<span style="width:12px;height:12px;border-radius:2px;flex:none;background:${bg};box-shadow:inset 0 0 0 1px rgba(128,128,128,.5)"></span>`;
   const displayCard = `
     <div class="card bg-base-200">
-      <div class="card-body p-3 gap-2">
-        <h2 class="card-title text-base"><i data-lucide="palette" class="w-4 h-4 opacity-70"></i> Display</h2>
-        <div class="text-sm opacity-70 rf-measure">How Refrain looks on this computer.</div>
-        <div class="flex gap-2 flex-wrap">
-          <button type="button" id="settings-theme-btn" class="btn btn-outline btn-sm"></button>
-          <button type="button" id="settings-side-btn" class="btn btn-outline btn-sm"></button>
+      <div class="card-body p-3 gap-3">
+        <h2 class="card-title text-base">Display</h2>
+        <div class="flex flex-col gap-1">
+          <div class="rf-silkscreen">Theme</div>
+          <div class="rf-tabs" role="radiogroup" aria-label="Theme" style="margin-bottom:0">
+            ${choice("theme", "system", "System", swatch("linear-gradient(135deg,#f4f2f6 50%,#16121c 50%)"))}
+            ${choice("theme", "light", "Light", swatch("#f4f2f6"))}
+            ${choice("theme", "dark", "Dark", swatch("#16121c"))}
+            ${choice("theme", "blackroom", "Blackroom", swatch("#000"))}
+          </div>
         </div>
+        <div class="flex gap-6 flex-wrap">
+          <div class="flex flex-col gap-1">
+            <div class="rf-silkscreen">Menu side</div>
+            <div class="rf-tabs" role="radiogroup" aria-label="Menu side" style="margin-bottom:0">${choice("side", "left", "Left")}${choice("side", "right", "Right")}</div>
+          </div>
+          <div class="flex flex-col gap-1">
+            <div class="rf-silkscreen">Menu</div>
+            <div class="rf-tabs" role="radiogroup" aria-label="Menu width" style="margin-bottom:0">${choice("width", "full", "Labels")}${choice("width", "icons", "Icons")}</div>
+          </div>
+        </div>
+        ${commandRow("Open in its own window", "Chrome with no tabs or address bar, so it can dock narrow beside ProPresenter.", appModeCommand(port))}
+      </div>
+    </div>`;
+  const welcomeCard = `
+    <div class="card bg-base-200">
+      <div class="card-body p-3 gap-2">
+        <h2 class="card-title text-base">Welcome</h2>
+        <div class="text-sm opacity-70 rf-measure">The three things a new volunteer needs on a Sunday.</div>
+        <button type="button" id="settings-welcome-btn" class="btn btn-outline btn-sm w-fit">Show the welcome card</button>
       </div>
     </div>`;
 
@@ -2111,7 +2149,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
       ${panel("search", libraryCard, indexCard)}
       ${panel("features", configCard, arrangementCard)}
       ${panel("phones", phoneCard)}
-      ${panel("this-mac", displayCard, autostartCard, terminalCard)}
+      ${panel("customize", displayCard, welcomeCard, autostartCard)}
       ${panel("audit", duplicateNamesCard, preferredCard, themesCard, orphanedMediaCard)}
       <div class="text-xs opacity-50 text-center mt-2 flex flex-col items-center gap-1">
         <div>

@@ -3958,3 +3958,19 @@ html.blackroom main .rf-page-sub {
   text-transform: uppercase;
   color: var(--rf-text);
 }
+
+/* A choice in a row of options (Settings > Customize: theme, menu side,
+   width): the same latched key as a tab, marked by aria-checked instead of
+   aria-selected. Co-located signal for both themes, as .rf-tab's is. */
+.rf-tab[aria-checked="true"] {
+  box-shadow: inset 0 -3px 0 var(--rf-plum);
+  font-weight: 600;
+}
+[data-theme="dark"] .rf-tab[aria-checked="true"],
+html.blackroom .rf-tab[aria-checked="true"] {
+  background-image: linear-gradient(180deg, #1C1724 0%, #221C2B 100%);
+  box-shadow:
+    var(--rf-junction-recessed),
+    inset 0 -3px 0 var(--rf-plum);
+  color: var(--rf-text);
+}

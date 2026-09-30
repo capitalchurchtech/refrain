@@ -8,7 +8,7 @@ export default {
   id: "arrangement",
   navLabel: "Arrangement",
   icon: "git-compare",
-  nav: { group: "prep", order: 5 },
+  nav: { group: "prep", order: 8 },
   client: { file: "arrangement.js", init: "initArrangement" },
   route: "/arrangement",
   component: null, // TODO: ArrangementScreen component

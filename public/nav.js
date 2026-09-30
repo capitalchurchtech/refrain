@@ -48,6 +48,19 @@ export function applyTheme(theme) {
   document.documentElement.classList.toggle("blackroom", blackroom);
 }
 
+/**
+ * How Refrain looks here, for Settings > Customize (owner, 2026-09-30): the
+ * menu owns theme, side and width, so Settings asks it rather than keeping a
+ * second copy. Filled in by initNav.
+ */
+export const display = {
+  get: () => ({ theme: null, navSide: "left", navMode: "full" }),
+  setTheme: async () => {},
+  setSide: async () => {},
+  setWidth: async () => {},
+  openWelcome: () => {},
+};
+
 export async function initNav({ onNavigate, viewIds, modules: given = null }) {
   const rail = document.getElementById("nav-rail");
   const navItemsEl = document.getElementById("nav-items");
@@ -628,6 +641,29 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
     });
   });
 
+  const savePref = (body) =>
+    fetch("/api/preferences", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  display.get = () => ({ theme: currentTheme, navSide, navMode: navMode === "sliver" ? "icons" : navMode });
+  display.setTheme = async (theme) => {
+    if (!THEME_CYCLE.includes(theme)) return;
+    currentTheme = theme;
+    applyThemeUI();
+    await savePref({ theme });
+  };
+  display.setSide = async (side) => {
+    if (side !== "left" && side !== "right") return;
+    navSide = side;
+    applySide();
+    await savePref({ navSide });
+  };
+  display.setWidth = async (mode) => {
+    if (mode !== "full" && mode !== "icons") return;
+    navMode = mode;
+    if (narrowQuery?.matches && navMode === "full") expandedWhileNarrow = true;
+    applyPinnedState();
+    await savePref({ navMode });
+  };
+
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
     if (currentTheme === "system") applyTheme("system");
   });
@@ -715,6 +751,8 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
     welcomeModal.classList.remove("hidden");
     onModalOpen(welcomeModal);
   };
+  // From Settings > Customize: a new volunteer can see it again on demand.
+  display.openWelcome = openWelcome;
   const closeWelcome = async () => {
     if (!welcomeOpen()) return;
     welcomeModal.classList.add("hidden");

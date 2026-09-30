@@ -11,7 +11,9 @@ export default {
   id: "scripture",
   navLabel: "Scripture",
   icon: "book-open",
-  nav: { group: "prep", order: 4.7 },
+  // Last of the everyday tools: most churches use the Bible versions they
+  // bought inside ProPresenter (owner, 2026-09-30).
+  nav: { group: "prep", order: 7 },
   client: { file: "scripture.js", init: "initScripture" },
   route: "/scripture",
   component: null,

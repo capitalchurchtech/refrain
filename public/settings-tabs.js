@@ -6,13 +6,13 @@ export const SETTINGS_TABS = [
   ["search", "Search", "search"],
   ["features", "Features", "toggle-right"],
   ["phones", "Phones", "smartphone"],
-  ["this-mac", "This Mac", "monitor-cog"],
+  ["customize", "Customize", "sliders-horizontal"],
   // Last: the least used (owner, 2026-09-30).
   ["audit", "Audit", "clipboard-check"],
 ];
 
 // Tabs that were renamed, so an old link still lands somewhere sensible.
-const RENAMED = { library: "search" };
+const RENAMED = { library: "search", "this-mac": "customize" };
 
 /** Which tab a fragment asks for: `#settings/search`, else the first. */
 export function settingsTabFromHash(hash) {
