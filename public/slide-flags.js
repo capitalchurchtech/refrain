@@ -47,7 +47,7 @@ export function describeFlagSave(result) {
   const kind = f.type ? ` as ${f.type}` : "";
   const where = `${f.presentationName ?? "that presentation"}, slide ${slideNumber(f)}`;
   if (result?.shared === false) {
-    return `Flagged ${where}${kind}. Saved on this machine; it will copy to the shared flags folder once it can reach it.`;
+    return `Flagged ${where}${kind}. Saved on this machine. It will copy to the shared flags folder when it can.`;
   }
   return `Flagged ${where}${kind}.`;
 }
@@ -69,7 +69,7 @@ export function mountFlagButton(host) {
   if (!host) return;
   host.innerHTML = `
     <div class="flex items-center gap-2 flex-wrap">
-      <button type="button" class="btn btn-chip slide-flag-btn" title="Remember this slide to fix after the service. Nothing on the screens changes.">
+      <button type="button" class="btn btn-chip slide-flag-btn" title="Mark this slide to fix later. Nothing on the screens changes.">
         <i data-lucide="flag" class="w-3 h-3"></i> <span class="slide-flag-label">Flag this slide</span>
       </button>
       <span class="slide-flag-status text-xs opacity-60" aria-live="polite"></span>
@@ -202,7 +202,7 @@ function renderReviewRow(f, types, showMachine) {
           ${f.source === "remote" ? `<span class="opacity-70"> · from ${escapeHtml(f.submittedBy || "another device")}</span>` : ""}
           ${f.resolved ? `<span class="badge badge-ghost badge-sm ml-1">Resolved</span>` : ""}
         </div>
-        <button type="button" class="btn btn-chip shrink-0 slide-flag-editor-btn" data-presentation-id="${escapeHtml(f.presentationId)}" title="Opens the presentation in ProPresenter's editor. It can't select the slide for you, so the number says which one.">Show slide ${slideNumber(f)} in Editor</button>
+        <button type="button" class="btn btn-chip shrink-0 slide-flag-editor-btn" data-presentation-id="${escapeHtml(f.presentationId)}" title="Opens in ProPresenter's editor. Find the slide by its number.">Show slide ${slideNumber(f)} in Editor</button>
       </div>
       ${
         f.text
@@ -237,7 +237,7 @@ export function renderReviewHtml(flags, types = [], { hiddenResolved = 0, keepRe
     : "";
   if (all.length === 0) {
     return `
-      <div class="text-sm opacity-70 rf-measure">Nothing flagged yet. During a service, tap a type above, or <strong>Flag this slide</strong> under the readout on Search.</div>
+      <div class="text-sm opacity-70 rf-measure">Nothing flagged yet. Tap a type above, or <strong>Flag this slide</strong> on Search.</div>
       ${hiddenNote}`;
   }
   const shown = all.slice(0, LIST_LIMIT);
@@ -383,7 +383,7 @@ export function initSlideFlags() {
       <div class="flex flex-col gap-4 max-w-3xl">
         <div>
           <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="flag" class="w-5 h-5"></i> Flags</h1>
-          <p class="text-sm opacity-70">Tap what's wrong with the slide on screen now. Nothing on the screens changes. Fix them after the service.</p>
+          <p class="text-sm opacity-70">Tap what's wrong with the slide on screen. Nothing on the screens changes.</p>
           <p id="slide-flags-phone-pin" class="text-sm hidden"></p>
         </div>
         <div>
@@ -452,8 +452,8 @@ export async function mountLiveFlagSummary(summaryHost) {
 
 export function liveSummaryText(flags) {
   const open = (flags ?? []).filter((f) => !f.resolved).length;
-  if (open === 0) return "Nothing flagged and open.";
-  return `${open} flagged slide${open === 1 ? "" : "s"} open.`;
+  if (open === 0) return "No open flags.";
+  return `${open} open flag${open === 1 ? "" : "s"}.`;
 }
 
 function renderLiveSummary(host, flags) {

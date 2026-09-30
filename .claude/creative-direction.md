@@ -128,10 +128,12 @@ are emitters only and never appear as fills.
 
 ### Light theme is a default path, not an opt-in
 
-`system` is the default theme when nothing is set, and `system` resolves to
-light on any machine not already in dark mode. So **light theme is the
-out-of-box rendering for a church office computer in daylight** — the
-Installer's condition, and a persona this document treats as first-class.
+**Blackroom is the default theme when nothing is set** (owner, 2026-09-30;
+it had been `dark`, and before that this section said `system`). Light is
+still one press away in Settings > This Mac, and `system` still resolves to
+light on a machine in daylight, so **light theme remains a path an Installer
+takes on a church office computer**, and a persona this document treats as
+first-class.
 
 It is not a minority preference and it cannot be dropped to avoid maintaining
 it. Five accessibility defects accumulated in the default rendering before

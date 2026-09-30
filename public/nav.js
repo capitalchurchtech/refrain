@@ -163,7 +163,7 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
   function escapeText(str) {
     return String(str ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   }
-  let currentTheme = prefs.theme ?? "dark";
+  let currentTheme = prefs.theme ?? "blackroom";
   // Expanded by default until the user chooses: on a fresh install navPinned
   // is unset (null), so a first-time user sees labels rather than a wall of
   // unlabeled icons. Once they collapse or expand, that choice (true/false)
@@ -564,7 +564,7 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
     pinToggle.title = isFull
       ? "Collapse to icons"
       : mode === "icons"
-        ? "Collapse to a sliver"
+        ? "Hide the menu"
         : "Show the full menu";
   }
 

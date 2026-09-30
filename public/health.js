@@ -28,7 +28,7 @@ async function showUnfinishedDay() {
       // No storage: it shows each time instead of once. Harmless.
     }
     const label = new Date(`${day}T12:00:00`).toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" });
-    host.innerHTML = `<div class="rf-readout text-sm">${escapeHtml(label)} had services but was never ended, so no summary was written. <a href="#service" class="link">Open Service</a></div>`;
+    host.innerHTML = `<div class="rf-readout text-sm">${escapeHtml(label)} was never ended, so no summary was written. <a href="#service" class="link">Open Service</a></div>`;
   } catch {
     // The Service module is off, or unreachable: nothing to say.
   }
@@ -219,10 +219,10 @@ export function initHealth() {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || res.statusText);
         status.textContent =
-          `${data.notSelected.length} of ${data.checked} checked to switch` +
+          `${data.notSelected.length} of ${data.checked} need switching` +
           (data.unread ? `; ${data.unread} couldn't be read` : "") +
-          (data.stopped ? "; stopped when Refrain had to hold still" : "") +
-          (data.remaining ? `; ${data.remaining} not checked yet (press Check again, or they're known after the next reindex)` : "") +
+          (data.stopped ? "; stopped to keep ProPresenter free" : "") +
+          (data.remaining ? `; ${data.remaining} not checked yet (press Check again)` : "") +
           ".";
         results.innerHTML = data.notSelected
           .map(
@@ -330,7 +330,7 @@ export function initHealth() {
       const btn = e.currentTarget; // captured before the await
       const statusEl = document.getElementById("orphan-scan-status");
       btn.disabled = true;
-      if (statusEl) statusEl.textContent = "Reading every presentation, playlist and theme. This takes a few seconds.";
+      if (statusEl) statusEl.textContent = "Scanning. This takes a few seconds.";
       try {
         const res = await fetch("/api/orphaned-media/scan", { method: "POST" });
         const data = await res.json().catch(() => ({ ok: false, error: res.statusText }));
@@ -539,7 +539,7 @@ export function initHealth() {
         try {
           const res = await fetch("/api/index/stop", { method: "POST" });
           if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? res.statusText);
-          if (status) status.textContent = "Standing down at the next presentation.";
+          if (status) status.textContent = "Stopping after this presentation.";
         } catch (err) {
           stopBtn.disabled = false;
           if (status) status.textContent = `Couldn't stop it: ${err.message}`;
@@ -627,7 +627,7 @@ export function initHealth() {
         } finally {
           if (btn.isConnected) {
             btn.disabled = false;
-            btnLabel.textContent = "Rebuild Everything";
+            btnLabel.textContent = "Rebuild everything";
           }
         }
       });
@@ -652,7 +652,7 @@ export function initHealth() {
         } finally {
           if (saveFoldersBtn.isConnected) {
             saveFoldersBtn.disabled = false;
-            saveFoldersBtn.textContent = "Save & Rebuild";
+            saveFoldersBtn.textContent = "Save and rebuild";
           }
         }
         // Not awaited: /api/health's live ProPresenter connectivity
@@ -743,7 +743,7 @@ export function initHealth() {
         try {
           const { candidates } = await fetch("/api/arrangement/detect-storage-paths").then((r) => r.json());
           if (!candidates.length) {
-            resultEl.textContent = "Nothing found. Check the desktop sync app is installed and has synced at least once, or enter the path by hand.";
+            resultEl.textContent = "Nothing found. Install the sync app and let it sync once, or type the path.";
             return;
           }
           resultEl.innerHTML = candidates
@@ -929,9 +929,9 @@ function renderLibraryCard({ folders, selected, error }, arrangementFolders) {
     <details id="library-folders-details" class="collapse collapse-arrow bg-base-200">
       <summary class="collapse-title text-base font-semibold">Library folders</summary>
       <div class="collapse-content">
-        <div class="text-sm opacity-70 mb-2 rf-measure">Which of ProPresenter's Library folders Refrain reads. Reading only: nothing here copies or moves anything.</div>
+        <div class="text-sm opacity-70 mb-2 rf-measure">Refrain only reads these folders. Nothing is copied or moved.</div>
         <div class="text-sm font-semibold mt-1">Searchable</div>
-        <div class="text-sm opacity-70 mb-1 rf-measure">Which Library folders to index and search. A smaller scope indexes much faster. Includes anything you want to find slides in, songs or otherwise (e.g. sermons).</div>
+        <div class="text-sm opacity-70 mb-1 rf-measure">Folders to search, songs or anything else. Fewer folders index faster.</div>
         <label class="label cursor-pointer justify-start gap-2 w-fit">
           <input type="checkbox" id="library-folder-all" class="checkbox checkbox-sm" ${allSelected ? "checked" : ""} />
           <span class="label-text">All libraries</span>
@@ -952,11 +952,10 @@ function renderLibraryCard({ folders, selected, error }, arrangementFolders) {
         </div>
         <div class="alert alert-warning py-2 text-sm mt-2 items-start">
           <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
-          <span><strong>Saving here starts a full rebuild.</strong> That makes ProPresenter sluggish or
-          unresponsive for as long as it runs, which can be an hour or more. Only save this when nothing
-          important is happening for the next hour or two.</span>
+          <span><strong>Saving starts a full rebuild.</strong> ProPresenter can be slow or unresponsive
+          for an hour or more. Save only when it's free for the next two hours.</span>
         </div>
-        <button id="save-library-folders-btn" class="btn btn-sm btn-outline mt-1 w-fit">Save &amp; Rebuild</button>
+        <button id="save-library-folders-btn" class="btn btn-sm btn-outline mt-1 w-fit">Save and rebuild</button>
 
         ${arrangementFolders ? renderArrangementFoldersSection(arrangementFolders) : ""}
       </div>
@@ -990,9 +989,8 @@ function renderArrangementFoldersSection({ folders, selected, error }) {
           ? `<div class="text-sm opacity-70">No Library folders found.</div>`
           : `
       <div class="text-sm opacity-70 mb-1 rf-measure">
-        Which Library folders are actually songs, for the drift-tracking module. Independent of what's
-        searchable above, so e.g. a sermons folder can stay searchable without being treated as a "song"
-        with an "arrangement" to track. ${useSuggestion ? `Pre-selected by name below. Check this looks right.` : ""}
+        Folders that hold songs. Separate from search, so a sermons folder can stay searchable
+        without being tracked. ${useSuggestion ? `Pre-selected by name. Check it looks right.` : ""}
       </div>
       <label class="label cursor-pointer justify-start gap-2 w-fit">
         <input type="checkbox" id="arrangement-folder-all" class="checkbox checkbox-sm" ${allSelected ? "checked" : ""} />
@@ -1081,14 +1079,14 @@ function renderIndexShortfall(index) {
       `<div><strong>Configured folder${many ? "s" : ""} not found: ` +
         `${issues.unmatchedNames.map(escapeHtml).join(", ")}.</strong> ` +
         `This library has: ${(issues.availableFolders ?? []).map(escapeHtml).join(", ") || "no folders"}. ` +
-        `Every song in the missing folder${many ? "s" : ""} is absent from search. ` +
-        `Fix the folder names in Configuration below, then rebuild.</div>`
+        `Their songs are missing from search. ` +
+        `Choose the folders again on the Library tab.</div>`
     );
   }
   if (issues?.failedFolders?.length) {
     parts.push(
       `<div><strong>Could not read: ${issues.failedFolders.map((f) => escapeHtml(f.name)).join(", ")}.</strong> ` +
-        `Those folders' songs are missing from search. Rebuild once ProPresenter is responding.</div>`
+        `Their songs are missing from search. Rebuild once ProPresenter is responding.</div>`
     );
   }
   if (aborted) {
@@ -1122,7 +1120,7 @@ function renderTerminalActions(port, installDir) {
   // whenever it syncs it to package.json, and a modified lockfile makes
   // `git pull` refuse. Discarding it loses nothing -- it is generated, and the
   // npm install here rebuilds it.
-  const update = `cd "${installDir}" && git checkout -- package-lock.json 2>/dev/null; git pull --ff-only && npm install --silent && echo "Updated — restart Refrain"`;
+  const update = `cd "${installDir}" && git checkout -- package-lock.json 2>/dev/null; git pull --ff-only && npm install --silent && echo "Updated. Restart Refrain"`;
   const row = (id, label, help, cmd) => `
     <div class="flex flex-col gap-1">
       <div class="rf-silkscreen">${label}</div>
@@ -1138,8 +1136,8 @@ function renderTerminalActions(port, installDir) {
     <div class="card bg-base-200">
       <div class="card-body p-3 gap-3">
         <h2 class="card-title text-base"><i data-lucide="terminal" class="w-4 h-4 opacity-70"></i> Terminal shortcuts</h2>
-        ${row("appmode", "Open in its own window", "Chrome without tabs or an address bar, which also lets the window go far narrower than a normal one — the point when it is docked beside ProPresenter.", appMode)}
-        ${row("update", "Update Refrain", "Fetches the latest code and installs anything new. Restart Refrain afterwards. Your settings are never touched.", update)}
+        ${row("appmode", "Open in its own window", "Chrome with no tabs or address bar, so it can dock narrow beside ProPresenter.", appMode)}
+        ${row("update", "Update Refrain", "Downloads the latest version. Restart Refrain afterwards. Your settings are kept.", update)}
       </div>
     </div>`;
 }
@@ -1183,7 +1181,7 @@ export function renderThemeReport(data) {
 export function renderOrphanResults(result) {
   const sections = (result?.workspaces ?? []).map((w) => {
     if (w.missing) {
-      return `<div class="text-sm opacity-70">${escapeHtml(w.name)}: no Media folder here, so nothing to check.</div>`;
+      return `<div class="text-sm opacity-70">${escapeHtml(w.name)}: no Media folder.</div>`;
     }
     if (w.orphanCount === 0) {
       return `<div class="text-sm opacity-70">${escapeHtml(w.name)}: all ${w.mediaFiles.toLocaleString()} media files are in use.</div>`;
@@ -1210,8 +1208,8 @@ export function renderOrphanResults(result) {
   return `
     ${sections.join("")}
     <div class="text-xs opacity-60 rf-measure">
-      Unused means nothing in this Mac's ProPresenter refers to it. It cannot know about a deck you have
-      not built yet, or a copy of this workspace on another machine. Look before you delete.
+      Unused on this Mac only. A deck not built yet, or another Mac, may still need it.
+      Look before you delete.
     </div>`;
 }
 
@@ -1235,7 +1233,7 @@ function renderAutostartCard(state) {
   // there and launchd is not running it, which a plain On/Off would hide.
   const warn =
     on && !state.loaded
-      ? `<div class="rf-hint">Installed, but launchd isn't running it. Turn it off and on again, or check <code>logs/refrain.err.log</code>.</div>`
+      ? `<div class="rf-hint">Installed, but not running. Turn it off and on again, or check <code>logs/refrain.err.log</code>.</div>`
       : "";
   return `
     <div class="card bg-base-200">
@@ -1245,9 +1243,7 @@ function renderAutostartCard(state) {
           ${badge}
         </h2>
         <div class="text-sm opacity-70 rf-measure">
-          Runs Refrain in the background with no Terminal window, and starts it again
-          whenever this account logs in. Turning it off removes it completely and
-          changes nothing else.
+          Runs Refrain in the background, with no Terminal window, each time you log in.
         </div>
         ${warn}
         <div class="rf-control-row">
@@ -1292,7 +1288,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
   const propresenterCard = `
     <div class="card bg-base-200">
       <div class="card-body p-3">
-        <h2 class="card-title text-base"><i data-lucide="cast" class="w-4 h-4 opacity-70"></i> ProPresenter Connection</h2>
+        <h2 class="card-title text-base"><i data-lucide="cast" class="w-4 h-4 opacity-70"></i> ProPresenter connection</h2>
         <div class="flex items-center gap-2 mt-1">
           <button type="button" id="pp-diagnose-btn" class="btn btn-outline btn-xs">
             <i data-lucide="stethoscope" class="w-3.5 h-3.5"></i> Diagnose
@@ -1308,13 +1304,13 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
         }
         ${
           propresenter.slidePictures?.lastRunAt && propresenter.slidePictures.presentations
-            ? `<div class="text-sm opacity-60 rf-measure">Slide pictures: ${propresenter.slidePictures.ready} ready ahead of time for today's playlists (checked ${new Date(propresenter.slidePictures.lastRunAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}${propresenter.slidePictures.stopped ? "; stopped when something went on the screens" : ""}).</div>`
+            ? `<div class="text-sm opacity-60 rf-measure">Slide pictures: ${propresenter.slidePictures.ready} ready for today's playlists (checked ${new Date(propresenter.slidePictures.lastRunAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}${propresenter.slidePictures.stopped ? "; stopped when something went live" : ""}).</div>`
             : ""
         }
         ${
           propresenter.connected
             ? `<div class="text-sm opacity-60 rf-measure">Last checked ${new Date(propresenter.lastCheckIn ?? Date.now()).toLocaleTimeString()}. Run Diagnose if ProPresenter is behaving oddly.</div>`
-            : `<div class="text-sm">Check ProPresenter is running with its Network API enabled (Preferences &gt; Network), and that the host and port on the <a href="#settings/features" class="link">Features</a> tab are correct.</div>`
+            : `<div class="text-sm">Check ProPresenter is open with its Network API on (Preferences &gt; Network), and the host and port on the <a href="#settings/features" class="link">Features</a> tab are correct.</div>`
         }
       </div>
     </div>
@@ -1323,13 +1319,13 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
   const indexCard = `
     <div class="card bg-base-200">
       <div class="card-body p-3">
-        <h2 class="card-title text-base"><i data-lucide="database" class="w-4 h-4 opacity-70"></i> Search Index</h2>
+        <h2 class="card-title text-base"><i data-lucide="database" class="w-4 h-4 opacity-70"></i> Search index</h2>
         ${
           index.builtAt
             ? `<div class="text-sm opacity-70">
                 ${
                   index.buildDurationMs == null
-                    ? "Duration unknown. Built before this was tracked. Rebuild once to see it."
+                    ? "Last build time unknown."
                     : `Last ${index.buildMode === "incremental" ? "reindex" : "full rebuild"} took ${formatDuration(index.buildDurationMs)}${
                         index.buildMode === "incremental" && index.reindexCounts
                           ? // What it actually re-read, not what it set out to.
@@ -1343,14 +1339,14 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
                               index.reindexCompleted != null &&
                               index.reindexAttempted != null &&
                               index.reindexCompleted < index.reindexAttempted
-                                ? ` of ${index.reindexAttempted} planned — it stopped early`
+                                ? ` of ${index.reindexAttempted} planned, then stopped early`
                                 : ""
                             }, reused ${index.reindexCounts.carriedOver}`
                           : index.crawledPlaylists
                             ? " (included a playlist crawl)"
-                            : " (playlist crawl was off)"
+                            : ""
                       }`
-                } ${infoIcon("How long the last rebuild took. Useful for guessing whether you can start another one before a service.")}
+                } ${infoIcon("Use it to judge whether a rebuild would finish before a service.")}
               </div>`
             : ""
         }
@@ -1361,18 +1357,18 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
           index.performanceMode?.armed
             ? `<div class="alert alert-warning py-2 text-sm mt-2 items-start">
                  <i data-lucide="pause-circle" class="w-4 h-4 shrink-0 mt-0.5"></i>
-                 <span><strong>Performance mode is on, so Refrain is not indexing in the background.</strong>
+                 <span><strong>Performance mode is on, so background indexing is paused.</strong>
                  ${escapeHtml(index.performanceMode.description)}
-                 Search works normally from the index you already have, and anything you press below still runs.
-                 Turn it off from the Live screen when the service is over${
-                   index.performanceMode.source === "manual" ? " It was turned on by hand, so it will not clear on its own" : ""
+                 Search still works, and the buttons below still run.
+                 Turn it off on the Live screen after the service${
+                   index.performanceMode.source === "manual" ? ": it was turned on by hand, so it won't clear on its own" : ""
                  }.</span>
                </div>`
             : index.indexWorkDeferred
               ? `<div class="alert alert-info py-2 text-sm mt-2 items-start">
                    <i data-lucide="pause-circle" class="w-4 h-4 shrink-0 mt-0.5"></i>
-                   <span><strong>${index.builtAt ? "This index is out of date" : "No index has been built yet"}, and Refrain skipped the work because ${escapeHtml(index.indexWorkDeferred)}.</strong>
-                   ${index.builtAt ? "Search still works from the existing index." : "Search will stay empty until you build it."}</span>
+                   <span><strong>${index.builtAt ? "The index is out of date" : "No index yet"}. Refrain held off because ${escapeHtml(index.indexWorkDeferred)}.</strong>
+                   ${index.builtAt ? "Search still works from the old index." : "Search is empty until it's built."}</span>
                  </div>`
               : ""
         }
@@ -1391,11 +1387,9 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
                <div class="alert alert-warning py-2 text-sm mt-2 items-start">
                  <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
                  <span><strong>A rebuild is running, so ProPresenter will be sluggish until it finishes.</strong>
-                 Leave ProPresenter open: Refrain reads every presentation through it, so closing it stops the
-                 build. Nothing is sent to the screens — these are reads only. Go Live, Clear, and macros may be
-                 slow or not respond. Stop it if a service is about to start — everything already read is kept,
-                 and the rest keeps what it had. ProPresenter holds on to memory for each presentation read until
-                 it restarts, so after a big run, restart ProPresenter before the service.</span>
+                 Keep ProPresenter open, or the build stops. Nothing goes to the screens, but Go Live, Clear
+                 and macros may be slow or not respond. Stop it if a service is about to start: what's already
+                 read is kept. After a big run, restart ProPresenter before the service.</span>
                </div>`
             : (() => {
                 // The scary warning belongs to whichever button is actually
@@ -1407,24 +1401,23 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
                   <div class="alert alert-warning py-2 text-sm mt-2 items-start">
                     <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
                     <span>
-                      <strong>Do not rebuild anywhere near a service.</strong>
-                      A full rebuild reads every presentation in your library one at a time and can run for
-                      an hour or more. While it does, ProPresenter itself goes sluggish and can stop
-                      responding to Go Live, Clear, and macros. Only start one when you are certain
-                      nothing important is happening for the next hour or two, and let it finish.
+                      <strong>Never rebuild near a service.</strong>
+                      It can take an hour or more, and ProPresenter can stop responding to Go Live, Clear
+                      and macros while it runs. Start one only when ProPresenter is free for two hours,
+                      and let it finish.
                     </span>
                   </div>`;
                 const fullRebuildButton = `
                   <div class="flex items-center gap-2 mt-1">
-                    <button id="health-rebuild-btn" class="btn btn-sm btn-outline w-fit"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> <span id="health-rebuild-btn-label">${index.builtAt ? "Rebuild Everything" : "Build Index"}</span></button>
-                    ${infoIcon("Reads the whole library from scratch. Only needed for the first build, or if reindexing has not fixed a wrong index. Never during a service.")}
+                    <button id="health-rebuild-btn" class="btn btn-sm btn-outline w-fit"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> <span id="health-rebuild-btn-label">${index.builtAt ? "Rebuild everything" : "Build index"}</span></button>
+                    ${infoIcon("Reads the whole library again. Only for a first build, or when reindexing hasn't fixed search.")}
                   </div>`;
 
                 if (!index.builtAt) {
                   return `<div class="flex flex-col gap-2 mt-2">
                     <div class="text-sm opacity-70">
-                      The first build has to read everything once. After that, reindexing only
-                      re-reads the presentations whose file changed.
+                      The first build reads everything once. After that, only changed presentations
+                      are re-read.
                     </div>
                     ${fullRebuildWarning}
                     ${fullRebuildButton}
@@ -1453,8 +1446,8 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
                        <i data-lucide="inbox" class="w-4 h-4 shrink-0 mt-0.5"></i>
                        <span>${
                          watch.pending.needsFullRebuild
-                           ? `<strong>Waiting on a full rebuild.</strong> ${escapeHtml(watch.pending.reason)}. Refrain will not start one on its own. Use Rebuild everything below when you have a clear hour.`
-                           : `<strong>${watch.pending.count} presentations have changed.</strong> That is more than Refrain reindexes without being asked, so it is waiting for you. Press Reindex changed only when ProPresenter is not needed.`
+                           ? `<strong>Waiting on a full rebuild.</strong> ${escapeHtml(watch.pending.reason)}. Refrain won't start one itself. Use Rebuild everything below when you have a clear hour.`
+                           : `<strong>${watch.pending.count} presentations have changed.</strong> Too many to reindex without asking. Press Reindex changed only when ProPresenter is free.`
                        }</span>
                      </div>`
                   : "";
@@ -1471,7 +1464,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
                   ${rebuildSuggestion}
                   <div class="flex items-center gap-2">
                     <button id="health-reindex-btn" class="btn btn-sm btn-outline w-fit"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> <span id="health-reindex-btn-label">Reindex changed only</span></button>
-                    ${infoIcon("Re-reads only the presentations that changed. Seconds, rather than the hour a full rebuild takes.")}
+                    ${infoIcon("Re-reads only what changed. Takes seconds.")}
                   </div>
                   <div id="health-reindex-status" class="text-sm"></div>
                   ${watchLine}
@@ -1479,17 +1472,13 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
                     index.crawledPlaylists
                       ? `<div class="alert alert-warning py-2 text-sm items-start">
                            <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
-                           <span><strong>Playlist crawling is on, so reindexing is not quick.</strong>
-                           Which playlists a presentation appears in isn't stored in the presentation's own
-                           file, so it can only be found by crawling every playlist again. That part runs
-                           in full every time and is the slowest, hardest part on ProPresenter. Turn playlist
-                           crawling off under Search &amp; indexing if you don't need it, and reindexing drops
-                           back to seconds.</span>
+                           <span><strong>Playlist crawling is on, so reindexing is slow.</strong>
+                           Every playlist is re-read each time, which is hard on ProPresenter. Turn it off
+                           under Search &amp; indexing on the Features tab if you don't need it.</span>
                          </div>`
                       : `<div class="text-sm opacity-60 rf-measure">
-                           Changing your preferred arrangements or turning on playlist crawling changes what
-                           every entry means, so those still need a full rebuild. Refrain switches to one
-                           automatically when that happens, and says so.
+                           After you change preferred arrangements or playlist crawling, Reindex runs a
+                           full rebuild instead, and says so.
                          </div>`
                   }
                   <details class="mt-1">
@@ -1523,8 +1512,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
       <div class="card-body p-3 gap-2">
         <h2 class="card-title text-base"><i data-lucide="copy-x" class="w-4 h-4 opacity-70"></i> Duplicate names across folders</h2>
         <div class="text-sm opacity-70 rf-measure">
-          The same presentation name in more than one Library folder. Search and Go Live cannot
-          tell them apart by name alone, which is exactly how a confusing mix-up happens.
+          The same name in more than one folder, so it's easy to pick the wrong one.
         </div>
         <div class="flex flex-col gap-2">
           ${duplicateNameGroups
@@ -1566,10 +1554,9 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
       <div class="card-body p-3 gap-2">
         <h2 class="card-title text-base"><i data-lucide="list-ordered" class="w-4 h-4 opacity-70"></i> ${escapeHtml(preferredNames.join(" or "))} not selected</h2>
         <div class="text-sm opacity-70 rf-measure">
-          Presentations that have a ${escapeHtml(preferredNames.join(" or "))} arrangement but have another one selected. Switch them in ProPresenter's editor.
-          This changes what new playlist entries get, not playlists already built. Most answers come from the index;
-          any it doesn't know yet are read through ProPresenter, 40 at a time, which holds on to a little memory
-          for each until it restarts, so run it outside a service day.
+          These have a ${escapeHtml(preferredNames.join(" or "))} arrangement, but another is selected. Switch them in
+          ProPresenter's editor. Only new playlist entries change. Checking reads through ProPresenter, so run it
+          outside a service day.
         </div>
         <div class="flex items-center gap-2">
           <button id="preferred-check-btn" class="btn btn-outline btn-sm w-fit">Check</button>
@@ -1590,7 +1577,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
   // Always here, off or on, because Health is where people look for setup.
   // The Phone panel (rail) does the work; this says the state and opens it.
   const phoneStatus = !net || net.status === "off"
-    ? "Off. Turn phones on to search lyrics, see the current and next slide, flag slides, and (for phones you approve) move slides from anywhere in the room."
+    ? "Off. Phones can search lyrics, see the current and next slide, flag slides, and (if you approve them) move slides."
     : net.status === "active"
       ? `On at ${escapeHtml((net.urls ?? [])[0] ?? "this Mac")}${net.pinMode === "none" ? ", with no PIN" : net.pinMode === "daily" ? ", with a daily PIN" : ", with a PIN"}.`
       : `Not running: ${escapeHtml((net.problems ?? []).join(" "))}`;
@@ -1608,8 +1595,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
       <div class="card-body p-3 gap-2">
         <h2 class="card-title text-base"><i data-lucide="palette" class="w-4 h-4 opacity-70"></i> Themes</h2>
         <div class="text-sm opacity-70 rf-measure">
-          Decks that use a different theme from the rest of their library. Refrain takes each library's
-          current theme to be the one most of its decks use. It only reads.
+          Finds decks using a different theme from most of their library. Read only.
         </div>
         <div class="rf-control-row">
           <button id="theme-report-btn" class="btn btn-outline btn-xs"><i data-lucide="scan-search" class="w-3.5 h-3.5"></i> Check themes</button>
@@ -1625,8 +1611,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
       <div class="card-body p-3 gap-2">
         <h2 class="card-title text-base"><i data-lucide="image-off" class="w-4 h-4 opacity-70"></i> Unused media</h2>
         <div class="text-sm opacity-70 rf-measure">
-          Files in ProPresenter's Media folder that no presentation, playlist, theme or Media bin
-          item uses. Refrain never deletes anything. It shows you candidates and you decide.
+          Files in ProPresenter's Media folder that nothing uses. Refrain never deletes anything.
         </div>
         <div class="rf-control-row">
           <button id="orphan-scan-btn" class="btn btn-outline btn-xs">
@@ -1645,7 +1630,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
       : `
     <div class="card bg-base-200">
       <div class="card-body p-3">
-        <h2 class="card-title text-base"><i data-lucide="git-compare" class="w-4 h-4 opacity-70"></i> Arrangement Module</h2>
+        <h2 class="card-title text-base"><i data-lucide="git-compare" class="w-4 h-4 opacity-70"></i> Arrangement module</h2>
         <div class="badge ${arrangementModule.status === "active" ? "badge-success" : "badge-warning"} gap-1">
           <i data-lucide="${arrangementModule.status === "active" ? "check-circle-2" : "alert-triangle"}" class="w-3 h-3"></i>
           ${ARRANGEMENT_STATUS_LABEL[arrangementModule.status]}
@@ -1655,12 +1640,12 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
         </div>
         ${
           arrangementModule.status === "misconfigured"
-            ? `<div class="text-sm mt-1">Enabled in config.json, but required credentials are missing from .env for the selected storage backend/provider. See .env.example.</div>`
+            ? `<div class="text-sm mt-1">Turned on, but .env is missing credentials for this provider or storage. See .env.example.</div>`
             : ""
         }
         ${
           arrangementModule.pendingUploads > 0
-            ? `<div class="alert alert-warning mt-2 py-2 text-sm">${arrangementModule.pendingUploads} pending upload(s). The storage backend was unreachable on the last write. It will retry automatically.</div>`
+            ? `<div class="alert alert-warning mt-2 py-2 text-sm">${arrangementModule.pendingUploads} upload(s) waiting. Storage was unreachable. Refrain retries on its own.</div>`
             : ""
         }
       </div>
@@ -1676,8 +1661,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
           </button>
         </div>
         <div class="text-xs opacity-60 rf-measure">
-          Saved straight to <code>config.json</code>. No secrets live here, and every field is validated,
-          so it is safe to change. Each section saves on its own.
+          Saved to <code>config.json</code>. Each section saves on its own.
         </div>
         <details class="collapse collapse-arrow bg-base-200 rounded" >
           <summary class="collapse-title min-h-0 py-2">
@@ -1688,7 +1672,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
           </summary>
           <div class="collapse-content flex flex-col gap-3">
             <label class="label py-1" for="config-role">
-              <span class="label-text">Role ${infoIcon('"Logger" runs the comparisons and writes the data; "reader" only displays it. One logger, on the machine that runs during service.')}</span>
+              <span class="label-text">Role ${infoIcon('"logger" records the data, "reader" only shows it. Use logger on the one computer that runs during service.')}</span>
             </label>
             <select id="config-role" class="select select-bordered select-sm">
               <option value="reader" ${role === "reader" ? "selected" : ""}>reader</option>
@@ -1699,13 +1683,13 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
           <div class="flex flex-wrap gap-3">
             <label class="form-control w-full max-w-xs">
               <label class="label py-1" for="config-host">
-                <span class="label-text">ProPresenter host ${infoIcon("The hostname or IP address of the machine running ProPresenter. \"localhost\" if Refrain runs on the same machine.")}</span>
+                <span class="label-text">ProPresenter host ${infoIcon("The address of the computer running ProPresenter. \"localhost\" if it's this one.")}</span>
               </label>
               <input id="config-host" type="text" class="input input-bordered input-sm" value="${escapeHtml(propresenter.host)}" />
             </label>
             <label class="form-control w-full max-w-[10rem]">
               <label class="label py-1" for="config-port">
-                <span class="label-text">Port ${infoIcon("ProPresenter's Network API port, set in ProPresenter's own Preferences > Network pane.")}</span>
+                <span class="label-text">Port ${infoIcon("Shown in ProPresenter under Preferences > Network.")}</span>
               </label>
               <input id="config-port" type="number" min="1" max="65535" class="input input-bordered input-sm" value="${propresenter.port}" />
             </label>
@@ -1714,16 +1698,14 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
             <button type="button" id="config-detect-btn" class="btn btn-outline btn-sm">Detect ProPresenter</button>
             <span id="config-detect-result" class="text-sm"></span>
           </div>
-          <div class="text-xs opacity-60 rf-measure">Looks for ProPresenter's API <strong>on this machine only</strong> and fills in the host and port above. Save to apply.</div>
+          <div class="text-xs opacity-60 rf-measure">Checks <strong>this computer only</strong> and fills in the host and port. Save to apply.</div>
 
           <div id="config-network-scan-offer" class="alert alert-warning py-2 text-sm items-start hidden">
             <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
             <span>
-              <strong>Searching the rest of the network is a bigger deal.</strong>
-              It contacts every address on your local network looking for ProPresenter. Any
-              ProPresenter it finds belongs to another machine that may be mid-service, and
-              some networks treat a sweep like this as suspicious. Only do it if you know
-              ProPresenter is running on a different computer.
+              <strong>Only search the network if ProPresenter is on another computer.</strong>
+              It contacts every address on the network, may reach a ProPresenter that is
+              mid-service, and some networks flag it as suspicious.
               <button type="button" id="config-network-scan-btn" class="btn btn-chip mt-2 block">Search the network anyway</button>
             </span>
           </div>
@@ -1743,12 +1725,12 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
           <div class="collapse-content flex flex-col gap-3">
           <label class="label cursor-pointer justify-start gap-2 w-fit">
             <input type="checkbox" id="config-crawl-playlists" class="checkbox checkbox-sm" ${config.librarySync.crawlPlaylists ? "checked" : ""} />
-            <span class="label-text">Crawl playlists (not recommended) ${infoIcon('Also records which playlists each slide is in. Off by default: it is the slowest part of a rebuild.')}</span>
+            <span class="label-text">Crawl playlists (not recommended) ${infoIcon("Records which playlists each slide is in. It's the slowest part of a rebuild.")}</span>
           </label>
           <div>
             <label class="form-control w-full max-w-xs">
               <label class="label py-1 px-0" for="config-preferred-arrangements">
-                <span class="label-text">Preferred arrangements ${infoIcon("Which arrangements to index, most important first: \"FS, T\" means FS wins when a song has both. Empty follows whatever ProPresenter has selected. Takes effect on the next rebuild.")}</span>
+                <span class="label-text">Preferred arrangements ${infoIcon("Most important first: \"FS, T\" uses FS when a song has both. Blank uses whatever ProPresenter has selected. Applies at the next rebuild.")}</span>
               </label>
               <input id="config-preferred-arrangements" type="text" placeholder="FS, T" class="input input-bordered input-sm"
                 value="${escapeHtml((config.preferredArrangements ?? []).join(", "))}" />
@@ -1766,7 +1748,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
                          .join("")}
                      </span>
                    </div>`
-                : `<div class="text-xs opacity-60 mt-1">Build the search index to see the arrangement names your library uses.</div>`
+                : `<div class="text-xs opacity-60 mt-1">Build the index to see your arrangement names.</div>`
             }
             <div class="flex items-center gap-2 pt-1">
               <button type="button" class="btn btn-outline btn-sm config-save" data-scope="indexing">Save</button>
@@ -1793,7 +1775,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
 
           <div>
             <div class="label py-1 px-0">
-              <span class="label-text">Lyrics search domains ${infoIcon(`Which sites the Lyrics screen's "Search Lyrics" button scopes its search to. Pick up to ${configOptions.maxLyricsSites}. Too many makes the scoped search less reliable.`)}</span>
+              <span class="label-text">Lyrics search sites ${infoIcon(`Sites the Search Lyrics button searches. Up to ${configOptions.maxLyricsSites}: more makes results less reliable.`)}</span>
             </div>
             <div class="flex flex-col gap-1 ml-1" id="config-lyrics-sites-list">
               ${configOptions.lyricsSiteCandidates
@@ -1829,25 +1811,25 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
           <div class="flex flex-wrap gap-3">
             <label class="form-control w-full max-w-xs">
               <label class="label py-1" for="config-qr-base-url">
-                <span class="label-text">Default base URL ${infoIcon("Pre-fills the URL field on the QR Codes screen. Blank for no default.")}</span>
+                <span class="label-text">Default base URL ${infoIcon("Pre-fills the URL on the QR Codes screen.")}</span>
               </label>
               <input id="config-qr-base-url" type="text" class="input input-bordered input-sm" placeholder="https://yourchurch.org" value="${escapeHtml(config.qrCodeModule?.defaultBaseUrl ?? "")}" />
             </label>
             <label class="form-control w-full max-w-xs">
               <label class="label py-1" for="config-qr-logo-url">
-                <span class="label-text">Default logo ${infoIcon("Default centre logo for QR codes. A path Refrain serves (img/logo.png) or a full URL. Replaceable per code.")}</span>
+                <span class="label-text">Default logo ${infoIcon("A path like img/logo.png, or a full URL. Change it per code.")}</span>
               </label>
               <input id="config-qr-logo-url" type="text" class="input input-bordered input-sm" placeholder="img/mylogo.png" value="${escapeHtml(config.qrCodeModule?.defaultLogoUrl ?? "")}" />
             </label>
             <label class="form-control w-full max-w-xs">
               <label class="label py-1" for="config-qr-recent-limit">
-                <span class="label-text">Recent codes to keep ${infoIcon("How many recently-downloaded codes the QR Codes screen keeps for one-click restore. 0 turns the recent list off; max 100.")}</span>
+                <span class="label-text">Recent codes to keep ${infoIcon("Kept for one-click reuse. 0 turns the list off. Max 100.")}</span>
               </label>
               <input id="config-qr-recent-limit" type="number" min="0" max="100" step="1" class="input input-bordered input-sm w-28" value="${config.qrCodeModule?.recentLimit ?? 20}" />
             </label>
             <label class="form-control w-full max-w-xs">
               <label class="label py-1" for="config-qr-default-size">
-                <span class="label-text">Default QR size (px) ${infoIcon("Starting pixel size for new QR codes. Blank for 512. Adjustable per code.")}</span>
+                <span class="label-text">Default QR size (px) ${infoIcon("Blank for 512. Change it per code.")}</span>
               </label>
               <input id="config-qr-default-size" type="number" min="64" max="2000" step="1" class="input input-bordered input-sm w-28" placeholder="512" value="${config.qrCodeModule?.defaultSize ?? ""}" />
             </label>
@@ -1868,13 +1850,13 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
           <div class="collapse-content flex flex-col gap-3">
           <label class="label cursor-pointer justify-start gap-2 w-fit">
             <input type="checkbox" id="config-arrangement-enabled" class="checkbox checkbox-sm" ${arrangementModule.enabled ? "checked" : ""} />
-            <span class="label-text">Enable arrangement drift tracking ${infoIcon("Turns on the Arrangement screen, which compares a song's planned arrangement against what actually played.")}</span>
+            <span class="label-text">Enable arrangement drift tracking ${infoIcon("Compares each song's planned arrangement with what actually played.")}</span>
           </label>
 
           <div class="flex flex-wrap gap-3">
             <label class="form-control w-full max-w-xs">
               <label class="label py-1" for="config-arrangement-provider">
-                <span class="label-text">Provider ${infoIcon('Where the planned arrangement comes from. "manual" means you type it in; a provider pulls it automatically.')}</span>
+                <span class="label-text">Provider ${infoIcon("Where the planned arrangement comes from. Manual means you type it in.")}</span>
               </label>
               <select id="config-arrangement-provider" class="select select-bordered select-sm">
                 ${selectOptions(configOptions.providers, arrangementModule.provider ?? "manual")}
@@ -1882,7 +1864,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
             </label>
             <label class="form-control w-full max-w-xs">
               <label class="label py-1" for="config-arrangement-storage">
-                <span class="label-text">Storage backend ${infoIcon('Where history is saved. "local-folder" is this machine only; the others share it between machines and need .env credentials below.')}</span>
+                <span class="label-text">Storage ${infoIcon("Where history is saved. A local folder stays on this computer. The others share it and need .env credentials.")}</span>
               </label>
               <select id="config-arrangement-storage" class="select select-bordered select-sm">
                 ${selectOptions(configOptions.storageBackends, arrangementModule.storageBackend ?? "local-folder")}
@@ -1902,7 +1884,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
           <div id="config-storage-path-wrap" class="${["local-folder", "synced-folder"].includes(arrangementModule.storageBackend ?? "local-folder") ? "" : "hidden"}">
             <label class="form-control w-full max-w-md">
               <label class="label py-1" for="config-storage-path">
-                <span class="label-text">Folder path ${infoIcon("Where arrangement history is saved. Blank for a folder inside this app. For a synced folder, point it at your Drive or Dropbox folder.")}</span>
+                <span class="label-text">Folder path ${infoIcon("Blank for a folder inside Refrain. For a synced folder, pick your Drive or Dropbox folder.")}</span>
               </label>
               <div class="flex gap-2">
                 <input id="config-storage-path" type="text" class="input input-bordered input-sm flex-1" placeholder="./data/arrangements" value="${escapeHtml(arrangementModule.localFolderPath ?? "")}" />
@@ -1924,20 +1906,18 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
   const envCard = `
     <div class="card bg-base-200">
       <div class="card-body p-3">
-        <h2 class="card-title text-base"><i data-lucide="key-round" class="w-4 h-4 opacity-70"></i> Environment Variables (.env)</h2>
+        <h2 class="card-title text-base"><i data-lucide="key-round" class="w-4 h-4 opacity-70"></i> Secrets (.env)</h2>
         <div class="text-sm opacity-70">
-          <code>.env</code> is only for secrets (API keys, credentials) that shouldn't live in
-          <code>config.json</code>. It's read once at startup, so <strong>restart the server after editing it</strong>
-          for changes to take effect. It's a dotfile, so Finder/Explorer often hide it by default. Use the
-          button below instead of hunting for it.
+          <code>.env</code> holds passwords and API keys. <strong>Restart Refrain after editing it.</strong>
+          Finder hides it, so use this button.
         </div>
         <div class="flex items-center gap-3 mt-2">
-          <button id="open-env-btn" class="btn btn-sm btn-outline w-fit"><i data-lucide="file-cog" class="w-3.5 h-3.5"></i> Open .env in Editor</button>
+          <button id="open-env-btn" class="btn btn-sm btn-outline w-fit"><i data-lucide="file-cog" class="w-3.5 h-3.5"></i> Open .env</button>
           <span id="open-env-status" class="text-sm"></span>
         </div>
         ${
           envRequirements.length === 0
-            ? `<div class="text-sm mt-2 opacity-70">Nothing you've enabled needs a .env value right now.</div>`
+            ? `<div class="text-sm mt-2 opacity-70">Nothing you've turned on needs a .env value.</div>`
             : `<div class="flex flex-col gap-2 mt-2">
                 ${envRequirements
                   .map(
@@ -1981,8 +1961,8 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
                  <button id="update-recheck-btn" class="btn btn-chip">Check again</button>
                  <span id="update-status" class="text-sm"></span>
                </div>
-               <div class="text-xs opacity-60 rf-measure">Or double-click <span class="font-mono">scripts/update.command</span>. Either way, restart Refrain afterward to finish.</div>`
-            : `<div class="text-sm mt-1">This copy wasn't installed with Git, so download the latest ZIP from <a href="${escapeHtml(versionInfo?.repoUrl ?? "")}" target="_blank" rel="noopener" class="link">GitHub</a> and copy your <span class="font-mono">config.json</span> and <span class="font-mono">.env</span> into it. Your settings are never overwritten.</div>`
+               <div class="text-xs opacity-60 rf-measure">Or double-click <span class="font-mono">scripts/update.command</span>. Restart Refrain afterward.</div>`
+            : `<div class="text-sm mt-1">To update, download the latest ZIP from <a href="${escapeHtml(versionInfo?.repoUrl ?? "")}" target="_blank" rel="noopener" class="link">GitHub</a> and copy your <span class="font-mono">config.json</span> and <span class="font-mono">.env</span> into it.</div>`
         }
       </div>
     </div>

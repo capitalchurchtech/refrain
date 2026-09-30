@@ -64,7 +64,7 @@ export function initUpdateNudge() {
     dismiss.disabled = true;
     // The pull and npm install take tens of seconds on a slow connection, and
     // a button that goes quiet for that long reads as broken.
-    if (status) status.textContent = "Updating — this takes a moment...";
+    if (status) status.textContent = "Updating. This can take a minute...";
     try {
       const res = await fetch("/api/update", { method: "POST" });
       const data = await res.json().catch(() => ({}));
@@ -72,7 +72,7 @@ export function initUpdateNudge() {
       // Deliberately not offering to restart it: the server cannot restart
       // itself without dropping the very request that asked, and a volunteer
       // closing and reopening the window is a step they already know.
-      text.textContent = `Updated to v${latest}. Quit Refrain and start it again to finish — your settings and index are untouched.`;
+      text.textContent = `Updated to v${latest}. Quit Refrain and start it again to finish.`;
       go.classList.add("hidden");
       dismiss.textContent = "Close";
       dismiss.disabled = false;
@@ -82,7 +82,7 @@ export function initUpdateNudge() {
       go.disabled = false;
       dismiss.disabled = false;
       if (status) status.textContent = "";
-      showFailure(`Couldn't update: ${err.message}. Nothing was changed — Settings > This Mac has a command you can run by hand.`);
+      showFailure(`Couldn't update: ${err.message}. Nothing changed. Settings > This Mac has a command to run by hand.`);
     }
   });
 
@@ -98,8 +98,8 @@ export function initUpdateNudge() {
 
       latest = update.latestVersion;
       text.textContent =
-        `Refrain v${update.latestVersion} is out — you have v${update.currentVersion}. ` +
-        `Updating takes about a minute and leaves your settings and index alone.`;
+        `Refrain v${update.latestVersion} is out. You have v${update.currentVersion}. ` +
+        `Updating takes about a minute and keeps your settings and index.`;
       wrap.classList.remove("hidden");
     } catch {
       // Offline, or GitHub is down. Say nothing.

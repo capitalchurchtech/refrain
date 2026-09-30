@@ -58,7 +58,7 @@ const LAMPS = [
     legend: "Perf",
     read: (s) => Boolean(s?.performanceMode?.armed),
     title: (on) =>
-      on ? "Performance mode on — Refrain is holding still" : "Performance mode off — background work allowed",
+      on ? "Performance mode on: holding still" : "Performance mode off",
   },
 ];
 

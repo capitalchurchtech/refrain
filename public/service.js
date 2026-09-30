@@ -102,13 +102,13 @@ export function renderServicesHtml(data) {
       const sum = s.summary ?? {};
       const line = sum.items
         ? `Started ${escapeHtml(formatClock(sum.startedAt))} · ran ${escapeHtml(formatDuration(sum.runMs))} · ${sum.items} item${sum.items === 1 ? "" : "s"}`
-        : "Nothing has gone live in it yet.";
+        : "Nothing has gone live yet.";
       const compare = comparisonText(s, first);
       const playlist = s.playlist
         ? `Playlist: ${escapeHtml(s.playlist.name)} (${s.playlist.count})`
         : s.playlistMatch
-          ? `Playlist: the one whose name contains “${escapeHtml(s.playlistMatch)}”, read when the window opens`
-          : "No playlist, so items are listed as they go live";
+          ? `Playlist: name contains “${escapeHtml(s.playlistMatch)}”`
+          : "No playlist";
       const canEnd = !s.endedAt && s.source !== "lockin" && (s.watching || sum.items);
       return `
         <div class="card bg-base-200" data-service-id="${escapeHtml(s.serviceId)}">
@@ -135,7 +135,7 @@ export function renderServicesHtml(data) {
         </div>`;
     })
     .join("");
-  return cards || `<div class="text-sm opacity-70">No services today yet. Add one below, or lock in when an event starts. What goes live is recorded either way.</div>`;
+  return cards || `<div class="text-sm opacity-70">No services today yet. Add one, or lock in for an event.</div>`;
 }
 
 export function renderLockinHtml(data) {
@@ -143,13 +143,13 @@ export function renderLockinHtml(data) {
     const since = formatClock(data.lockin.startedAt, { seconds: false });
     const age = formatDuration(Date.now() - Date.parse(data.lockin.startedAt));
     const remind = data.lockinReminder
-      ? `<div class="text-sm">Locked in for ${data.lockinReminder.hours} hours. If the event is over, release it so search can catch up.</div>`
+      ? `<div class="text-sm">Locked in for ${data.lockinReminder.hours} hours. Release it if the event is over.</div>`
       : "";
     return `
       <div class="flex items-center justify-between gap-3 flex-wrap">
         <div class="min-w-0">
           <div class="font-medium flex items-center gap-2"><span class="rf-led lit"></span> Locked in: ${escapeHtml(data.lockin.name)}</div>
-          <div class="text-xs opacity-70 tabular-nums">Since ${escapeHtml(since)} (${escapeHtml(age)}). Watching closely and holding still until you release it.</div>
+          <div class="text-xs opacity-70 tabular-nums">Since ${escapeHtml(since)} (${escapeHtml(age)}).</div>
         </div>
         <button type="button" id="service-release-btn" class="btn btn-outline btn-sm">Release</button>
       </div>
@@ -160,7 +160,7 @@ export function renderLockinHtml(data) {
       <input id="service-lockin-name" type="text" maxlength="60" placeholder="Event name (optional)" class="input input-bordered input-sm flex-1 min-w-40" />
       <button type="button" id="service-lockin-btn" class="btn btn-outline btn-sm"><i data-lucide="lock" class="w-4 h-4"></i> Lock in for an event</button>
     </div>
-    <div class="text-xs opacity-60">For events with no set time. Refrain watches closely and holds still (performance mode) until you release it. Nothing on the screens changes.</div>`;
+    <div class="text-xs opacity-60">For events with no set time. Nothing on the screens changes.</div>`;
 }
 
 const STATUS_TEXT = { pass: "Pass", attention: "Needs a look", couldnt: "Couldn't check" };
@@ -195,7 +195,7 @@ export function renderChecksDueHtml(due) {
   return due
     .map(
       (d) => `<div class="rf-readout text-sm">${escapeHtml(d.name)} starts at ${escapeHtml(formatClock(d.startsAt, { seconds: false }))}. ${
-        d.hasPlaylist ? "The pre-service checks haven't been run yet." : "Its playlist hasn't been found yet, so checks can't run."
+        d.hasPlaylist ? "Checks haven't run yet." : "Playlist not found, so checks can't run."
       }</div>`
     )
     .join("");
@@ -214,7 +214,7 @@ export function renderChecklistHtml(checklist) {
             <label class="flex items-center gap-2 text-sm ${auto ? "opacity-80" : "cursor-pointer"}">
               <input type="checkbox" class="checkbox checkbox-sm service-step" ${st.done ? "checked" : ""} ${auto ? "disabled" : ""}
                 data-phase-id="${escapeHtml(p.phaseId)}" data-step-id="${escapeHtml(st.id)}" data-service-id="${escapeHtml(p.serviceId ?? "")}" />
-              <span>${escapeHtml(st.label)}${auto ? ` <span class="text-xs opacity-60">(${st.checks ? "ticks when the checks run" : "ticks when you End the day"})</span>` : ""}${link}</span>
+              <span>${escapeHtml(st.label)}${auto ? ` <span class="text-xs opacity-60">(${st.checks ? "ticks when checks run" : "ticks when the day ends"})</span>` : ""}${link}</span>
             </label>`;
         })
         .join("");
@@ -245,24 +245,24 @@ export function renderEndHtml(data) {
   if (data.dayEnded && !data.reopened) {
     return `
       <div class="flex items-center justify-between gap-3 flex-wrap">
-        <div class="text-sm">Day ended at ${escapeHtml(formatClock(data.dayEnded.at, { seconds: false }))}. The summary is saved.</div>
+        <div class="text-sm">Day ended at ${escapeHtml(formatClock(data.dayEnded.at, { seconds: false }))}. Summary saved.</div>
         <div class="flex gap-2"><button type="button" id="service-summary-btn" class="btn btn-outline btn-sm">View summary</button></div>
       </div>
       ${renderSendHtml(data.report)}`;
   }
-  const again = data.reopened ? `<div class="text-sm">Things were recorded after the last End, so the day is open again. End it again to write a new summary; the earlier one is kept.</div>` : "";
+  const again = data.reopened ? `<div class="text-sm">More went live after the last End. End the day again for a new summary; the earlier one is kept.</div>` : "";
   return `
     ${again}
     <div class="flex items-center justify-between gap-3 flex-wrap">
-      <div class="text-xs opacity-70">End closes today's services and any lock-in, compares the arrangements of the songs that were shown (nothing is pushed back), and writes the day summary.</div>
+      <div class="text-xs opacity-70">Closes today's services and any lock-in, compares the songs with the plan (the plan isn't changed), and writes the day summary.</div>
       <button type="button" id="service-end-day-btn" class="btn btn-outline btn-sm">End the day</button>
     </div>`;
 }
 
 export function paceNote(data) {
   return data.holdingPace
-    ? "Times are when Refrain first saw each item, within about 4 seconds."
-    : `Outside a watched service Refrain checks less often, so times can be up to ${Math.round((data.beatMs ?? 30_000) / 1000)} seconds late.`;
+    ? "Times are accurate to about 4 seconds."
+    : `Outside a service, times can be up to ${Math.round((data.beatMs ?? 30_000) / 1000)} seconds late.`;
 }
 
 // The checklist fold's state, per browser. A convenience, so storage that
@@ -398,7 +398,7 @@ export function initService() {
         const data = await post("/api/service/end-day");
         paint(data);
         showSummary(data.summary);
-        if (data.delivered && !data.delivered.ok) showFailure(`The summary is saved here, but copying it to the summary folder is waiting: ${data.delivered.reason}`);
+        if (data.delivered && !data.delivered.ok) showFailure(`Summary saved here. The copy to the summary folder is waiting: ${data.delivered.reason}`);
       } catch (err) {
         showFailure(`Couldn't end the day: ${err.message}`);
         load();
@@ -491,7 +491,7 @@ export function initService() {
               <select id="service-add-playlist" class="select select-bordered select-sm flex-1 min-w-40" aria-label="Playlist (optional)"><option value="">Loading playlists...</option></select>
               <button type="button" id="service-add-btn" class="btn btn-outline btn-sm">Add</button>
             </div>
-            <div class="text-xs opacity-60">The time and playlist are optional. A time lets Refrain watch closely from a little before it; a playlist lets the rundown number each item and spot anything off-plan. Recurring services can go in config.json instead (serviceModule.schedule).</div>
+            <div class="text-xs opacity-60">Time and playlist are optional. A playlist numbers the rundown and marks off-plan items. Recurring services go in config.json (serviceModule.schedule).</div>
           </div></div>
 
           <div id="service-list" class="flex flex-col gap-3 text-sm opacity-70">Loading...</div>

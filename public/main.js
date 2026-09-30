@@ -28,8 +28,8 @@ const SEARCH_ITEM = { id: "search", navLabel: "Search", icon: "search", enabled:
 async function boot() {
   // Apply theme before anything renders, on setup or main app screens
   // alike, so there's no flash of the wrong theme.
-  const prefs = await fetch("/api/preferences").then((r) => r.json()).catch(() => ({ theme: "dark" }));
-  applyTheme(prefs.theme ?? "dark");
+  const prefs = await fetch("/api/preferences").then((r) => r.json()).catch(() => ({ theme: "blackroom" }));
+  applyTheme(prefs.theme ?? "blackroom");
   // Same reason as the theme: set the rail's side before anything renders.
   document.documentElement.classList.toggle("rail-right", prefs.navSide === "right");
 

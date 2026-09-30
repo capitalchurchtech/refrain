@@ -46,10 +46,10 @@ export function initLyricsAssist() {
             </div>
             <div class="flex items-center gap-2">
               <button id="lyrics-search-btn" class="btn btn-outline btn-sm w-fit"
-                      title="Opens a scoped search across ${escapeHtml(lyricsSites.join(", "))} in a new tab">
-                <i data-lucide="search" class="w-3.5 h-3.5"></i> Search Lyrics
+                      title="Searches ${escapeHtml(lyricsSites.join(", "))} in a new tab">
+                <i data-lucide="search" class="w-3.5 h-3.5"></i> Search lyrics
               </button>
-              <button id="lyrics-copy-search-btn" class="btn btn-chip" title="Copy the search link so you can paste it into a full browser window">
+              <button id="lyrics-copy-search-btn" class="btn btn-chip" title="Copy the search link">
                 <span class="copy-search-icon"><i data-lucide="copy" class="w-3 h-3"></i></span> Copy link
               </button>
             </div>
@@ -57,7 +57,6 @@ export function initLyricsAssist() {
                  site list moved into the button's own tooltip, and "Refrain
                  never fetches or reads lyrics pages itself" is an architecture
                  fact rather than a step, so it lives in the README. -->
-            <p class="text-xs opacity-60">Copy what you need from the page that opens.</p>
           </div>
         </div>
 
@@ -79,7 +78,7 @@ export function initLyricsAssist() {
                     .join("")}
                 </select>
               </div>
-              <button id="lyrics-preview-btn" class="btn btn-brand btn-sm">Preview Slides</button>
+              <button id="lyrics-preview-btn" class="btn btn-brand btn-sm">Preview slides</button>
             </div>
             <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
               <button id="lyrics-clean-btn" class="btn btn-chip" title="${CLEAN_PASTE_HINT}">
@@ -89,7 +88,7 @@ export function initLyricsAssist() {
                 <input type="checkbox" id="lyrics-straighten" class="checkbox checkbox-xs" checked />
                 Straighten quotes
               </label>
-              <label class="rf-check" title="Collapse blocks that repeat word for word (a chorus written out every time) into one slide each, and show the play order so you can build the arrangement.">
+              <label class="rf-check" title="Make one slide for each block that repeats word for word, and show the order they play in.">
                 <input type="checkbox" id="lyrics-group-repeats" class="checkbox checkbox-xs" />
                 Group repeats
               </label>
@@ -112,7 +111,7 @@ export function initLyricsAssist() {
           <button id="lyrics-to-search-btn" class="btn btn-chip">
             <i data-lucide="search" class="w-3 h-3"></i> Find it in Search
           </button>
-          <span class="rf-hint">Once you have built the slides, search for a line to confirm Refrain can see them.</span>
+          <span class="rf-hint">After you build them in ProPresenter, check they turn up in Search.</span>
         </div>
       </div>
     `;

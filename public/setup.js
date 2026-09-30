@@ -60,7 +60,7 @@ export function initSetup({ onComplete }) {
         detectResult.className = "text-sm ml-2 rf-nominal";
         networkOffer?.classList.add("hidden");
       } else if (scanNetwork) {
-        detectResult.textContent = "Nothing found on the network either. Enter the host and port by hand below.";
+        detectResult.textContent = "Nothing found on the network. Enter the host and port below.";
         detectResult.className = "text-sm ml-2 text-warning";
       } else {
         detectResult.textContent = noProPresenterFound("below");
@@ -121,12 +121,12 @@ export function initSetup({ onComplete }) {
       });
       if (!res.ok) {
         const { error } = await res.json().catch(() => ({}));
-        showFailure(`Setup failed: ${error ?? res.statusText}. Your answers are still in the fields.`);
+        showFailure(`Setup failed: ${error ?? res.statusText}. Try again.`);
         saveBtn.disabled = false;
         return;
       }
     } catch (err) {
-      showFailure(`Setup failed: ${err.message}. Your answers are still in the fields.`);
+      showFailure(`Setup failed: ${err.message}. Try again.`);
       saveBtn.disabled = false;
       return;
     }
@@ -151,16 +151,16 @@ export function initSetup({ onComplete }) {
   function describeWait(reason) {
     const r = String(reason);
     if (/not answering/i.test(r)) {
-      return "Waiting for ProPresenter. Open it, and check its Network API is on under Preferences, then Network.";
+      return "Waiting for ProPresenter. Open it and turn on its Network API (Preferences > Network).";
     }
     if (/starting up/i.test(r)) {
-      return "ProPresenter is still starting up. Refrain waits a few minutes before reading the library, because a library read too early comes back half empty.";
+      return "ProPresenter is still starting up. Indexing begins in a few minutes.";
     }
     if (/never became available/i.test(r)) {
-      return "Gave up waiting for ProPresenter. You can finish setup and build the index later from Settings.";
+      return "Gave up waiting for ProPresenter. Build the index later from Settings.";
     }
     if (/performance mode/i.test(r)) {
-      return "Something is on the screens, so Refrain is holding off. It will build the index once nothing is live.";
+      return "Something is live. Indexing begins once nothing is on the screens.";
     }
     return r;
   }
@@ -185,8 +185,8 @@ export function initSetup({ onComplete }) {
         // screens. Both were things Refrain knew and never said.
         progressText.textContent =
           "Reading every slide you own. Go coil something. " +
-          "Leave ProPresenter open — Refrain reads the library through it, and it will feel sluggish while this runs. " +
-          "Nothing is being sent to the screens.";
+          "Leave ProPresenter open. It will be slow until this finishes. " +
+          "Nothing is sent to the screens.";
       } else if (status.builtAt) {
         createMeter(progressMeter);
         updateMeter(progressMeter, 1, 1);
@@ -197,7 +197,7 @@ export function initSetup({ onComplete }) {
         // Build started and finished, but never produced an index —
         // it failed. Don't loop forever; let the user into the app,
         // where the health screen explains what's wrong.
-        progressText.textContent = "Index build failed. Check the server logs, then retry from Settings.";
+        progressText.textContent = "Index build failed. Settings shows why and can retry.";
         return;
       } else if (status.indexWorkDeferred) {
         // Not started yet, and the server knows why. Say it, and say what to

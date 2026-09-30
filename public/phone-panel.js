@@ -33,7 +33,7 @@ export function phonePanelHtml(d) {
       </li>
       ${
         d.pinMode === "none"
-          ? `<li>No PIN is set, so phones can search and flag without one, but no phone can control ProPresenter.</li>`
+          ? `<li>No PIN is set: phones can search and flag, but no phone can control ProPresenter.</li>`
           : `<li>Enter ${d.pinMode === "daily" ? "today's PIN" : "the PIN"}: <strong class="font-mono text-lg">${esc(d.pin ?? "")}</strong>${
               d.pinMode === "daily" ? ` <span class="opacity-60">(changes at midnight)</span>` : ""
             }. Tick <em>Trust this phone</em> to skip this for 30 days.</li>`

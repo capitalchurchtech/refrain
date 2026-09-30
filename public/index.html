@@ -289,16 +289,14 @@
         <div>
           <button id="setup-detect-btn" class="btn btn-outline btn-sm">Detect ProPresenter</button>
           <span id="setup-detect-result" class="text-sm ml-2"></span>
-          <p class="text-xs opacity-60 mt-1">Looks for ProPresenter's Network API <strong>on this machine only</strong> (make sure it's enabled in ProPresenter's Preferences &gt; Network first). Or enter the host and port by hand below.</p>
+          <p class="text-xs opacity-60 mt-1">Checks <strong>this machine only</strong>. Turn on ProPresenter's Network API first (Preferences &gt; Network), or enter the host and port below.</p>
 
           <div id="setup-network-scan-offer" class="alert alert-warning py-2 text-sm mt-2 items-start hidden">
             <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
             <span>
-              <strong>Searching the rest of the network is a bigger deal.</strong>
-              It contacts every address on your local network looking for ProPresenter. Any
-              ProPresenter it finds belongs to another machine that may be mid-service, and
-              some networks treat a sweep like this as suspicious. Only do it if you know
-              ProPresenter is running on a different computer.
+              <strong>Searching the network contacts every computer on it.</strong>
+              A ProPresenter it finds may be mid-service, and some networks flag a sweep
+              like this. Only do it if ProPresenter runs on a different computer.
               <button id="setup-network-scan-btn" class="btn btn-warning btn-xs mt-2 block">Search the network anyway</button>
             </span>
           </div>
@@ -314,7 +312,7 @@
         </div>
 
         <div class="flex items-center gap-2">
-          <button id="setup-test-btn" class="btn btn-outline btn-sm">Test Connection</button>
+          <button id="setup-test-btn" class="btn btn-outline btn-sm">Test connection</button>
           <span id="setup-test-result" class="text-sm"></span>
         </div>
 
@@ -334,13 +332,7 @@
           </div>
         </div>
 
-        <p class="text-xs opacity-60">
-          Planning Center / shared-storage credentials for the optional arrangement-comparison
-          module aren't collected here yet, because that module isn't built. When it lands, drop
-          credentials into <code>.env</code> directly; see <code>.env.example</code>.
-        </p>
-
-        <button id="setup-save-btn" class="btn btn-brand" disabled>Save &amp; Continue</button>
+        <button id="setup-save-btn" class="btn btn-brand" disabled>Save and continue</button>
 
         <div id="setup-progress" class="hidden">
           <div class="flex items-center gap-3">
@@ -381,11 +373,11 @@
           <span class="shrink-0"><i data-lucide="keyboard"></i></span>
           <span class="nav-label whitespace-nowrap hidden">Shortcuts</span>
         </button>
-        <button id="nav-phone-toggle" class="btn btn-ghost btn-sm justify-start gap-3 px-2" title="Use a phone with Refrain">
+        <button id="nav-phone-toggle" class="btn btn-ghost btn-sm justify-start gap-3 px-2" title="Use a phone">
           <span class="shrink-0"><i data-lucide="smartphone"></i></span>
           <span class="nav-label whitespace-nowrap hidden">Phone</span>
         </button>
-        <button id="nav-pin-toggle" class="btn btn-ghost btn-sm justify-start gap-3 px-2" title="Expand sidebar">
+        <button id="nav-pin-toggle" class="btn btn-ghost btn-sm justify-start gap-3 px-2" title="Show the full menu">
           <span id="nav-pin-icon" class="shrink-0"></span>
           <span class="nav-label whitespace-nowrap hidden">Collapse</span>
         </button>
@@ -567,15 +559,15 @@
         </div>
         <div class="flex flex-col gap-2 text-sm">
           <div class="flex items-center justify-between gap-4">
-            <span>Jump to Search from any screen</span>
+            <span>Go to Search</span>
             <span class="shrink-0"><kbd class="kbd kbd-sm">/</kbd> <span class="opacity-50">or</span> <kbd class="kbd kbd-sm">⌘/Ctrl</kbd><kbd class="kbd kbd-sm">K</kbd></span>
           </div>
           <div class="flex items-center justify-between gap-4">
-            <span>Clear the search and start over</span>
+            <span>Clear the search</span>
             <span class="shrink-0"><kbd class="kbd kbd-sm">Alt/⌥</kbd><kbd class="kbd kbd-sm">X</kbd> <span class="opacity-50">or</span> <kbd class="kbd kbd-sm">Esc</kbd></span>
           </div>
           <div class="flex items-center justify-between gap-4">
-            <span>Move from the search box to the results</span>
+            <span>Go to the results</span>
             <kbd class="kbd kbd-sm shrink-0">Enter</kbd>
           </div>
           <div class="flex items-center justify-between gap-4">
@@ -591,20 +583,16 @@
             <kbd class="kbd kbd-sm shrink-0">Esc</kbd>
           </div>
           <div class="flex items-center justify-between gap-4">
-            <span>Show this help</span>
+            <span>Show shortcuts</span>
             <kbd class="kbd kbd-sm shrink-0">?</kbd>
           </div>
           <div class="flex items-center justify-between gap-4">
-            <span>Jump to a screen by number</span>
+            <span>Go to a menu item</span>
             <span class="shrink-0"><kbd class="kbd kbd-sm">1</kbd>…<kbd class="kbd kbd-sm">6</kbd> <span class="opacity-50">(hold</span> <kbd class="kbd kbd-sm">⌘/Ctrl</kbd> <span class="opacity-50">to see them)</span></span>
           </div>
           <div class="flex items-center justify-between gap-4">
             <span>Pick a tab on Prep or Settings</span>
             <span class="shrink-0"><kbd class="kbd kbd-sm">Shift</kbd><kbd class="kbd kbd-sm">1</kbd>…<kbd class="kbd kbd-sm">9</kbd> <span class="opacity-50">(hold</span> <kbd class="kbd kbd-sm">Shift</kbd> <span class="opacity-50">to see them)</span></span>
-          </div>
-          <div class="flex items-center justify-between gap-4">
-            <span>Close this dialog</span>
-            <kbd class="kbd kbd-sm shrink-0">Esc</kbd>
           </div>
         </div>
         <button id="shortcuts-welcome-link" class="link text-xs opacity-70 text-left">New here? How to use Refrain</button>
@@ -620,11 +608,10 @@
           <h2 id="welcome-title" class="text-lg font-semibold">Find the slide. Send it. Sit back down.</h2>
           <button id="welcome-close" class="btn btn-ghost btn-xs btn-square" title="Close" aria-label="Close"><i data-lucide="x"></i></button>
         </div>
-        <p class="text-sm opacity-70">Three things get you through a Sunday. The rest of it can wait for a Tuesday.</p>
         <div class="flex flex-col gap-3">
           <div class="flex gap-3">
             <i data-lucide="search" class="w-5 h-5 mt-0.5 shrink-0 opacity-70"></i>
-            <div class="text-sm"><span class="font-medium">Search.</span> Type any word to find any slide in your library. Press <kbd class="kbd kbd-xs">/</kbd> from anywhere to jump here.</div>
+            <div class="text-sm"><span class="font-medium">Search.</span> Type any word on a slide to find it. Press <kbd class="kbd kbd-xs">/</kbd> from any screen to come back here.</div>
           </div>
           <div class="flex gap-3">
             <i data-lucide="play" class="w-5 h-5 mt-0.5 shrink-0 opacity-70"></i>
@@ -632,10 +619,10 @@
           </div>
           <div class="flex gap-3">
             <i data-lucide="corner-up-left" class="w-5 h-5 mt-0.5 shrink-0 opacity-70"></i>
-            <div class="text-sm"><span class="font-medium">Return.</span> After you jump somewhere, a bar appears up top to send you back to where the plan was.</div>
+            <div class="text-sm"><span class="font-medium">Return.</span> After a jump, a bar at the top takes you back to where the plan was.</div>
           </div>
         </div>
-        <p class="text-xs opacity-60">Setup, arrangements, and the image and QR tools belong to whoever owns the label maker. The three above are yours, and they need ProPresenter running.</p>
+        <p class="text-xs opacity-60">All three need ProPresenter running. Leave the rest to your tech admin.</p>
         <div class="flex items-center justify-between gap-3 pt-1">
           <label class="label cursor-pointer gap-2 py-0">
             <input type="checkbox" id="welcome-dontshow" class="checkbox checkbox-xs" />

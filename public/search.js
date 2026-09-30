@@ -29,8 +29,7 @@ export function initSearch() {
     if (window.innerWidth <= DOCKED_WIDTH_CEILING) return;
     dockNudgeHandled = true;
     text.textContent =
-      "Before a service, drag this narrow and tuck it beside ProPresenter. " +
-      "It is built to sit next to the thing you are running, not in front of it.";
+      "Before a service, drag this narrow and dock it beside ProPresenter.";
     wrap.classList.remove("hidden");
     document.getElementById("dock-nudge-dismiss")?.addEventListener("click", () => {
       wrap.classList.add("hidden");
@@ -144,7 +143,7 @@ export function initSearch() {
           const { error } = await res.json().catch(() => ({}));
           // A 409 is Refrain declining for a reason it states (performance
           // mode, ProPresenter still loading); Health can't do better.
-          showFailure(res.status === 409 && error ? error : `Couldn't refresh the index: ${error ?? "no answer"}. Try Settings.`);
+          showFailure(res.status === 409 && error ? error : `Refresh didn't run: ${error ?? "no answer"}. Try Settings.`);
           return;
         }
         await refreshStatus();
@@ -162,15 +161,15 @@ export function initSearch() {
 
     statusEl.innerHTML = indexRes.builtAt
       ? `
-        <span class="inline-flex items-center gap-1" title="${indexRes.presentationCount} presentations indexed"><i data-lucide="database" class="w-3.5 h-3.5"></i><span class="rf-value">${indexRes.presentationCount}</span></span>
-        <span class="inline-flex items-center gap-1 ml-3" title="Index last built"><i data-lucide="clock" class="w-3.5 h-3.5"></i>${new Date(indexRes.builtAt).toLocaleString(undefined, { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
+        <span class="inline-flex items-center gap-1" title="${indexRes.presentationCount} presentations"><i data-lucide="database" class="w-3.5 h-3.5"></i><span class="rf-value">${indexRes.presentationCount}</span></span>
+        <span class="inline-flex items-center gap-1 ml-3" title="Last refreshed"><i data-lucide="clock" class="w-3.5 h-3.5"></i>${new Date(indexRes.builtAt).toLocaleString(undefined, { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
         ${
           indexRes.buildDurationMs == null
             ? ""
-            : `<span class="inline-flex items-center gap-1 ml-3" title="Last rebuild duration"><i data-lucide="timer" class="w-3.5 h-3.5"></i>${formatDuration(indexRes.buildDurationMs)}</span>`
+            : `<span class="inline-flex items-center gap-1 ml-3" title="Last refresh took"><i data-lucide="timer" class="w-3.5 h-3.5"></i>${formatDuration(indexRes.buildDurationMs)}</span>`
         }
       `
-      : `<span class="inline-flex items-center gap-1"><i data-lucide="database" class="w-3.5 h-3.5"></i>Not built yet</span>`;
+      : `<span class="inline-flex items-center gap-1"><i data-lucide="database" class="w-3.5 h-3.5"></i>Library not read yet</span>`;
 
     // The silent failure: a four-day-old index renders identically to a fresh
     // one -- same colour, same weight, no signal -- while search quietly misses
@@ -308,16 +307,16 @@ export function initSearch() {
       return;
     }
     const correctedNotice = corrected
-      ? `<div class="rf-hint px-1 pb-2">No exact matches. Showing results for <strong>${escapeHtml(corrected)}</strong>.</div>`
+      ? `<div class="rf-hint px-1 pb-2">No exact match. Showing <strong>${escapeHtml(corrected)}</strong>.</div>`
       : "";
 
     const allSongs = groupResultsBySong(results);
-    const { shown: songs, hiddenSongs, shownSlides } = capForRender(allSongs);
+    const { shown: songs, hiddenSongs } = capForRender(allSongs);
 
     // Said plainly, with the number, because a silently truncated result list
     // is a search that lies about what it found.
     const cappedNotice = hiddenSongs
-      ? `<div class="rf-hint px-1 pb-2">Showing ${shownSlides} matching slide${shownSlides === 1 ? "" : "s"} in the first ${songs.length} of ${allSongs.length} songs. Add another word to narrow it.</div>`
+      ? `<div class="rf-hint px-1 pb-2">Showing ${songs.length} of ${allSongs.length} songs. Add a word to narrow it.</div>`
       : "";
 
     resultsEl.innerHTML = correctedNotice + cappedNotice + songs
@@ -329,10 +328,10 @@ export function initSearch() {
             <div>
               <div class="font-semibold flex items-center gap-2">
                 ${escapeHtml(song.presentationName)}
-                ${song.arrangementName ? `<span class="badge badge-ghost badge-sm shrink-0" title="Indexed from the &quot;${escapeHtml(song.arrangementName)}&quot; arrangement">${escapeHtml(song.arrangementName)}</span>` : ""}
+                ${song.arrangementName ? `<span class="badge badge-ghost badge-sm shrink-0" title="Slide numbers from the &quot;${escapeHtml(song.arrangementName)}&quot; arrangement">${escapeHtml(song.arrangementName)}</span>` : ""}
               </div>
               <div class="text-sm opacity-70">
-                ${song.slides.length} matching slide${song.slides.length === 1 ? "" : "s"}${song.appearsIn.length ? ` &middot; in ${song.appearsIn.length} playlist(s)` : ""}
+                ${song.slides.length} matching slide${song.slides.length === 1 ? "" : "s"}${song.appearsIn.length ? ` &middot; in ${song.appearsIn.length} playlist${song.appearsIn.length === 1 ? "" : "s"}` : ""}
               </div>
             </div>
             <!-- Show only. "Go Live (Slide 1)" used to sit here, and it was a
@@ -373,7 +372,7 @@ export function initSearch() {
                        presentation in the editor but not select a slide in it
                        (handoff section 38): the number is how the operator
                        finds it once the editor is up. -->
-                  <button class="btn btn-chip show-in-editor-btn" data-presentation-id="${r.presentationId}" title="Open in ProPresenter's editor without changing what is on the screens. Then click slide ${r.slideIndex + 1}.">
+                  <button class="btn btn-chip show-in-editor-btn" data-presentation-id="${r.presentationId}" title="Opens in ProPresenter's editor. Nothing goes to the screens.">
                     Show slide ${r.slideIndex + 1}
                   </button>
                   <button class="btn btn-chip make-safe-btn" aria-label="Keep as a safe slide on Live" title="Keep as a safe slide on Live" data-presentation-id="${r.presentationId}" data-presentation-name="${escapeHtml(r.presentationName ?? "")}" data-slide-index="${r.slideIndex}" data-group-id="${escapeHtml(r.groupId ?? "")}" data-group-offset="${r.groupOffset ?? ""}" data-slide-text="${escapeHtml(r.snippet ?? "")}"><i data-lucide="shield-check" class="w-3.5 h-3.5"></i></button>
@@ -810,8 +809,8 @@ export function initSearch() {
     resultsEl.innerHTML = `
       <div class="opacity-60 text-center py-10 flex flex-col items-center gap-2">
         <i data-lucide="search" class="w-8 h-8 opacity-40"></i>
-        <div>Type any word to find any slide across your library.</div>
-        <div class="text-xs">Press <kbd class="kbd kbd-xs">/</kbd> from any screen to jump here.</div>
+        <div>Type a word to find a slide.</div>
+        <div class="text-xs"><kbd class="kbd kbd-xs">/</kbd> jumps here from any screen.</div>
       </div>`;
     if (window.lucide) window.lucide.createIcons();
   }

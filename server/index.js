@@ -393,7 +393,9 @@ app.get("/api/preferences", (_req, res) => {
   // navPinned is left as null when the user hasn't chosen, so the frontend
   // can default a first-time user to the expanded (labelled) nav.
   res.json({
-    theme: config.theme ?? "dark",
+    // Blackroom by default (owner, 2026-09-30): a true-black, high-contrast
+    // theme for a dark booth. Any theme the church picks is kept.
+    theme: config.theme ?? "blackroom",
     navPinned: config.navPinned ?? null,
     // Null when never chosen, so the frontend can fall back to navPinned for
     // an install that predates the third state.

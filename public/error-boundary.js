@@ -91,7 +91,7 @@ function wireCopy(root, report) {
         sel.addRange(range);
       }
     }
-    btn.textContent = ok ? "Copied" : "Select and copy it";
+    btn.textContent = ok ? "Copied" : "Selected. Copy it now";
     setTimeout(() => {
       btn.textContent = original;
     }, 2000);
