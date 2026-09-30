@@ -249,7 +249,6 @@ app.use(express.json());
 /** Whether a module should appear in the nav at all. */
 function navEnabledFor(m) {
   if (m.id === "arrangement") return getArrangementModuleStatus(config) !== "off";
-  if (m.id === "library-sync") return getLibrarySyncModuleStatus(config) !== "off";
   if (m.id === "service") return getServiceModuleStatus(config) !== "off";
   return m.enabledByDefault;
 }
@@ -3344,6 +3343,17 @@ app.post("/api/live/message-clear", async (req, res) => {
 // machine setup is unaffected. The heavy lifting and all of the safety rules
 // live in library-sync.js; these routes only resolve paths and report.
 
+/**
+ * Share Library is removed (owner, 2026-09-29: "it's a dangerous feature").
+ * It copied files into a ProPresenter library, the one thing Refrain does that
+ * writes to ProPresenter's data, and it could run on its own while ProPresenter
+ * was closed. Its screen and its Settings card are gone; this gate keeps it
+ * from running, by hand or automatically, whatever config.json says. The code
+ * below stays, unreachable, so the decision is easy to revisit or finish by
+ * deleting it.
+ */
+const SHARE_LIBRARY_REMOVED = true;
+const SHARE_LIBRARY_REMOVED_MESSAGE = "Share Library has been removed from Refrain. Nothing was copied.";
 const LIBRARY_SYNC_STATE = "./cache/library-sync-last-run.json";
 // Survives a restart, so an operator who quits ProPresenter and restarts
 // Refrain before syncing is not stuck without a library path.
@@ -3408,6 +3418,7 @@ function syncEndpoints(settings, libraryDir) {
 }
 
 app.get("/api/library-sync/status", async (_req, res) => {
+  if (SHARE_LIBRARY_REMOVED) return res.status(410).json({ error: SHARE_LIBRARY_REMOVED_MESSAGE });
   const settings = librarySyncSettings();
   const status = getLibrarySyncModuleStatus(config);
   const payload = {
@@ -3461,6 +3472,7 @@ app.get("/api/library-sync/status", async (_req, res) => {
  * written into the last-run record, never the safety decision itself.
  */
 async function runLibrarySync({ trigger = "manual" } = {}) {
+  if (SHARE_LIBRARY_REMOVED) return { statusCode: 410, body: { error: SHARE_LIBRARY_REMOVED_MESSAGE } };
   if (getLibrarySyncModuleStatus(config) !== "active") {
     return { statusCode: 400, body: { error: "Library Sync is not switched on and configured yet." } };
   }
@@ -3644,6 +3656,7 @@ async function pollAutoLibrarySync() {
 }
 
 function startAutoLibrarySyncPolling() {
+  if (SHARE_LIBRARY_REMOVED) return; // never runs on its own, whatever config.json says
   setInterval(() => {
     pollAutoLibrarySync().catch((err) => console.log(`Share Library auto-check failed: ${err.message}`));
   }, LIBRARY_SYNC_AUTO_POLL_MS).unref?.();
@@ -3651,6 +3664,7 @@ function startAutoLibrarySyncPolling() {
 
 
 app.post("/api/library-sync/config", async (req, res) => {
+  if (SHARE_LIBRARY_REMOVED) return res.status(410).json({ error: SHARE_LIBRARY_REMOVED_MESSAGE });
   const body = req.body ?? {};
   const current = config.librarySyncModule ?? {};
   const next = { ...current };
@@ -4951,7 +4965,7 @@ app.get("/api/health", async (_req, res) => {
     // than cached: the operator can also install or remove it with the
     // double-click scripts, and a stale toggle would lie about which.
     autostart: await autostart.status().catch(() => ({ supported: false })),
-    shareLibrary: {
+    shareLibrary: SHARE_LIBRARY_REMOVED ? null : {
       status: getLibrarySyncModuleStatus(config),
       ...librarySyncSettings(),
       // Just the age/outcome, not the full record -- the Library Sync screen

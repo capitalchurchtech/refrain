@@ -3,7 +3,6 @@ import { showFailure } from "./notice.js";
 import { wireTabKeys } from "./tabs.js";
 import { SETTINGS_TABS, settingsTabFromHash, SETTINGS_TAB_EVENT } from "./settings-tabs.js";
 import { createMeter, updateMeter, meterCount } from "./led-meter.js";
-import { describeBackupStatus } from "./library-sync.js";
 const ARRANGEMENT_STATUS_LABEL = {
   off: null, // hidden entirely per Section 4.1
   misconfigured: "Misconfigured",
@@ -351,35 +350,6 @@ export function initHealth() {
       }
     });
 
-    const shareSaveBtn = document.getElementById("share-library-save");
-    if (shareSaveBtn) {
-      shareSaveBtn.addEventListener("click", async (e) => {
-        const btn = e.currentTarget; // captured before the await
-        const statusEl = document.getElementById("share-library-status");
-        btn.disabled = true;
-        if (statusEl) statusEl.textContent = "Saving…";
-        try {
-          const res = await fetch("/api/library-sync/config", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              enabled: document.getElementById("share-library-enabled").checked,
-              sharedFolder: document.getElementById("share-library-folder").value,
-              libraryName: document.getElementById("share-library-name").value,
-              direction: document.getElementById("share-library-direction").value,
-            }),
-          });
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(data.error ?? res.statusText);
-          // Re-render so the badge and the nav entry both catch up: turning
-          // this on is what makes the Share Library screen appear at all.
-          await render();
-        } catch (err) {
-          if (btn.isConnected) btn.disabled = false;
-          if (statusEl) statusEl.textContent = `Couldn't save: ${err.message}`;
-        }
-      });
-    }
 
     const updateNowBtn = document.getElementById("update-now-btn");
     if (updateNowBtn) {
@@ -959,7 +929,7 @@ function renderLibraryCard({ folders, selected, error }, arrangementFolders) {
     <details id="library-folders-details" class="collapse collapse-arrow bg-base-200">
       <summary class="collapse-title text-base font-semibold">Library folders</summary>
       <div class="collapse-content">
-        <div class="text-sm opacity-70 mb-2 rf-measure">Which of ProPresenter's Library folders Refrain reads. Nothing here copies or moves anything — that is Share Library, on its own screen.</div>
+        <div class="text-sm opacity-70 mb-2 rf-measure">Which of ProPresenter's Library folders Refrain reads. Reading only: nothing here copies or moves anything.</div>
         <div class="text-sm font-semibold mt-1">Searchable</div>
         <div class="text-sm opacity-70 mb-1 rf-measure">Which Library folders to index and search. A smaller scope indexes much faster. Includes anything you want to find slides in, songs or otherwise (e.g. sermons).</div>
         <label class="label cursor-pointer justify-start gap-2 w-fit">
@@ -1135,20 +1105,6 @@ function renderIndexShortfall(index) {
 }
 
 /**
- * Share Library — the feature formerly reachable only by hand-editing
- * config.json.
- *
- * It shipped with a nav entry, a screen, a server route and a safety guard, and
- * no way to switch it on from inside the product. Off by default plus a nav
- * that hides disabled modules meant the only route in was a text editor, so in
- * practice nobody could find it and nobody ran it.
- *
- * Called "Share Library" here rather than "Library Sync" because a Health
- * accordion titled "Library Sync" already existed and configured something
- * else entirely — which folders get indexed for search. That collision is the
- * reason this feature was misunderstood every time it came up.
- */
-/**
  * Commands the operator runs in Terminal, as one-click copies.
  *
  * Both of these are things Refrain cannot do for itself. It cannot open a
@@ -1188,19 +1144,6 @@ function renderTerminalActions(port, installDir) {
     </div>`;
 }
 
-/**
- * Reuses describeBackupStatus rather than re-deriving "stale" from the age
- * alone -- a caught bug: doing the threshold math here independently marked a
- * same-minute sync FAILURE as merely dim/unflagged (opacity-70) because it was
- * recent by the clock, while the dedicated Library Sync screen correctly shows
- * any refusal as urgent regardless of age. One function answering "is this
- * backup okay" is the only way the two screens can't say different things
- * about the same sync.
- *
- * No `preview` here (Health's card is meant to stay cheap — no live diff
- * against ProPresenter), so this never claims to know whether the mirror
- * still matches, only how current the last attempt was.
- */
 /** "121 MB", "1.4 GB" -- decimal units, the way Finder reports sizes. */
 export function formatBytes(bytes) {
   if (!Number.isFinite(bytes) || bytes < 0) return "0 KB";
@@ -1272,75 +1215,6 @@ export function renderOrphanResults(result) {
     </div>`;
 }
 
-export function renderShareLibraryFreshness(share) {
-  if (share?.status !== "active") return "";
-  const { text, stale } = describeBackupStatus({ lastRun: share.lastRun, preview: null });
-  return `
-    <div class="text-sm ${stale ? "rf-flag" : "opacity-70"}">
-      ${escapeHtml(text)}
-      ${stale && share.lastRun?.ok !== false ? `<a href="#library-sync" class="link">Check Library Sync</a>` : ""}
-    </div>`;
-}
-
-function renderShareLibraryCard(share) {
-  if (!share) return "";
-  const status = share.status ?? "off";
-  const badge =
-    status === "active"
-      ? `<div class="badge badge-success gap-1">On</div>`
-      : status === "misconfigured"
-        ? `<div class="badge badge-warning gap-1">Needs setup</div>`
-        : `<div class="badge badge-ghost gap-1">Off</div>`;
-  return `
-    <div class="card bg-base-200">
-      <div class="card-body p-3 gap-2">
-        <h2 class="card-title text-base flex items-center justify-between gap-2">
-          <span class="flex items-center gap-2"><i data-lucide="folder-sync" class="w-4 h-4 opacity-70"></i> Share Library</span>
-          ${badge}
-        </h2>
-        <div class="text-sm opacity-70 rf-measure">
-          Copies one ProPresenter library between two machines through a folder they both see
-          (Dropbox, Google Drive, OneDrive). Add-and-update only — it never deletes.
-          Off unless you run two machines.
-          ${infoIcon("This is the only part of Refrain that writes presentation files. Everything else reads through ProPresenter's API. That is why it refuses to run while ProPresenter is open.")}
-        </div>
-        ${renderShareLibraryFreshness(share)}
-        <div class="alert alert-warning py-2 text-sm items-start">
-          <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
-          <span><strong>ProPresenter must be closed when this runs.</strong> It writes presentation files
-          into a library folder, and doing that underneath a running ProPresenter is how a workspace gets
-          corrupted. Refrain refuses to sync while ProPresenter is open, in either direction.</span>
-        </div>
-        <label class="rf-check w-fit">
-          <input type="checkbox" id="share-library-enabled" class="checkbox checkbox-xs" ${share.enabled ? "checked" : ""} />
-          Turn Share Library on
-        </label>
-        <div class="rf-control-row">
-          <div class="rf-field">
-            <label for="share-library-folder">Shared folder</label>
-            <input type="text" id="share-library-folder" class="input input-bordered"
-              placeholder="/Users/you/Dropbox/RefrainLibrary" value="${escapeHtml(share.sharedFolder ?? "")}" />
-          </div>
-        </div>
-        <div class="rf-control-row">
-          <div class="rf-field rf-field-fixed">
-            <label for="share-library-name">Library</label>
-            <input type="text" id="share-library-name" class="input input-bordered" value="${escapeHtml(share.libraryName ?? "Songs")}" />
-          </div>
-          <div class="rf-field rf-field-fixed">
-            <label for="share-library-direction">This machine</label>
-            <select id="share-library-direction" class="select select-bordered">
-              <option value="send" ${share.direction === "send" ? "selected" : ""}>Sends its library</option>
-              <option value="receive" ${share.direction === "receive" ? "selected" : ""}>Receives the library</option>
-            </select>
-          </div>
-          <button id="share-library-save" class="btn btn-brand btn-sm">Save</button>
-        </div>
-        <div id="share-library-status" class="rf-hint"></div>
-      </div>
-    </div>`;
-}
-
 /**
  * Start at login.
  *
@@ -1395,7 +1269,6 @@ function renderAutostartCard(state) {
 export function summarizeModules(health) {
   const mods = [
     { name: "Arrangement", status: health.arrangementModule?.status },
-    { name: "Share Library", status: health.shareLibrary?.status },
     { name: "Phone flags", status: health.networkModule?.status },
     { name: "Summary sending", status: health.reportModule?.status },
   ].filter((m) => m.status);
@@ -1413,7 +1286,6 @@ export function summarizeModules(health) {
 
 function renderHealth(health, configOptions, versionInfo, libraryCard = "", duplicateNameGroups = []) {
   const { propresenter, index, arrangementModule, role, version, config, envRequirements } = health;
-  const shareLibraryCard = renderShareLibraryCard(health.shareLibrary);
   const terminalCard = renderTerminalActions(health.port ?? window.location.port ?? 9999, health.installDir ?? "$HOME/Refrain");
   const autostartCard = renderAutostartCard(health.autostart);
 
@@ -2181,7 +2053,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
         ${SETTINGS_TABS.map(([id, label, icon], i) => `<button type="button" role="tab" id="settings-tab-${id}" aria-controls="settings-panel-${id}" class="rf-tab" data-settings-tab="${id}" aria-selected="false" tabindex="-1"><i data-lucide="${icon}" class="w-4 h-4 shrink-0"></i><span>${label}</span><kbd class="kbd kbd-xs tab-key" aria-hidden="true">${i + 1}</kbd></button>`).join("")}
       </div>
       ${panel("status", statusStrip, propresenterCard, indexCard, updatesCard)}
-      ${panel("library", libraryCard, shareLibraryCard, duplicateNamesCard, preferredCard, themesCard, orphanedMediaCard)}
+      ${panel("library", libraryCard, duplicateNamesCard, preferredCard, themesCard, orphanedMediaCard)}
       ${panel("features", configCard, arrangementCard, envCard)}
       ${panel("phones", phoneCard)}
       ${panel("this-mac", displayCard, autostartCard, terminalCard)}

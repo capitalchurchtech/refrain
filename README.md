@@ -54,8 +54,7 @@ Working today:
 - Flag this slide: one press under the Search readout (or on the Live screen) records whatever slide is live, to fix after the service. It reads what Refrain already knows is on the screens, so it adds no traffic to ProPresenter and works with performance mode on. The Live screen also has a grid of problem types (wrong background, typo, timing, and so on) so one tap records what is wrong, not just where. The **Flags** screen is where you work through them afterwards: grouped by service day and presentation in service order, each with a type you can change, a note, Show in Editor, and Mark resolved. Resolved flags drop off the list after `slideFlagsModule.keepResolvedDays` (14 by default) but are never deleted. Replace the type list with `slideFlagsModule.types`. To share one list between two machines, set `slideFlagsModule.folder` in config.json to a folder both can see (Dropbox, Google Drive, OneDrive); each flag is its own small file, so two machines never overwrite each other.
 - Theme check on Health (a button, read-only): which theme each deck's slides come from, and the decks that don't use their library's most-used theme. "Current theme" means exactly that for now, and the card says so.
 - Spell check across a playlist's slides, end to end. The same scan flags dates that have already passed, like an announcement for last month's event still in this weekend's loop, and media a slide needs that isn't on this Mac.
-- Library Sync (optional, off by default): copies one library between two machines or accounts, add-and-update only, with snapshots. It can also run on its own once ProPresenter is confirmed closed, which is a separate switch, also off by default.
-- A plain answer on Health to "is the backup current": how long since the last sync, and whether it still matches the live library right now.
+- **Library Sync (Share Library) has been removed.** It copied one library between machines by writing presentation files into ProPresenter's library folder, the only thing Refrain ever wrote to ProPresenter's data, and it could run on its own while ProPresenter was closed. That was judged too dangerous to offer. Its screen and settings are gone, and it can't run, whatever `config.json` says. The copy code is still in `server/library-sync.js`, unused, if anyone wants to look.
 - Presentation names that appear in more than one Library folder, listed on Health with a Show in Editor button each. Two decks with the same name cannot be told apart in search or Go Live.
 - An unused media report on Health: files in ProPresenter's Media folder that no presentation, playlist, theme or Media bin item uses, largest first, each with Show in Finder. It is a button, never automatic, and Refrain never deletes anything.
 - ProPresenter first aid on the Health screen: when it won't start, Diagnose explains why and hands you a command plus a ready-made prompt.
@@ -72,6 +71,8 @@ Wired up but not finished (the interface exists, the methods currently refuse to
 - Only two church management providers exist so far (Manual and Planning Center). Rock RMS, Church Community Builder, Elvanto and the rest are documented as places to plug in, not built integrations.
 
 ### A warning about Library Sync, and what changed
+
+*Library Sync has since been removed (see above). This section is kept for anyone who ran it on an older version.*
 
 **If you ran Library Sync before v0.13.0, run it only with ProPresenter closed, and check your workspaces.**
 
@@ -123,7 +124,7 @@ Indexing is reads only. Nothing is ever sent to the screens by a build.
 |---|---|
 | **Needs it open** | Building or refreshing the search index, Go Live, Show in Editor, the Live page (Looks, Macros, Clear, messages), the live readout and Return bar, Spell Check, and Arrangement comparisons. All of these go through ProPresenter's API. |
 | **Does not care** | QR codes, image cropping, splitting pasted lyrics into slides, and Scripture lookup. Searching an index you already have works too — only *building* it needs ProPresenter. |
-| **Needs it closed** | **Library Sync, and only Library Sync.** |
+| **Needs it closed** | Nothing, now. (Library Sync did, and it has been removed.) |
 
 Library Sync is the exception because it is the one feature that writes
 presentation files into a library folder rather than reading through the API.
@@ -285,7 +286,7 @@ Press **/** or **Cmd/Ctrl+K** from any screen to jump straight to Search with th
 
 ## Sharing one library between two macOS accounts
 
-Refrain has an optional **Library Sync** screen for this, off by default and hidden unless you switch it on. If ProPresenter runs under two macOS accounts (or on two machines) and you want just the Songs library kept in step, [docs/cross-account-library-sync.md](docs/cross-account-library-sync.md) has a tested recipe: what a library looks like on disk, why a symlink does not work, and copy-only sync scripts with dated snapshots and a guard that refuses to run against an empty source. It never deletes anything, on the grounds that a song library is years of work.
+*Removed.* Refrain used to have an optional **Library Sync** screen for this; it has been taken out because it wrote into ProPresenter's own library files. The notes below describe what it did. If ProPresenter runs under two macOS accounts (or on two machines) and you want just the Songs library kept in step, [docs/cross-account-library-sync.md](docs/cross-account-library-sync.md) has a tested recipe: what a library looks like on disk, why a symlink does not work, and copy-only sync scripts with dated snapshots and a guard that refuses to run against an empty source. It never deletes anything, on the grounds that a song library is years of work.
 
 ## Appearance
 

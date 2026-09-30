@@ -5,7 +5,7 @@ import { discoverModules, moduleNav, moduleClient, moduleSettingsTab } from "../
 
 test("every module says where it sits in the menu and which script is its screen", async () => {
   const modules = await discoverModules();
-  assert.ok(modules.length >= 11);
+  assert.ok(modules.length >= 10);
   for (const m of modules) {
     assert.ok(["service", "prep"].includes(m.nav?.group), `${m.id} has a menu group`);
     assert.ok(Number.isFinite(m.nav?.order), `${m.id} has a menu order`);
@@ -28,7 +28,8 @@ test("a module's metadata can't point the page at a script elsewhere", () => {
 
 test("the off notice sends you to the Settings tab where the module's switch is", async () => {
   const modules = await discoverModules();
-  assert.equal(moduleSettingsTab(modules.find((m) => m.id === "library-sync").settingsTab), "library", "Share Library's switch is on Library");
+  assert.equal(moduleSettingsTab("library"), "library", "a module can name another tab");
+  assert.equal(modules.find((m) => m.id === "library-sync"), undefined, "Share Library is removed (dangerous: it wrote into ProPresenter's library)");
   assert.equal(moduleSettingsTab(modules.find((m) => m.id === "arrangement").settingsTab), "features");
   assert.equal(moduleSettingsTab("nonsense"), "features");
 });
