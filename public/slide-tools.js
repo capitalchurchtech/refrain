@@ -119,7 +119,7 @@ export function splitterLabel(splitter) {
 // collapses word-for-word repeats into one card each and shows a play order.
 export function renderSlidePreview(slidesEl, slides, grouped) {
   if (slides.length === 0) {
-    slidesEl.innerHTML = `<div class="opacity-60 text-center py-4">No slides. Try a different splitter, or check your paste.</div>`;
+    slidesEl.innerHTML = `<div class="opacity-60 text-center py-4">No slides. Check your paste, or change Split by.</div>`;
     return;
   }
 
@@ -147,7 +147,7 @@ export function renderSlidePreview(slidesEl, slides, grouped) {
     : hasRepeats
       ? `<div class="alert py-2 text-sm">
            <i data-lucide="copy-check" class="w-4 h-4 shrink-0"></i>
-           <span>Some blocks repeat word for word. Tick <strong>Group repeats</strong> and preview again to collapse them into one slide each plus a play order.</span>
+           <span>Some slides repeat word for word. Tick <strong>Group repeats</strong> and preview again to show each once, with a play order.</span>
          </div>`
       : "";
 

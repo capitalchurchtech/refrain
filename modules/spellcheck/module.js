@@ -9,6 +9,8 @@ export default {
   id: "spellcheck",
   navLabel: "Spell Check",
   icon: "spell-check",
+  nav: { group: "prep", order: 4.5 },
+  client: { file: "spellcheck.js", init: "initSpellcheck" },
   route: "/spellcheck",
   component: null,
   enabledByDefault: true,

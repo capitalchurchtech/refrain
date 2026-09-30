@@ -5,6 +5,7 @@
  * it stops being flagged everywhere.
  */
 
+import { takeOpenWith } from "./open-with.js";
 import { showFailure } from "./notice.js";
 export function initSpellcheck() {
   // Which flagged slide the "next" control is on, so working through a scan is
@@ -16,7 +17,7 @@ export function initSpellcheck() {
   async function render() {
     container.innerHTML = `
       <div class="flex flex-col gap-4 max-w-3xl">
-        <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="spell-check" class="w-5 h-5"></i> Spell Check</h1>
+        <h2 class="rf-page-sub">Spell Check</h2>
 
         <!-- E2, the hero: the scan is the whole screen. The three-sentence lede
              it replaced explained how the check decides what to flag, which is
@@ -31,7 +32,7 @@ export function initSpellcheck() {
             </div>
             <button id="spellcheck-scan-btn" class="btn btn-brand btn-sm w-fit" title="Choose a playlist first" disabled>Check spelling</button>
             <p id="spellcheck-scan-reason" class="rf-hint">Choose a playlist first.</p>
-            <p class="text-xs opacity-60">Also flags dates that have already passed. Fix anything real in ProPresenter. The buttons on each result jump you there.</p>
+            <p class="text-xs opacity-60">Also flags past dates and missing media. Fix them in ProPresenter.</p>
           </div>
         </div>
 
@@ -41,7 +42,7 @@ export function initSpellcheck() {
           </summary>
           <div class="collapse-content flex flex-col gap-3">
             <p class="text-xs opacity-60">
-              Never flagged. Add the names, archaic spellings and song titles your church uses on purpose.
+              Never flagged. Add names and spellings your church uses on purpose.
             </p>
             <div id="spellcheck-allowlist-chips" class="flex flex-wrap gap-1"></div>
             <div class="rf-control-row">
@@ -65,6 +66,11 @@ export function initSpellcheck() {
     const select = document.getElementById("spellcheck-playlist");
     const scanBtn = document.getElementById("spellcheck-scan-btn");
 
+    // Opened from a Flags or Service row: check that one song now, with no
+    // playlist to choose (handoff section 40.5).
+    const one = takeOpenWith("spellcheck");
+    if (one) runScan(one, scanBtn);
+
     try {
       const res = await fetch("/api/spellcheck/playlists");
       const { playlists } = await res.json().catch(() => ({}));
@@ -73,7 +79,7 @@ export function initSpellcheck() {
       if (!res.ok) {
         select.innerHTML = `<option value="">ProPresenter isn't answering</option>`;
         document.getElementById("spellcheck-status").innerHTML =
-          `Open ProPresenter, then come back to this screen. <a href="#health" class="link">Diagnose on Health</a>`;
+          `Open ProPresenter, then come back here. <a href="#settings" class="link">Diagnose in Settings</a>`;
       } else if (!playlists?.length) {
         select.innerHTML = `<option value="">No playlists found</option>`;
       } else {
@@ -108,18 +114,20 @@ export function initSpellcheck() {
     scanBtn.addEventListener("click", () => runScan(select.value, scanBtn));
   }
 
-  async function runScan(playlistId, scanBtn) {
-    if (!playlistId) return;
+  /** A playlist id, or `{ presentationId, name }` for one song. */
+  async function runScan(target, scanBtn) {
+    if (!target) return;
+    const one = typeof target === "object";
     const statusEl = document.getElementById("spellcheck-status");
     const resultsEl = document.getElementById("spellcheck-results");
     scanBtn.disabled = true;
-    statusEl.textContent = "Scanning slides...";
+    statusEl.textContent = one ? `Checking ${target.name ?? "this presentation"}...` : "Checking slides...";
     resultsEl.innerHTML = "";
     try {
       const res = await fetch("/api/spellcheck/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ playlistId }),
+        body: JSON.stringify(one ? { presentationId: target.presentationId } : { playlistId: target }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -129,7 +137,7 @@ export function initSpellcheck() {
       lastResults = data;
       renderResults(data);
     } catch (err) {
-      statusEl.textContent = `Scan failed: ${err.message}`;
+      statusEl.textContent = `Couldn't check: ${err.message}. Try again.`;
     } finally {
       scanBtn.disabled = false;
     }
@@ -182,14 +190,14 @@ export function initSpellcheck() {
                     (w) => `
                   <span class="rf-tile rf-flagged gap-1 inline-flex items-center spellcheck-word" data-word="${escapeHtml(w.word)}" title="${w.suggestions.length ? "Suggestions: " + escapeHtml(w.suggestions.join(", ")) : "No suggestions"}">
                     ${escapeHtml(w.word)}${w.suggestions.length ? ` → ${escapeHtml(w.suggestions[0])}` : ""}
-                    <button class="spellcheck-ignore-btn ml-1 underline decoration-dotted" data-word="${escapeHtml(w.word)}" title="Never flag this word again. You can undo it under Ignored words.">ignore</button>
+                    <button class="spellcheck-ignore-btn ml-1 underline decoration-dotted" data-word="${escapeHtml(w.word)}" title="Stop flagging this word. Undo it under Ignored words.">ignore</button>
                   </span>`
                   )
                   .join("")}
                 ${(s.pastDates ?? [])
                   .map(
                     (d) => `
-                  <span class="rf-tile rf-flagged gap-1 inline-flex items-center spellcheck-date" title="Already over. Update or remove it before this goes on the screens.">
+                  <span class="rf-tile rf-flagged gap-1 inline-flex items-center spellcheck-date" title="This date has passed. Update or remove it.">
                     Date passed: ${escapeHtml(d.text)} <span class="opacity-70">(was ${escapeHtml(formatPastDate(d.date))})</span>
                   </span>`
                   )
@@ -204,7 +212,7 @@ export function initSpellcheck() {
                   .join("")}
                 <span class="flex-1"></span>
                 <button class="btn btn-brand btn-xs spellcheck-live-btn" data-presentation-id="${escapeHtml(p.presentationId)}" data-slide-index="${s.slideIndex}" data-group-id="${escapeHtml(s.groupId ?? "")}" data-group-offset="${s.groupOffset ?? ""}" data-slide-text="${escapeHtml(s.text ?? "")}">Go Live</button>
-                <button class="btn btn-outline btn-xs spellcheck-editor-btn" data-presentation-id="${escapeHtml(p.presentationId)}" title="Opens the presentation in ProPresenter's editor. It can't select the slide for you, so the number says which one.">Show slide ${s.slideIndex + 1} in Editor</button>
+                <button class="btn btn-outline btn-xs spellcheck-editor-btn" data-presentation-id="${escapeHtml(p.presentationId)}" title="Opens the presentation. Find the slide by its number.">Show slide ${s.slideIndex + 1} in Editor</button>
               </div>
             </div>`
             )
@@ -402,7 +410,7 @@ export function initSpellcheck() {
             </span>`
           )
           .join("")
-      : `<span class="text-xs opacity-60">Nothing ignored yet. Use <em>ignore</em> on a flagged word, or add words below.</span>`;
+      : `<span class="text-xs opacity-60">Nothing ignored yet.</span>`;
 
     chips.querySelectorAll(".spellcheck-unallow-btn").forEach((btn) =>
       btn.addEventListener("click", () => mutateAllowlist("/api/spellcheck/unallow", { word: btn.dataset.word }))

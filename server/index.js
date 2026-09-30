@@ -111,6 +111,7 @@ import QRCode from "qrcode";
 import { emptyRegistry, seeDevice, setApproved, removeDevice, isApproved, isRemoved, deviceList, loadRegistry, saveRegistry } from "./remote-devices.js";
 import { previewTargets, createThumbCache } from "./slide-preview.js";
 import { createThumbStore } from "./thumb-store.js";
+import { envEntries, applyEnvEdits, saveEnvFile, readText as readEnvText } from "./env-file.js";
 import { crossSiteRefused } from "./request-guard.js";
 import { markHidden, setHidden, isControlId, rememberValues } from "./live-visibility.js";
 import { safeSlides, addSafeSlide, removeSafeSlide, renameSafeSlide, moveSafeSlide } from "./safe-slides.js";
@@ -157,7 +158,7 @@ import {
   DEFAULT_MINIMUM_FILES,
   DEFAULT_SNAPSHOTS_TO_KEEP,
 } from "./library-sync.js";
-import { discoverModules, discoverSlideSplitters, discoverProviders, discoverStorageBackends, discoverDeliveryBackends } from "./plugin-loader.js";
+import { discoverModules, discoverSlideSplitters, discoverProviders, discoverStorageBackends, discoverDeliveryBackends, moduleNav, moduleClient, moduleSettingsTab } from "./plugin-loader.js";
 import { runComparison, suggestMapping, getPendingUploadCount, retryPendingUploads } from "./arrangement-diff.js";
 import { startWatcher as startImageCropWatcher, getImageCropStatus, foldersOverlap, websafeToken } from "./image-crop.js";
 import { generateQr, getQrHistoryList, getQrHistoryEntry, addQrHistoryEntry, clearQrHistory, QR_LIMITS } from "./qr-code.js";
@@ -249,7 +250,6 @@ app.use(express.json());
 /** Whether a module should appear in the nav at all. */
 function navEnabledFor(m) {
   if (m.id === "arrangement") return getArrangementModuleStatus(config) !== "off";
-  if (m.id === "library-sync") return getLibrarySyncModuleStatus(config) !== "off";
   if (m.id === "service") return getServiceModuleStatus(config) !== "off";
   return m.enabledByDefault;
 }
@@ -262,6 +262,12 @@ app.get("/api/modules", async (_req, res) => {
       navLabel: m.navLabel,
       icon: m.icon,
       route: m.route,
+      // Menu placement and the screen's script, both declared by the module
+      // itself, so a new module folder needs no edit anywhere else (CLAUDE.md:
+      // auto discovery, not central lists).
+      nav: moduleNav(m.nav),
+      client: moduleClient(m.client),
+      settingsTab: moduleSettingsTab(m.settingsTab),
       // "enabled" here means "show in the nav," not "the feature is running."
       // The arrangement module is gated (hidden until configured, per its
       // three-state status) because it needs real setup — credentials, a
@@ -388,7 +394,9 @@ app.get("/api/preferences", (_req, res) => {
   // navPinned is left as null when the user hasn't chosen, so the frontend
   // can default a first-time user to the expanded (labelled) nav.
   res.json({
-    theme: config.theme ?? "dark",
+    // Blackroom by default (owner, 2026-09-30): a true-black, high-contrast
+    // theme for a dark booth. Any theme the church picks is kept.
+    theme: config.theme ?? "blackroom",
     navPinned: config.navPinned ?? null,
     // Null when never chosen, so the frontend can fall back to navPinned for
     // an install that predates the third state.
@@ -674,6 +682,35 @@ const ENV_EXAMPLE_PATH = "./.env.example";
  * flag); other platforms get a clear message instead of a silent
  * failure since this whole app assumes a local, single-admin machine.
  */
+/**
+ * .env from Settings > Features (server/env-file.js). The values are only ever
+ * served by this app, which listens on this Mac; the phone listener has no
+ * route to them. Saving keeps the old file as .env.previous and takes effect
+ * at the next restart, since .env is read once at startup.
+ */
+app.get("/api/env", async (_req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json({ entries: envEntries(await readEnvText(ENV_PATH), await readEnvText(ENV_EXAMPLE_PATH)) });
+});
+
+app.post("/api/env", async (req, res) => {
+  const edits = req.body?.edits;
+  if (!edits || typeof edits !== "object" || Array.isArray(edits)) return res.status(400).json({ error: "Nothing to save." });
+  let text;
+  try {
+    text = applyEnvEdits(await readEnvText(ENV_PATH), edits);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  try {
+    await saveEnvFile(ENV_PATH, text);
+  } catch (err) {
+    return res.status(500).json({ error: `Couldn't save .env: ${err.message}. Nothing changed.` });
+  }
+  console.log(`.env saved from Settings (${Object.keys(edits).length} value${Object.keys(edits).length === 1 ? "" : "s"}; previous copy in .env.previous). Takes effect at the next restart.`);
+  res.json({ ok: true, entries: envEntries(text, await readEnvText(ENV_EXAMPLE_PATH)) });
+});
+
 app.post("/api/env/open", async (_req, res) => {
   try {
     if (!existsSync(ENV_PATH)) {
@@ -803,13 +840,26 @@ function startRebuild({ incremental = false, operatorInitiated = false } = {}) {
  * ProPresenter only just launched and is still busy loading (issue #11: a
  * crawl started at 113% CPU three minutes after launch).
  */
-async function operatorIndexRefusal() {
+/**
+ * The reasons an index run is held that can be answered without an await, so
+ * a screen can know *before* offering a button whether pressing it would be
+ * refused. Split out of operatorIndexRefusal() rather than duplicated, so the
+ * sentence an operator reads on Search is the same one the route would have
+ * sent back after a wasted press.
+ */
+function indexRunHeldReason() {
   if (performance.armed && performance.source !== "unknown") {
     return `Performance mode is on: ${describePerformance(performance)} The index won't run now; it catches up on its own after an hour with nothing on the screens.`;
   }
   // Performance mode arms after two minutes of content, so just after a
   // restart it can be off with a service on the screens.
   if (liveState.live) return "Something is on the screens, so the index won't run now: each presentation it reads makes ProPresenter wait. Run it when nothing is live.";
+  return null;
+}
+
+async function operatorIndexRefusal() {
+  const held = indexRunHeldReason();
+  if (held) return held;
   const readyFor = await propresenterReadyForMs();
   if (readyFor != null && readyFor < WATCH_SETTLE_MS) {
     const wait = Math.max(1, Math.ceil((WATCH_SETTLE_MS - readyFor) / 60_000));
@@ -1816,22 +1866,30 @@ function lockinStaleness(now = Date.now()) {
  * answers "No matches" for a presentation that is sitting in the library,
  * identically to how it answers for a word nobody ever wrote.
  *
- * The remedy is already on the screen: the Refresh beside this message calls
- * /api/index/reindex-changed, which is operator-initiated and therefore
- * allowed to run while performance mode is armed. Nothing here starts work on
- * its own, so performance mode's promise is untouched -- it only stops the
- * operator being kept in the dark about work that is waiting.
+ * Nothing here starts work of its own, so performance mode's promise is
+ * untouched. It only stops the operator being kept in the dark about work
+ * that is waiting.
  *
- * Two conditions have to hold before saying any of that, and both are about
- * not handing someone a remedy that cannot work:
+ * **It carries no Refresh.** It used to, on the reasoning that a press is
+ * operator-initiated and therefore allowed. The stability work for #11-#13
+ * ended that: `operatorIndexRefusal()` now refuses a run whenever performance
+ * mode is armed with a known source, which is every state this notice can
+ * appear in. So the button could only ever spend a press to print a sentence,
+ * and the sentence is better said up front -- the operator who will not press
+ * a control whose outcome they cannot predict is the one this notice is for.
+ * `indexRunHeldReason()` decides whether that is the case, so the notice and
+ * the route agree on the state even though they word it differently: the
+ * route explains a press that failed, this explains why there is nothing to
+ * press. The route's own sentence is too long for a row that sits beside the
+ * index chip at docked width, and the operator here does not need the
+ * mechanism named -- only that it fixes itself.
+ *
+ * Two conditions have to hold before saying any of it:
  *
  * - **ProPresenter has to be answering.** Performance mode also arms when it
- *   is unreachable, not only when something is live. Without this check, a
- *   Library Sync run -- which requires ProPresenter closed, and writes
- *   hundreds of presentations into a watched folder -- would put this notice
- *   on Search with a Refresh button that can only 502, because reindexing
- *   reads through the API that is not there. The link is already reported by
- *   the readout and the LINK lamp; this notice stays out of that case.
+ *   is unreachable, not only when something is live, and an index that cannot
+ *   be read is the link's problem, not the index's. The readout and the LINK
+ *   lamp already report that; this notice stays out of the way.
  * - **The watcher has to exist.** With `autoReindex: false` there is none, so
  *   nothing local knows a file changed and this cannot fire at all. That is a
  *   real gap for exactly the churches whose index drifts furthest, and it is
@@ -1842,6 +1900,8 @@ function deferredStaleness() {
   if (!frozen()) return null;
   if (!liveState.connected) return null;
   if (!libraryWatch?.status()?.unreadChanges) return null;
+  const held = indexRunHeldReason();
+  if (!held) return null;
   // Short on purpose. This row is `flex items-center` beside the index chip,
   // so at docked width every extra word wraps and pushes the search box down
   // -- and the booth path is the one place that cost is unacceptable. The
@@ -1849,7 +1909,11 @@ function deferredStaleness() {
   // Health; what the operator needs here is that search is behind and that
   // the button beside this fixes it. No trailing "Refresh." either: the
   // button says it.
-  return { message: "A presentation changed since this index." };
+  // One sentence, no button: what is true, then what happens next. Both
+  // clauses hold for every reason `indexRunHeldReason()` gives -- performance
+  // mode armed by content, by hand, or by a lock-in, and content live just
+  // after a restart -- because all of them end when the screens go quiet.
+  return { message: "A presentation changed since this index. It catches up when the screens are quiet.", held: true };
 }
 
 function indexStatusPayload() {
@@ -2046,14 +2110,20 @@ app.post("/api/orphaned-media/reveal", async (req, res) => {
 });
 
 app.get("/api/library-folders", async (_req, res) => {
+  // What search holds now, per library, from the index itself: shown on
+  // Settings > Search whether or not ProPresenter is answering, so "what's
+  // being searched" never depends on it (owner, 2026-09-30).
+  const indexed = {};
+  for (const p of Object.values(getIndex().presentations ?? {})) {
+    const f = p.folder ?? "Other";
+    indexed[f] = (indexed[f] ?? 0) + 1;
+  }
+  const selected = config.librarySync?.folders ?? null; // null = every folder searched
   try {
     const folders = await client.getLibraryFolders();
-    res.json({
-      folders: (folders ?? []).map((f) => f.name),
-      selected: config.librarySync?.folders ?? null, // null = every folder synced
-    });
+    res.json({ folders: (folders ?? []).map((f) => f.name), selected, indexed });
   } catch (err) {
-    res.status(502).json({ error: err.message });
+    res.status(502).json({ error: err.message, selected, indexed });
   }
 });
 
@@ -2447,7 +2517,7 @@ app.post("/api/service/steps", async (req, res) => {
 async function driftReadiness() {
   const status = getArrangementModuleStatus(config);
   if (status !== "active") return `the Arrangement module is ${status} on this machine`;
-  if (config.role !== "logger") return "this machine isn't the logger (see Health)";
+  if (config.role !== "logger") return "this machine isn't the logger (see Settings)";
   const Provider = await getArrangementProviderClass();
   if (!Provider.supportsPlanBrowsing) return `${Provider.displayName} has no weekend plans to compare against`;
   return null;
@@ -3388,6 +3458,17 @@ app.post("/api/live/message-clear", async (req, res) => {
 // machine setup is unaffected. The heavy lifting and all of the safety rules
 // live in library-sync.js; these routes only resolve paths and report.
 
+/**
+ * Share Library is removed (owner, 2026-09-29: "it's a dangerous feature").
+ * It copied files into a ProPresenter library, the one thing Refrain does that
+ * writes to ProPresenter's data, and it could run on its own while ProPresenter
+ * was closed. Its screen and its Settings card are gone; this gate keeps it
+ * from running, by hand or automatically, whatever config.json says. The code
+ * below stays, unreachable, so the decision is easy to revisit or finish by
+ * deleting it.
+ */
+const SHARE_LIBRARY_REMOVED = true;
+const SHARE_LIBRARY_REMOVED_MESSAGE = "Share Library has been removed from Refrain. Nothing was copied.";
 const LIBRARY_SYNC_STATE = "./cache/library-sync-last-run.json";
 // Survives a restart, so an operator who quits ProPresenter and restarts
 // Refrain before syncing is not stuck without a library path.
@@ -3452,6 +3533,7 @@ function syncEndpoints(settings, libraryDir) {
 }
 
 app.get("/api/library-sync/status", async (_req, res) => {
+  if (SHARE_LIBRARY_REMOVED) return res.status(410).json({ error: SHARE_LIBRARY_REMOVED_MESSAGE });
   const settings = librarySyncSettings();
   const status = getLibrarySyncModuleStatus(config);
   const payload = {
@@ -3505,6 +3587,7 @@ app.get("/api/library-sync/status", async (_req, res) => {
  * written into the last-run record, never the safety decision itself.
  */
 async function runLibrarySync({ trigger = "manual" } = {}) {
+  if (SHARE_LIBRARY_REMOVED) return { statusCode: 410, body: { error: SHARE_LIBRARY_REMOVED_MESSAGE } };
   if (getLibrarySyncModuleStatus(config) !== "active") {
     return { statusCode: 400, body: { error: "Library Sync is not switched on and configured yet." } };
   }
@@ -3688,6 +3771,7 @@ async function pollAutoLibrarySync() {
 }
 
 function startAutoLibrarySyncPolling() {
+  if (SHARE_LIBRARY_REMOVED) return; // never runs on its own, whatever config.json says
   setInterval(() => {
     pollAutoLibrarySync().catch((err) => console.log(`Share Library auto-check failed: ${err.message}`));
   }, LIBRARY_SYNC_AUTO_POLL_MS).unref?.();
@@ -3695,6 +3779,7 @@ function startAutoLibrarySyncPolling() {
 
 
 app.post("/api/library-sync/config", async (req, res) => {
+  if (SHARE_LIBRARY_REMOVED) return res.status(410).json({ error: SHARE_LIBRARY_REMOVED_MESSAGE });
   const body = req.body ?? {};
   const current = config.librarySyncModule ?? {};
   const next = { ...current };
@@ -3785,8 +3870,12 @@ app.get("/api/spellcheck/playlists", async (_req, res) => {
  * the Service screen's pre-service checks, so both say the same thing.
  * `docs` carries each presentation document read, for checks that need more.
  */
-async function scanPlaylist(playlistId) {
-  const [{ items }, speller] = await Promise.all([client.getPlaylistItems(playlistId), loadSpeller()]);
+/**
+ * `only`, when given, is the presentations to check instead of a playlist's:
+ * one song from a Flags or Service row (handoff section 40.5).
+ */
+async function scanPlaylist(playlistId, { only = null } = {}) {
+  const [{ items }, speller] = await Promise.all([only ? { items: only } : client.getPlaylistItems(playlistId), loadSpeller()]);
   const knownWords = libraryKnownWords();
   const allowlist = new Set((config.spellcheckModule?.allowlist ?? []).map((w) => w.toLowerCase()));
 
@@ -3860,10 +3949,12 @@ app.post("/api/spellcheck/scan", async (req, res) => {
   // Reads and decodes up to 120 presentation files on the thread that also
   // runs the heartbeat, Go Live and phone confirms: not during a service.
   if (performance.armed) return res.status(409).json({ error: "Performance mode is on, so Refrain is holding still. Run this when nothing is live." });
-  const { playlistId } = req.body ?? {};
-  if (!playlistId) return res.status(400).json({ error: "playlistId is required" });
+  const { playlistId, presentationId } = req.body ?? {};
+  const one = typeof presentationId === "string" && /^[A-Za-z0-9-]{1,64}$/.test(presentationId) ? presentationId : null;
+  if (!playlistId && !one) return res.status(400).json({ error: "playlistId or presentationId is required" });
   try {
-    const { presentations, scannedCount, truncated, mediaUnreadable } = await scanPlaylist(playlistId);
+    const only = one ? [{ id: one, name: getIndex().presentations?.[one]?.name ?? null }] : null;
+    const { presentations, scannedCount, truncated, mediaUnreadable } = await scanPlaylist(playlistId, { only });
     res.json({ presentations, scannedCount, truncated, mediaUnreadable });
   } catch (err) {
     res.status(502).json({ error: err.message });
@@ -4407,7 +4498,7 @@ async function compareWeekendSongs({ planId = null, onlyPresentationIds = null }
 app.post("/api/arrangement/compare-all", async (req, res) => {
   if (!requireArrangementActive(res)) return;
   if (config.role !== "logger") {
-    return res.status(403).json({ error: "Only the logger machine can run comparisons — see Health for role." });
+    return res.status(403).json({ error: "Only the logger machine can run comparisons — see Settings for role." });
   }
   if (!(await requireProviderCapability(res, "supportsPlanBrowsing", "The weekend compare-all workflow"))) return;
 
@@ -4438,7 +4529,7 @@ app.post("/api/arrangement/compare-all", async (req, res) => {
 app.post("/api/arrangement/push-arrangement", async (req, res) => {
   if (!requireArrangementActive(res)) return;
   if (config.role !== "logger") {
-    return res.status(403).json({ error: "Only the logger machine can push arrangements — see Health for role." });
+    return res.status(403).json({ error: "Only the logger machine can push arrangements — see Settings for role." });
   }
   if (!(await requireProviderCapability(res, "supportsPush", "Pushing an arrangement update"))) return;
 
@@ -4465,7 +4556,7 @@ app.post("/api/arrangement/push-arrangement", async (req, res) => {
 app.post("/api/arrangement/compare", async (req, res) => {
   if (!requireArrangementActive(res)) return;
   if (config.role !== "logger") {
-    return res.status(403).json({ error: "Only the logger machine can run comparisons — see Health for role." });
+    return res.status(403).json({ error: "Only the logger machine can run comparisons — see Settings for role." });
   }
   const { presentationId, serviceDate, force } = req.body ?? {};
   if (!presentationId || !serviceDate) {
@@ -4906,8 +4997,8 @@ app.post("/api/setup", async (req, res) => {
     })
       .then((settled) => {
         if (!settled) {
-          indexWorkDeferred = "ProPresenter never became available — build the index from the Health screen";
-          console.log("Gave up waiting for ProPresenter. Build the index from the Health screen once it is up.");
+          indexWorkDeferred = "ProPresenter never became available — build the index from Settings";
+          console.log("Gave up waiting for ProPresenter. Build the index from Settings once it is up.");
           return null;
         }
         indexWorkDeferred = null;
@@ -4989,7 +5080,7 @@ app.get("/api/health", async (_req, res) => {
     // than cached: the operator can also install or remove it with the
     // double-click scripts, and a stale toggle would lie about which.
     autostart: await autostart.status().catch(() => ({ supported: false })),
-    shareLibrary: {
+    shareLibrary: SHARE_LIBRARY_REMOVED ? null : {
       status: getLibrarySyncModuleStatus(config),
       ...librarySyncSettings(),
       // Just the age/outcome, not the full record -- the Library Sync screen
@@ -5147,7 +5238,7 @@ const server = app.listen(port, "127.0.0.1", async () => {
     .then((u) => {
       if (!u.updateAvailable) return;
       console.log(`  An update is available: v${u.latestVersion} (this is v${u.currentVersion}).`);
-      console.log("  Nothing is required — update from the Health screen when it suits you.");
+      console.log("  Nothing is required — update from Settings when it suits you.");
       console.log("");
     })
     .catch(() => {});
@@ -5162,7 +5253,7 @@ const server = app.listen(port, "127.0.0.1", async () => {
     if (frozen()) {
       indexWorkDeferred = "performance mode is on";
       console.log(`No search index cache found, but performance mode is on — not building. ${describePerformance(performance)}`);
-      console.log("Search will be empty until you build it from the Health screen.");
+      console.log("Search will be empty until you build it from Settings.");
     } else {
       const settled = await awaitProPresenterSettled({
         onWait: (state, readyFor) => {
@@ -5178,8 +5269,8 @@ const server = app.listen(port, "127.0.0.1", async () => {
         },
       });
       if (!settled) {
-        indexWorkDeferred = "ProPresenter never became available — build the index from the Health screen";
-        console.log("Gave up waiting for ProPresenter. Search will stay empty until you build the index from the Health screen.");
+        indexWorkDeferred = "ProPresenter never became available — build the index from Settings";
+        console.log("Gave up waiting for ProPresenter. Search will stay empty until you build the index from Settings.");
         return;
       }
       indexWorkDeferred = null;

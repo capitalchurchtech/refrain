@@ -12,6 +12,8 @@ export default {
   id: "qr-code",
   navLabel: "QR Codes",
   icon: "qr-code",
+  nav: { group: "prep", order: 5 },
+  client: { file: "qr-code.js", init: "initQrCode" },
   route: "/qr-code",
   component: null, // TODO: QrCodeScreen component
   enabledByDefault: true,

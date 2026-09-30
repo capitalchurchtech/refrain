@@ -7,6 +7,7 @@
  * provider's supportsPlanBrowsing capability — Planning Center has it,
  * but nothing here hardcodes that it's the only provider that could.
  */
+import { takeOpenWith } from "./open-with.js";
 import { showFailure } from "./notice.js";
 
 export function initArrangement() {
@@ -27,12 +28,14 @@ export function initArrangement() {
   let providerDisplayName = "the church-management system";
 
   async function render() {
+    // Opened from a Flags or Service row with a song chosen (section 40.5).
+    const wanted = takeOpenWith("arrangement");
     const status = await fetch("/api/arrangement/status").then((r) => r.json());
     if (status.status !== "active") {
       container.innerHTML = `
         <div class="alert alert-warning max-w-xl">
-          Arrangement module is ${status.status === "misconfigured" ? "misconfigured" : "not enabled"}.
-          see the Health screen for details.
+          Arrangement is ${status.status === "misconfigured" ? "not set up yet" : "turned off"}.
+          See Settings.
         </div>
       `;
       return;
@@ -46,11 +49,11 @@ export function initArrangement() {
 
     container.innerHTML = `
       <div class="flex flex-col gap-4 max-w-3xl">
-        <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="git-compare" class="w-5 h-5"></i> Arrangement</h1>
+        <h2 class="rf-page-sub">Arrangement</h2>
         <div id="arrangement-list-view" class="flex flex-col gap-4">
           ${
             status.role !== "logger"
-              ? `<div class="alert alert-info py-2 text-sm">Read-only. This machine's role is "reader," so comparisons run on the logger machine.</div>`
+              ? `<div class="alert alert-info py-2 text-sm">View only. Comparisons run on the computer that records each service.</div>`
               : ""
           }
           ${showWeekendPlan ? `<div id="weekend-plan-card" class="card bg-base-200 rf-hero"><div class="card-body p-3 gap-2"></div></div>` : ""}
@@ -59,7 +62,7 @@ export function initArrangement() {
               <span>Filter songs</span>
               <span id="arrangement-song-count"></span>
             </label>
-            <input type="text" id="arrangement-song-filter" class="input input-bordered w-full" placeholder="Type to narrow" />
+            <input type="text" id="arrangement-song-filter" class="input input-bordered w-full" />
           </div>
           <div>
             <h2 class="card-title">Tracked songs</h2>
@@ -72,6 +75,10 @@ export function initArrangement() {
     if (window.lucide) window.lucide.createIcons();
 
     renderSongList(currentSongs, status.role);
+    if (wanted) {
+      if (currentSongs.some((s) => s.presentationId === wanted.presentationId)) renderDetail(wanted.presentationId, status.role);
+      else showFailure(`${wanted.name ?? "That song"} hasn't been played in a service yet, so there's nothing to compare.`);
+    }
 
     document.getElementById("arrangement-song-filter").addEventListener("input", (e) => {
       const q = e.target.value.trim().toLowerCase();
@@ -122,7 +129,7 @@ export function initArrangement() {
     body.innerHTML = `
       <h2 class="card-title text-base"><i data-lucide="calendar-check" class="w-4 h-4"></i> This weekend's plan</h2>
       ${planPicker}
-      <div class="text-sm opacity-70">${escapeHtml(data.plan.dates)} &middot; ${matchedCount}/${data.songs.length} songs matched in ProPresenter</div>
+      <div class="text-sm opacity-70">${escapeHtml(data.plan.dates)} &middot; ${matchedCount}/${data.songs.length} songs found in ProPresenter</div>
       <div class="flex flex-col divide-y divide-base-300">
         ${data.songs
           .map(
@@ -132,7 +139,7 @@ export function initArrangement() {
             (s, i) => `
           ${s.section && s.section !== data.songs[i - 1]?.section ? `<div class="rf-subhead pt-2">${escapeHtml(s.section)}</div>` : ""}
           <div class="flex items-center gap-2 py-1.5 text-sm">
-            <span class="rf-led rf-led-col ${s.presentationId ? "lit" : ""}" title="${s.presentationId ? "Matched in ProPresenter" : "Not found in ProPresenter"}"></span>
+            <span class="rf-led rf-led-col ${s.presentationId ? "lit" : ""}" title="${s.presentationId ? "Found in ProPresenter" : "Not found in ProPresenter"}"></span>
             <span class="flex-1 truncate min-w-0">${escapeHtml(s.title)}</span>
           </div>
         `
@@ -188,7 +195,7 @@ export function initArrangement() {
                     ${matches ? `<span class="rf-mark-gap"></span>` : `<i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 rf-flag"></i>`}
                     ${escapeHtml(r.presentationName ?? r.title)}
                   </span>
-                  <label class="label cursor-pointer gap-1 py-0 shrink-0" title="Always recommend an update for this song, even when it matches">
+                  <label class="label cursor-pointer gap-1 py-0 shrink-0" title="Always suggest an update for this song, even when it matches">
                     <span class="label-text text-xs opacity-60">Always differs</span>
                     <input type="checkbox" class="toggle toggle-xs always-differs-toggle" ${r.alwaysDiffers ? "checked" : ""} />
                   </label>
@@ -196,9 +203,9 @@ export function initArrangement() {
                 ${renderSequenceComparison(r.planned, r.actual)}
                 ${
                   r.ignored
-                    ? `<div class="text-xs opacity-60 mt-1 flex items-center gap-1"><i data-lucide="eye-off" class="w-3 h-3"></i> Ignored. Marked as an atypical, non-representative performance.</div>`
+                    ? `<div class="text-xs opacity-60 mt-1 flex items-center gap-1"><i data-lucide="eye-off" class="w-3 h-3"></i> Ignored this week. It won't affect suggestions.</div>`
                     : suggestUpdate
-                      ? `<div class="rf-flag text-xs mt-1">${r.alwaysDiffers && matches ? "Flagged as always different. Review and update the plan." : "Consider updating the plan to match what was actually played."}</div>`
+                      ? `<div class="rf-flag text-xs mt-1">${r.alwaysDiffers && matches ? "Marked always differs. Check the plan." : "Played differently from the plan. Update the plan to match."}</div>`
                       : ""
                 }
                 <div class="flex items-center gap-2 mt-1">
@@ -265,7 +272,7 @@ export function initArrangement() {
       r.querySelector("[data-lucide='alert-triangle'], .rf-flag")
     );
     if (!rows.length) {
-      host.innerHTML = `<span class="rf-hint">Every song matches its plan. Nothing to review.</span>`;
+      host.innerHTML = `<span class="rf-hint">Every song matches its plan.</span>`;
       return;
     }
     host.innerHTML = `<button id="arrangement-next-btn" class="btn btn-chip">Next song to review</button>
@@ -316,7 +323,7 @@ export function initArrangement() {
         const resultEl = btn.closest("[data-presentation-id]").querySelector(".push-result");
         const confirmed = window.confirm(
           `Overwrite this song's arrangement in ${providerDisplayName} with:\n\n${parsedSequence.join(", ")}\n\n` +
-            "This updates the shared arrangement. Every future plan that reuses it changes too. You can undo right after."
+            "Every future plan that uses this arrangement changes too. You can undo right after."
         );
         if (!confirmed) return;
 
@@ -352,7 +359,7 @@ export function initArrangement() {
               });
               const undoData = await undoRes.json();
               resultEl.innerHTML = undoRes.ok
-                ? `<span class="opacity-60">Reverted.</span>`
+                ? `<span class="opacity-60">Undone.</span>`
                 : `<span class="rf-flag">${escapeHtml(undoData.error)}</span>`;
             } catch (err) {
               resultEl.innerHTML = `<span class="rf-flag">${escapeHtml(err.message)}</span>`;
@@ -384,7 +391,7 @@ export function initArrangement() {
           await runWeekendCompare();
         } catch (err) {
           btn.disabled = false;
-          showFailure(`Could not change this week's ignore setting: ${err.message}`);
+          showFailure(`Couldn't change Ignore: ${err.message}. Try again.`);
         }
       });
     });
@@ -540,7 +547,7 @@ export function initArrangement() {
                 </div>
                 ${
                   h.ignored
-                    ? `<div class="text-xs opacity-60 mt-1 flex items-center gap-1"><i data-lucide="eye-off" class="w-3 h-3"></i> Ignored. Atypical performance, excluded from suggestions.</div>`
+                    ? `<div class="text-xs opacity-60 mt-1 flex items-center gap-1"><i data-lucide="eye-off" class="w-3 h-3"></i> Ignored. It won't affect suggestions.</div>`
                     : ""
                 }
                 ${renderSequenceComparison(h.planned, h.actual)}
@@ -582,7 +589,7 @@ export function initArrangement() {
           resultEl.textContent = "Saved";
         } catch (err) {
           resultEl.textContent = "";
-          showFailure(`Could not save the section mapping: ${err.message}. Your text is still in the fields — try again.`);
+          showFailure(`Couldn't save the section mapping: ${err.message}. Your text is still in the fields. Try again.`);
         } finally {
           if (btn.isConnected) btn.disabled = false;
         }
@@ -608,7 +615,7 @@ export function initArrangement() {
             await renderDetail(presentationId, role);
           } catch (err) {
             btn.disabled = false;
-            showFailure(`Could not change this week's ignore setting: ${err.message}`);
+            showFailure(`Couldn't change Ignore: ${err.message}. Try again.`);
           }
         });
       });
@@ -720,7 +727,7 @@ export function initArrangement() {
           if (btn.isConnected) btn.disabled = false;
           // Deliberately does not re-render: a failed save must leave the
           // operator's typing on screen so they can retry or copy it out.
-          showFailure(`Could not save the planned arrangement: ${err.message}. Your text is still in the box.`);
+          showFailure(`Couldn't save the planned arrangement: ${err.message}. Your text is still in the box.`);
         }
       });
     });
@@ -729,7 +736,7 @@ export function initArrangement() {
   async function runComparison(presentationId, force) {
     const resultEl = document.getElementById("comparison-result");
     const serviceDate = document.getElementById("service-date").value;
-    resultEl.textContent = "Running...";
+    resultEl.textContent = "Comparing...";
 
     const res = await fetch("/api/arrangement/compare", {
       method: "POST",
@@ -739,13 +746,13 @@ export function initArrangement() {
     const data = await res.json();
 
     if (res.status === 409 && data.conflict) {
-      const confirmed = confirm(`${data.error}\n\nOverwrite with this machine's data?`);
+      const confirmed = confirm(`${data.error}\n\nOverwrite it with this computer's data?`);
       if (confirmed) return runComparison(presentationId, true);
       resultEl.textContent = "Cancelled.";
       return;
     }
     if (!res.ok) {
-      resultEl.textContent = `Error: ${data.error}`;
+      resultEl.textContent = data.error;
       return;
     }
 
@@ -889,7 +896,7 @@ export function initArrangement() {
     return `
       <div class="grid grid-cols-[4.5rem_1fr] gap-x-2 gap-y-0.5 text-xs mt-1">
         <span class="opacity-60">Planned:</span><span>${renderTokens(markDivergence(plannedTokens, actualTokens), ", ")}</span>
-        <span class="opacity-60">Slides:</span><span>${renderTokens(markDivergence(actualTokens, plannedTokens), ", ")}</span>
+        <span class="opacity-60">Actual:</span><span>${renderTokens(markDivergence(actualTokens, plannedTokens), ", ")}</span>
       </div>
     `;
   }

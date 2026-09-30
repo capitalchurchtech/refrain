@@ -68,7 +68,7 @@ export function livePreviewHtml(p) {
   const phone = p.lastPhoneAction
     ? `<div class="text-xs opacity-80 col-span-full">Phone: ${esc(p.lastPhoneAction.phone)} pressed ${esc(p.lastPhoneAction.label)} at ${esc(
         new Date(p.lastPhoneAction.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-      )}${p.lastPhoneAction.ok ? "" : " (it didn't work)"}</div>`
+      )}${p.lastPhoneAction.ok ? "" : " (failed)"}</div>`
     : "";
   if (!p.current) return phone;
   return `${pane("Now", p.current, "")}${pane("Next", p.next, p.atEnd ? "End of this presentation" : "", Boolean(p.next))}${phone}`;
@@ -151,7 +151,7 @@ export function initLive() {
       try {
         const url = lockBtn.dataset.locked ? "/api/service/lockin/release" : "/api/service/lockin";
         const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-        if (!res.ok) setStatus((await res.json().catch(() => ({}))).error ?? "That didn't work.");
+        if (!res.ok) setStatus((await res.json().catch(() => ({}))).error ?? "Lock-in didn't change. Try again.");
       } finally {
         lockBtn.disabled = false;
         await paintLock();
@@ -212,7 +212,6 @@ export function initLive() {
       <div class="flex flex-col gap-6">
         <div>
           <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="monitor" class="w-5 h-5"></i> Live</h1>
-          <p class="text-sm opacity-70">Get things off the screen, or switch what the screens are showing. Big buttons on purpose.</p>
         </div>
 
         <!-- What's on the screens now, the same readout as Search's (one poll
@@ -231,10 +230,10 @@ export function initLive() {
               <div class="flex items-center justify-between gap-3">
                 <div class="flex items-center gap-2">
                   <span id="perf-mode-dot" class="rf-led"></span>
-                  <span id="perf-mode-state" class="font-medium">Checking...</span>
+                  <span id="perf-mode-state" class="font-medium">Checking</span>
                 </div>
                 <span class="flex gap-2">
-                  <button id="live-lockin-btn" class="btn btn-sm btn-outline hidden" title="For an event with no set time: watch closely and hold still until released">Lock in</button>
+                  <button id="live-lockin-btn" class="btn btn-sm btn-outline hidden" title="Hold still until released. For events with no set time.">Lock in</button>
                   <button id="perf-mode-toggle" class="btn btn-sm btn-outline">Turn on</button>
                 </span>
               </div>
@@ -246,7 +245,7 @@ export function initLive() {
                    the live path, and it contradicted "nothing runs on its own" one
                    sentence later. -->
               <div class="text-xs opacity-60 rf-measure">
-                Turns on by itself once something has been live for a couple of minutes.
+                Turns on by itself after a couple of minutes live.
               </div>
             </div>
           </div>
@@ -274,7 +273,7 @@ export function initLive() {
             <span>ProPresenter isn't answering. A clear may not reach the screens.</span>
           </div>
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <button class="btn btn-outline h-20 text-base" data-clear="all" data-arm="true"><span class="flex flex-col items-center gap-1"><i data-lucide="x-octagon" class="w-6 h-6"></i> Clear All</span></button>
+            <button class="btn btn-outline h-20 text-base" data-clear="all" data-arm="true"><span class="flex flex-col items-center gap-1"><i data-lucide="x-octagon" class="w-6 h-6"></i> Clear all</span></button>
             <button class="btn btn-outline h-20 text-base" data-clear="slide"><span class="flex flex-col items-center gap-1"><i data-lucide="type" class="w-6 h-6"></i> Slide</span></button>
             <button class="btn btn-outline h-20 text-base" data-clear="media"><span class="flex flex-col items-center gap-1"><i data-lucide="image" class="w-6 h-6"></i> Media</span></button>
             <button class="btn btn-outline h-20 text-base" data-clear="messages"><span class="flex flex-col items-center gap-1"><i data-lucide="message-square" class="w-6 h-6"></i> Messages</span></button>
@@ -298,7 +297,6 @@ export function initLive() {
                 <button id="live-message-post" class="btn btn-outline h-16 flex-1 text-base"><span class="flex items-center gap-2"><i data-lucide="send" class="w-5 h-5"></i> Post to screen</span></button>
                 <button id="live-message-clear" class="btn btn-outline h-16"><span class="flex items-center gap-2"><i data-lucide="x" class="w-5 h-5"></i> Clear</span></button>
               </div>
-              <p class="text-xs opacity-60">Fills a message you set up once in ProPresenter and shows it, so an urgent code is type-and-post. Clear takes it back down.</p>
             </div>
           </div>
         </div>
@@ -369,7 +367,7 @@ export function initLive() {
         setStatus("No Looks or Macros found.");
       }
     } catch {
-      setStatus("Couldn't reach ProPresenter to load its controls. The Clear buttons still work.");
+      setStatus("Couldn't load Looks and Macros from ProPresenter. Clear still works.");
     }
   }
 
@@ -638,7 +636,7 @@ export function initLive() {
       const item = macroList.find((m) => m.id === btn.dataset.macro);
       if (editingMacros) {
         btn.setAttribute("aria-pressed", String(!item?.hidden));
-        btn.title = `${item?.name ?? ""}: ${item?.hidden ? "hidden. Tap to show it on Live." : "shown. Tap to hide it from Live."}`;
+        btn.title = `${item?.name ?? ""}: ${item?.hidden ? "hidden. Tap to show." : "shown. Tap to hide."}`;
         btn.addEventListener("click", () => toggleMacro(btn, item));
       } else {
         btn.addEventListener("click", () => fire(btn, "/api/live/macro", { id: btn.dataset.macro }, btn.textContent.trim()));

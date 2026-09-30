@@ -71,7 +71,7 @@ $("pin").addEventListener("keydown", (e) => { if (e.key === "Enter") $("unlock")
 
 function paintProgress(p) {
   const el = $("progress");
-  if (!state.connected) { el.textContent = "The booth can't see ProPresenter right now."; return; }
+  if (!state.connected) { el.textContent = "The booth has lost ProPresenter."; return; }
   if (!p?.item) { el.textContent = "Nothing is on the screens."; return; }
   el.innerHTML = [
     `<span><b>${esc(p.item.name)}</b></span>`,
@@ -220,7 +220,7 @@ async function flush() {
     flushing = false;
   }
   const left = queued().length;
-  if (left) say(`${left} flag${left === 1 ? "" : "s"} waiting to send. Refrain will keep trying.`, true);
+  if (left) say(`${left} flag${left === 1 ? "" : "s"} waiting to send. Retrying.`, true);
   else if (sent) say("Waiting flags sent.");
 }
 
@@ -243,8 +243,8 @@ $("send").addEventListener("click", async () => {
     const sl = flagSlides?.slides?.find((x) => x.slideIndex === item.slide?.slideIndex);
     $("status").className = "status";
     $("status").innerHTML = sl
-      ? `<div class="sent"><div class="pv"><img data-src="${esc(sl.image)}" alt="" /></div><div>Sent to the booth: slide ${sl.slideNumber}. Thank you.</div></div>`
-      : "Sent to the booth. Thank you.";
+      ? `<div class="sent"><div class="pv"><img data-src="${esc(sl.image)}" alt="" /></div><div>Sent to the booth: slide ${sl.slideNumber}.</div></div>`
+      : "Sent to the booth.";
     $("status").querySelectorAll("img").forEach((img) => loadImage(img));
     $("note").value = "";
     chosenType = null;
@@ -252,7 +252,7 @@ $("send").addEventListener("click", async () => {
   } catch (err) {
     if (!err.status || err.status >= 500 || err.status === 401) {
       store.set("refrain.remote.queue", [...queued(), item]);
-      say("No connection. The flag is saved on this phone and will send when it can.", true);
+      say("No connection. Saved on this phone; it will send when it can.", true);
     } else {
       say(err.message, true);
     }
@@ -272,7 +272,7 @@ async function refresh() {
     paintPreview();
     paintControl();
   } catch (err) {
-    if (err.status !== 401) $("progress").textContent = "Can't reach the booth right now. Retrying.";
+    if (err.status !== 401) $("progress").textContent = "Can't reach the booth. Retrying.";
   }
 }
 
@@ -389,7 +389,7 @@ function disarm() {
   $("confirm").hidden = true;
 }
 function showConfirm(image, label) {
-  $("confirm-text").textContent = `Tap again to put this up: ${label}`;
+  $("confirm-text").textContent = `Tap again: ${label}`;
   $("confirm-img").removeAttribute("src");
   $("confirm-img").parentElement.hidden = !image;
   if (image) {
@@ -438,7 +438,7 @@ async function paintControl() {
   $("control-locked").textContent = can
     ? ""
     : state?.pinRequired
-      ? `Control isn't on for this phone. Ask the booth to press "Allow control" beside ${state?.phone?.name ? `"${state.phone.name}"` : "this phone"} in the Phone panel.`
+      ? `Control is off for this phone. Ask the booth to allow ${state?.phone?.name ? `"${state.phone.name}"` : "this phone"} in the Phone panel.`
       : "Control from a phone needs phone PINs turned on in the booth.";
   if (!can) return;
   try {

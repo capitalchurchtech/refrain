@@ -102,6 +102,7 @@ test("the timeline records first live, time on screen, the gap before, and retur
       [4, "Pre-roll", 180, 0, 0], // the second pre-roll is the fourth item, not a return of the first
     ]
   );
+  assert.equal(rows[1].presentationId, "HYMN", "each row names its presentation, so it can offer Spell check this");
   assert.equal(rows[1].firstLive, at("09:01"), "the return did not overwrite the first activation");
   assert.equal(rows[1].lastLive, at("09:40"));
 });

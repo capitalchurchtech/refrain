@@ -16,8 +16,8 @@ JOB          Find the right slide fast and send it live.
 STAKES       Live operational. Failure is visible to a room.
 SURFACE      Two, not one. BOOTH: Search and Live, docked beside
              ProPresenter during a service. Narrow panel, tall, glanced at.
-             DESK: Health, Setup, Image Crop, QR Codes, Arrangement — a
-             normal window, at a desk, not during a service.
+             DESK: Settings (formerly Health), Setup, and the Prep page's
+             tools — a normal window, at a desk, not during a service.
 STACK        Node / Express, Tailwind, DaisyUI, Firestore.
 BRAND        Independent. Open source. Judged on first look by other churches.
 ```
@@ -128,10 +128,12 @@ are emitters only and never appear as fills.
 
 ### Light theme is a default path, not an opt-in
 
-`system` is the default theme when nothing is set, and `system` resolves to
-light on any machine not already in dark mode. So **light theme is the
-out-of-box rendering for a church office computer in daylight** — the
-Installer's condition, and a persona this document treats as first-class.
+**Blackroom is the default theme when nothing is set** (owner, 2026-09-30;
+it had been `dark`, and before that this section said `system`). Light is
+still one press away in Settings > This Mac, and `system` still resolves to
+light on a machine in daylight, so **light theme remains a path an Installer
+takes on a church office computer**, and a persona this document treats as
+first-class.
 
 It is not a minority preference and it cannot be dropped to avoid maintaining
 it. Five accessibility defects accumulated in the default rendering before
@@ -205,7 +207,11 @@ unlit is a hollow ring or a pale dot. Ink where the dark theme has light. And
 every two-state indicator has to be checked for whether **both** states are
 visible in **both** themes — a signal with one legible state is not a signal.
 
-### The one exception: fault, on Health only
+### The one exception: fault, on Settings only
+
+(Health became Settings on 2026-09-29, handoff section 40: the same screen,
+its cards on five tabs. Everything below that says Health means Settings, all
+five tabs of it. It is still scoped by the `#view-health` selector.)
 
 ```
 fault      #C9922E    hue 39°, saturation 63%
@@ -272,8 +278,10 @@ The test is the core. `box-shadow: 0 0 6px rgba(169,111,232,.30)` on a 2px plum
 rule is a lit edge. Add a near-white centre and it becomes an indicator that
 now has to mean something.
 
-Existing lit edges: the latched nav key's plum left edge, and the section
-heading's vertical rule. Neither reports anything, both are allowed.
+Existing lit edges: the latched nav key's plum left edge. (Section headings
+had a vertical rule too, until 2026-09-30: on a heading, plum and a glow read
+as a button, so card headings now use the plain `.rf-subhead` silkscreen,
+muted, no marker. A heading labels; it is never pressed.)
 
 ### Phosphor is for values, not labels
 

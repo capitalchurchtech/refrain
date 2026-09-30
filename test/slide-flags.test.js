@@ -270,8 +270,8 @@ test("the type grid renders every type, escaped, in the order given", () => {
 });
 
 test("the Live summary counts only open flags", () => {
-  assert.equal(liveSummaryText([]), "Nothing flagged and open.");
-  assert.equal(liveSummaryText([{ resolved: true }, { resolved: false }, {}]), "2 flagged slides open.");
+  assert.equal(liveSummaryText([]), "No open flags.");
+  assert.equal(liveSummaryText([{ resolved: true }, { resolved: false }, {}]), "2 open flags.");
 });
 
 test("the save message names the type when there is one", () => {

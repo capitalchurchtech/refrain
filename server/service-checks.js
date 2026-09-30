@@ -38,7 +38,7 @@ export function checkPropresenter({ connected }) {
 export function checkIndex({ items, indexedIds, staleness }) {
   const missing = (items ?? []).filter((i) => !indexedIds.has(i.id));
   if (missing.length) {
-    return result("index", "attention", `${plural(missing.length, "presentation")} in the playlist aren't in the search index, so Search won't find ${missing.length === 1 ? "it" : "them"}. Refresh the index, or if ${missing.length === 1 ? "it's" : "they're"} in a library Refrain doesn't search, add that library on Health.`, missing.map((i) => ({ name: i.name })));
+    return result("index", "attention", `${plural(missing.length, "presentation")} in the playlist aren't in the search index, so Search won't find ${missing.length === 1 ? "it" : "them"}. Refresh the index, or if ${missing.length === 1 ? "it's" : "they're"} in a library Refrain doesn't search, add that library in Settings.`, missing.map((i) => ({ name: i.name })));
   }
   if (staleness?.message) return result("index", "attention", staleness.message);
   return result("index", "pass", "All in the index.");

@@ -25,14 +25,14 @@ export function initImageCrop() {
 
     container.innerHTML = `
       <div class="flex flex-col gap-4 max-w-3xl">
-        <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="crop" class="w-5 h-5"></i> Image Crop</h1>
+        <h2 class="rf-page-sub">Image Crop</h2>
 
         <!-- One line. The paragraph this replaces had a sentence fragment that
              had been shipping for a while: "...every preset below.
              smart-cropped so the important part of the image stays in frame". -->
         <p class="text-sm opacity-70">
-          Drop an image in the input folder and it is cropped to every preset below, smart-cropped so the
-          subject stays in frame rather than blind-centred.
+          Drop an image in the input folder and it's cropped to every preset below, keeping the subject
+          in frame.
         </p>
 
         <label class="rf-check w-fit">
@@ -62,18 +62,18 @@ export function initImageCrop() {
             </div>
 
           <details class="text-sm bg-base-200 rounded p-2">
-            <summary class="cursor-pointer font-medium flex items-center gap-2"><i data-lucide="mouse-pointer-click" class="w-3.5 h-3.5"></i> Make dropping images in one-drag easy</summary>
+            <summary class="cursor-pointer font-medium flex items-center gap-2"><i data-lucide="mouse-pointer-click" class="w-3.5 h-3.5"></i> Put the input folder within easy reach</summary>
             <div class="mt-2 opacity-80 flex flex-col gap-2">
-              <p>Click <strong>Open</strong> next to the input folder, then create a shortcut to it so you never have to dig for it again:</p>
-              <p><strong>macOS.</strong> Drag the input folder into the Finder sidebar (under Favorites) for a permanent drop target; or right-click it → <em>Make Alias</em> and move the alias to your Desktop. Drop images onto either and they're processed automatically.</p>
-              <p><strong>Windows.</strong> Drag the input folder into <em>Quick access</em> in File Explorer's sidebar; or right-click it → <em>Send to → Desktop (create shortcut)</em>. Drop images onto the shortcut.</p>
-              <p class="opacity-70">Leave Refrain running (minimized is fine) and the moment an image lands in that folder, the cropped versions appear in the output folder. No need to open this screen.</p>
+              <p>Click <strong>Open</strong> next to the input folder, then make a shortcut to it:</p>
+              <p><strong>macOS.</strong> Drag the folder into the Finder sidebar under Favorites, or right-click it → <em>Make Alias</em> and move the alias to your Desktop.</p>
+              <p><strong>Windows.</strong> Drag the folder into <em>Quick access</em> in File Explorer's sidebar, or right-click it → <em>Send to → Desktop (create shortcut)</em>.</p>
+              <p class="opacity-70">Refrain has to be running, but this screen doesn't need to be open.</p>
             </div>
           </details>
 
           <div>
             <h2 class="rf-subhead">Output presets</h2>
-            <div class="text-xs opacity-60 mb-1 rf-measure">Every dropped image is cropped to all of these, named like <span class="font-mono">photo_thirds-sq.jpg</span>.</div>
+            <div class="text-xs opacity-60 mb-1 rf-measure">Files are named like <span class="font-mono">photo_thirds-sq.jpg</span>.</div>
             <div class="flex flex-col gap-1" id="crop-presets-list"></div>
             <div class="flex flex-wrap items-center gap-2 mt-2">
               <select id="crop-catalog-select" class="select select-bordered select-xs" aria-label="Common size to add"></select>
@@ -99,7 +99,7 @@ export function initImageCrop() {
             ? `<div class="flex items-start gap-2 text-sm">
                  <span class="rf-led lit mt-1.5"></span>
                  <div class="min-w-0">
-                   <div class="font-medium">Ready. Drop images into the input folder.${data.processing ? " Processing…" : ""}</div>
+                   <div class="font-medium">Watching the input folder.${data.processing ? " Processing…" : ""}</div>
                    <div class="text-xs opacity-80">${(cfg.presets ?? []).length} preset${(cfg.presets ?? []).length === 1 ? "" : "s"}, cropped into the output folder.</div>
                  </div>
                </div>`
@@ -186,7 +186,7 @@ export function initImageCrop() {
           <span class="opacity-50 text-xs">&times;</span>
           <input type="number" min="1" class="input input-bordered input-xs w-20 crop-preset-height" placeholder="H" value="${p.height}" data-index="${i}" aria-label="Height in pixels" />
           <span class="opacity-40 text-xs font-mono ml-1">_</span>
-          <input type="text" class="input input-bordered input-xs flex-1 min-w-0 font-mono crop-preset-abbr" placeholder="${escapeHtml(websafeToken(p.name))}" value="${escapeHtml(p.abbr ?? "")}" data-index="${i}" aria-label="Filename label" title="Filename label (leave blank to derive from the name)" />
+          <input type="text" class="input input-bordered input-xs flex-1 min-w-0 font-mono crop-preset-abbr" placeholder="${escapeHtml(websafeToken(p.name))}" value="${escapeHtml(p.abbr ?? "")}" data-index="${i}" aria-label="Filename label" title="Filename label. Leave blank to use the name." />
         </div>
       </div>
     `
@@ -266,7 +266,7 @@ export function initImageCrop() {
       });
       const data = await res.json();
       if (!res.ok) {
-        statusEl.textContent = `Error: ${data.error}`;
+        statusEl.textContent = `Couldn't save: ${data.error}`;
         return;
       }
       statusEl.textContent = "Saved.";
@@ -288,13 +288,13 @@ export function initImageCrop() {
   }
 
   function renderActivity(entries) {
-    if (!entries?.length) return `<div class="text-sm opacity-60">Nothing processed yet. Drop an image into the input folder.</div>`;
+    if (!entries?.length) return `<div class="text-sm opacity-60">Nothing cropped yet.</div>`;
     return entries
       .map(
         (e) => `
       <div class="text-sm bg-base-100 rounded p-2 flex items-center gap-2">
         <i data-lucide="${e.status === "ok" ? "check" : "alert-triangle"}" class="w-3.5 h-3.5 shrink-0 ${e.status === "ok" ? "rf-nominal" : "rf-flag"}"></i>
-        <span class="flex-1 min-w-0 truncate">${escapeHtml(e.filename ?? "(watcher)")}</span>
+        <span class="flex-1 min-w-0 truncate">${escapeHtml(e.filename ?? "(input folder)")}</span>
         <span class="opacity-60 text-xs">${e.status === "ok" ? e.outputs.join(", ") : escapeHtml(e.error)}</span>
       </div>
     `

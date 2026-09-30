@@ -9,64 +9,26 @@
  */
 
 import { crumb } from "./breadcrumbs.js";
+import { wireTabKeys } from "./tabs.js";
+import { setAvailableTools } from "./open-with.js";
 
 const THEME_CYCLE = ["system", "light", "dark", "blackroom"];
 const THEME_LABEL = { system: "System", light: "Light", dark: "Dark", blackroom: "Blackroom" };
 const THEME_ICON = { system: "sun-moon", light: "sun", dark: "moon", blackroom: "moon-star" };
 
-// Explicit ordering and grouping, by when a tool is used in the week:
-// live-service tools first, prep tools next, system last. Module-discovery
-// order (readdir, effectively alphabetical) isn't a usage order and would
-// bury an in-service tool like Live behind a prep tool like Image Crop. A
-// module not listed here falls to the end of the prep group.
-const NAV_PRIORITY = {
-  search: 0,
-  live: 1,
-  // In Service, beside Live: flags are raised during the service, and the
-  // count of open ones is what the operator glances at afterwards.
-  "slide-flags": 2,
-  // The day's rundown and lock-in. After Flags for now; whether it becomes the
-  // front door above Search is an open decision (handoff section 37).
-  service: 2.5,
-  // Desk work before the service, not during it, so Prep rather than Service
-  // (persona panel, handoff section 36): Service holds what runs live:
-  // Search, Live, and Flags.
-  spellcheck: 4,
-  "lyrics-assist": 4.5,
-  // Looking up and copying a passage happens while building the service, not
-  // while running it, so Prep.
-  scripture: 4.7,
-  arrangement: 5,
-  "image-crop": 6,
-  "qr-code": 7,
-  "library-sync": 8,
-};
-const DEFAULT_PRIORITY = 99;
-
-// Which visual group each item sits in; a thin divider is drawn where the
-// group changes, so the in-service / prep / system split is visible.
-const NAV_GROUP = {
-  search: "service",
-  live: "service",
-  scripture: "prep",
-  "lyrics-assist": "prep",
-  spellcheck: "prep",
-  "slide-flags": "service",
-  service: "service",
-  arrangement: "prep",
-  "image-crop": "prep",
-  "qr-code": "prep",
-  "library-sync": "prep",
-  health: "system",
-};
-const DEFAULT_GROUP = "prep";
+// Order and grouping come from each module's own module.js (`nav: { group,
+// order }`), by when a tool is used in the week: service screens first, prep
+// tools next, system last. They used to be two lists here, which meant a new
+// module folder landed in the wrong place until someone edited this file
+// (CLAUDE.md: auto discovery, not central lists). The server fills in any a
+// module leaves out (plugin-loader.js, moduleNav), so there are no defaults
+// here to disagree with it.
 
 // Named so a group break can say what it separates. Cold zone, and short
 // enough to survive the rail at silkscreen size.
 const GROUP_LABEL = {
   service: "Service",
-  prep: "Prep",
-  system: "System",
+  desk: "Desk",
 };
 
 export function applyTheme(theme) {
@@ -86,7 +48,20 @@ export function applyTheme(theme) {
   document.documentElement.classList.toggle("blackroom", blackroom);
 }
 
-export async function initNav({ onNavigate, viewIds }) {
+/**
+ * How Refrain looks here, for Settings > Customize (owner, 2026-09-30): the
+ * menu owns theme, side and width, so Settings asks it rather than keeping a
+ * second copy. Filled in by initNav.
+ */
+export const display = {
+  get: () => ({ theme: null, navSide: "left", navMode: "full" }),
+  setTheme: async () => {},
+  setSide: async () => {},
+  setWidth: async () => {},
+  openWelcome: () => {},
+};
+
+export async function initNav({ onNavigate, viewIds, modules: given = null }) {
   const rail = document.getElementById("nav-rail");
   const navItemsEl = document.getElementById("nav-items");
   const pinToggle = document.getElementById("nav-pin-toggle");
@@ -101,20 +76,63 @@ export async function initNav({ onNavigate, viewIds }) {
   const brandMark = document.getElementById("brand-mark");
   const brandLogo = document.getElementById("brand-logo");
 
-  const [{ modules }, prefs] = await Promise.all([
-    fetch("/api/modules").then((r) => r.json()),
+  // main.js has already fetched the modules to load their screens; asking
+  // again would be a second list that could disagree with the first.
+  const [modules, prefs] = await Promise.all([
+    given ?? fetch("/api/modules").then((r) => r.json()).then((d) => d.modules),
     fetch("/api/preferences").then((r) => r.json()),
   ]);
 
   // Core screens that aren't pluggable feature modules, always present.
-  const coreItems = [{ id: "health", navLabel: "Health", icon: "heart-pulse" }];
+  // Settings (the screen that was Health, and still `health` inside): its
+  // cards are on tabs, see health.js.
+  const coreItems = [{ id: "health", navLabel: "Settings", icon: "settings", nav: { group: "desk", order: 100 } }];
   // A module can be "enabled" per its own metadata/config while still
   // having no real screen built yet (e.g. lyrics-assist's component is
   // still null) — only show nav entries the frontend can actually render.
   const moduleItems = modules
     .filter((m) => m.enabled && viewIds.has(m.id))
-    .sort((a, b) => (NAV_PRIORITY[a.id] ?? DEFAULT_PRIORITY) - (NAV_PRIORITY[b.id] ?? DEFAULT_PRIORITY));
-  const items = [...moduleItems, ...coreItems];
+    .sort((a, b) => a.nav.order - b.nav.order);
+  /**
+   * The menu keeps only what's used during a service at the top level. Every
+   * prep tool is a tab on one Prep page (handoff section 40): a long menu is
+   * arresting mid-service, and five persona reviews found a single tabbed
+   * page cost the fewest people anything.
+   */
+  const prepTabs = moduleItems.filter((m) => m.nav.group === "prep");
+  const prepItem = prepTabs.length ? [{ id: "prep", navLabel: "Prep", icon: "clipboard-list", nav: { group: "desk", order: 50 } }] : [];
+  const items = [...moduleItems.filter((m) => m.nav.group === "service"), ...prepItem, ...coreItems];
+  const isPrepTab = (id) => prepTabs.some((t) => t.id === id);
+  // Rows elsewhere (Flags, Service) offer "Spell check this" and the like
+  // only for tools that are switched on.
+  setAvailableTools(prepTabs.map((t) => t.id));
+  /**
+   * Which screen a fragment means. `prep` is its first tab: always the first,
+   * never the last one used, so the same press lands in the same place every
+   * week. `prep/qr-code` is that tab, and the old `#qr-code` still works, so
+   * nobody's bookmark breaks. Null for anything else unknown, including a
+   * `prep/` tool that's switched off, so the off notice can say so instead of
+   * quietly opening a different tool.
+   */
+  function resolveScreen(raw) {
+    const id = String(raw ?? "");
+    if (id === "prep") return prepTabs[0]?.id ?? null;
+    // Settings is the old Health screen: `#settings`, `#settings/<tab>` and
+    // every `#health` link anyone saved all open it.
+    if (id === "settings" || id.startsWith("settings/")) return "health";
+    if (id.startsWith("prep/")) return isPrepTab(id.slice(5)) ? id.slice(5) : null;
+    if (isPrepTab(id)) return id;
+    return items.some((i) => i.id === id && i.id !== "prep") ? id : null;
+  }
+  const fragmentFor = (screen) => (isPrepTab(screen) ? `#prep/${screen}` : screen === "health" ? "#settings" : `#${screen}`);
+  // A link to one Settings tab keeps its tab in the fragment; health.js reads it.
+  const fragmentForRequest = (requested, screen) =>
+    screen === "health" && /^settings\/[a-z-]+$/.test(String(requested ?? "")) ? `#${requested}` : fragmentFor(screen);
+  // The module a fragment names, for the off notice: `prep/arrangement` is
+  // Arrangement.
+  const namedModule = (raw) => String(raw ?? "").replace(/^prep\//, "");
+  // The menu key that stays latched for a screen: a prep tool latches Prep.
+  const railIdFor = (screen) => (isPrepTab(screen) ? "prep" : screen);
 
   /**
    * The current screen lives in the URL fragment, so a refresh comes back to
@@ -135,7 +153,7 @@ export async function initNav({ onNavigate, viewIds }) {
    * tool with no support channel.
    */
   const hashId = location.hash.slice(1);
-  let activeId = items.some((i) => i.id === hashId) ? hashId : (items[0]?.id ?? "search");
+  let activeId = resolveScreen(hashId) ?? items[0]?.id ?? "search";
 
   // A bookmarked or shared link to a module that is switched off used to fall
   // through to Search with no word, which reads as a broken link. Say which
@@ -149,13 +167,15 @@ export async function initNav({ onNavigate, viewIds }) {
       offNotice.classList.add("hidden");
       return;
     }
-    offNotice.innerHTML = `${escapeText(off.navLabel)} is off. <a href="#health" class="link">Turn it on in Health.</a>`;
+    // The tab where its switch is: Features unless the module's module.js
+    // names another (settingsTab).
+    offNotice.innerHTML = `${escapeText(off.navLabel)} is off. <a href="#settings/${escapeText(off.settingsTab ?? "features")}" class="link">Turn it on in Settings.</a>`;
     offNotice.classList.remove("hidden");
   }
   function escapeText(str) {
     return String(str ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   }
-  let currentTheme = prefs.theme ?? "dark";
+  let currentTheme = prefs.theme ?? "blackroom";
   // Expanded by default until the user chooses: on a fresh install navPinned
   // is unset (null), so a first-time user sees labels rather than a wall of
   // unlabeled icons. Once they collapse or expand, that choice (true/false)
@@ -186,7 +206,7 @@ export async function initNav({ onNavigate, viewIds }) {
     let prevGroup = null;
     navItemsEl.innerHTML = items
       .map((item, i) => {
-        const group = NAV_GROUP[item.id] ?? DEFAULT_GROUP;
+        const group = item.nav.group;
         // A group break is a scored groove in the panel plus, when pinned, a
         // silkscreen label naming what follows. The label is the half that
         // makes the division mean something; collapsed shows the groove only,
@@ -211,7 +231,7 @@ export async function initNav({ onNavigate, viewIds }) {
         const keyBadge = i < 9 ? `<kbd class="kbd kbd-xs nav-key" aria-hidden="true">${i + 1}</kbd>` : "";
         return `${divider}
       <button
-        class="nav-item btn btn-ghost btn-sm justify-start gap-3 px-2 relative ${item.id === activeId ? "btn-active" : ""}"
+        class="nav-item btn btn-ghost btn-sm justify-start gap-3 px-2 relative ${item.id === railIdFor(activeId) ? "btn-active" : ""}"
         data-id="${item.id}"
         title="${item.navLabel}"
       >
@@ -219,26 +239,81 @@ export async function initNav({ onNavigate, viewIds }) {
         <span class="nav-label whitespace-nowrap ${effectiveNavMode() === "full" ? "" : "hidden"}">${item.navLabel}</span>
         ${keyBadge}
       </button>
+
     `;
       })
       .join("");
 
-    navItemsEl.querySelectorAll(".nav-item").forEach((btn) => {
+    navItemsEl.querySelectorAll(".nav-item[data-id]").forEach((btn) => {
       btn.addEventListener("click", () => setActive(btn.dataset.id));
     });
+
+    renderPrepTabs();
 
     applyImageCropDot(); // re-apply after every rebuild (innerHTML reset wipes it)
     applyUpdateDot();
     if (window.lucide) window.lucide.createIcons();
   }
 
+  /**
+   * The Prep page's tab row: a bank of butted latching keys at the top of the
+   * page, one per prep tool, always shown on Prep (even with one tab, so the
+   * page doesn't change shape when a second tool is switched on).
+   */
+  function renderPrepTabs() {
+    // The page title, then the tab row, then the tool: the same order as
+    // Settings (owner, 2026-09-30). Each tool names itself below the tabs in
+    // an h2.
+    let head = document.getElementById("prep-head");
+    let row = document.getElementById("prep-tabs");
+    if (!head) {
+      head = document.createElement("div");
+      head.id = "prep-head";
+      head.className = "flex flex-col gap-4 mb-4";
+      head.innerHTML = `<h1 class="text-lg font-semibold">Prep</h1>`;
+      row = document.createElement("div");
+      row.id = "prep-tabs";
+      row.className = "rf-tabs";
+      row.style.marginBottom = "0";
+      row.setAttribute("role", "tablist");
+      row.setAttribute("aria-label", "Prep");
+      wireTabKeys(row, (tab) => setActive(tab.dataset.id));
+      head.appendChild(row);
+    }
+    const on = isPrepTab(activeId);
+    head.classList.toggle("hidden", !on);
+    if (!on) return;
+    // Directly above the tool it selects: not at the top of the page, where
+    // the Return bar and the off notice would sit between the tabs and the
+    // page they choose.
+    const panel = document.getElementById(`view-${activeId}`);
+    if (panel && panel.previousElementSibling !== head) panel.before(head);
+    for (const t of prepTabs) {
+      const section = document.getElementById(`view-${t.id}`);
+      section?.setAttribute("role", "tabpanel");
+      section?.setAttribute("aria-labelledby", `prep-tab-${t.id}`);
+    }
+    row.innerHTML = prepTabs
+      .map(
+        (t, i) =>
+          `<button type="button" role="tab" id="prep-tab-${t.id}" aria-controls="view-${t.id}" class="rf-tab relative" data-id="${t.id}" aria-selected="${t.id === activeId}" tabindex="${t.id === activeId ? 0 : -1}"><i data-lucide="${t.icon}" class="w-4 h-4 shrink-0"></i><span>${t.navLabel}</span>${i < 9 ? `<kbd class="kbd kbd-xs tab-key" aria-hidden="true">${i + 1}</kbd>` : ""}</button>`
+      )
+      .join("");
+    row.querySelectorAll(".rf-tab").forEach((b) => b.addEventListener("click", () => setActive(b.dataset.id)));
+  }
+
   // A small live dot on the Image Crop nav item while its watcher is
   // running, so you can trust it's active at a glance without opening
   // the screen (the whole point of the module is not having to).
   let imageCropWatching = false;
+  // On Prep as well as on the tool itself, wherever it's shown: the dot's
+  // whole point is being seen without opening the screen.
   function applyImageCropDot() {
-    const btn = navItemsEl.querySelector('[data-id="image-crop"]');
-    if (!btn) return;
+    const places = [...document.querySelectorAll('#prep-tabs [data-id="image-crop"]')];
+    if (isPrepTab("image-crop")) places.push(navItemsEl.querySelector('[data-id="prep"]'));
+    for (const btn of places.filter(Boolean)) applyImageCropDotTo(btn);
+  }
+  function applyImageCropDotTo(btn) {
     let dot = btn.querySelector(".watching-dot");
     if (imageCropWatching && !dot) {
       dot = document.createElement("span");
@@ -352,7 +427,8 @@ export async function initNav({ onNavigate, viewIds }) {
     setTimeout(attempt, 0);
   }
 
-  function setActive(id) {
+  function setActive(requested) {
+    const id = resolveScreen(requested) ?? requested;
     // Which screen, never what was on it.
     crumb("nav", { to: id });
     // Before the switch, or activeId is already the destination.
@@ -366,7 +442,7 @@ export async function initNav({ onNavigate, viewIds }) {
      * screens muddies it. The bug was "do not lose your place on refresh", so
      * that is what this fixes.
      */
-    history.replaceState(null, "", `#${id}`);
+    history.replaceState(null, "", fragmentForRequest(requested, id));
     offNotice?.classList.add("hidden");
     renderItems();
     onNavigate(id);
@@ -467,7 +543,7 @@ export async function initNav({ onNavigate, viewIds }) {
     pinToggle.title = isFull
       ? "Collapse to icons"
       : mode === "icons"
-        ? "Collapse to a sliver"
+        ? "Hide the menu"
         : "Show the full menu";
   }
 
@@ -565,6 +641,29 @@ export async function initNav({ onNavigate, viewIds }) {
     });
   });
 
+  const savePref = (body) =>
+    fetch("/api/preferences", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  display.get = () => ({ theme: currentTheme, navSide, navMode: navMode === "sliver" ? "icons" : navMode });
+  display.setTheme = async (theme) => {
+    if (!THEME_CYCLE.includes(theme)) return;
+    currentTheme = theme;
+    applyThemeUI();
+    await savePref({ theme });
+  };
+  display.setSide = async (side) => {
+    if (side !== "left" && side !== "right") return;
+    navSide = side;
+    applySide();
+    await savePref({ navSide });
+  };
+  display.setWidth = async (mode) => {
+    if (mode !== "full" && mode !== "icons") return;
+    navMode = mode;
+    if (narrowQuery?.matches && navMode === "full") expandedWhileNarrow = true;
+    applyPinnedState();
+    await savePref({ navMode });
+  };
+
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
     if (currentTheme === "system") applyTheme("system");
   });
@@ -652,6 +751,8 @@ export async function initNav({ onNavigate, viewIds }) {
     welcomeModal.classList.remove("hidden");
     onModalOpen(welcomeModal);
   };
+  // From Settings > Customize: a new volunteer can see it again on demand.
+  display.openWelcome = openWelcome;
   const closeWelcome = async () => {
     if (!welcomeOpen()) return;
     welcomeModal.classList.add("hidden");
@@ -687,8 +788,17 @@ export async function initNav({ onNavigate, viewIds }) {
   const hideKeys = () => rail.classList.remove("reveal-keys");
   window.addEventListener("keyup", (e) => {
     if (e.key === "Meta" || e.key === "Control") hideKeys();
+    if (e.key === "Shift") hideTabKeys();
   });
-  window.addEventListener("blur", hideKeys);
+  window.addEventListener("blur", () => {
+    hideKeys();
+    hideTabKeys();
+  });
+  // The same for a page's tabs, while Shift is held (see the Shift+digit key
+  // below). Not while typing, where Shift is just capital letters.
+  const hideTabKeys = () => document.documentElement.classList.remove("reveal-tab-keys");
+  // The tab row on screen, if this page has one (Prep, Settings).
+  const visibleTabRow = () => [...document.querySelectorAll('.rf-tabs[role="tablist"]')].find((r) => r.offsetParent !== null) ?? null;
 
   // Global keys. "/" or Cmd/Ctrl+K jumps to Search and focuses the box; a
   // digit 1-9 jumps to that nav item (bare, or with Cmd/Ctrl — browsers may
@@ -698,6 +808,24 @@ export async function initNav({ onNavigate, viewIds }) {
   // be typed.
   document.addEventListener("keydown", (e) => {
     if (e.metaKey || e.ctrlKey) rail.classList.add("reveal-keys");
+    if (e.key === "Shift" && !isTypingTarget(document.activeElement) && visibleTabRow()) document.documentElement.classList.add("reveal-tab-keys");
+
+    /**
+     * Shift+digit picks a tab on a page that has them (Prep, Settings), while
+     * bare digits keep jumping through the menu. Not Cmd/Ctrl+digit, which
+     * the plan first said: browsers reserve that for their own tabs, often
+     * before the page sees it (see the digit comment above). Shift+digit is
+     * nobody's. e.code, because Shift turns e.key into "!" and "@".
+     */
+    const tabDigit = /^Digit([1-9])$/.exec(e.code ?? "");
+    if (tabDigit && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && !isTypingTarget(document.activeElement)) {
+      const tab = visibleTabRow()?.querySelectorAll('[role="tab"]')[Number(tabDigit[1]) - 1];
+      if (tab) {
+        e.preventDefault();
+        tab.click();
+        return;
+      }
+    }
 
     // While an overlay is open, trap Tab inside it and let Esc close it;
     // nothing else fires.
@@ -755,11 +883,16 @@ export async function initNav({ onNavigate, viewIds }) {
   // Someone editing the fragment by hand, or following a /#health link while
   // the app is already open. Same validation as on boot.
   window.addEventListener("hashchange", () => {
-    const id = location.hash.slice(1);
-    if (id !== activeId && items.some((i) => i.id === id)) setActive(id);
-    else if (!items.some((i) => i.id === id)) {
-      showModuleOffNotice(id);
-      history.replaceState(null, "", `#${activeId}`);
+    const raw = location.hash.slice(1);
+    const id = resolveScreen(raw);
+    if (id && id !== activeId) setActive(raw);
+    // Already there, by an old or short name (`#health`, `#qr-code`, `#prep`):
+    // write the canonical one, so a bookmark or a crash report names it the
+    // same way every time. A Settings tab link is left for health.js to read.
+    else if (id) history.replaceState(null, "", fragmentForRequest(raw, id));
+    else if (!id) {
+      showModuleOffNotice(namedModule(raw));
+      history.replaceState(null, "", fragmentFor(activeId));
     }
   });
 
@@ -768,9 +901,9 @@ export async function initNav({ onNavigate, viewIds }) {
   applyThemeUI();
   // Stamps the fragment on first paint too, so the URL is shareable without
   // having to click a nav key first.
-  history.replaceState(null, "", `#${activeId}`);
+  history.replaceState(null, "", fragmentForRequest(hashId, activeId));
   onNavigate(activeId);
-  if (hashId && hashId !== activeId) showModuleOffNotice(hashId);
+  if (hashId && !resolveScreen(hashId)) showModuleOffNotice(namedModule(hashId));
   if (shouldAutoOpenWelcome(activeId)) {
     openWelcome();
     markWelcomeShownToday();
@@ -779,7 +912,7 @@ export async function initNav({ onNavigate, viewIds }) {
   // Reflect the image-crop watcher's live state in the nav. Polled (not
   // pushed) — cheap on localhost, and the watcher can start/stop from
   // its own screen or at boot, so the nav needs to notice either way.
-  if (navItemsEl.querySelector('[data-id="image-crop"]')) {
+  if (isPrepTab("image-crop") || navItemsEl.querySelector('[data-id="image-crop"]')) {
     pollImageCropDot();
     setInterval(pollImageCropDot, 8000);
   }

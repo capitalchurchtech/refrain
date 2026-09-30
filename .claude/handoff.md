@@ -2227,7 +2227,88 @@ rename doesn't un-hide it). Hidden macros are gone from Live, not greyed. A
 "Show 12 hidden" link in edit mode brings them back. Same pattern could
 apply to Looks (the seasonal Christmas ones).
 
-## 40. UI audit, 2026-09-27 (six personas, read-only) — the feature-creep pass
+## 40. PLAN — A calmer menu: Prep and Settings pages with tabs (owner decision 2026-09-29)
+
+**Ask (owner):** "the edit features need to be contained in the edit page as sub
+pages or tabs. The number of menu items can be arresting mid service." Then,
+after reviewing four concepts: "A it is", and "another tabbing UI for health,
+but call it settings with tabs".
+
+**Why A (five blind persona reviews, 2026-09-29).** A was ranked first or second
+by all five personas. The alternatives each stopped someone: a Booth/Desk switch
+(C) hid Live behind a mode for four of five. Tools living only on a song (D) left
+new-song Lyrics and Scripture with no path. A launcher (B) cost every tool an
+extra press. The review's amendments are part of the plan, below.
+
+**The menu after this:** Search, Live, Flags, Service | Prep, Settings. Bottom:
+Shortcuts, Phone, Pin. (Theme and Move right move into Settings.)
+
+### 40.1 CRAFT — Groups come from the modules, not from lists in nav.js
+Context: `public/main.js:101` hardcodes `viewIds`, and `nav.js` has
+`NAV_PRIORITY` and `NAV_GROUP`. A contributor's new module folder is enabled but
+never appears until they edit that Set, which breaks CLAUDE.md's "no central
+registries". Do this first; the Prep page depends on it.
+- **Do:** each `modules/*/module.js` declares `nav: { group: "service" | "prep", order }`. The client's views register themselves, so a module appears once its folder and screen exist. Move today's orders and groups into the modules unchanged.
+- **Do not:** change what any screen does, or its hash id.
+- **Done when:** deleting `viewIds`, `NAV_PRIORITY` and `NAV_GROUP` leaves the menu identical, and a test module folder shows up in Prep with no other edit.
+
+### 40.2 CRAFT — The Prep page
+- **Do:** one menu item, Prep. Its page has a row of latching-key tabs, one per enabled prep module in `order`: Spell Check, Lyrics, Scripture, Arrangement, Image Crop, QR Codes, Share Library. Each tab renders that module's existing screen unchanged.
+- **Always opens on the first tab** (review finding 4: "last tab used" made the same press land somewhere different each week). Direct links go to a tab: `#prep/qr-code`, and the old `#spellcheck` etc. still work.
+- **While you're on Prep, the menu lists the prep tools under Prep**, indented, so the names are visible (the prep volunteer's need). They fold away when you leave. Search, Live, Flags and Service never move.
+- **Always show the tab row**, even with one tab (review finding 9: a one-tab shortcut made the page change shape when a second module was turned on).
+- **Dots roll up:** anything a prep module flags on its menu item today (Image Crop's activity dot) shows on Prep, and on the tab.
+- **Do not:** hide or rearrange the menu during a service, or add a mode.
+- **Done when:** the menu shows 6 screens; every prep tool is reachable in two presses from anywhere; the old links land on the right tab; checked in dark, Blackroom and light, at booth width and desk width.
+
+### 40.3 CRAFT — Settings replaces Health, with tabs
+Health's 15 cards become five tabs. The default is fixed, same as Prep.
+- **Status** (default): the status strip, ProPresenter (connection, load warning, slide pictures), Search index, and the Updates summary. This is what "is it working?" needs, and it's what a Health link opens.
+- **Library:** library folders, Share Library, duplicate names, the FS/T not-selected list, Themes, Unused media.
+- **Features:** the module switches and their settings (Arrangement, QR defaults and the rest), ProPresenter host and port, environment variables.
+- **Phones:** the Phones card (the rail's Phone button still opens the Phone panel).
+- **This Mac:** start at login, terminal shortcuts, updates, and display (Theme and menu side, moved here from the menu).
+- `#health` keeps working and opens Settings > Status; each tab has its own link (`#settings/library`).
+- **Do not:** change what any card does, or the Health API routes (`/api/health` stays). The name changes on screen only.
+- **Brief update in the same change:** the fault amber exception is "Health only, enforced by selector". Re-scope that selector to Settings > Status and say so in creative-direction.md.
+- **Done when:** the menu says Settings; every Health card is on one tab; the status strip still shows first; fault amber appears nowhere outside Status.
+
+### 40.4 CRAFT — Number keys follow the new menu
+Context (review finding 3): bare digits 1–9 jump to menu positions (`nav.js:740`). Folding renumbers them.
+- **Do:** 1–6 go to the six menu items. On Prep and Settings, holding ⌘/Ctrl with a digit picks a tab. The Shortcuts panel says so.
+- **Done when:** 1–4 still reach Search, Live, Flags, Service, and every prep tool has a key combination.
+
+### 40.5 CRAFT — Fix a song from where it's shown
+Context (review finding 8, and the tech director's need): Spell Check asks for the
+playlist again, and Arrangement asks for the song again.
+- **Do:** on Flags rows and Service playlist rows, add "Spell check this" and "Arrangement", opening Prep on that tab with that presentation already chosen. Not on Search rows: that's the booth screen, and the buttons would sit beside Go Live (review finding 6).
+- **Done when:** from a flag, fixing and checking a song takes three presses and no re-choosing.
+
+### 40.6 NOTE — Colour, after the menu lands
+Colour by role: blue for the page's one main job, green for ready, orange for live only, plum for structure. It's a brief change (new palette entries and where each may appear). Do it after 40.1–40.5, and send before-and-after screenshots of each main screen, dark and light, for approval before it lands. Not by tool family (review finding 7: green on a "pictures" family read as "ready").
+
+### 40.7 NOTE — QR Codes can't be turned off (decided: leave it)
+`modules/qr-code/module.js` sets `enabledByDefault: true` and there's no switch for it. Owner, 2026-09-29: "QR codes are not tracked right so they are throw away". It stays always on, with no switch.
+
+## 41. PROPOSAL — Search, Service, Prep, Settings: quick slides everywhere (owner idea 2026-09-29, awaiting confirmation)
+
+**Ask (owner):** "search is great. Flags, Live, and Service should be merged into a
+single 'Service' item. Instead of having a live page, the most important item are
+the quick slides like logo, safe announcement slide. Perhaps those can always live
+in the UI just like history, maybe an alert icon for a pulldown?"
+
+**Proposed:**
+- **Menu:** Search, Service, Prep, Settings.
+- **Quick slides on every screen:** a shield key beside the Return bar's history handle opens a pulldown with the safe slides (one press each, same refusal when the slide is gone) and Clear, below a separator. The shield is suggested over an alert icon: safe slides already carry it in Search, and an alert icon reads as "something is wrong". Plum at rest, never orange. The phone's Emergency slide button uses the same list.
+- **Service page, tabbed like Prep and Settings, always opening on the first tab:**
+  - Now: readout with the Now/Next pictures (clicking Next advances), Looks, Macros, Messages, performance mode.
+  - Flags: today's flags, with the 40.5 row actions.
+  - Day: services and their timeline, lock-in, checklist, End.
+- `#live` and `#slide-flags` open the matching tab.
+- 40.6 (colour) waits for this, since it changes the screens.
+
+**Open for the owner:** Clear in the pulldown or only on Service › Now (suggested: in the pulldown); the tab names and order; build now, or queue it.
+## 42. UI audit, 2026-09-27 (six personas, read-only) — the feature-creep pass
 
 Owner: "I feel like the app has drifted into feature creep instead of solving
 operator woes. We have three main uses for ProPresenter. Design mode, Weekend
@@ -2249,8 +2330,8 @@ source or the running app before filing.
 surfaces, BOOTH and DESK, and warns against averaging personas across a new
 axis. Design *is* DESK. Weekend and Special Event are both BOOTH, and differ
 only in whether a plan exists — which is Lock in, which already ships. So the
-work is: promote Lock in (§40a, §40d), and give the installer one desk-set
-switch that decides what the booth ever renders (§40e). No mode selector on
+work is: promote Lock in (§42a, §42d), and give the installer one desk-set
+switch that decides what the booth ever renders (§42e). No mode selector on
 the booth path, ever: the Fluent Regular would pay a press before his first
 press and gain a state he can be in wrongly at 10:29 on a Sunday.
 
@@ -2259,14 +2340,14 @@ hide Search is wrong.
 
 ### Order
 
-§40a first — it is the only finding that makes Search lie during a live
-service. Then §40b/§40c/§40d, which are one editing pass over Live. Then §40e.
-Then the phone pair §40f/§40g. §40h is the cut list and can ride with any of
-them. §40i is filed, not scheduled.
+§42a first — it is the only finding that makes Search lie during a live
+service. Then §42b/§42c/§42d, which are one editing pass over Live. Then §42e.
+Then the phone pair §42f/§42g. §42h is the cut list and can ride with any of
+them. §42i is filed, not scheduled.
 
 ---
 
-### 40a. BLOCKER — performance mode freezes the index, and Search says "No matches"
+### 42a. BLOCKER — performance mode freezes the index, and Search says "No matches"
 
 **Context.** The special-event lead imports a deck from a thumb drive eight
 minutes before doors, searches its title, and gets `No matches`. Performance
@@ -2300,9 +2381,22 @@ the reindex genuinely unable to run, Search says so in the staleness line
 rather than returning a bare "No matches". Exercised against a running
 ProPresenter, not a fake.
 
+**AMENDED 2026-09-30 — the first half of that "Done when" is now wrong, and
+must not be re-specced.** The #11-#13 stability work settled the opposite way,
+for good reasons measured on a real rig: an index run is refused outright
+while performance mode is armed with a known source or content is live
+(`operatorIndexRefusal`), and Refrain's own catch-up waits for an hour with
+nothing on the screens. So a presentation saved during a service is *not*
+findable within seconds, by design, and nothing here should try to make it so.
+What survives is the half that was always the point: Search must not report
+"the index has not read this yet" and "nobody ever wrote that word" with the
+same three words. Built accordingly — the notice states it and offers no
+button, because in every state it can appear the route would refuse a press.
+The remaining "Done when" is that clause alone.
+
 ---
 
-### 40b. BLOCKER — Live's Next preview is a live control dressed as a picture
+### 42b. BLOCKER — Live's Next preview is a live control dressed as a picture
 
 **Context.** `livePreviewHtml` (`public/live.js:55-74`) renders Now as a
 `<figure>` and Next as `<button data-step="next">` — same class, same 16:9
@@ -2316,7 +2410,7 @@ less-supervised surface is the better-guarded one.
 
 The owner is already right that desktop previews are low value with
 ProPresenter on the next monitor; five of six personas said so unprompted.
-Removing them resolves this finding and half of §40c at once.
+Removing them resolves this finding and half of §42c at once.
 
 Do: remove the Now/Next preview pair from the Live screen. Keep the previews
 on the phone, where they are the whole point. If an advance key is wanted on
@@ -2327,19 +2421,19 @@ thumbnail cache; the phone depends on both. Do not touch the live readout
 above it, which is the one thing the Fluent Regular glances at.
 Done when: Live has no clickable slide image; nothing on Live can put a slide
 on the screens in a single unguarded click; and the phone's Now/Next still
-render (see §40f, which must land for that to be true for an unapproved
+render (see §42f, which must land for that to be true for an unapproved
 phone).
 
 ---
 
-### 40c. CRAFT — Clear moves between one Sunday and the next
+### 42c. CRAFT — Clear moves between one Sunday and the next
 
 **Context.** The Fluent Regular needs to kill what is on the screens from
 Search, where he always sits, docked at ~455px. Search has no clear of any
 kind, so it is a rail press, a visual scan, arm, fire, and a press back. The
 scan is the expensive part, because five conditional panels sit above the
-Clear bank: the readout, the preview pair (§40b), the performance-mode card
-(§40d, a three-line body at docked width), Safe slides (`grid-cols-2` at that
+Clear bank: the readout, the preview pair (§42b), the performance-mode card
+(§42d, a three-line body at docked width), Safe slides (`grid-cols-2` at that
 width, so zero to three rows depending on how many the church saved), and an
 offline banner that wraps to three lines. The keys land at a different height
 each week. Muscle memory is the only thing that works in the three seconds
@@ -2371,7 +2465,7 @@ width — measured with `offsetHeight`, not `getBoundingClientRect()`.
 
 ---
 
-### 40d. CRAFT — one machine state, three labels, two screens
+### 42d. CRAFT — one machine state, three labels, two screens
 
 **Context.** Performance mode is offered as "Turn on"/"Turn off" and "Lock in"
 on Live (`public/live.js:227-253`), and as "Lock in for an event" with a name
@@ -2393,7 +2487,7 @@ Do: reduce automatic performance mode to a lamp in the status cluster, which
 already exists and already carries PERF. Promote Lock in to a single named
 control with one label wherever it appears, reachable without opening the
 Service screen, and make it state plainly what it suspends — including the
-index (§40a).
+index (§42a).
 Do not: keep a second Lock in on Service as well as the promoted one. Do not
 invent a fourth word for it. Do not remove the manual arm/disarm entirely; the
 operator holding it by hand is a real case (`server/index.js:1696`, `:1712`).
@@ -2403,7 +2497,7 @@ readable from the rail on every screen.
 
 ---
 
-### 40e. CRAFT — twelve destinations, eight with no off switch anywhere
+### 42e. CRAFT — twelve destinations, eight with no off switch anywhere
 
 **Context.** The installer sets this up for a church that is not his, on a
 Saturday, and is not there on Sunday. He wants to hand the volunteers Search,
@@ -2435,7 +2529,7 @@ auto-discovery architecture: this is a config-driven filter in
 Do not: put the switch on the booth path or in the rail. Do not let it hide
 Search (CLAUDE.md invariant 1). Do not make it a seventh place to turn things
 on — it has to subsume the per-screen toggles and the hand-edited
-`serviceModule.enabled`, not sit above them, or §40i's fourth item gets worse.
+`serviceModule.enabled`, not sit above them, or §42i's fourth item gets worse.
 Do not add a mode *name* to config; this is "what this booth shows", not
 "which of three modes am I in".
 Done when: a fresh install can be handed over showing Search, Live, Flags and
@@ -2444,7 +2538,7 @@ no horizontal overflow.
 
 ---
 
-### 40f. BLOCKER — the phone's previews are gated behind booth approval
+### 42f. BLOCKER — the phone's previews are gated behind booth approval
 
 **Context.** The roaming director wants to see what is on the screens from the
 back of the room. The Now/Next panes are nested inside `#control`
@@ -2468,7 +2562,7 @@ still cannot reach Next, Previous or the safe slides.
 
 ---
 
-### 40g. BLOCKER — the phone needs the booth, for the case where the booth is empty
+### 42g. BLOCKER — the phone needs the booth, for the case where the booth is empty
 
 **Context.** The roaming director is advancing slides because nobody is in the
 booth. Control is granted per device, only from the booth's Phone panel, and a
@@ -2495,7 +2589,7 @@ everyone out and rotates the PIN.
 
 ---
 
-### 40h. CRAFT — the cut list
+### 42h. CRAFT — the cut list
 
 **Context.** The owner's read on Macros, Looks and desktop previews is
 confirmed, with a mechanism rather than a preference. Every label on a Look or
@@ -2515,8 +2609,8 @@ Do, in one pass:
   from §39f, which is the right idea at the wrong grain.
 - Remove Scripture as its own rail destination. It is the Lyrics
   paste-and-split block with a different link builder on top, and it is the
-  buggier of the two copies (§40i, first item). Fold passage lookup into
-  Lyrics, or drop it behind §40e's switch.
+  buggier of the two copies (§42i, first item). Fold passage lookup into
+  Lyrics, or drop it behind §42e's switch.
 - Cut the Image Crop "add common size" list to about four entries. YouTube
   thumbnail, Pinterest, LinkedIn and X header are a social-media tool that
   wandered into a booth.
@@ -2527,7 +2621,7 @@ destination shorter; Image Crop's size list fits without scrolling.
 
 ---
 
-### 40i. Filed, not scheduled
+### 42i. Filed, not scheduled
 
 Real, verified, and deliberately not in this pass. Do not work these without
 the owner saying so.
@@ -3173,5 +3267,32 @@ Widths were measured with the viewport emulated at 350px and 430px.
 - 2026-09-27 — Second stress test, same load as the first: Refrain held again (status route worst 61–74ms across phases, no errors or timeouts, memory levelling at ~200 MB). The new per-phone picture limit returned 429 to the test's unrealistic tray loop (it re-downloads every picture every 4s); a real phone keeps its pictures.
 - 2026-09-27 — Code review (high) of the phone-stability branch: 10 findings, all fixed. (1) A first build stopped or checkpointed part-way (no builtAt) now resumes instead of re-reading everything: `planIncremental` builds on a `partial` index. (2) Stored pictures older than 20h count as missing, and the next write starts the set again, so a theme edit can't leave old pictures up for good. (3) Every performance-mode change (manual, lock-in start/release/restore) goes through `setPerformance`, so the quiet timers see it. (4) A catch-up that didn't finish waits 3h before trying again. (5) Writes to the picture store are serialized per presentation (the shared meta.json temp file and the version clear-out raced). (6) The picture store is pruned hourly whether or not pre-rendering is on. (7) Stored pictures are read before the 2-at-once render queue, not inside it. (8) ProPresenter call timing covers the whole body, so slow or timed-out streams are logged. (9) The catch-up no longer depends on `autoReindex` (the file watcher), matching the old boot behaviour for stale and old-schema indexes. (10) The FS/T report answers from the index (it now records ProPresenter's selected arrangement on every read) and reads at most 40 unknown ones per press, never in performance mode, while live, in a service window, or during an index run. 547 tests pass; lint is clean on the repo's own code (a `.claude/worktrees/` copy made by another session trips the root lint run). Checked live: a picture 37ms fresh, <1ms cached, ~4KB at 240px; a ProPresenter stall showed up in the log as 8s timeouts.
 - 2026-09-27 — v0.23.0 released (tag and release page): the phone companion plus the stability work for #11, #12 and #13. The notes ask churches to restart ProPresenter after updating. Not deployed to the booth yet: update between services, then restart ProPresenter.
-- 2026-09-27 — (branch claude/ui-audit-feature-creep) §40a built, **half of it deliberately not built**. The watcher now remembers that a `.pro` file changed while performance mode was holding (`unreadFileEvent` in `startLibraryWatch`, set from the fs.watch handler, reported as `pending.changedWhileFrozen`, cleared on a reindex or on a check that finds nothing changed). `deferredStaleness()` turns that into the staleness notice Search already renders — "A presentation changed since this index." — beside the Refresh button that already exists, which calls `/api/index/reindex-changed` and is `operatorInitiated`, so it is already allowed to run while performance mode is armed. Staleness order is now deferred → lock-in → age. **Departure from the written item, on purpose:** it says to let a changed-file reindex run in the background under performance mode. It must not. An incremental reindex still reads each changed presentation *through ProPresenter's API*; only the fingerprinting is `stat()`. Running that unattended while something is on the screens is precisely what performance mode exists to stop, and the watcher's "does not even check" comment and its test are a deliberate promise. Surfacing the state and letting the operator press Refresh solves the same stall (Search stops answering "No matches" indistinguishably from a word nobody wrote) without touching the invariant. **Not covered:** the cold case of no index at all under performance mode. Search still says only "Not built yet"; that is true, and a first build belongs on Health where the hour-long-crawl warning is. **Verification:** four new tests in `test/library-watch.test.js` (a save while frozen is reported with still zero API calls; nothing is reported when nothing was saved, so the notice stays quiet through a normal service; the flag clears when the reindex runs; and when a check finds nothing changed). Rendering was confirmed on the real Search screen at full width and at 380px docked by temporarily forcing the condition, since this machine has no ProPresenter and no index — the end-to-end path (edit a presentation during a live service, see the notice, press Refresh, find the deck) has NOT been run against a live rig and should be, once. Copy was cut from "A presentation changed while performance mode was on." after seeing it wrap to six lines and push the search box down at docked width. **Pre-existing, not from this change:** `test/crash-report.test.js:166` fails in a git worktree — `readGitHead(".git")` assumes a directory, and in a worktree `.git` is a file containing `gitdir: …`, so Refrain reports no commit when run from one. 534/535 otherwise. **Spotted in passing, not fixed:** `refreshStatus()` in `public/search.js` has no catch, so a status fetch that fails (a `node --watch` restart returning 502 was enough) leaves the index chip and the staleness line blank until the next reload, with nothing retrying.
-- 2026-09-27 — (branch claude/ui-audit-feature-creep) Code review of §40a, four findings, three fixed and one recorded as a known gap. (1) The frozen branch had reused the watcher's `pending` field with a different shape, which Health renders as `${pending.count} presentations have changed` — so an armed performance mode plus any .pro change printed "**undefined** presentations have changed", and overwrote a real `tooMany`/`needsFullRebuild` pending, losing the full-rebuild warning in the Library Sync case (ProPresenter closed, so performance mode armed, hundreds of files landing). The signal now has its own field, `unreadChanges`, and the frozen branch carries `pending` forward untouched. (2) `unreadFileEvent` was cleared unconditionally after a reindex, including for saves that landed *while* it ran — and the debounced check for such a save is dropped outright if one is still running, so the miss would have survived to the 30-minute safety net or past the moment performance mode arms, which is the exact silent failure §40a exists to remove. Replaced with a sequence pair (`fileEventSeq` bumped by the fs handler, `readEventSeq` set only to the value captured before `deps.plan()`), so each check marks off only the events it actually saw. (3) `frozen()` is also true when ProPresenter is merely unreachable, so the notice could appear with a Refresh button that can only 502 — reindexing reads through the API that is not there. Now gated on `liveState.connected`, so the Library-Sync-with-ProPresenter-closed case says nothing and leaves the link to the readout and the LINK lamp. (4) NOT fixed, and written into the function's comment instead: with `autoReindex: false` there is no watcher, so nothing local knows a file changed and this protection cannot fire at all — for exactly the churches whose index drifts furthest. Closing it needs a signal from somewhere other than the watcher that setting deliberately turns off, which is a bigger decision than this pass. Two more tests (a save landing mid-reindex is still unread afterwards; performance mode does not overwrite what the last real check found). Lint clean, 536/537, the one failure still the pre-existing worktree `.git` case.
+- 2026-09-29 — Section 40 written (planning): a calmer menu, with Prep and Settings as tabbed pages (concept A plus the review's amendments), after five blind persona reviews of four concepts. Not started.
+- 2026-09-29 — (branch menu-prep-settings) 40.1 done: each module.js declares `nav: { group, order }` and `client: { file, init }`; /api/modules passes them on (checked by `moduleNav`/`moduleClient` in plugin-loader.js: a plain file in public/ only). main.js loads each screen script from that list and creates its container; `viewIds`, `NAV_PRIORITY` and `NAV_GROUP` are gone, as are the empty view sections in index.html. CONTRIBUTING's module example shows the two fields. Menu verified identical in the browser (same order, groups and digits) and every screen renders. Test: every shipped module declares valid fields and its script exists. 549 pass.
+- 2026-09-29 — (branch menu-prep-settings) 40.2 done: the menu is Search, Live, Flags, Service | Desk: Prep, Health. Prep is one menu key; its page has a row of butted latching keys (`.rf-tabs`/`.rf-tab` in refrain.css, material dark-only, the selected tab's plum underline in both themes, 44px). It always opens on the first tab. `#prep/<id>` links to a tab, and the old `#spellcheck` etc. still land there. While you're on Prep, the expanded menu lists its tools (hidden when collapsed, where there are no names to show). The Image Crop dot shows on Prep, the tool and its tab. Digits follow the new menu (5 = Prep, 6 = Health). Verified in the browser at desk width, 375px and light theme. Found and fixed on the way: collapsed, the sub-items laid out side by side as a grid of icons.
+- 2026-09-29 — (branch menu-prep-settings) 40.3 done: Health is Settings (menu label and icon; the screen is still `health` inside, so `#view-health` and its scoped CSS are unchanged). The cards are on five tabs: Status (status strip, ProPresenter, search index), Library (library folders, Share Library, duplicate names, FS/T not selected, themes, unused media), Features (options, the Arrangement module, .env), Phones, and This Mac (a new Display card for Theme and menu side, start at login, updates, terminal shortcuts). It always opens on Status. `#settings/<tab>` links work, including from another screen, and every old `#health` link opens Status. Theme and Move right left the menu; the keys are hidden, not removed, since the menu's code runs them. User-facing "Health" copy now says Settings (client, server messages, the pre-service check). Brief updated: the fault-amber exception covers all of Settings (not only Status, which the plan said: on the other tabs DaisyUI's saturated error red would return), still scoped by `#view-health`. Found and fixed on the way (pre-existing): the Options card's Arrangement tracking section had a stray `</div>`, so the browser closed its `<details>` and card early. Invisible on the old single page; on tabs it pushed the Arrangement and .env cards out of the Features tab onto every tab. Verified in the browser: tabs, direct links, the Display card (restored to System / left afterwards).
+- 2026-09-29 — (branch menu-prep-settings) Code review (high) of 40.1–40.3: 10 findings, all fixed. (1) A `#prep/<tool>` link for a tool that's off shows the off notice instead of quietly opening Spell Check. (2) **Core search no longer waits on /api/modules** (CLAUDE.md rule 1): Search, the Return bar, the phone panel and the status cluster start first. The module list has an 8s timeout and a shape check, and Search keeps its menu entry if the list is empty or fails. Checked by emptying `modules/`: the menu showed Search and Settings, and "grace" found 81 results. (3) Theme and Move right keys moved out of `#nav-rail` (the sliver's peek/:focus-within rules at 2,2,0 beat the hidden class and brought them back). (4) A module whose init is missing or throws gets no menu entry, with a console error saying why. (5) The off notice links to the Settings tab holding the module's switch (`settingsTab` in module.js; Share Library → Library). (6) Old or short fragments are rewritten to the canonical one while you're on that screen. (7) The Prep tab row sits directly above the tool it selects, not above the Return bar. (8) Updates moved to Status, where the update dot on the Settings key leads. (9) Menu defaults live only on the server (`moduleNav`); one sort. (10) Both tab rows follow the tab pattern (public/tabs.js): one Tab stop, arrow keys, Home/End, `aria-controls`, `role="tabpanel"`. 550 pass.
+- 2026-09-29 — v0.24.0 released (tag and release page): 40.1–40.3 plus the review fixes (merged menu-prep-settings to main). Not deployed. Remaining in section 40: 40.4 (⌘/Ctrl-digit tab keys and the Shortcuts panel), 40.5 (fix a song from Flags and Service rows), 40.6 (colour by role, screenshots first).
+- 2026-09-29 — v0.24.0 deployed to /Users/Shared/Refrain (this Mac, not the booth; owner: "update here"). Health 0.24.0, ProPresenter connected. On restart the stale index was deferred to the quiet catch-up rather than crawled, as intended.
+- 2026-09-29 — (branch menu-keys-and-fixes) 40.4 done, one change from the plan: tabs are picked with **Shift+1–9**, not ⌘/Ctrl+digit, because browsers reserve ⌘/Ctrl+digit for their own tabs, often before the page sees it (nav.js already said so for the menu). Bare 1–6 still go through the menu. Holding Shift shows each tab's number (`.tab-key`, `html.reveal-tab-keys` in refrain.css), not while typing. The Shortcuts panel says so. Verified: Shift+3 on Prep → Scripture, Shift+2 on Settings → Library, ignored in the search box and on pages without tabs.
+- 2026-09-29 — (branch menu-keys-and-fixes) 40.5 done: Flags (on each song's group heading) and Service rows (on each timeline row) show "Spell check this" and "Arrangement" for whichever of those tools is on (public/open-with.js; the menu tells it which). Spell Check then checks just that song, with no playlist to choose (`/api/spellcheck/scan` takes a `presentationId`; performance mode still refuses it). Arrangement opens that song's comparison, or says it has no history yet. Timeline rows now carry `presentationId`. Not on Search rows, which are the booth screen next to Go Live. Verified from Flags in the browser; Service rows are covered by a test, since nothing went live on the dev Mac today. 551 pass.
+- 2026-09-29 — Section 41 written: owner proposal to merge Flags, Live and Service and make the quick slides a pulldown on every screen. Awaiting confirmation. 40.6 screenshots stopped (headless Chrome hung on the polling pages; the screens are about to change anyway).
+- 2026-09-29 — (branch menu-keys-and-fixes) Settings gets Prep's menu sub-list (owner: "why not the accordion like Prep for Settings?"). While you're on Settings the expanded menu lists Status, Library, Features, Phones and This Mac, with the current tab latched and kept in step with the page. One tab list now serves both, in public/settings-tabs.js. Section 41's Service tabs should get the same.
+- 2026-09-29 — (branch menu-keys-and-fixes) Link banner removed (owner: "the sidebar dot performs the same function"). With no link, the readout on Search and Live hides instead of showing "NO LINK · Lost ProPresenter. Retrying.", and Search's "Looking at host:port…" line is gone. The LINK lamp in the menu is the one signal; where Refrain is looking, and the fix, is on Settings > Status. Search also stopped calling /api/propresenter/status on every refresh (one ProPresenter call fewer). 551 pass.
+- 2026-09-29 — Pushed 6592026 to main (tab keys, fix-from-row buttons, Settings sub-list, no link banner) and updated this Mac's install (/Users/Shared/Refrain, owner: "update my install"). Still v0.24.0, no release. Health answers; ProPresenter wasn't running here at the time.
+- 2026-09-29 — (branch remove-share-library-ui) **Share Library removed** (owner: "it's a dangerous feature"). It wrote presentation files into ProPresenter's library folder, the only write to ProPresenter's data Refrain ever made, and could run on its own while ProPresenter was closed. Removed: `modules/library-sync/` (so the Prep tab is gone), `public/library-sync.js`, the Settings › Library card and its save wiring, its line in the Modules status tile, and its freshness test. `SHARE_LIBRARY_REMOVED` in server/index.js keeps it from running whatever config.json says: /api/library-sync/{status,run,config} answer 410, the auto-run poller never starts, Health no longer reports it. `server/library-sync.js` and its tests stay, unused, so the decision can be revisited or finished by deleting them. README says it's removed. Checked: off in both configs here (nothing was running); 540 pass. (Test count fell because the card's display test went with it.)
+- 2026-09-30 — Share Library removal pushed (fb39e14) and this Mac's install updated (/Users/Shared/Refrain): module folder gone, /api/library-sync/status answers 410, Health no longer reports it. Still v0.24.0, no release.
+- 2026-09-30 — (branch copy-pass, uncommitted) "Don't make me think" copy pass (owner request), five agents on disjoint files, then reviewed. About 280 user-visible strings: filler cut (how-it-works explanations, restated labels, reassurance), jargon replaced (index/anchor/watcher/logger/reader/quiet zone/sliver → the room's words), em dashes removed from visible text, headings and buttons put in sentence case, and errors made "what happened. Next step." Safety lines kept short: nothing goes to the screens, restart ProPresenter after a big run, never rebuild near a service, the phone's second tap. Fixes found on the way: the phone's confirm banner said "put this up" for Show in editor (which puts nothing up); Settings' missing-folder alert pointed at a "Configuration" section that doesn't exist; a performance-mode sentence ran on with no period; setup told installers to "check the server logs" instead of Settings. One cut restored in review: End says it compares the songs with the plan and doesn't change it. Left for the owner: the menu group heading "Service" sits over an item also called Service (section 41 would resolve it). 540 pass, lint clean, every screen and tab renders with no errors.
+- 2026-09-30 — Pushed 163f427 (copy pass, and Blackroom as the default theme when none is saved) and updated this Mac's install; it already had Blackroom saved.
+- 2026-09-30 — (branch page-headings, uncommitted) Owner: "I like that the h1 on settings is above the sub menu, do the same for prep. Make an H2 for the subpages. Drop the sidebar accordion, feels really messy." Prep now shows its own h1 ("Prep") above the tab row (#prep-head holds both, directly above the tool); each Prep tool's title is an h2, and each Settings tab opens with an h2 naming it. The h2 uses a new named treatment, `.rf-page-sub`: the page title's face at a smaller size, no blanket h2 rule. The menu sub-lists for Prep and Settings are removed, with their CSS and the settings-tab event. Verified in the browser; 540 pass.
+- 2026-09-30 — (branch page-headings, uncommitted) Settings reorganised (owner): tabs are Status, Search, Audit, Features, Phones, This Mac. **Search** (was Library; `#settings/library` still lands there) opens with "Libraries to search", now an open card instead of the folded "Library folders". It has a one-line summary ("Searching 2 of 13 libraries (Messages, Songs): 445 presentations.") and each library shows how many of its presentations are in search, counted from the index, so it still shows when ProPresenter isn't answering. The Search index card moved here from Status. **Audit** has duplicate names, FS/T not selected, Themes and Unused media.
+- 2026-09-30 — (same branch) .env editable from Settings > Features (owner): "Secrets (.env)" is now the last accordion in the Options card. Every setting in .env.example gets a field, plus any extra key in the file; values are masked until "Show values", and only changed fields are sent. server/env-file.js keeps comments, order and untouched lines exactly; values are quoted so dotenv reads them back exactly (tested against dotenv); names must be UPPER_SNAKE; line breaks and mixed quote kinds are refused. Writes are temp-then-rename and 0600, with the previous file kept as .env.previous (gitignored with .env.tmp). The status says to restart Refrain, since .env is read at startup. GET/POST /api/env are on the main app only (the phone listener has no route). Checked by saving a placeholder SMTP_FROM on the dev .env: only that line changed, and the original was restored after. 545 pass.
+- 2026-09-30 — Pushed 8570d1b (Settings Search/Audit tabs, page headings, editable .env) and updated this Mac's install. Install checks: ProPresenter connected; its Search tab reports every library (972 presentations across 13); its .env lists 14 settings, none set.
+- 2026-09-30 — (branch heading-sweep, uncommitted) Card headings (owner: "the '| Check a playlist' headers feel like buttons; I prefer headings like 'Performance mode' on Live"). `.card-title` now takes Live's `.rf-subhead` silkscreen: 9px mono, spaced capitals, muted, no plum, no glowing edge (the ::before rule is gone), no underline. One CSS rule, so all 26 card headings across Prep and Settings change and no new card can bring the old look back. Brief updated: the heading's vertical rule is no longer a lit edge, and "a heading labels; it is never pressed". Settings' Audit tab moved to the end (owner: least important): Status, Search, Features, Phones, This Mac, Audit. 545 pass.
+- 2026-09-30 — Pushed 87ccf04 (card headings as labels, Audit last) and updated this Mac's install; ProPresenter connected.
+- 2026-09-30 — (branch prep-order, uncommitted) Prep tab order (owner): Lyrics, Spell Check, QR Codes, Image Crop, Scripture, then Arrangement (not in the owner's list, so last). Scripture is late because most churches use the Bible versions they bought inside ProPresenter. Set in each module.js `nav.order`. Prep opens on Lyrics now. 545 pass.
+- 2026-09-30 — (branch prep-order, uncommitted) "This Mac" becomes **Customize** (owner: build all six suggestions); `#settings/this-mac` still opens it. Display: Theme is four latched keys with swatches (System, Light, Dark, Blackroom) instead of a button that cycled; Menu side Left | Right; Menu Labels | Icons (was only on the collapse key). All three run through nav.js's new `display` object, so the menu stays the one owner of those settings. Keys marked `aria-checked` use `.rf-tab`'s latched look (refrain.css). "Open in its own window" sits under Display. A Welcome card has "Show the welcome card". Start at login says "Only on a Mac for now…" where it isn't supported, instead of vanishing. The update command moved to Status beside Updates ("Update by hand"), and the Terminal shortcuts card is gone; the update-nudge error now points to Settings > Status. Verified every control in the browser, then restored the dev settings. 545 pass.
+- 2026-09-30 — Pushed 3738ec0 (Prep order; This Mac → Customize) and updated this Mac's install.
+- 2026-09-27 — (branch claude/ui-audit-feature-creep) §42a built, **half of it deliberately not built**. The watcher now remembers that a `.pro` file changed while performance mode was holding (`unreadFileEvent` in `startLibraryWatch`, set from the fs.watch handler, reported as `pending.changedWhileFrozen`, cleared on a reindex or on a check that finds nothing changed). `deferredStaleness()` turns that into the staleness notice Search already renders — "A presentation changed since this index." — beside the Refresh button that already exists, which calls `/api/index/reindex-changed` and is `operatorInitiated`, so it is already allowed to run while performance mode is armed. Staleness order is now deferred → lock-in → age. **Departure from the written item, on purpose:** it says to let a changed-file reindex run in the background under performance mode. It must not. An incremental reindex still reads each changed presentation *through ProPresenter's API*; only the fingerprinting is `stat()`. Running that unattended while something is on the screens is precisely what performance mode exists to stop, and the watcher's "does not even check" comment and its test are a deliberate promise. Surfacing the state and letting the operator press Refresh solves the same stall (Search stops answering "No matches" indistinguishably from a word nobody wrote) without touching the invariant. **Not covered:** the cold case of no index at all under performance mode. Search still says only "Not built yet"; that is true, and a first build belongs on Health where the hour-long-crawl warning is. **Verification:** four new tests in `test/library-watch.test.js` (a save while frozen is reported with still zero API calls; nothing is reported when nothing was saved, so the notice stays quiet through a normal service; the flag clears when the reindex runs; and when a check finds nothing changed). Rendering was confirmed on the real Search screen at full width and at 380px docked by temporarily forcing the condition, since this machine has no ProPresenter and no index — the end-to-end path (edit a presentation during a live service, see the notice, press Refresh, find the deck) has NOT been run against a live rig and should be, once. Copy was cut from "A presentation changed while performance mode was on." after seeing it wrap to six lines and push the search box down at docked width. **Pre-existing, not from this change:** `test/crash-report.test.js:166` fails in a git worktree — `readGitHead(".git")` assumes a directory, and in a worktree `.git` is a file containing `gitdir: …`, so Refrain reports no commit when run from one. 534/535 otherwise. **Spotted in passing, not fixed:** `refreshStatus()` in `public/search.js` has no catch, so a status fetch that fails (a `node --watch` restart returning 502 was enough) leaves the index chip and the staleness line blank until the next reload, with nothing retrying.
+- 2026-09-27 — (branch claude/ui-audit-feature-creep) Code review of §42a, four findings, three fixed and one recorded as a known gap. (1) The frozen branch had reused the watcher's `pending` field with a different shape, which Health renders as `${pending.count} presentations have changed` — so an armed performance mode plus any .pro change printed "**undefined** presentations have changed", and overwrote a real `tooMany`/`needsFullRebuild` pending, losing the full-rebuild warning in the Library Sync case (ProPresenter closed, so performance mode armed, hundreds of files landing). The signal now has its own field, `unreadChanges`, and the frozen branch carries `pending` forward untouched. (2) `unreadFileEvent` was cleared unconditionally after a reindex, including for saves that landed *while* it ran — and the debounced check for such a save is dropped outright if one is still running, so the miss would have survived to the 30-minute safety net or past the moment performance mode arms, which is the exact silent failure §42a exists to remove. Replaced with a sequence pair (`fileEventSeq` bumped by the fs handler, `readEventSeq` set only to the value captured before `deps.plan()`), so each check marks off only the events it actually saw. (3) `frozen()` is also true when ProPresenter is merely unreachable, so the notice could appear with a Refresh button that can only 502 — reindexing reads through the API that is not there. Now gated on `liveState.connected`, so the Library-Sync-with-ProPresenter-closed case says nothing and leaves the link to the readout and the LINK lamp. (4) NOT fixed, and written into the function's comment instead: with `autoReindex: false` there is no watcher, so nothing local knows a file changed and this protection cannot fire at all — for exactly the churches whose index drifts furthest. Closing it needs a signal from somewhere other than the watcher that setting deliberately turns off, which is a bigger decision than this pass. Two more tests (a save landing mid-reindex is still unread afterwards; performance mode does not overwrite what the last real check found). Lint clean, 536/537, the one failure still the pre-existing worktree `.git` case.
+- 2026-09-30 — (branch claude/ui-audit-feature-creep) Merged main (v0.24.0) and reconciled §42a with it. The audit section renumbered 40 → **42**: main took 40 for the Prep/Settings tabs plan and 41 for the quick-slides proposal while this branch was out, and main's 40 is the one the shipped commits cite. **§42a still closes a gap main left open:** Search's staleness line is still `lockinStaleness() ?? indexStaleness()`, i.e. a lock-in over 24h or an index over a week, and `indexWorkDeferred` is still rendered only in Settings — so a deck saved or imported minutes ago still comes back as a bare "No matches" (`search.js:306`) with nothing separating it from a word nobody wrote. **What main changed, and what that cost §42a:** `operatorIndexRefusal()` now refuses a reindex whenever performance mode is armed with a known source or something is live, so the Refresh this notice was built around 409s in *every* state the notice can appear (connected implies the source is not "unknown"). Search does surface that 409's text now (`search.js:146`), so it was never silent — but it cost a press to read a sentence the server already had. Reconciled: the sync half of the refusal is split out as `indexRunHeldReason()` (one source of truth, used by both the route and the notice), `deferredStaleness()` returns `held: true`, and `renderStaleness` omits the Refresh when a notice is held. The notice reads "A presentation changed since this index. It catches up when the screens are quiet." — true for every held reason, since all of them end when the screens go quiet. Deliberately *not* the route's own sentence, which runs to three lines beside the index chip at docked width. Verified by forcing the condition: one 20px line at full width, three lines (60px) at 380px, no button, no horizontal overflow. Lint clean, 550/551 — still only the pre-existing worktree `.git` failure. Still unrun on a live rig: save a deck during a service, see the notice, watch the catch-up pick it up when the screens go quiet.

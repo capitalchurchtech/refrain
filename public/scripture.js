@@ -45,7 +45,7 @@ export function initScripture() {
 
     container.innerHTML = `
       <div class="flex flex-col gap-4 max-w-3xl">
-        <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="book-open" class="w-5 h-5"></i> Scripture</h1>
+        <h2 class="rf-page-sub">Scripture</h2>
 
         <!-- E1. Looking the passage up is the errand; the collar used to sit on
              Bible Gateway, which leaves the app. The two-sentence lede went
@@ -80,7 +80,6 @@ export function initScripture() {
             </div>
 
             <p id="scripture-blb-note" class="text-xs opacity-60"></p>
-            <p class="text-xs opacity-60">Read or copy from the page that opens.</p>
           </div>
         </div>
 
@@ -99,7 +98,7 @@ export function initScripture() {
                   ${splitters.map((s) => `<option value="${escapeHtml(s.id)}" ${s.id === defaultSplitterId ? "selected" : ""}>${escapeHtml(splitterLabel(s))}</option>`).join("")}
                 </select>
               </div>
-              <button id="scripture-preview-btn" class="btn btn-brand btn-sm">Preview Slides</button>
+              <button id="scripture-preview-btn" class="btn btn-brand btn-sm">Preview slides</button>
             </div>
             <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
               <button id="scripture-clean-btn" class="btn btn-chip" title="${CLEAN_PASTE_HINT}">
@@ -148,8 +147,8 @@ export function initScripture() {
       const v = selectedVersion();
       const t = v.blb ?? blueletterTranslation ?? "KJV";
       blbNote.textContent = v.blb
-        ? `Blue Letter Bible opens ${v.code} with interlinear and Strong's for word studies.`
-        : `Blue Letter Bible doesn't carry ${v.code}, so it opens ${t} instead (best for Hebrew/Greek study).`;
+        ? `Blue Letter Bible opens ${v.code}, with interlinear and Strong's.`
+        : `Blue Letter Bible doesn't carry ${v.code}, so it opens ${t} instead.`;
     }
     versionEl.addEventListener("change", updateBlbNote);
     updateBlbNote();

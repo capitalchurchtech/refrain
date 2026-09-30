@@ -84,13 +84,12 @@ export function initQrCode() {
     }
     container.innerHTML = `
       <div class="flex flex-col gap-4 max-w-3xl">
-        <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="qr-code" class="w-5 h-5"></i> QR Codes</h1>
+        <h2 class="rf-page-sub">QR Codes</h2>
 
         <!-- One line, and it is the one fact that changes a decision: no
              shortener means the code cannot expire or start charging. -->
         <p class="text-sm opacity-70">
-          Generated on this machine, encoding your content directly. No third-party shortener that could
-          expire the code or start charging later.
+          Made on this computer with no link shortener, so a code never expires or starts charging.
         </p>
 
         <div class="flex flex-col lg:flex-row gap-4">
@@ -114,7 +113,7 @@ export function initQrCode() {
                     <input type="number" id="qr-size" min="64" max="2000" step="1" class="input input-bordered" value="${state.size}" />
                   </div>
                   <div class="rf-field" style="flex: 0 0 5.5rem">
-                    <label for="qr-margin">Quiet zone</label>
+                    <label for="qr-margin">Margin</label>
                     <input type="number" id="qr-margin" min="0" max="20" step="1" class="input input-bordered" value="${state.margin}" />
                   </div>
                   <div class="rf-field" style="flex: 0 0 6.5rem">
@@ -129,7 +128,7 @@ export function initQrCode() {
                   <label class="flex items-center gap-2 text-xs">Background <input type="color" id="qr-light" value="${state.light}" class="w-8 h-6 rounded" /></label>
                 </div>
                 <div class="rf-field">
-                  <label for="qr-logo">Center logo, PNG only ${infoIcon("Adds your logo to the middle. Error correction is bumped to H automatically so it still scans.")}</label>
+                  <label for="qr-logo">Center logo, PNG only ${infoIcon("Correction switches to H so the code still scans.")}</label>
                   <div class="flex items-center gap-2">
                     <input type="file" id="qr-logo" accept="image/*" class="file-input file-input-bordered file-input-xs flex-1" />
                     <button type="button" id="qr-logo-clear" class="btn btn-chip ${state.logoDataUrl ? "" : "hidden"}">Clear</button>
@@ -154,7 +153,7 @@ export function initQrCode() {
               <button id="qr-download-svg" class="btn btn-outline btn-sm flex-1" title="Fill in the fields above first" disabled><i data-lucide="download" class="w-4 h-4"></i> SVG</button>
             </div>
             <div id="qr-download-reason" class="rf-hint text-center">Fill in the fields above first.</div>
-            <div class="text-xs opacity-50 text-center">SVG is best for print (scales with no blur). Logos apply to PNG only.</div>
+            <div class="text-xs opacity-50 text-center">SVG is best for print.</div>
             </div>
           </div>
         </div>
@@ -400,7 +399,7 @@ export function initQrCode() {
       errEl.classList.remove("hidden");
       // The error branch used to disable both and say nothing, so a failed
       // generate looked the same as an empty form.
-      setDownloadReason("That code couldn't be generated, so there is nothing to download yet.");
+      setDownloadReason("Nothing to download. Fix the error above.");
     }
   }
 
@@ -422,7 +421,7 @@ export function initQrCode() {
       body: JSON.stringify(body),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Failed to generate QR code.");
+    if (!res.ok) throw new Error(data.error || "Couldn't make the QR code. Try again.");
     return data;
   }
 
@@ -537,7 +536,7 @@ export function initQrCode() {
         <h2 class="rf-subhead" style="margin-bottom:0">Recent codes</h2>
         <button id="qr-recent-clear" class="btn btn-chip">Clear</button>
       </div>
-      <div class="text-xs opacity-60 mb-2">Your last ${entries.length} downloaded ${entries.length === 1 ? "code" : "codes"}. Click one to restore its settings.</div>
+      <div class="text-xs opacity-60 mb-2">Click one to load its settings again.</div>
       <div class="flex flex-wrap gap-2">
         ${entries
           .map(
@@ -590,7 +589,7 @@ export function initQrCode() {
     if (!entry.logoDataUrl && entry.logoOmitted) {
       const errEl = document.getElementById("qr-error");
       if (errEl) {
-        errEl.textContent = "Settings restored. Re-add the logo (it was too large to keep in history).";
+        errEl.textContent = "Settings restored. Add the logo again: it was too large to save.";
         errEl.classList.remove("hidden");
       }
     }

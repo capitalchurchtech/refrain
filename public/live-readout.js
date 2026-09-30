@@ -104,6 +104,11 @@ function render() {
   const c = readoutContent(latest);
   for (const el of mounts) {
     el.dataset.mode = c.mode;
+    // No card for a lost link (owner, 2026-09-29: "the sidebar dot performs
+    // the same function"). The LINK lamp says it on every screen; with no link
+    // the readout has nothing else to report, so it steps aside until
+    // ProPresenter answers, and the search box moves up.
+    el.classList.toggle("hidden", c.mode === "lost");
     el.innerHTML = `
       <div class="rf-bezel">
         <div class="rf-glass">
