@@ -172,7 +172,8 @@ import { normalizeSongTitle } from "../providers/planning-center.js";
 import * as autostart from "./autostart.js";
 import { restartCommand, isConfirmedKill, runByLoginItem } from "./panic.js";
 import { autoEndSettings, autoEndPlan, autoEndNote, withAutoNote } from "./auto-end.js";
-import { catchAsyncRoutes, routeErrorHandler } from "./async-routes.js";
+import { installAsyncErrorCatching, routeErrorHandler } from "./async-routes.js";
+import { THEMES, DEFAULT_THEME } from "../public/themes.js";
 
 const { version } = JSON.parse(readFileSync("./package.json", "utf-8"));
 
@@ -232,9 +233,10 @@ process.on("uncaughtException", (err) => {
   console.error("Uncaught exception (server stayed up):", err);
 });
 
+// Every Express handler in this process answers even when it throws: both
+// listeners, any router (async-routes.js).
+installAsyncErrorCatching();
 const app = express();
-// Every route registered below answers even when it throws (async-routes.js).
-catchAsyncRoutes(app);
 let config = loadConfig();
 // Before anything asks for module status: the arrangement checks read each
 // provider's declared requiredEnv instead of naming a vendor.
@@ -430,7 +432,9 @@ app.get("/api/preferences", (_req, res) => {
   res.json({
     // Blackroom by default (owner, 2026-09-30): a true-black, high-contrast
     // theme for a dark booth. Any theme the church picks is kept.
-    theme: config.theme ?? "blackroom",
+    // Only a theme the app has, even if a bad one was saved before themes
+    // were checked: anything else would leave every screen unstyled.
+    theme: THEMES.includes(config.theme) ? config.theme : DEFAULT_THEME,
     navPinned: config.navPinned ?? null,
     // Null when never chosen, so the frontend can fall back to navPinned for
     // an install that predates the third state.
@@ -474,7 +478,7 @@ app.post("/api/preferences", async (req, res) => {
   const changes = {};
   if (theme !== undefined) {
     // Only a theme the app has: a stray value would leave every screen unstyled.
-    if (!["system", "light", "dark", "blackroom"].includes(theme)) return res.status(400).json({ error: "theme must be system, light, dark or blackroom" });
+    if (!THEMES.includes(theme)) return res.status(400).json({ error: `theme must be one of ${THEMES.join(", ")}` });
     changes.theme = theme;
   }
   if (navPinned !== undefined) changes.navPinned = Boolean(navPinned);
@@ -891,7 +895,27 @@ let rebuildStopRequested = false;
  * unreachable -- which is exactly when someone is most likely to be pressing
  * Rebuild to fix things.
  */
+/**
+ * Protect ProPresenter (owner, 2026-10-04, after the main station's
+ * ProPresenter was damaged overnight). **On unless `protectProPresenter` is
+ * false**, turned off only on Settings › Search › Advanced. While on, Refrain
+ * never reads the whole library from ProPresenter, the heaviest thing it asks
+ * of it (each presentation about 10 MB that ProPresenter keeps until it
+ * restarts): no index run of any kind, automatic or pressed, and none of the
+ * playlist-wide readers (Spell Check, the pre-service checks, the FS/T
+ * report's unknowns, Update pictures and pre-render). Search keeps working
+ * from the saved index; Go Live, Now, Clear and the rest are unaffected.
+ */
+const protectOn = () => config.protectProPresenter !== false;
+const PROTECT_REFUSAL =
+  "Protect ProPresenter is on, so Refrain doesn't read presentations from ProPresenter in bulk. Search uses the index it already has. To run this, turn protection off in Settings › Search › Advanced.";
+
 function startRebuild({ incremental = false, operatorInitiated = false } = {}) {
+  // The one door every index run goes through, so no caller can forget.
+  if (protectOn()) {
+    indexWorkDeferred = "Protect ProPresenter is on: the index isn't read from ProPresenter";
+    return Promise.reject(Object.assign(new Error(PROTECT_REFUSAL), { status: 409, protected: true }));
+  }
   rebuildStopRequested = false;
   const started = Date.now();
   diag("index-start", { incremental, operatorInitiated, performance: { armed: performance.armed, source: performance.source } });
@@ -927,6 +951,7 @@ function startRebuild({ incremental = false, operatorInitiated = false } = {}) {
  * sent back after a wasted press.
  */
 function indexRunHeldReason() {
+  if (protectOn()) return PROTECT_REFUSAL;
   if (performance.armed && performance.source !== "unknown") {
     return `Performance mode is on: ${describePerformance(performance)} The index won't run now; it catches up on its own after an hour with nothing on the screens.`;
   }
@@ -965,7 +990,7 @@ let catchUpNotBefore = 0;
 // older-schema index was always caught up at boot whatever that says, and this
 // is where that now happens.
 async function maybeCatchUpIndex(now = Date.now()) {
-  if (now - catchUpCheckedAt < 60_000 || now < catchUpNotBefore) return;
+  if (protectOn() || now - catchUpCheckedAt < 60_000 || now < catchUpNotBefore) return;
   catchUpCheckedAt = now;
   if (frozen() || liveState.live || holdHeartbeatPace(now) || getRebuildProgress().inProgress) return;
   if (performanceOffSince == null || now - performanceOffSince < QUIET_CATCHUP_MS) return;
@@ -1352,14 +1377,34 @@ async function refreshPictures({ operator = false } = {}) {
 async function maybePrerender(now = Date.now()) {
   if (now - prerenderCheckedAt < PRERENDER_CHECK_MS) return;
   prerenderCheckedAt = now;
-  if (!picturesOn() || config.slidePictures?.prerender !== true || picturesRun?.running || !quietForPictures(now) || !client.isLocalHost) return;
+  if (protectOn() || !picturesOn() || config.slidePictures?.prerender !== true || picturesRun?.running || !quietForPictures(now) || !client.isLocalHost) return;
   const readyFor = await propresenterReadyForMs();
   if (readyFor == null || readyFor < WATCH_SETTLE_MS) return;
   await refreshPictures();
 }
 
+/**
+ * Protect ProPresenter on or off (Settings › Search › Advanced). Off lets the
+ * index and the playlist-wide readers run again; on stops them, and stops the
+ * file watcher at once.
+ */
+app.post("/api/protect", async (req, res) => {
+  const { on } = req.body ?? {};
+  if (typeof on !== "boolean") return res.status(400).json({ error: "on must be true or false" });
+  try {
+    await updateConfig((c) => ({ ...c, protectProPresenter: on }));
+  } catch (err) {
+    return res.status(500).json({ error: `Couldn't save it: ${err.message}` });
+  }
+  if (!on) indexWorkDeferred = null;
+  startWatching(); // stops the watcher when protected, starts it when not
+  console.log(`Protect ProPresenter turned ${on ? "on" : "off"} from Settings.`);
+  res.json({ ok: true, on: protectOn() });
+});
+
 /** "Update pictures for today", from Service › Day or Settings. Runs in the background; progress below. */
 app.post("/api/slide-pictures/update", (_req, res) => {
+  if (protectOn()) return res.status(409).json({ error: PROTECT_REFUSAL });
   if (!picturesOn()) return res.status(409).json({ error: "Slide pictures are off (Settings › Phones › Slide pictures)." });
   if (performance.armed) return res.status(409).json({ error: "Performance mode is on, so no pictures are drawn now. Update them before the service, or after." });
   if (picturesRun?.running) return res.status(409).json({ error: "Already updating the pictures.", run: picturesRun });
@@ -1382,7 +1427,7 @@ const slideCountCache = new Map();
 // open costs one read, not one per phone.
 let slideCountInFlight = false;
 function learnSlideCount(presentationId) {
-  if (slideCountCache.has(presentationId) || slideCountInFlight) return;
+  if (protectOn() || slideCountCache.has(presentationId) || slideCountInFlight) return;
   slideCountInFlight = true;
   slideCountCache.set(presentationId, null);
   client
@@ -2040,7 +2085,7 @@ function autoReindexEnabled() {
 function startWatching() {
   libraryWatch?.stop();
   libraryWatch = null;
-  if (!autoReindexEnabled()) return;
+  if (!autoReindexEnabled() || protectOn()) return;
   const dirs = getIndexedLibraryDirs();
   if (dirs.length === 0) return;
   libraryWatch = startLibraryWatch({
@@ -2693,7 +2738,8 @@ async function runServiceChecks(service) {
   const performanceArmed = performance.armed;
   let scan = null;
   let scanError = null;
-  if (connected && !performanceArmed) {
+  if (protectOn()) scanError = PROTECT_REFUSAL;
+  else if (connected && !performanceArmed) {
     try {
       scan = await scanPlaylist(service.playlist.id);
     } catch (err) {
@@ -2721,7 +2767,7 @@ async function runServiceChecks(service) {
 const preServiceReindexed = new Set();
 let preServiceReindexRunning = false;
 async function preServiceReindex(now = Date.now()) {
-  if (!serviceModuleOn() || preServiceReindexRunning || performance.armed || !liveState.connected) return;
+  if (protectOn() || !serviceModuleOn() || preServiceReindexRunning || performance.armed || !liveState.connected) return;
   const due = serviceState(now).services.find(
     (s) => s.startsAt && s.startsAt - now > 0 && s.startsAt - now <= 60 * 60_000 && !s.endedAt && !preServiceReindexed.has(s.serviceId)
   );
@@ -3166,6 +3212,10 @@ app.get("/api/search", (req, res) => {
   // Query strings can carry lists and objects (?q[]=a, ?q[a]=b); search
   // takes text only, so anything else counts as not given (stress test,
   // 2026-10-04: q.trim threw).
+  for (const key of ["q", "playlistId", "dateField", "dateFrom", "dateTo"]) {
+    const v = req.query[key];
+    if (v !== undefined && typeof v !== "string") return res.status(400).json({ error: `Send ${key} once, as text.` });
+  }
   const text = (v) => (typeof v === "string" ? v : undefined);
   const q = text(req.query.q);
   const playlistId = text(req.query.playlistId);
@@ -3416,6 +3466,7 @@ app.post("/api/index/preferred-arrangements", async (_req, res) => {
           : getRebuildProgress().inProgress
             ? "The index is being rebuilt. Check once it finishes."
             : null;
+  if (unknown.length && protectOn()) unknown.length = 0; // answered from the index only
   if (unknown.length && busy()) return res.status(409).json({ error: busy() });
   preferredReportRunning = true;
   try {
@@ -4411,7 +4462,7 @@ function flattenPlaylists(node, out = []) {
 app.get("/api/spellcheck/playlists", async (_req, res) => {
   try {
     const tree = await client.getPlaylists();
-    res.json({ playlists: flattenPlaylists(tree), allowlist: config.spellcheckModule?.allowlist ?? [] });
+    res.json({ playlists: flattenPlaylists(tree), allowlist: config.spellcheckModule?.allowlist ?? [], protected: protectOn() ? PROTECT_REFUSAL : null });
   } catch (err) {
     res.status(502).json({ error: err.message });
   }
@@ -4526,6 +4577,7 @@ function allowSpellcheckPictures(presentations) {
 app.post("/api/spellcheck/scan", async (req, res) => {
   // Reads and decodes up to 120 presentation files on the thread that also
   // runs the heartbeat, Go Live and phone confirms: not during a service.
+  if (protectOn()) return res.status(409).json({ error: PROTECT_REFUSAL });
   if (performance.armed) return res.status(409).json({ error: "Performance mode is on, so Refrain is holding still. Run this when nothing is live." });
   const { playlistId, presentationId } = req.body ?? {};
   const one = typeof presentationId === "string" && /^[A-Za-z0-9-]{1,64}$/.test(presentationId) ? presentationId : null;
@@ -5632,6 +5684,7 @@ app.post("/api/setup", async (req, res) => {
       })
       .then(startWatching)
       .catch((err) => {
+        if (err.protected) return console.log("Setup finished. Protect ProPresenter is on, so no index is read from ProPresenter.");
         console.error("Setup index build failed:", err.message);
       });
   }
@@ -5752,6 +5805,7 @@ app.get("/api/health", async (_req, res) => {
     envRequirements: getEnvRequirements(config),
     networkModule: { ...getNetworkModuleStatus(config, port), urls: getNetworkModuleStatus(config, port).status === "active" ? networkUrls() : [], pinMode: remotePinMode() },
     reportModule: getReportModuleStatus(config),
+    protectProPresenter: protectOn(),
     serviceFeedModule: {
       ...getServiceFeedModuleStatus(config),
       ...serviceFeed.state(),
@@ -5933,8 +5987,12 @@ const server = app.listen(port, "127.0.0.1", async () => {
         await startRebuild();
         console.log("Initial index build complete.");
       } catch (err) {
-        console.error("Initial index build failed:", err.message);
-        console.error("Check ProPresenter is running with its Network API enabled (Preferences > Network).");
+        if (err.protected) {
+          console.log("No search index yet, and Protect ProPresenter is on, so none is read from ProPresenter. Search is empty until protection is turned off and the index built (Settings › Search › Advanced).");
+        } else {
+          console.error("Initial index build failed:", err.message);
+          console.error("Check ProPresenter is running with its Network API enabled (Preferences > Network).");
+        }
       }
     }
   } else if (shouldAutoRebuild(existing)) {

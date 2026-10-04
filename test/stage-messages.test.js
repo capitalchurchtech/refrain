@@ -33,3 +33,11 @@ test("stage text is one line and capped; message fields are upper-cased", () => 
   assert.equal(cleanStageText(null), "");
   assert.equal(messageFieldValue("  ex vx\n"), "EX VX");
 });
+
+test("only text is a stage message: a number or a list is refused, by add and by edit", () => {
+  assert.equal(cleanStageText(9), "");
+  assert.equal(cleanStageText(["a", "b"]), "");
+  assert.equal(addStageMessage([], 9).error, "Type the message first.");
+  const list = [{ id: "a", text: "A" }];
+  assert.deepEqual(editStageMessage(list, "a", 9), list, "an edit to a non-text keeps the old wording");
+});

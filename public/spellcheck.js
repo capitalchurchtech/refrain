@@ -73,7 +73,17 @@ export function initSpellcheck() {
 
     try {
       const res = await fetch("/api/spellcheck/playlists");
-      const { playlists } = await res.json().catch(() => ({}));
+      const { playlists, protected: protectedReason } = await res.json().catch(() => ({}));
+      // Protect ProPresenter: a scan reads every song in the playlist from
+      // ProPresenter, so it's switched off, and says so before anyone presses.
+      if (protectedReason) {
+        document.getElementById("spellcheck-status").textContent = protectedReason;
+        const btn = document.getElementById("spellcheck-scan-btn");
+        if (btn) {
+          btn.disabled = true;
+          btn.dataset.protected = "1";
+        }
+      }
       // A 502 is ProPresenter not answering, not an empty library. Saying
       // "No playlists found" then reads as though they were deleted.
       if (!res.ok) {
@@ -106,7 +116,7 @@ export function initSpellcheck() {
       // The reason shows beside the control, not only in a tooltip: a title on
       // a disabled button is unreachable on a touchscreen, which is half the
       // machines this runs on.
-      scanBtn.disabled = !select.value;
+      scanBtn.disabled = !select.value || scanBtn.dataset.protected === "1";
       scanBtn.title = scanBtn.disabled ? "Choose a playlist first" : "";
       const reason = document.getElementById("spellcheck-scan-reason");
       if (reason) reason.classList.toggle("hidden", !scanBtn.disabled);

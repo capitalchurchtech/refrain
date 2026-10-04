@@ -22,7 +22,10 @@ export const DEFAULT_STAGE_MESSAGES = [
 
 /** One line, trimmed, at most STAGE_TEXT_MAX characters; "" when there's nothing. */
 export function cleanStageText(text) {
-  return String(text ?? "")
+  // Text only: a number or a list is not a message (stress test, 2026-10-04:
+  // a 9 became a preset), for every caller, not just one route.
+  if (typeof text !== "string") return "";
+  return text
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, STAGE_TEXT_MAX);

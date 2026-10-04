@@ -348,6 +348,21 @@ export function initHealth() {
     wireKillSwitch();
     wireDaySummarySettings(render);
 
+    document.querySelectorAll("[data-protect]").forEach((key) =>
+      key.addEventListener("click", async () => {
+        const on = key.dataset.protect === "true";
+        try {
+          const res = await fetch("/api/protect", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on }) });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error ?? res.statusText);
+          await render();
+          document.getElementById("protect-details")?.setAttribute("open", "");
+        } catch (err) {
+          showFailure(`Couldn't change Protect ProPresenter: ${err.message}`);
+        }
+      })
+    );
+
     document.querySelectorAll("[data-pictures-show]").forEach((key) =>
       key.addEventListener("click", async () => {
         try {
@@ -1830,7 +1845,9 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
                  and macros may be slow or not respond. Stop it if a service is about to start: what's already
                  read is kept. After a big run, restart ProPresenter before the service.</span>
                </div>`
-            : (() => {
+            : health.protectProPresenter
+              ? `<div class="text-sm mt-2 rf-measure">Search uses the index it already has. Refrain doesn't read the library from ProPresenter while <strong>Protect ProPresenter</strong> is on (Advanced, below), so nothing here reads it again.</div>`
+              : (() => {
                 // The scary warning belongs to whichever button is actually
                 // going to run an hour-long crawl. With no index yet there is
                 // nothing to compare files against, so the only thing on offer
@@ -2515,6 +2532,26 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
     </div>
   `;
 
+  // Protect ProPresenter (owner, 2026-10-04, after the main station's
+  // ProPresenter was damaged overnight). Tucked at the end of Search, closed:
+  // turning it off is a deliberate act, and says what it lets Refrain do.
+  const protectCard = `
+    <details id="protect-details" class="collapse collapse-arrow bg-base-200 rounded">
+      <summary class="collapse-title min-h-0 py-2">
+        <span class="flex items-center gap-2 text-sm font-medium"><i data-lucide="shield" class="w-4 h-4 opacity-70 shrink-0"></i> Advanced
+          <span class="text-xs opacity-60 font-normal">${health.protectProPresenter ? "Protect ProPresenter is on" : "Protect ProPresenter is OFF"}</span></span>
+      </summary>
+      <div class="collapse-content flex flex-col gap-2">
+        <div class="rf-tabs" role="radiogroup" aria-label="Protect ProPresenter" style="margin-bottom:0">
+          <button type="button" role="radio" class="rf-tab" data-protect="true" aria-checked="${health.protectProPresenter === true}"><span>Protect ProPresenter</span></button>
+          <button type="button" role="radio" class="rf-tab" data-protect="false" aria-checked="${health.protectProPresenter !== true}"><span>Allow library reads</span></button>
+        </div>
+        <p class="text-sm rf-measure">On (recommended): Refrain never reads presentations from ProPresenter in bulk. No index runs, automatic or pressed; no Spell Check, pre-service checks or Update pictures. Search uses the index it has; Go Live, Now and Clear work as always.</p>
+        <p class="text-xs opacity-70 rf-measure">Off lets those run again. Each presentation read costs ProPresenter about 10 MB until it restarts, and a whole-library read is the heaviest thing Refrain does. Only on a machine where that's safe, never near a service, and restart ProPresenter afterwards.</p>
+        <div id="protect-status" class="text-sm" role="status"></div>
+      </div>
+    </details>`;
+
   // The kill switch (GitHub issue #15). On Status, where Settings always
   // opens, so someone stressed lands on it. Amber, the Settings colour for
   // "needs a hand", not red: a red card on a health screen reads as a fault
@@ -2592,7 +2629,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
       ${
         // While a run is going, the index card comes first (owner,
         // 2026-10-04: its messages were far below the libraries list).
-        health.index?.rebuild?.inProgress ? panel("search", indexCard, libraryCard) : panel("search", libraryCard, indexCard)
+        health.index?.rebuild?.inProgress ? panel("search", indexCard, libraryCard, protectCard) : panel("search", libraryCard, indexCard, protectCard)
       }
       ${panel("features", configCard, arrangementCard)}
       ${panel("phones", phoneCard, picturesCard)}

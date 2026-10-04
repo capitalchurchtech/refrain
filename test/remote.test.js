@@ -340,8 +340,18 @@ test("a phone route that throws still answers, instead of leaving the phone wait
   });
   try {
     const base = `http://127.0.0.1:${server.address().port}`;
-    const res = await fetch(`${base}/api/preview/image/H/0`, { signal: AbortSignal.timeout(2000) });
-    assert.ok(res.status >= 400, `answered ${res.status}, not left hanging`);
+    const logged = [];
+    const error = console.error;
+    console.error = (...a) => logged.push(a.join(" "));
+    let res;
+    try {
+      res = await fetch(`${base}/api/preview/image/H/0`, { signal: AbortSignal.timeout(2000) });
+    } finally {
+      console.error = error;
+    }
+    assert.equal(res.status, 500, "a fault in Refrain, said as one, not blamed on the phone");
+    assert.equal((await res.json()).error, "Something went wrong at the booth. Try again.", "nothing internal reaches the phone");
+    assert.ok(logged.some((l) => /disk went away/.test(l)), "and the booth's log has it");
   } finally {
     server.close();
   }

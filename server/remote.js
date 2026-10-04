@@ -30,7 +30,7 @@ import { buildFlag } from "./slide-flags.js";
 import { pinMatches, issueToken, tokenDevice } from "./remote-auth.js";
 import { createConfirmer, createCooldown } from "./remote-devices.js";
 import { messageFieldValue } from "./stage-messages.js";
-import { catchAsyncRoutes } from "./async-routes.js";
+import { installAsyncErrorCatching } from "./async-routes.js";
 
 export const RECENT_SLIDES = 12;
 
@@ -191,7 +191,8 @@ export function createRemoteApp({
 }) {
   // Every route answers even when it throws (async-routes.js): Express 4
   // otherwise leaves an async route's caller waiting with no answer.
-  const app = catchAsyncRoutes(express());
+  installAsyncErrorCatching();
+  const app = express();
   app.disable("x-powered-by");
   app.use(express.json({ limit: "8kb" }));
   const allow = rateLimiter();
@@ -418,6 +419,13 @@ export function createRemoteApp({
   // A malformed request gets one plain sentence. Express's default would
   // send a stack trace, with file paths, to anyone on the network.
   // Four arguments, because that's how Express knows it's an error handler.
-  app.use((err, _req, res, _next) => res.status(err.status && err.status < 500 ? err.status : 400).json({ error: "Bad request." }));
+  // A request the phone got wrong (a body that wasn't JSON) is a 4xx "Bad
+  // request."; a fault in Refrain is a 500, logged here in full and answered
+  // generically, so nothing internal reaches a phone (code review, 2026-10-04).
+  app.use((err, req, res, _next) => {
+    const status = Number.isInteger(err?.status) && err.status >= 400 && err.status < 500 ? err.status : 500;
+    if (status === 500) console.error(`Phone ${req.method} ${req.path} failed:`, err?.stack ?? err);
+    res.status(status).json({ error: status === 500 ? "Something went wrong at the booth. Try again." : "Bad request." });
+  });
   return app;
 }

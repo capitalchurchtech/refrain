@@ -11,8 +11,9 @@
 import { crumb } from "./breadcrumbs.js";
 import { wireTabKeys, fitTabs } from "./tabs.js";
 import { setAvailableTools } from "./open-with.js";
+import { THEMES } from "./themes.js";
 
-const THEME_CYCLE = ["system", "light", "dark", "blackroom"];
+const THEME_CYCLE = THEMES;
 const THEME_LABEL = { system: "System", light: "Light", dark: "Dark", blackroom: "Blackroom" };
 const THEME_ICON = { system: "sun-moon", light: "sun", dark: "moon", blackroom: "moon-star" };
 
@@ -661,15 +662,19 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
     const nextIndex = (THEME_CYCLE.indexOf(currentTheme) + 1) % THEME_CYCLE.length;
     currentTheme = THEME_CYCLE[nextIndex];
     applyThemeUI();
-    await fetch("/api/preferences", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ theme: currentTheme }),
-    });
+    await savePref({ theme: currentTheme });
   });
 
-  const savePref = (body) =>
-    fetch("/api/preferences", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  // Said when it didn't save, rather than applied on screen and quietly lost
+  // at the next reload.
+  async function savePref(body) {
+    try {
+      const res = await fetch("/api/preferences", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? res.statusText);
+    } catch (err) {
+      console.warn(`Couldn't save that display setting: ${err.message}`);
+    }
+  }
   display.get = () => ({ theme: currentTheme, navSide, navMode: navMode === "sliver" ? "icons" : navMode });
   display.setTheme = async (theme) => {
     if (!THEME_CYCLE.includes(theme)) return;
