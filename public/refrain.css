@@ -3609,6 +3609,7 @@ html.blackroom .rf-record-row:hover {
 #nav-rail.sliver #theme-toggle,
 #nav-rail.sliver #nav-side-toggle,
 #nav-rail.sliver #nav-phone-toggle,
+#nav-rail.sliver #rail-quick,
 #nav-rail.sliver .nav-label,
 #nav-rail.sliver .rf-group-label {
   display: none;
@@ -3658,6 +3659,12 @@ html.blackroom .rf-record-row:hover {
 #nav-rail.sliver:focus-within #nav-phone-toggle,
 #nav-rail.sliver:focus-within #theme-toggle {
   display: flex;
+}
+/* A block, not a flex row like the keys above. :not(.hidden) so a menu with
+   no safe slides stays empty while peeking. */
+#nav-rail.sliver.peek #rail-quick:not(.hidden),
+#nav-rail.sliver:focus-within #rail-quick:not(.hidden) {
+  display: block;
 }
 
 /* ============================================================
@@ -3973,4 +3980,260 @@ html.blackroom .rf-tab[aria-checked="true"] {
     var(--rf-junction-recessed),
     inset 0 -3px 0 var(--rf-plum);
   color: var(--rf-text);
+}
+
+/* A tab row that would wrap shows icons only (public/tabs.js, fitTabs).
+   The name is visually hidden, not removed, so a screen reader still reads
+   it, and the tab's title shows it on hover. */
+.rf-tabs-icons .rf-tab {
+  position: relative;
+  padding: 0 12px;
+}
+.rf-tabs-icons .rf-tab > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ============================================================
+   THE RAIL, ONE COLUMN (owner, 2026-09-30, menu option B)
+
+   Status lights under the wordmark, in a row when the menu shows labels;
+   the footer is a quiet row of three icons instead of three full keys.
+   Both only when the rail is expanded (w-36): narrow, the lights stay a
+   column of dots and the icons stack, which is what fits.
+   ============================================================ */
+#status-cluster {
+  margin: 0 0 8px;
+}
+#nav-rail.w-36 #status-cluster {
+  flex-direction: row;
+  justify-content: space-between;
+  padding: 6px 8px;
+}
+#nav-rail.w-36 #status-cluster .rf-status-row {
+  padding: 0;
+  gap: 4px;
+  min-height: 16px;
+}
+/* In the row the dot doesn't need the 16px icon column it keeps in a
+   narrow rail (it lines up with nothing here), and three labelled lamps
+   only fit a 144px rail without it. */
+#nav-rail.w-36 #status-cluster .rf-led-col {
+  width: auto;
+  min-width: 0;
+  margin: 0;
+}
+#nav-rail.w-36 #rail-foot {
+  flex-direction: row;
+  gap: 2px;
+  padding-top: 6px;
+  margin-top: 6px;
+}
+[data-theme="dark"] #nav-rail.w-36 #rail-foot,
+html.blackroom #nav-rail.w-36 #rail-foot {
+  border-top: 1px solid var(--rf-hairline);
+}
+/* Quieter than the menu keys: no key material, just the glyph. 2,2,0 so it
+   beats the dark key rules at 2,1,0 (see "A rule that exists can still
+   lose" in CLAUDE.md). */
+#nav-rail.w-36 #rail-foot > .btn {
+  flex: 1;
+  justify-content: center;
+  padding: 0;
+}
+[data-theme="dark"] #nav-rail.w-36 #rail-foot > .btn,
+html.blackroom #nav-rail.w-36 #rail-foot > .btn {
+  background-image: none;
+  box-shadow: none;
+  color: var(--rf-muted);
+}
+[data-theme="dark"] #nav-rail.w-36 #rail-foot > .btn:hover,
+html.blackroom #nav-rail.w-36 #rail-foot > .btn:hover {
+  color: var(--rf-text);
+}
+
+/* ============================================================
+   QUICK SLIDES IN THE MENU (owner, 2026-09-30, menu option 4)
+
+   The first four safe slides and Clear all, from any screen. Two presses
+   each: the first arms (`data-armed`, set from quick-slides.js; an
+   attribute, so there's no JIT class to miss), the second fires. Armed
+   is the only loud state, the plum collar, like Now's Clear all.
+
+   Expanded (w-36): a 2x2 grid of pictures. Narrow: a column of numbered
+   shields, since a 40px picture says nothing.
+   ============================================================ */
+#rail-quick {
+  padding-top: 6px;
+}
+#rail-quick .rf-group-label {
+  padding-left: 2px;
+}
+#nav-rail.w-14 #rail-quick .rf-group-label,
+#nav-rail.sliver #rail-quick .rf-group-label {
+  display: none;
+}
+.rf-quick-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+}
+#nav-rail.w-36 .rf-quick-grid {
+  grid-template-columns: 1fr 1fr;
+}
+.rf-quick-key {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 44px; /* the touch floor */
+  border-radius: 6px;
+  border: 1px solid var(--rf-hairline, rgba(127, 127, 127, 0.3));
+  background: transparent;
+  color: var(--rf-muted, inherit);
+  font-size: 11px;
+  cursor: pointer;
+  overflow: hidden;
+}
+.rf-quick-key:hover {
+  color: var(--rf-text, inherit);
+}
+.rf-quick-key:focus-visible {
+  outline: 2px solid var(--rf-plum-lit);
+  outline-offset: 1px;
+}
+.rf-quick-key:disabled {
+  opacity: 0.5;
+}
+/* Pictures only when there's room for them. */
+.rf-quick-pic {
+  display: none;
+}
+#nav-rail.w-36 .rf-quick-grid .rf-quick-key {
+  padding: 0;
+  min-height: 0;
+  aspect-ratio: 16 / 9;
+  background: #000;
+}
+#nav-rail.w-36 .rf-quick-pic {
+  display: block;
+  position: absolute;
+  inset: 0;
+}
+.rf-quick-pic img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.rf-quick-fallback {
+  display: none;
+}
+.rf-quick-nopic img {
+  display: none;
+}
+.rf-quick-nopic .rf-quick-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 2px 4px;
+  font-size: 9px;
+  line-height: 1.15;
+  text-align: center;
+  overflow: hidden;
+  color: var(--rf-muted, inherit);
+}
+.rf-quick-num {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.rf-quick-num svg {
+  width: 16px;
+  height: 16px;
+}
+.rf-quick-num b {
+  font-size: 11px;
+  font-weight: 600;
+}
+#nav-rail.w-36 .rf-quick-grid .rf-quick-num {
+  display: none;
+}
+.rf-quick-more {
+  display: block;
+  padding: 4px 2px 0;
+  font-size: 10px;
+  text-align: center;
+  color: var(--rf-muted, inherit);
+  text-decoration: none;
+}
+.rf-quick-more:hover {
+  color: var(--rf-text, inherit);
+  text-decoration: underline;
+}
+.rf-quick-clear {
+  margin-top: 4px;
+}
+.rf-quick-clear svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+.rf-quick-clear-label {
+  display: none;
+}
+#nav-rail.w-36 .rf-quick-clear-label {
+  display: inline;
+}
+#nav-rail.w-36 .rf-quick-clear {
+  min-height: 36px;
+  justify-content: flex-start;
+  padding: 0 10px;
+}
+/* The touch floor applies to Clear all too where a finger might reach it. */
+@media (hover: none) {
+  #nav-rail.w-36 .rf-quick-clear {
+    min-height: 44px;
+  }
+}
+.rf-quick-again {
+  display: none;
+}
+/* Armed: the plum collar and the word, over the picture or the icon. */
+.rf-quick-key[data-armed="true"] {
+  border-color: var(--rf-plum-lit);
+  box-shadow: 0 0 0 1px var(--rf-plum-lit), 0 0 10px rgba(169, 111, 232, 0.45);
+  color: #EFE2FF;
+}
+.rf-quick-key[data-armed="true"] .rf-quick-again {
+  display: flex;
+  position: absolute;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  background: rgba(30, 25, 40, 0.82);
+  color: #EFE2FF;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.rf-quick-note {
+  min-height: 0;
+  padding: 2px;
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--rf-muted, inherit);
+}
+.rf-quick-note:empty {
+  display: none;
+}
+/* No width for a sentence in the narrow menu; the key's own tooltip says it. */
+#nav-rail.w-14 .rf-quick-note {
+  display: none;
 }

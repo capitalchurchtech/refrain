@@ -39,3 +39,48 @@ export function wireTabKeys(row, select) {
     again?.focus();
   });
 }
+
+/**
+ * Icons only when the row would wrap (owner, 2026-09-30: "at small widths,
+ * collapse the tabs into icons so they don't flow to two lines"). Measured,
+ * not a breakpoint: it depends on how many tabs there are and how long their
+ * names are, which differ between Prep and Settings and from church to church.
+ *
+ * The name stays for screen readers (visually hidden, not display:none) and
+ * shows as the tab's tooltip. Re-checked whenever the row's width changes;
+ * the class is set on the next frame, outside the observer, so changing the
+ * row's height can't feed back into the observer.
+ */
+const fitted = new Set();
+const measure = (row) => {
+  row.classList.remove("rf-tabs-icons");
+  const tabs = [...row.querySelectorAll('[role="tab"]')];
+  const wraps = new Set(tabs.map((t) => t.offsetTop)).size > 1;
+  row.classList.toggle("rf-tabs-icons", wraps);
+};
+const widths = new WeakMap();
+const observer =
+  typeof ResizeObserver === "function"
+    ? new ResizeObserver((entries) => {
+        for (const { target, contentRect } of entries) {
+          if (widths.get(target) === Math.round(contentRect.width)) continue;
+          widths.set(target, Math.round(contentRect.width));
+          requestAnimationFrame(() => measure(target));
+        }
+      })
+    : null;
+
+export function fitTabs(row) {
+  if (!row || !observer) return;
+  // Rows redrawn by a re-render leave the page; stop watching those.
+  for (const r of fitted) if (!r.isConnected) {
+    observer.unobserve(r);
+    fitted.delete(r);
+  }
+  for (const t of row.querySelectorAll('[role="tab"]')) if (!t.title) t.title = t.textContent.trim().replace(/\s*\d$/, "");
+  if (!fitted.has(row)) {
+    fitted.add(row);
+    observer.observe(row);
+  }
+  requestAnimationFrame(() => measure(row));
+}

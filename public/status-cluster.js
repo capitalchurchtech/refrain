@@ -45,20 +45,24 @@ const LAMPS = [
     // Lit means present, and absence is the fault here — so this one is lit
     // when things are fine, unlike the two below.
     read: (s) => Boolean(s?.connected),
-    title: (on) => (on ? "ProPresenter linked" : "Lost ProPresenter. Retrying."),
+    // What the lamp watches, then what it reads now (owner, 2026-09-30: hover
+    // should explain what it is, not only its state).
+    about: "Link: whether Refrain can reach ProPresenter.",
+    title: (on) => (on ? "Now: connected." : "Now: lost ProPresenter. Retrying."),
   },
   {
     id: "live",
     legend: "Live",
     read: (s) => Boolean(s?.live),
-    title: (on) => (on ? "Something is on the screens" : "Nothing on the screens"),
+    about: "Live: whether anything is on the screens right now.",
+    title: (on) => (on ? "Now: something is on the screens." : "Now: nothing on the screens."),
   },
   {
     id: "perf",
     legend: "Perf",
     read: (s) => Boolean(s?.performanceMode?.armed),
-    title: (on) =>
-      on ? "Performance mode on: holding still" : "Performance mode off",
+    about: "Performance mode: Refrain holds still during a service, with no indexing or background work. It turns on by itself.",
+    title: (on) => (on ? "Now: on, holding still." : "Now: off."),
   },
 ];
 
@@ -79,7 +83,7 @@ export function initStatusCluster() {
 
   host.innerHTML = LAMPS.map(
     (l) => `
-    <div class="rf-status-row" data-lamp="${l.id}" data-on="false">
+    <div class="rf-status-row" data-lamp="${l.id}" data-on="false" role="img" title="${l.about}" aria-label="${l.about}">
       <span class="rf-led rf-led-col" data-lamp-led></span>
       <span class="nav-label rf-status-legend whitespace-nowrap hidden">${l.legend}</span>
     </div>`
@@ -105,7 +109,8 @@ export function initStatusCluster() {
       if (!row) continue;
       const on = lamp.read(state);
       row.dataset.on = String(on);
-      row.title = lamp.title(on);
+      row.title = `${lamp.about}\n${lamp.title(on)}`;
+      row.setAttribute("aria-label", `${lamp.about} ${lamp.title(on)}`);
       row.querySelector("[data-lamp-led]").classList.toggle("lit", on);
     }
   }

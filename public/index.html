@@ -359,28 +359,36 @@
         </span>
       </button>
 
+      <!-- The status cluster, under the wordmark: the first place the eye
+           lands (owner, 2026-09-30, menu option B). Recessed, because recessed
+           means information comes out, the one place in the rail that reports
+           rather than responds. A row when the menu shows labels, a column of
+           dots when it's narrow. -->
+      <div id="status-cluster" role="group" aria-label="ProPresenter status"></div>
+
       <nav id="nav-items" class="flex flex-col flex-1"></nav>
 
+      <!-- Quick slides: the first four safe slides and Clear all, two presses
+           each (owner, 2026-09-30). Filled by quick-slides.js when Live is on;
+           hidden otherwise. -->
+      <div id="rail-quick" class="hidden" role="group" aria-label="Quick slides"></div>
+
       <div class="flex flex-col">
-        <!-- The status cluster. Recessed, because recessed means information
-             comes out — the one place in the rail that is neither flush nor
-             raised, which is exactly right for the only thing here that reports
-             rather than responds. Separated from the keys by a score line so it
-             stops reading as another menu item. -->
-        <div class="rf-status-break" aria-hidden="true"></div>
-        <div id="status-cluster" role="group" aria-label="ProPresenter status"></div>
-        <button id="nav-help-toggle" class="btn btn-ghost btn-sm justify-start gap-3 px-2" title="Keyboard shortcuts (?)">
-          <span class="shrink-0"><i data-lucide="keyboard"></i></span>
-          <span class="nav-label whitespace-nowrap hidden">Shortcuts</span>
-        </button>
-        <button id="nav-phone-toggle" class="btn btn-ghost btn-sm justify-start gap-3 px-2" title="Use a phone">
-          <span class="shrink-0"><i data-lucide="smartphone"></i></span>
-          <span class="nav-label whitespace-nowrap hidden">Phone</span>
-        </button>
-        <button id="nav-pin-toggle" class="btn btn-ghost btn-sm justify-start gap-3 px-2" title="Show the full menu">
-          <span id="nav-pin-icon" class="shrink-0"></span>
-          <span class="nav-label whitespace-nowrap hidden">Collapse</span>
-        </button>
+        <!-- Used rarely, so one slim row of icons, not three full keys: the
+             lower menu was as heavy as the top, and the rail read as two
+             blocks with a gap (owner, 2026-09-30). Names are in the tooltip
+             and aria-label. Stacked when the menu is narrow. -->
+        <div id="rail-foot" class="flex flex-col">
+          <button id="nav-help-toggle" class="btn btn-ghost btn-sm justify-start gap-3 px-2" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">
+            <span class="shrink-0"><i data-lucide="keyboard"></i></span>
+          </button>
+          <button id="nav-phone-toggle" class="btn btn-ghost btn-sm justify-start gap-3 px-2" title="Use a phone" aria-label="Use a phone">
+            <span class="shrink-0"><i data-lucide="smartphone"></i></span>
+          </button>
+          <button id="nav-pin-toggle" class="btn btn-ghost btn-sm justify-start gap-3 px-2" title="Show the full menu" aria-label="Show the full menu">
+            <span id="nav-pin-icon" class="shrink-0"></span>
+          </button>
+        </div>
       </div>
     </aside>
 

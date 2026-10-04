@@ -3222,8 +3222,12 @@ app.get("/api/preview", (_req, res) => {
 app.get("/api/preview/image/:pid/:idx", async (req, res) => {
   const p = currentPreview();
   const idx = Number(req.params.idx);
-  if (![p.current, p.next].some((t) => t && t.presentationId === req.params.pid && t.slideIndex === idx)) {
-    return res.status(404).json({ error: "Only the current and next slide can be previewed." });
+  const nowOrNext = [p.current, p.next].some((t) => t && t.presentationId === req.params.pid && t.slideIndex === idx);
+  // The church's own safe slides too (at most eight, same as the phone's
+  // route), for the menu's quick slides. Rendered once and kept on disk.
+  const aSafeSlide = safeSlides(config.liveModule?.safeSlides).some((x) => x.presentationId === req.params.pid && x.slideIndex === idx);
+  if (!nowOrNext && !aSafeSlide) {
+    return res.status(404).json({ error: "Only the current and next slide, or a safe slide, can be previewed." });
   }
   const img = await slideThumb(req.params.pid, idx);
   if (!img) return res.status(404).json({ error: "No picture for that slide." });

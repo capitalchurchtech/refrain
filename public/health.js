@@ -1,6 +1,6 @@
 import { COPY_FAILED, noProPresenterFound } from "./strings.js";
 import { showFailure } from "./notice.js";
-import { wireTabKeys } from "./tabs.js";
+import { wireTabKeys, fitTabs } from "./tabs.js";
 import { display } from "./nav.js";
 import { SETTINGS_TABS, settingsTabFromHash } from "./settings-tabs.js";
 import { createMeter, updateMeter, meterCount } from "./led-meter.js";
@@ -29,7 +29,7 @@ async function showUnfinishedDay() {
       // No storage: it shows each time instead of once. Harmless.
     }
     const label = new Date(`${day}T12:00:00`).toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" });
-    host.innerHTML = `<div class="rf-readout text-sm">${escapeHtml(label)} was never ended, so no summary was written. <a href="#service" class="link">Open Service</a></div>`;
+    host.innerHTML = `<div class="rf-readout text-sm">${escapeHtml(label)} was never ended, so no summary was written. <a href="#service/service" class="link">Open the day</a></div>`;
   } catch {
     // The Service module is off, or unreachable: nothing to say.
   }
@@ -73,6 +73,7 @@ export function initHealth() {
     if (!row) return;
     row.querySelectorAll("[data-settings-tab]").forEach((b) => b.addEventListener("click", () => selectSettingsTab(b.dataset.settingsTab)));
     wireTabKeys(row, (b) => selectSettingsTab(b.dataset.settingsTab));
+    fitTabs(row);
   }
   // Someone following a #settings/phones link while Settings is already open.
   window.addEventListener("hashchange", () => {
