@@ -358,7 +358,7 @@ function paintControl() {
   if (can) paintStage();
 }
 
-// --- stage message (handoff section 42) ---------------------------------------
+// --- stage message (handoff section 44) ---------------------------------------
 // Presets only, two taps. What the booth last saw on stage is shown, latched.
 // Take down is always there: the booth may not know about a message put up
 // in ProPresenter itself, and taking down nothing is harmless.

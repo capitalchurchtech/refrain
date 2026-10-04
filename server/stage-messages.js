@@ -1,5 +1,5 @@
 /**
- * Stage messages (owner request, handoff section 42): short notes for the
+ * Stage messages (owner request, handoff section 44): short notes for the
  * people on stage, shown in the Stage Message box of ProPresenter's stage
  * layouts. Never seen by the audience.
  *

@@ -437,7 +437,7 @@ export class ProPresenterClient {
     await this.#get(`/v1/message/${seg(id)}/clear`);
   }
 
-  // --- Stage message (section 42) ---
+  // --- Stage message (section 44) ---
   // The Stage Message box on the stage layouts: seen by the people on
   // stage, never by the audience. It stays up until it's taken down.
 

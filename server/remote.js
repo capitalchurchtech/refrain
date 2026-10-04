@@ -306,7 +306,7 @@ export function createRemoteApp({
 
   // --- control level: approved phones, confirmed presses -------------------
 
-  // The stage message (handoff section 42): presets only from a phone, so a
+  // The stage message (handoff section 44): presets only from a phone, so a
   // phone can't put a typo in front of whoever is speaking.
   app.get("/api/stage", approvedOnly, async (_req, res) => {
     res.json(await stage());

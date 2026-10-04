@@ -265,7 +265,7 @@ export function initLive() {
           <div id="live-safe" class="grid grid-cols-2 sm:grid-cols-4 gap-3"></div>
         </div>
 
-        <!-- Stage message (handoff section 42): a note only the people on
+        <!-- Stage message (handoff section 44): a note only the people on
              stage see, in the Stage Message box of the stage layouts. One
              press, because the audience never sees it; it stays up until
              Take down. -->

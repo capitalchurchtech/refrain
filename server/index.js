@@ -3531,7 +3531,7 @@ app.post("/api/live/message-clear", async (req, res) => {
   }
 });
 
-// --- Stage message (handoff section 42) --------------------------------------
+// --- Stage message (handoff section 44) --------------------------------------
 // A note for the people on stage, in the Stage Message box of the stage
 // layouts; the audience never sees it. It stays up until someone takes it
 // down, from Now or a phone. `stageNow` is what Refrain last saw or set, so a
