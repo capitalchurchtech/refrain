@@ -8,6 +8,7 @@ import { initHealth } from "./health.js";
 import { initPhonePanel } from "./phone-panel.js";
 import { initReturnBar } from "./return-bar.js";
 import { initStatusCluster } from "./status-cluster.js";
+import { initIndexProgress } from "./index-progress.js";
 import { installGlobalErrorBoundary, safeRender } from "./error-boundary.js";
 import { initNav, applyTheme } from "./nav.js";
 
@@ -61,6 +62,7 @@ async function startApp() {
   initReturnBar();
   initPhonePanel();
   initStatusCluster();
+  initIndexProgress();
 
   // Every module brings its own screen: module.js names the script in
   // public/ and the function that builds it. Nothing here lists them, so a

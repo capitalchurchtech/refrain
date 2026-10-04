@@ -56,10 +56,15 @@ export function plainMessagesHtml(plain) {
 /** The Now / Next pair, and the last phone press. Pure, for tests. */
 export function livePreviewHtml(p) {
   const esc = (str) => String(str ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-  const pane = (label, s, empty, step = false) => {
+  const pane = (label, s, empty, step = false, keep = false) => {
     const inner = `
       <figcaption class="rf-subhead">${label}${s ? ` · slide ${s.slideNumber}` : ""}${step ? " · click to show" : ""}</figcaption>
-      ${s?.image ? `<img src="${esc(s.image)}" alt="${esc(s.text ?? "")}" />` : `<div class="live-preview-empty">${esc(empty)}</div>`}`;
+      ${s?.image ? `<img src="${esc(s.image)}" alt="${esc(s.text ?? "")}" />` : `<div class="live-preview-empty">${esc(empty)}</div>`}
+      ${
+        // The slide worth keeping (the logo, a blank) is usually the one up,
+        // so it can be kept from here as well as from Search.
+        keep ? `<button type="button" class="btn btn-chip mt-2 live-keep-safe" title="Keep the slide on screen now as a safe slide">Keep as safe slide</button>` : ""
+      }`;
     // The Next picture is also the Next key (owner request): one click, like
     // the other Live keys.
     return step
@@ -72,7 +77,7 @@ export function livePreviewHtml(p) {
       )}${p.lastPhoneAction.ok ? "" : " (failed)"}</div>`
     : "";
   if (!p.current) return phone;
-  return `${pane("Now", p.current, "")}${pane("Next", p.next, p.atEnd ? "End of this presentation" : "", Boolean(p.next))}${phone}`;
+  return `${pane("Now", p.current, "", false, true)}${pane("Next", p.next, p.atEnd ? "End of this presentation" : "", Boolean(p.next))}${phone}`;
 }
 
 export function initLive() {
@@ -184,6 +189,17 @@ export function initLive() {
         previewKey = key;
         host.innerHTML = livePreviewHtml(p);
         host.classList.toggle("hidden", !p.current && !p.lastPhoneAction);
+        host.querySelector(".live-keep-safe")?.addEventListener("click", async (e) => {
+          const btn = e.currentTarget;
+          const answer = await fire(btn, "/api/live/safe-slides/current", {}, "Keep as safe slide");
+          if (answer?.added) {
+            btn.textContent = "Kept";
+            setStatus(`Kept as a safe slide: ${answer.added.label}.`);
+            safeList = answer.safeSlides ?? safeList;
+            paintSafeSlides();
+            document.dispatchEvent(new CustomEvent("refrain:safe-slides-changed"));
+          }
+        });
         host.querySelector("[data-step]")?.addEventListener("click", async (e) => {
           const btn = e.currentTarget;
           btn.disabled = true;
@@ -312,33 +328,42 @@ export function initLive() {
                are the ones used; the rest stay one press away). Its heading
                says when one of them is on screen, so a running countdown
                isn't hidden by the fold. -->
-          <details id="live-message-plain-wrap" class="rf-looks-fold hidden mt-3">
-            <summary class="rf-subhead cursor-pointer">Other messages <span id="live-message-plain-count" class="opacity-60"></span></summary>
-            <div id="live-message-plain" class="flex flex-col gap-2 mt-2"></div>
+          <details id="live-message-plain-wrap" class="collapse collapse-arrow bg-base-200 rounded rf-now-fold hidden mt-3">
+            <summary class="collapse-title min-h-0 py-2">
+              <span class="flex items-center gap-2 text-sm font-medium"><i data-lucide="timer" class="w-4 h-4 opacity-70 shrink-0"></i> Other messages <span id="live-message-plain-count" class="text-xs opacity-60 font-normal"></span></span>
+            </summary>
+            <div class="collapse-content"><div id="live-message-plain" class="flex flex-col gap-2"></div></div>
           </details>
         </div>
 
-        <div id="live-macros-wrap" class="hidden">
-          <div class="flex items-center justify-between gap-2">
-            <h2 class="rf-subhead">Macros</h2>
-            <span class="flex items-center gap-2">
-              <span id="live-macros-hidden-note" class="text-xs opacity-60"></span>
+        <!-- Folded like the rest below (owner, 2026-10-04), in the Settings
+             fold style. Each fold remembers whether it was left open, on this
+             machine, so a church that lives in Macros keeps it open. Edit sits
+             inside: a key in the heading would open and close the fold. -->
+        <details id="live-macros-wrap" class="collapse collapse-arrow bg-base-200 rounded rf-now-fold hidden">
+          <summary class="collapse-title min-h-0 py-2">
+            <span class="flex items-center gap-2 text-sm font-medium"><i data-lucide="zap" class="w-4 h-4 opacity-70 shrink-0"></i> Macros <span id="live-macros-hidden-note" class="text-xs opacity-60 font-normal"></span></span>
+          </summary>
+          <div class="collapse-content flex flex-col gap-2">
+            <div class="flex items-center justify-end gap-2">
               <button id="live-macros-edit" type="button" class="btn btn-chip" aria-pressed="false">Edit</button>
-            </span>
+            </div>
+            <!-- Said once, in words, because in this mode a tap does something
+                 different from what the same tile did a second ago. -->
+            <p id="live-macros-editing" class="hidden text-sm">Tap a macro to hide or show it. Nothing runs while you're editing.</p>
+            <div id="live-macros" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3"></div>
           </div>
-          <!-- Said once, in words, because in this mode a tap does something
-               different from what the same tile did a second ago. -->
-          <p id="live-macros-editing" class="hidden text-sm mb-2">Tap a macro to hide or show it. Nothing runs while you're editing.</p>
-          <div id="live-macros" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3"></div>
-        </div>
+        </details>
 
         <!-- Folded, beside Looks (owner, 2026-10-03): Refrain runs beside
              ProPresenter, whose own clear keys are right there, so these are
              the spare set, not the first thing on the screen. Clear all is
              also in the menu's quick slides, two presses, on every screen. -->
-        <details id="live-clear-wrap" class="rf-looks-fold">
-          <summary class="rf-subhead cursor-pointer">Clear</summary>
-          <div class="mt-2">
+        <details id="live-clear-wrap" class="collapse collapse-arrow bg-base-200 rounded rf-now-fold">
+          <summary class="collapse-title min-h-0 py-2">
+            <span class="flex items-center gap-2 text-sm font-medium"><i data-lucide="x-octagon" class="w-4 h-4 opacity-70 shrink-0"></i> Clear</span>
+          </summary>
+          <div class="collapse-content">
           <!-- Across the top of the bank whenever the LINK lamp is dark. The
                keys stay live on purpose: a clear is the one thing an operator
                may still need, and it may land the moment the link comes back.
@@ -356,12 +381,13 @@ export function initLive() {
           </div>
         </details>
 
-        <!-- Folded away and after Macros: Looks change rarely here, and a
-             macro usually switches the Look as part of what it does. Closed on
-             every load, so the bank someone reaches for mid-service is Macros. -->
-        <details id="live-looks-wrap" class="hidden rf-looks-fold">
-          <summary class="rf-subhead cursor-pointer">Looks <span id="live-looks-count" class="opacity-60"></span></summary>
-          <div id="live-looks" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 mt-2"></div>
+        <!-- Last: Looks change rarely here, and a macro usually switches the
+             Look as part of what it does. -->
+        <details id="live-looks-wrap" class="collapse collapse-arrow bg-base-200 rounded rf-now-fold hidden">
+          <summary class="collapse-title min-h-0 py-2">
+            <span class="flex items-center gap-2 text-sm font-medium"><i data-lucide="layers" class="w-4 h-4 opacity-70 shrink-0"></i> Looks <span id="live-looks-count" class="text-xs opacity-60 font-normal"></span></span>
+          </summary>
+          <div class="collapse-content"><div id="live-looks" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3"></div></div>
         </details>
 
         <!-- Flagging lives on the Flags screen, which has no live controls
@@ -380,6 +406,7 @@ export function initLive() {
     refreshLiveSummaryOnNewFlags("live-flag-summary");
 
     wireClearButtons();
+    rememberFolds();
     loadSafeSlides();
     wireStageMessage();
     document.getElementById("live-safe-edit")?.addEventListener("click", () => {
@@ -758,6 +785,28 @@ export function initLive() {
     );
   }
 
+  /**
+   * Each fold on Now opens as it was last left, on this machine (browser
+   * storage, a convenience: if it's unavailable they open closed).
+   */
+  function rememberFolds() {
+    container.querySelectorAll("details.rf-now-fold[id]").forEach((d) => {
+      const key = `refrain.fold.${d.id}`;
+      try {
+        d.open = localStorage.getItem(key) === "open";
+      } catch {
+        /* closed */
+      }
+      d.addEventListener("toggle", () => {
+        try {
+          localStorage.setItem(key, d.open ? "open" : "closed");
+        } catch {
+          /* not remembered */
+        }
+      });
+    });
+  }
+
   let safeList = [];
   let editingSafe = false;
 
@@ -786,7 +835,7 @@ export function initLive() {
     edit.setAttribute("aria-pressed", String(editingSafe));
     if (!safeList.length) {
       editingSafe = false;
-      grid.innerHTML = `<p class="text-sm opacity-70 col-span-full">None yet. On Search, press <strong>Safe slide</strong> beside any slide to keep it here.</p>`;
+      grid.innerHTML = `<p class="text-sm opacity-70 col-span-full">None yet. When a slide worth keeping is up (the logo, a blank), press <strong>Keep as safe slide</strong> under the Now picture.</p>`;
     } else if (editingSafe) {
       grid.innerHTML = safeList
         .map(

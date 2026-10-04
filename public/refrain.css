@@ -702,16 +702,6 @@ html.blackroom .spellcheck-live-btn {
 }
 
 /* The collar, reusable by whichever one is armed. */
-/* A slide just kept as a safe slide from Search: the shield takes the plum
-   ink, so the press visibly landed. Applied from search.js; static home. */
-#results .make-safe-btn.rf-safe-kept {
-  color: var(--rf-plum-lit);
-}
-/* Shield and words together: the bare shield read as decoration. */
-#results .make-safe-btn {
-  gap: 6px;
-  white-space: nowrap;
-}
 
 /* The slide chosen from the keyboard (handoff §39c). An outline on the row,
    not a fill, so it reads as "this one" without looking like a pressed or
@@ -2587,20 +2577,22 @@ html.blackroom .rf-preset + .rf-preset {
 #view-live .rf-tile.rf-tile-current .rf-tile-label {
   font-weight: 700;
 }
-#view-live .rf-looks-fold .rf-looks-current {
+#view-live #live-looks-count .rf-looks-current {
   font-family: var(--rf-sans);
   text-transform: none;
   letter-spacing: normal;
 }
 
-/* Looks, folded (owner request): the heading is the control that opens it, so
-   it gets the touch floor instead of a subhead's height. Padding rather than
-   display:flex, which would drop the disclosure triangle. */
-#view-live .rf-looks-fold > summary {
+/* The folds on Now (Other messages, Macros, Clear, Looks) are Settings'
+   collapse panels (owner, 2026-10-04: "like the ones from the settings
+   areas"). On Now the heading is pressed at the booth, so it keeps the 44px
+   touch floor; Settings' own are slimmer. Same selectors' weight as
+   DaisyUI's `.collapse-title` plus an id, so this wins without !important. */
+#view-live .rf-now-fold > .collapse-title {
   box-sizing: border-box;
   min-height: 44px;
-  padding-top: 14px;
-  padding-bottom: 14px;
+  display: flex;
+  align-items: center;
 }
 .rf-tile-label {
   display: -webkit-box;
@@ -4408,4 +4400,145 @@ html.blackroom #nav-rail.w-36 #rail-foot > .btn:hover {
    with a data attribute from health.js, so there's no JS-only class. */
 .env-value[data-masked="true"] {
   -webkit-text-security: disc;
+}
+/* DaisyUI pins the chevron 1.9rem from the top, which suits its taller
+   default title; on Now's 44px heading that put it below the middle. */
+#view-live .rf-now-fold > .collapse-title::after {
+  top: calc(50% + 3px);
+}
+
+/* ============================================================
+   THE INDEXING BAR (owner, 2026-10-04)
+
+   Along the bottom of the content column on every screen while the search
+   index is being built: 24 blocks that fill one at a time, an old game's
+   loading bar. Phosphor, because rebuild progress is the system reporting
+   on itself (brief: "index count and age, rebuild progress"). Blocks change
+   in 120ms and never pulse or shimmer; with reduced motion they change at
+   once. `data-on` and `data-state` are attributes set from
+   index-progress.js, so there's no JS-only class to miss.
+   ============================================================ */
+.rf-index-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  background: var(--rf-ground, #0c0a11);
+  border-top: 1px solid var(--rf-hairline, rgba(127, 127, 127, 0.3));
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.45);
+  font-family: var(--rf-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--rf-text, #eee);
+}
+.rf-index-bar[hidden] {
+  display: none;
+}
+.rf-index-word {
+  flex: none;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--rf-plum-lit, #a96fe8);
+}
+.rf-index-blocks {
+  flex: 1 1 auto;
+  min-width: 120px;
+  display: grid;
+  grid-template-columns: repeat(24, 1fr);
+  gap: 3px;
+  height: 18px;
+  padding: 2px;
+  border: 1px solid var(--rf-hairline, rgba(127, 127, 127, 0.3));
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.35);
+}
+.rf-index-blocks i {
+  display: block;
+  background: transparent;
+  transition: background-color 120ms ease-out;
+}
+.rf-index-blocks i[data-on] {
+  background: var(--rf-plum-lit, #a96fe8);
+}
+.rf-index-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--rf-muted, #aaa);
+}
+/* Finished or waiting: the words matter more than the blocks. */
+.rf-index-bar[data-state="done"] .rf-index-blocks,
+.rf-index-bar[data-state="fault"] .rf-index-blocks {
+  display: none;
+}
+.rf-index-bar[data-state="done"] .rf-index-text,
+.rf-index-bar[data-state="fault"] .rf-index-text {
+  white-space: normal;
+  color: var(--rf-text, #eee);
+}
+.rf-index-bar[data-state="fault"] .rf-index-word {
+  color: var(--rf-fault, #c9922e);
+}
+@media (max-width: 599px) {
+  .rf-index-bar {
+    flex-wrap: wrap;
+  }
+  .rf-index-text {
+    flex-basis: 100%;
+    white-space: normal;
+  }
+}
+body[data-index-bar] #main-content {
+  padding-bottom: 64px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rf-index-blocks i {
+    transition: none;
+  }
+}
+
+/* Indexing glows, wherever it shows (owner, 2026-10-04: "glowing and seem
+   powerful in all areas"). Phosphor is for what the system reports about
+   itself, and rebuild progress is named in the brief, so it may emit. A
+   steady glow, never a pulse: pulsing is kept for faults. The bar and,
+   while a run is going, Settings' Search index card. */
+.rf-index-bar[data-state="running"] {
+  border-top-color: var(--rf-plum-lit, #a96fe8);
+  box-shadow:
+    0 -1px 0 rgba(169, 111, 232, 0.55),
+    0 -10px 30px rgba(132, 70, 201, 0.28),
+    0 -8px 24px rgba(0, 0, 0, 0.45);
+}
+.rf-index-bar[data-state="running"] .rf-index-word {
+  color: var(--rf-phosphor, #cbb4f0);
+  text-shadow: 0 0 8px rgba(203, 180, 240, 0.6);
+}
+.rf-index-bar[data-state="running"] .rf-index-text {
+  color: var(--rf-phosphor, #cbb4f0);
+  text-shadow: 0 0 6px rgba(203, 180, 240, 0.35);
+}
+.rf-index-bar[data-state="running"] .rf-index-blocks {
+  border-color: rgba(169, 111, 232, 0.55);
+  box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.6), 0 0 12px rgba(132, 70, 201, 0.25);
+}
+.rf-index-blocks i[data-on] {
+  background: linear-gradient(180deg, #d9c3ff 0%, var(--rf-plum-lit, #a96fe8) 45%, var(--rf-plum, #8446c9) 100%);
+  box-shadow: 0 0 6px rgba(169, 111, 232, 0.7);
+  border-radius: 1px;
+}
+#view-health .card.rf-indexing {
+  box-shadow:
+    inset 0 0 0 1px var(--rf-plum-lit, #a96fe8),
+    0 0 24px rgba(132, 70, 201, 0.35);
+}
+#view-health .card.rf-indexing .card-title {
+  color: var(--rf-phosphor, #cbb4f0);
+  text-shadow: 0 0 8px rgba(203, 180, 240, 0.5);
 }

@@ -2010,6 +2010,9 @@ function indexStatusPayload() {
     presentationCount: Object.keys(index.presentations).length,
     rebuild: rebuildProjection(getRebuildProgress()),
     partial: index.partial ?? null,
+    // Why an index run wouldn't start right now, or null: for the progress
+    // bar, so a press that can't run says so.
+    held: indexRunHeldReason(),
   };
 }
 
@@ -2193,13 +2196,19 @@ app.post("/api/library-folders", async (req, res) => {
     return res.status(500).json({ error: `Failed to save config.json: ${err.message}` });
   }
   config = newConfig;
-  res.json({ ok: true });
+  // Said, not swallowed (owner, 2026-10-04: "there was no indication"). With
+  // something on the screens a run would stand down at once and only the log
+  // knew; now the save answers with why it isn't indexing, and doesn't start.
+  const refusal = await operatorIndexRefusal();
+  if (refusal) return res.json({ ok: true, rebuild: "waiting", reason: refusal });
+  res.json({ ok: true, rebuild: "started" });
 
   // The sync scope changed — reindex to match, same as a first-run
   // build (Section 5.3). The caller polls /api/index/status for
   // progress rather than this request staying open for what could be
   // a slow full-library crawl.
-  startRebuild({ incremental: true })
+  indexWorkDeferred = null;
+  startRebuild({ incremental: true, operatorInitiated: true })
     .then(startWatching)
     .catch((err) => {
       console.error("Library-scope rebuild failed:", err.message);
@@ -3405,6 +3414,47 @@ app.post("/api/live/safe-slides", async (req, res) => {
     groupOffset: b.groupOffset === "" || b.groupOffset == null ? null : Number(b.groupOffset),
     slideText: b.slideText,
     label: b.label,
+  };
+  let added = null;
+  const saved = await saveLiveModule(res, (m) => {
+    const r = addSafeSlide(m.safeSlides, input);
+    if (r.error) throw refuse(400, r.error);
+    added = r.added;
+    return { ...m, safeSlides: r.list };
+  });
+  if (!saved) return;
+  res.json({ ok: true, added, safeSlides: saved.safeSlides });
+});
+
+/**
+ * Keeps the slide on the screens now as a safe slide, from Now's "Keep as
+ * safe slide" (owner, 2026-10-04: the slide worth keeping, the logo, is
+ * usually the one up). One read of the live presentation, on this press
+ * only, so it's kept by its anchor (group and position) like one kept from
+ * Search, and can't later fire a different slide.
+ */
+app.post("/api/live/safe-slides/current", async (_req, res) => {
+  const preview = currentPreview();
+  const now = preview.current;
+  if (!now) return res.status(409).json({ error: "Nothing is on the screens to keep." });
+  let slide = null;
+  try {
+    const doc = await client.getPresentation(now.presentationId, { timeoutMs: ANCHOR_RESOLVE_BUDGET_MS });
+    slide = flattenGroups(resolveArrangement(doc, []).groups).find((x) => x.index === now.slideIndex) ?? null;
+  } catch {
+    return res.status(502).json({ error: "ProPresenter didn't answer. Try again in a moment." });
+  }
+  if (!slide) return res.status(409).json({ error: "That slide has just changed. Try again." });
+  const input = {
+    presentationId: now.presentationId,
+    // The name ProPresenter reports for what's live, so a picture-only slide
+    // (no words to name it by) is labelled "-Important Screens-, slide 2",
+    // not "Safe slide". Presentations outside the index are kept too.
+    presentationName: preview.presentationName ?? getIndex().presentations?.[now.presentationId]?.name ?? null,
+    slideIndex: now.slideIndex,
+    groupId: slide.groupId ?? null,
+    groupOffset: Number.isInteger(slide.groupOffset) ? slide.groupOffset : null,
+    slideText: slide.text ?? "",
   };
   let added = null;
   const saved = await saveLiveModule(res, (m) => {

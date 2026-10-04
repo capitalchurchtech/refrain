@@ -3,11 +3,6 @@ import { mountFlagButton } from "./slide-flags.js";
 import { showFailure } from "./notice.js";
 import { crumb } from "./breadcrumbs.js";
 
-// The safe-slide shield, drawn inline: results never run Lucide's icon pass
-// (it walks the whole page, and a broad search is a thousand rows), so an
-// <i data-lucide> here stayed an empty box and the button looked missing.
-// Lucide's shield-check, same strokes.
-const SHIELD_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>`;
 
 
 export function initSearch() {
@@ -191,6 +186,7 @@ export function initSearch() {
       btn.textContent = "Refreshing";
       crumb("reindex", { from: "stale" });
       try {
+        document.dispatchEvent(new CustomEvent("refrain:index-requested"));
         const res = await fetch("/api/index/reindex-changed", { method: "POST" });
         if (!res.ok) {
           const { error } = await res.json().catch(() => ({}));
@@ -428,7 +424,6 @@ export function initSearch() {
                   <button class="btn btn-chip show-in-editor-btn" data-presentation-id="${r.presentationId}" title="Opens in ProPresenter's editor. Nothing goes to the screens.">
                     Show slide ${r.slideIndex + 1}
                   </button>
-                  <button class="btn btn-chip make-safe-btn" title="Keep this slide to put up in a hurry, from Service › Now and the menu's quick slides" data-presentation-id="${r.presentationId}" data-presentation-name="${escapeHtml(r.presentationName ?? "")}" data-slide-index="${r.slideIndex}" data-group-id="${escapeHtml(r.groupId ?? "")}" data-group-offset="${r.groupOffset ?? ""}" data-slide-text="${escapeHtml(r.snippet ?? "")}">${SHIELD_SVG}<span class="make-safe-label">Safe slide</span></button>
                   <button class="btn btn-brand btn-xs go-live-btn" data-presentation-id="${r.presentationId}" data-slide-index="${r.slideIndex}" data-group-id="${escapeHtml(r.groupId ?? "")}" data-group-offset="${r.groupOffset ?? ""}" data-slide-text="${escapeHtml(r.snippet ?? "")}" data-presentation-name="${escapeHtml(r.presentationName ?? "")}" data-arrangement-name="${escapeHtml(r.arrangementName ?? "")}">
                     Go Live
                   </button>
@@ -591,35 +586,6 @@ export function initSearch() {
       return;
     }
 
-    // Keep this slide as a safe slide on Live (handoff §39a). Saves to this
-    // machine's config; nothing in ProPresenter changes.
-    const safeBtn = e.target.closest(".make-safe-btn");
-    if (safeBtn) {
-      safeBtn.disabled = true;
-      const d = safeBtn.dataset;
-      try {
-        const res = await fetch("/api/live/safe-slides", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ presentationId: d.presentationId, presentationName: d.presentationName, slideIndex: Number(d.slideIndex), groupId: d.groupId || null, groupOffset: d.groupOffset === "" ? null : Number(d.groupOffset), slideText: d.slideText }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error ?? res.statusText);
-        safeBtn.classList.add("rf-safe-kept");
-        // The menu's quick slides, if Live is on, listen for this.
-        document.dispatchEvent(new CustomEvent("refrain:safe-slides-changed"));
-        // Said on the key itself: an icon changing colour was too quiet to
-        // notice (owner, 2026-10-04: "there's no UI at all for this").
-        const label = safeBtn.querySelector(".make-safe-label");
-        if (label) label.textContent = "Kept";
-        safeBtn.title = `Kept as a safe slide, "${data.added?.label ?? "safe slide"}", on Service › Now and in the menu`;
-      } catch (err) {
-        showFailure(`Couldn't keep that slide: ${err.message}`);
-      } finally {
-        safeBtn.disabled = false;
-      }
-      return;
-    }
 
     const editorBtn = e.target.closest(".show-in-editor-btn");
     if (editorBtn) {

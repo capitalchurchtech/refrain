@@ -569,6 +569,7 @@ export function initHealth() {
         statusEl.textContent = "";
         statusEl.className = "text-sm";
         try {
+          document.dispatchEvent(new CustomEvent("refrain:index-requested"));
           const res = await fetch("/api/index/reindex-changed", { method: "POST" });
           const data = await res.json();
           if (!res.ok) {
@@ -625,6 +626,7 @@ export function initHealth() {
         btn.disabled = true;
         btnLabel.textContent = "Rebuilding...";
         try {
+          document.dispatchEvent(new CustomEvent("refrain:index-requested"));
           const res = await fetch("/api/index/rebuild", { method: "POST" });
           const refused = res.ok ? null : ((await res.json().catch(() => ({}))).error ?? "The rebuild didn't start.");
           await render();
@@ -656,11 +658,17 @@ export function initHealth() {
         saveFoldersBtn.disabled = true;
         saveFoldersBtn.textContent = "Saving...";
         try {
-          await fetch("/api/library-folders", {
+          const res = await fetch("/api/library-folders", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ folders }),
           });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error ?? res.statusText);
+          // The bar along the bottom shows the run, or why it can't start.
+          document.dispatchEvent(new CustomEvent("refrain:index-requested", { detail: data.rebuild === "waiting" ? { reason: `Saved. ${data.reason}` } : {} }));
+        } catch (err) {
+          showFailure(`Couldn't save the libraries: ${err.message}`);
         } finally {
           if (saveFoldersBtn.isConnected) {
             saveFoldersBtn.disabled = false;
@@ -1554,7 +1562,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
   `;
 
   const indexCard = `
-    <div class="card bg-base-200">
+    <div class="card bg-base-200${health.index?.rebuild?.inProgress ? " rf-indexing" : ""}">
       <div class="card-body p-3">
         <h2 class="card-title text-base"><i data-lucide="database" class="w-4 h-4 opacity-70"></i> Search index</h2>
         ${
@@ -2312,7 +2320,11 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
         ${SETTINGS_TABS.map(([id, label, icon], i) => `<button type="button" role="tab" id="settings-tab-${id}" aria-controls="settings-panel-${id}" class="rf-tab" data-settings-tab="${id}" aria-selected="false" tabindex="-1"><i data-lucide="${icon}" class="w-4 h-4 shrink-0"></i><span>${label}</span><kbd class="kbd kbd-xs tab-key" aria-hidden="true">${i + 1}</kbd></button>`).join("")}
       </div>
       ${panel("status", statusStrip, killCard, propresenterCard, updatesCard)}
-      ${panel("search", libraryCard, indexCard)}
+      ${
+        // While a run is going, the index card comes first (owner,
+        // 2026-10-04: its messages were far below the libraries list).
+        health.index?.rebuild?.inProgress ? panel("search", indexCard, libraryCard) : panel("search", libraryCard, indexCard)
+      }
       ${panel("features", configCard, arrangementCard)}
       ${panel("phones", phoneCard, picturesCard)}
       ${panel("customize", displayCard, welcomeCard, autostartCard)}
