@@ -563,6 +563,8 @@ export function initSearch() {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error ?? res.statusText);
         safeBtn.classList.add("rf-safe-kept");
+        // The menu's quick slides, if Live is on, listen for this.
+        document.dispatchEvent(new CustomEvent("refrain:safe-slides-changed"));
         safeBtn.title = `Kept on Live as "${data.added?.label ?? "safe slide"}"`;
         safeBtn.setAttribute("aria-label", safeBtn.title);
       } catch (err) {

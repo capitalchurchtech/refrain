@@ -10,7 +10,7 @@ export default {
   id: "slide-flags",
   navLabel: "Flags",
   icon: "flag",
-  nav: { group: "service", order: 2 },
+  nav: { group: "service", order: 2, page: "service" },
   client: { file: "slide-flags.js", init: "initSlideFlags" },
   route: "/slide-flags",
   component: null,

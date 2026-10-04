@@ -15,6 +15,8 @@ test("every module says where it sits in the menu and which script is its screen
   }
   const service = modules.filter((m) => m.nav.group === "service").map((m) => m.id).sort();
   assert.deepEqual(service, ["live", "search", "service", "slide-flags"], "the four screens used during a service");
+  const onServicePage = modules.filter((m) => moduleNav(m.nav).page === "service").map((m) => m.id).sort();
+  assert.deepEqual(onServicePage, ["live", "service", "slide-flags"], "Now, Day and Flags are tabs of the one Service page (section 41)");
 });
 
 test("a module's metadata can't point the page at a script elsewhere", () => {
@@ -23,7 +25,8 @@ test("a module's metadata can't point the page at a script elsewhere", () => {
   assert.equal(moduleClient({ file: "https://evil.example/x.js", init: "x" }), null);
   assert.equal(moduleClient({ file: "a.js", init: "x();alert(1)" }), null);
   assert.equal(moduleClient(null), null);
-  assert.deepEqual(moduleNav({ group: "nonsense" }), { group: "prep", order: 99 }, "unknown group and order fall back to the end of Prep");
+  assert.deepEqual(moduleNav({ group: "nonsense" }), { group: "prep", order: 99, page: "prep" }, "unknown group and order fall back to the end of Prep");
+  assert.deepEqual(moduleNav({ group: "service", order: 0 }), { group: "service", order: 0, page: null }, "Search stays a menu key of its own");
 });
 
 test("the off notice sends you to the Settings tab where the module's switch is", async () => {

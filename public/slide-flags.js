@@ -382,7 +382,7 @@ export function initSlideFlags() {
     container.innerHTML = `
       <div class="flex flex-col gap-4 max-w-3xl">
         <div>
-          <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="flag" class="w-5 h-5"></i> Flags</h1>
+          <h2 class="rf-page-sub">Flags</h2>
           <p class="text-sm opacity-70">Tap what's wrong with the slide on screen. Nothing on the screens changes.</p>
           <p id="slide-flags-phone-pin" class="text-sm hidden"></p>
         </div>

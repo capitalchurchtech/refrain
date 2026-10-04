@@ -57,7 +57,10 @@ export async function discoverModules() {
 export function moduleNav(nav) {
   const group = nav?.group === "service" ? "service" : "prep";
   const order = Number.isFinite(nav?.order) ? nav.order : 99;
-  return { group, order };
+  // The tabbed page it's a tab of, if any: "service" (Now, Flags, Day) or
+  // "prep". A prep-group module is on Prep unless it says otherwise.
+  const page = ["service", "prep"].includes(nav?.page) ? nav.page : group === "prep" ? "prep" : null;
+  return { group, order, page };
 }
 /**
  * A module's screen script: a plain file in public/ and the name of the

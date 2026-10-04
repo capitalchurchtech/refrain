@@ -8,9 +8,9 @@
  */
 export default {
   id: "live",
-  navLabel: "Live",
+  navLabel: "Now",
   icon: "monitor",
-  nav: { group: "service", order: 1 },
+  nav: { group: "service", order: 1, page: "service" },
   client: { file: "live.js", init: "initLive" },
   route: "/live",
   component: null,

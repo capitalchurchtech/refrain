@@ -9,9 +9,9 @@
  */
 export default {
   id: "service",
-  navLabel: "Service",
-  icon: "calendar-clock",
-  nav: { group: "service", order: 2.5 },
+  navLabel: "Day",
+  icon: "calendar-days",
+  nav: { group: "service", order: 3, page: "service" },
   client: { file: "service.js", init: "initService" },
   route: "/service",
   component: null,

@@ -1,6 +1,7 @@
 import { mountLiveFlagSummary, refreshLiveSummaryOnNewFlags } from "./slide-flags.js";
 import { lastKnownConnected, LINK_EVENT } from "./status-cluster.js";
 import { mountLiveReadout, unmountLiveReadout } from "./live-readout.js";
+import { initQuickSlides } from "./quick-slides.js";
 
 /**
  * Live page — big, obvious controls for the operator during a service.
@@ -76,6 +77,7 @@ export function livePreviewHtml(p) {
 
 export function initLive() {
   const container = document.getElementById("view-live");
+  initQuickSlides();
 
   // Refreshed on a timer as well as on click, because it arms itself: a
   // volunteer who never touches this should still see it turn on when the
@@ -211,7 +213,7 @@ export function initLive() {
     container.innerHTML = `
       <div class="flex flex-col gap-6">
         <div>
-          <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="monitor" class="w-5 h-5"></i> Live</h1>
+          <h2 class="rf-page-sub">Now</h2>
         </div>
 
         <!-- What's on the screens now, the same readout as Search's (one poll
@@ -582,6 +584,7 @@ export function initLive() {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error ?? res.statusText);
         safeList = data.safeSlides ?? [];
+        document.dispatchEvent(new CustomEvent("refrain:safe-slides-changed"));
       } catch (err) {
         setStatus(`That wasn't saved: ${err.message}`);
       }

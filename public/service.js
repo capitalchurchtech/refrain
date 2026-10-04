@@ -465,7 +465,7 @@ export function initService() {
     container.innerHTML = `
       <div class="flex flex-col gap-4 max-w-4xl">
         <div>
-          <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="calendar-clock" class="w-5 h-5"></i> Service</h1>
+          <h2 class="rf-page-sub">Day</h2>
           <p class="text-sm opacity-70">What went live today, when, and for how long.</p>
         </div>
 
