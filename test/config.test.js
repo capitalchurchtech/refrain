@@ -50,3 +50,10 @@ test("isConfigComplete requires host, port, and a valid role", async () => {
   assert.equal(isConfigComplete({ propresenter: { host: "x", port: 1 }, role: "bogus" }), false);
   assert.equal(isConfigComplete({ propresenter: { host: "x", port: 1 }, role: "logger" }), true);
 });
+
+test("saves made at the same moment take turns: all succeed, the last one asked wins, no temp file left", async () => {
+  const writes = Array.from({ length: 10 }, (_, i) => saveConfig({ ...sampleConfig, theme: `t${i}` }));
+  await Promise.all(writes); // a shared temp file used to make one rename fail
+  assert.equal(loadConfig().theme, "t9");
+  await assert.rejects(() => stat("config.json.tmp"));
+});

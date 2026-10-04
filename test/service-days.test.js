@@ -241,3 +241,14 @@ test("a service with no time claims an off-plan item while it is running, and no
   assert.deepEqual(timelineRows(state, sid, at("12:00")).map((r) => [r.name, r.offPlan]), [["Amazing Grace", false], ["EXTRA", true]]);
   assert.deepEqual(timelineRows(state, null, at("12:00")).map((r) => r.name), ["OTHER"]);
 });
+
+test("after End, only new activity reopens the day; sending the summary or ticking a step doesn't", () => {
+  const ended = ev("day-ended", { auto: "idle", autoSend: true }, "14:00");
+  const fold = (more) => foldDay([ended, ...more], { day: DAY, now: at("18:00") });
+  assert.equal(fold([ev("summary-sent", { ok: true }, "14:01")]).reopened, false);
+  assert.equal(fold([ev("step-set", { phaseId: "after", stepId: "x", done: true }, "14:05")]).reopened, false);
+  assert.equal(fold([ev("item-live", { presentationId: "P", slideIndex: 0 }, "15:00")]).reopened, true);
+  const s = fold([]);
+  assert.equal(s.dayEnds.at(-1).auto, "idle", "each End says whether it was automatic");
+  assert.equal(s.dayEnds.at(-1).autoSend, true);
+});

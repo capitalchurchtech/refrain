@@ -13,6 +13,7 @@ export default class EmailDelivery extends DeliveryBackend {
   static backendId = "email";
   static displayName = "Email";
   static sendsOffMachine = true;
+  static takesRecipients = true;
   static requiredEnv = [{ name: "SMTP_HOST" }, { name: "SMTP_FROM" }];
 
   static problems(moduleConfig, env) {

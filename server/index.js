@@ -171,6 +171,7 @@ import { loadSpeller, findTypos, tokenize, addToAllowlist, removeFromAllowlist, 
 import { normalizeSongTitle } from "../providers/planning-center.js";
 import * as autostart from "./autostart.js";
 import { restartCommand, isConfirmedKill, runByLoginItem } from "./panic.js";
+import { autoEndSettings, autoEndPlan, autoEndNote, withAutoNote } from "./auto-end.js";
 
 const { version } = JSON.parse(readFileSync("./package.json", "utf-8"));
 
@@ -433,14 +434,26 @@ app.get("/api/preferences", (_req, res) => {
     navMode: config.navMode ?? null,
     navSide: config.navSide === "right" ? "right" : "left",
     welcomeDismissed: Boolean(config.welcomeDismissed),
+    // Search's own choices (owner, 2026-10-04: "so reloading doesn't wipe
+    // them"): the libraries switched off (so a library added later is
+    // searched), and which date the date filter uses. The date range itself
+    // is never kept: a forgotten range would quietly hide songs on a later
+    // Sunday.
+    searchLibrariesOff: Array.isArray(config.searchLibrariesOff) ? config.searchLibrariesOff.filter((n) => typeof n === "string") : [],
+    searchDateField: config.searchDateField === "created" ? "created" : "modified",
   });
 });
 
+// Preference saves take turns, and each applies its own changes to the
+// settings as they are when its turn comes, not when it was asked for, so a
+// Search preference and a theme change made together both survive.
+let preferencesTurn = Promise.resolve();
+
 app.post("/api/preferences", async (req, res) => {
-  const { theme, navPinned, navMode, navSide, welcomeDismissed } = req.body ?? {};
-  const newConfig = { ...config };
-  if (theme !== undefined) newConfig.theme = theme;
-  if (navPinned !== undefined) newConfig.navPinned = Boolean(navPinned);
+  const { theme, navPinned, navMode, navSide, welcomeDismissed, searchLibrariesOff, searchDateField } = req.body ?? {};
+  const changes = {};
+  if (theme !== undefined) changes.theme = theme;
+  if (navPinned !== undefined) changes.navPinned = Boolean(navPinned);
   // Three rail widths rather than two. `navPinned` is still written alongside
   // it so an older Refrain reading this config still gets a sensible rail
   // instead of a missing key.
@@ -448,23 +461,38 @@ app.post("/api/preferences", async (req, res) => {
     if (navSide !== "left" && navSide !== "right") {
       return res.status(400).json({ error: "navSide must be left or right" });
     }
-    newConfig.navSide = navSide;
+    changes.navSide = navSide;
   }
   if (navMode !== undefined) {
     if (!["full", "icons", "sliver"].includes(navMode)) {
       return res.status(400).json({ error: "navMode must be full, icons or sliver" });
     }
-    newConfig.navMode = navMode;
-    newConfig.navPinned = navMode === "full";
+    changes.navMode = navMode;
+    changes.navPinned = navMode === "full";
   }
-  if (welcomeDismissed !== undefined) newConfig.welcomeDismissed = Boolean(welcomeDismissed);
+  if (welcomeDismissed !== undefined) changes.welcomeDismissed = Boolean(welcomeDismissed);
+  if (searchLibrariesOff !== undefined) {
+    if (!(Array.isArray(searchLibrariesOff) && searchLibrariesOff.length <= 200 && searchLibrariesOff.every((n) => typeof n === "string" && n.length <= 200))) {
+      return res.status(400).json({ error: "searchLibrariesOff must be a list of library names" });
+    }
+    changes.searchLibrariesOff = searchLibrariesOff;
+  }
+  if (searchDateField !== undefined) {
+    if (!["modified", "created"].includes(searchDateField)) return res.status(400).json({ error: "searchDateField must be modified or created" });
+    changes.searchDateField = searchDateField;
+  }
 
+  const turn = preferencesTurn.then(async () => {
+    const next = { ...config, ...changes };
+    await saveConfig(next);
+    config = next;
+  });
+  preferencesTurn = turn.catch(() => {});
   try {
-    await saveConfig(newConfig);
+    await turn;
   } catch (err) {
     return res.status(500).json({ error: `Failed to save config.json: ${err.message}` });
   }
-  config = newConfig;
   res.json({ ok: true });
 });
 
@@ -1652,22 +1680,29 @@ setInterval(() => {
   stallTickAt = Date.now();
 }, 250).unref();
 const propresenterSamples = [];
+let propresenterClosedSince = null;
 let propresenterLoad = null;
 let lastCpu = process.cpuUsage();
 let lastCpuAt = Date.now();
 let minutesSinceLine = 0;
+// ProPresenter's process: an object when it's running, null when it isn't,
+// undefined when Refrain couldn't look (ps failed or timed out), which must
+// never read as "closed".
 async function sampleProPresenter() {
-  if (!client.isLocalHost || platform() === "win32") return null;
+  if (!client.isLocalHost || platform() === "win32") return undefined;
   try {
     const { stdout } = await execFileAsync("ps", ["-Ao", "pid,%cpu,rss,comm"], { timeout: 5000, maxBuffer: 4 * 1024 * 1024 });
     return parseProPresenterPs(stdout);
   } catch {
-    return null;
+    return undefined;
   }
 }
 async function serviceLogTick() {
   const pp = await sampleProPresenter();
   if (pp) askedOfProPresenter.seen(pp.pid);
+  // When ProPresenter was first seen not running on this Mac, for auto-end.
+  if (pp !== undefined) propresenterClosedSince = pp ? null : (propresenterClosedSince ?? Date.now());
+  autoEndTick().catch((err) => console.error("Auto-end check failed:", err.message));
   propresenterSamples.push(pp);
   if (propresenterSamples.length > 10) propresenterSamples.shift();
   const asked = askedOfProPresenter.counts();
@@ -2321,6 +2356,135 @@ function jsonTime(ms) {
   return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
 }
 
+// --- Ending the day on its own (server/auto-end.js) ---------------------------
+// Checked once a minute, beside the service log. Sends the summary straight
+// after an automatic end when sending is set up: turning auto-end on is the
+// church saying nobody needs to read it first. A failed send is tried again
+// every 15 minutes, up to 8 times, and the Day screen says how it went.
+let autoEndRunning = false;
+const AUTO_SEND_RETRY_MS = 15 * 60_000;
+const AUTO_SEND_MAX_TRIES = 8;
+
+function autoEndFacts(state, now) {
+  return {
+    now,
+    settings: autoEndSettings(config.serviceModule?.autoEnd),
+    state,
+    liveNow: Boolean(liveState.live),
+    performanceArmed: Boolean(performance.armed),
+    closedSince: propresenterClosedSince,
+    // In its window and not ended: a crash or a move to the backup Mac
+    // mid-service must not end the day and send a half summary.
+    serviceUnderWay: activeServices(state, now, serviceOptions().windows).some((s) => s.endedAt == null),
+  };
+}
+
+async function autoSend(attempt) {
+  try {
+    await deliverSummary(serviceDay.day, serviceDay.events);
+    console.log(`Sent the day summary for ${serviceDay.day} (automatic).`);
+  } catch (err) {
+    console.error(`Sending the day summary failed (try ${attempt} of ${AUTO_SEND_MAX_TRIES}): ${err.message}`);
+  }
+}
+
+async function autoEndTick(now = Date.now()) {
+  if (!serviceModuleOn() || autoEndRunning || endingDay) return;
+  const settings = autoEndSettings(config.serviceModule?.autoEnd);
+  if (!settings.enabled) return;
+  autoEndRunning = true;
+  try {
+    await ensureServiceDay();
+    const state = serviceState(now);
+    const last = state.dayEnds.at(-1);
+    if (last) {
+      // Only the latest End, only if it ended on its own and was meant to
+      // send then. A day ended by hand is never sent from here, nor one that
+      // ended on its own while sending wasn't set up.
+      if (!last.auto || !last.autoSend || state.reopened) return;
+      if (getReportModuleStatus(config).status !== "active") return;
+      const sends = serviceDay.events.filter((e) => e.type === "summary-sent" && e.summaryFile === last.summaryFile);
+      if (sends.some((e) => e.ok)) return;
+      // Counted from the day's record, so a restart doesn't start again.
+      const lastTry = sends.reduce((t, e) => Math.max(t, Date.parse(e.at)), 0);
+      if (sends.length >= AUTO_SEND_MAX_TRIES || now - lastTry < AUTO_SEND_RETRY_MS) return;
+      await autoSend(sends.length + 1);
+      return;
+    }
+    const plan = autoEndPlan(autoEndFacts(state, now));
+    if (plan.status !== "due") return;
+    const sendable = getReportModuleStatus(config).status === "active";
+    const out = await endDay({ auto: { trigger: plan.trigger, note: autoEndNote(plan.trigger, settings), send: sendable } });
+    if (out.error) return console.error(`Auto-end didn't end the day: ${out.error}`);
+    if (!out.auto) return; // a press of End got there first; nothing to send from here
+    if (sendable) await autoSend(1);
+    else console.log("The day summary wasn't sent: sending isn't set up (reportModule).");
+  } finally {
+    autoEndRunning = false;
+  }
+}
+
+/**
+ * Settings › Features › Day summary (owner, 2026-10-04). Auto-end on or off
+ * and its two times, sending by email on or off, and the addresses. The mail
+ * server login is in .env (Secrets), never here. Saved like a preference: in
+ * turn, applied to the settings as they are then.
+ */
+app.post("/api/day-summary-settings", async (req, res) => {
+  const { autoEnd, sendByEmail, recipients } = req.body ?? {};
+  // Out of range is refused, not quietly replaced with a default the screen
+  // then claims to have saved.
+  if (autoEnd !== undefined) {
+    const { idleMinutes, closedMinutes } = autoEnd ?? {};
+    if (idleMinutes !== undefined && !(Number.isFinite(idleMinutes) && idleMinutes >= 15 && idleMinutes <= 1440)) {
+      return res.status(400).json({ error: "Minutes with nothing on the screens must be 15 to 1440." });
+    }
+    if (closedMinutes !== undefined && !(Number.isFinite(closedMinutes) && closedMinutes >= 5 && closedMinutes <= 360)) {
+      return res.status(400).json({ error: "Minutes with ProPresenter closed must be 5 to 360." });
+    }
+  }
+  if (recipients !== undefined && !(Array.isArray(recipients) && recipients.length <= 50 && recipients.every((r) => typeof r === "string" && r.length <= 200))) {
+    return res.status(400).json({ error: "recipients must be a list of email addresses" });
+  }
+  const cleanRecipients = recipients?.map((r) => r.trim()).filter(Boolean);
+  const bad = (cleanRecipients ?? []).filter((r) => !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(r));
+  if (bad.length) return res.status(400).json({ error: `Not an email address: ${bad.join(", ")}` });
+  const turn = preferencesTurn.then(async () => {
+    const next = { ...config, serviceModule: { ...config.serviceModule }, reportModule: { ...config.reportModule } };
+    if (autoEnd !== undefined) next.serviceModule.autoEnd = autoEndSettings({ ...autoEndSettings(config.serviceModule?.autoEnd), ...autoEnd });
+    // Sending and addresses only where the backend takes a list of
+    // addresses: a church sending to a folder keeps its setup untouched.
+    if (deliveryBackendFor(config)?.takesRecipients) {
+      if (sendByEmail !== undefined) next.reportModule.enabled = Boolean(sendByEmail);
+      if (cleanRecipients) next.reportModule.recipients = cleanRecipients;
+    }
+    await saveConfig(next);
+    config = next;
+  });
+  preferencesTurn = turn.catch(() => {});
+  try {
+    await turn;
+  } catch (err) {
+    return res.status(500).json({ error: `Couldn't save it: ${err.message}` });
+  }
+  res.json({ ok: true, autoEnd: autoEndSettings(config.serviceModule?.autoEnd), report: getReportModuleStatus(config) });
+});
+
+/** For the Day screen: what auto-end will do, and whether it can send. */
+function autoEndPayload(state, now) {
+  const plan = autoEndPlan(autoEndFacts(state, now));
+  const report = getReportModuleStatus(config);
+  return {
+    ...plan,
+    dueAt: plan.dueAt ? jsonTime(plan.dueAt) : null,
+    settings: autoEndSettings(config.serviceModule?.autoEnd),
+    sendable: report.status === "active",
+    sendProblem: report.status === "active" ? null : report.status === "off" ? "Sending is off." : (report.problems ?? []).join(" "),
+    endedAutomatically: Boolean(state.dayEnds.at(-1)?.auto),
+    closedWatch: client.isLocalHost && platform() !== "win32",
+  };
+}
+
 function servicePayload(now = Date.now()) {
   const state = serviceState(now);
   const { windows } = serviceOptions();
@@ -2369,6 +2533,7 @@ function servicePayload(now = Date.now()) {
     reopened: state.reopened,
     report: reportPayload(state),
     telemetry: { status: getServiceFeedModuleStatus(config).status, lastLogOkAt: serviceFeed.state().lastLogOkAt },
+    autoEnd: autoEndPayload(state, now),
     holdingPace: holdHeartbeatPace(now),
     beatMs: heartbeatInterval({ lastClientAt, hold: holdHeartbeatPace(now), now }),
     performance: { armed: performance.armed, source: performance.source },
@@ -2618,6 +2783,27 @@ async function driftReadiness() {
  */
 app.post("/api/service/end-day", async (_req, res) => {
   if (!requireServiceModule(res)) return;
+  const out = await endDay();
+  if (out.error) return res.status(500).json({ error: out.error });
+  res.json({ ok: true, summary: out.markdown, delivered: out.delivered, ...servicePayload() });
+});
+
+/**
+ * Ends the day: the End key, and auto-end (`auto`: { trigger, note }), which
+ * also says so at the top of the summary and in the day's record.
+ */
+let endingDay = null;
+async function endDay(opts = {}) {
+  // One at a time: a press of End while auto-end is mid-way (waiting on the
+  // arrangement comparison) gets that same result, not a second End.
+  if (endingDay) return endingDay;
+  endingDay = endDayOnce(opts).finally(() => {
+    endingDay = null;
+  });
+  return endingDay;
+}
+
+async function endDayOnce({ auto = null } = {}) {
   await ensureServiceDay();
   const now = Date.now();
   let state = serviceState(now);
@@ -2659,7 +2845,7 @@ app.post("/api/service/end-day", async (_req, res) => {
     summary: { ...s.summary, startedAt: s.summary.startedAt ? Date.parse(s.summary.startedAt) : null },
     rows: timelineRows(state, s.serviceId, now),
   }));
-  const markdown = renderDaySummary({
+  let markdown = renderDaySummary({
     day: serviceDay.day,
     services: services.filter((s) => s.summary.items || s.source !== "lockin"),
     outside: timelineRows(state, null, now),
@@ -2671,14 +2857,16 @@ app.post("/api/service/end-day", async (_req, res) => {
     endedAt: now,
   });
 
-  const ended = buildEvent("day-ended", {}, { now: now + 1 });
+  // Said in the summary itself when nobody pressed End.
+  if (auto) markdown = withAutoNote(markdown, auto.note);
+  const ended = buildEvent("day-ended", auto ? { auto: auto.trigger, autoSend: Boolean(auto.send) } : {}, { now: now + 1 });
   const summaryFile = `summary-${ended.id}.md`;
   const { folder } = serviceOptions();
   let delivered = null;
   try {
     await saveTextRecord(serviceDay.day, summaryFile, markdown, { folder, pendingDir: "./data/service-days-pending" });
   } catch (err) {
-    return res.status(500).json({ error: `Couldn't save the day summary on this machine: ${err.message}. The day was not ended.` });
+    return { error: `Couldn't save the day summary on this machine: ${err.message}. The day was not ended.` };
   }
   const summaryFolder = config.serviceModule?.summaryFolder;
   if (typeof summaryFolder === "string" && summaryFolder.trim()) {
@@ -2694,12 +2882,12 @@ app.post("/api/service/end-day", async (_req, res) => {
   recordServiceEvents([{ ...ended, summaryFile, delivered }]);
   // Straight after End only when the church has opted out of reviewing
   // first. Its outcome is recorded either way and shown on the screen.
-  if (getReportModuleStatus(config).status === "active" && config.reportModule?.requireReview === false) {
+  if (!auto && getReportModuleStatus(config).status === "active" && config.reportModule?.requireReview === false) {
     deliverSummary(serviceDay.day, serviceDay.events).catch((err) => console.error("Sending the day summary failed:", err.message));
   }
-  console.log(`Ended ${serviceDay.day}. Summary written${delivered ? (delivered.ok ? ` and copied to ${summaryFolder}` : `; copying to ${summaryFolder} is waiting (${delivered.reason})`) : ""}.`);
-  res.json({ ok: true, summary: markdown, delivered, ...servicePayload() });
-});
+  console.log(`Ended ${serviceDay.day}${auto ? ` automatically (${auto.trigger})` : ""}. Summary written${delivered ? (delivered.ok ? ` and copied to ${summaryFolder}` : `; copying to ${summaryFolder} is waiting (${delivered.reason})`) : ""}.`);
+  return { markdown, delivered, auto: Boolean(auto) };
+}
 
 /**
  * Sends the day summary (issue #4). A person presses Send, after reading it,
@@ -5479,6 +5667,17 @@ app.get("/api/health", async (_req, res) => {
         windows: effectiveWindows(config.serviceFeedModule),
         keySet: Boolean(process.env.SERVICE_FEED_TOKEN),
       },
+    },
+    // Settings › Features › Day summary: auto-end and where the summary goes.
+    daySummary: {
+      autoEnd: autoEndSettings(config.serviceModule?.autoEnd),
+      sendByEmail: Boolean(config.reportModule?.enabled),
+      // Whether this screen edits sending at all (a backend that takes
+      // addresses), and its name, from the backend rather than written here.
+      backend: deliveryBackendFor(config) ? { name: deliveryBackendFor(config).displayName, takesRecipients: Boolean(deliveryBackendFor(config).takesRecipients) } : null,
+      recipients: Array.isArray(config.reportModule?.recipients) ? config.reportModule.recipients : [],
+      serviceModuleOn: serviceModuleOn(),
+      closedWatch: client.isLocalHost && platform() !== "win32",
     },
   });
 });

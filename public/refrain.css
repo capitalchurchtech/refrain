@@ -4542,3 +4542,46 @@ body[data-index-bar] #main-content {
   color: var(--rf-phosphor, #cbb4f0);
   text-shadow: 0 0 8px rgba(203, 180, 240, 0.5);
 }
+
+/* ============================================================
+   NARROW WINDOWS (owner, 2026-10-04: docked beside ProPresenter on a 15"
+   laptop, and narrower still on a 13" or 11")
+
+   Refrain should work down to about 320px of window. Fields in a row with
+   a key shrink instead of pushing it off the edge, a menu of choices never
+   runs wider than its column, and a search result puts its keys under its
+   words when both can't fit on one line.
+   ============================================================ */
+/* Not where a minimum width was set on purpose (Service's name fields carry
+   min-w-40 so they wrap onto their own line instead of being squeezed). */
+#main-content .flex > input.flex-1:not([class*="min-w-"]) {
+  min-width: 0;
+}
+#main-content select {
+  max-width: 100%;
+}
+/* DaisyUI's fold is a grid whose column grows to its widest line; at 320px
+   that pushed whole panels past the edge. One column that may shrink. */
+#main-content .collapse {
+  grid-template-columns: minmax(0, 1fr);
+}
+#main-content .collapse > .collapse-title,
+#main-content .collapse > .collapse-content {
+  min-width: 0;
+}
+/* A long library name on a suggestion key wraps rather than overflowing. */
+#main-content .config-arrangement-suggestion {
+  max-width: 100%;
+  height: auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 560px) {
+  #results .search-slide-row {
+    flex-wrap: wrap;
+  }
+  #results .search-slide-row > .shrink-0 {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}

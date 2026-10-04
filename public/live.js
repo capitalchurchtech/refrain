@@ -37,7 +37,7 @@ export function plainMessagesHtml(plain) {
       (m) => `
     <div class="card bg-base-200 live-message-row" data-active="${m.active ? "1" : ""}">
       <div class="card-body p-3 gap-1">
-        <div class="flex items-center justify-between gap-2">
+        <div class="flex flex-wrap items-center justify-between gap-2">
           <div class="min-w-0">
             <div class="font-medium flex items-center gap-2">${m.active ? `<span class="rf-led lit" title="On screen"></span>` : ""}${esc(m.name)}${m.active ? ` <span class="text-xs opacity-70">On screen</span>` : ""}</div>
             ${m.text ? `<div class="text-xs opacity-70 truncate">Says: ${esc(m.text)}</div>` : ""}
@@ -245,7 +245,7 @@ export function initLive() {
           <h2 class="rf-subhead">Performance mode</h2>
           <div id="perf-mode-card" class="card bg-base-200">
             <div class="card-body p-3 gap-2">
-              <div class="flex items-center justify-between gap-3">
+              <div class="flex flex-wrap items-center justify-between gap-3">
                 <div class="flex items-center gap-2">
                   <span id="perf-mode-dot" class="rf-led"></span>
                   <span id="perf-mode-state" class="font-medium">Checking</span>
