@@ -324,6 +324,147 @@ test("the watcher resumes once performance mode ends", async () => {
   }
 });
 
+test("a save during performance mode is reported as waiting, not silently dropped", async () => {
+  // The finding this exists for: a deck imported minutes before an unscheduled
+  // event, with performance mode armed (by Lock in, or by itself). Nothing may
+  // reindex -- but Search must not answer "No matches" as though the word were
+  // simply not in the library. Noticing the file costs nothing and makes no
+  // API call, which is the only reason it is allowed to happen here at all.
+  const dir = await mkdtemp(path.join(tmpdir(), "refrain-watch-"));
+  const { deps, calls } = harness({ dirs: () => [dir], frozen: () => true });
+  const w = startLibraryWatch(deps, { debounceMs: 120, safetyNetMs: 60_000 });
+  try {
+    await writeFile(path.join(dir, "funeral.pro"), "AAA");
+    await new Promise((r) => setTimeout(r, 500));
+    assert.equal(calls.plans, 0, "still no API call while performance mode is on");
+    assert.equal(calls.reindexes, 0);
+    assert.equal(w.status().unreadChanges, true, "the operator must be able to see that work is waiting");
+  } finally {
+    w.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("nothing is reported as waiting when nothing was saved", async () => {
+  // Performance mode is armed for most of every service. Saying "a
+  // presentation changed" when none did would make the notice noise, and
+  // noise on the booth path is how a real one stops being read.
+  const { deps } = harness({ frozen: () => true });
+  const w = startLibraryWatch(deps, { debounceMs: 1, safetyNetMs: 60_000 });
+  try {
+    await w.checkNow("safety net");
+    assert.match(w.status().outcome, /performance mode is on/);
+    assert.equal(w.status().unreadChanges, false);
+  } finally {
+    w.stop();
+  }
+});
+
+test("the waiting flag clears once the reindex it was waiting for runs", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "refrain-watch-"));
+  let armed = true;
+  const { deps, calls } = harness({ dirs: () => [dir], frozen: () => armed });
+  const w = startLibraryWatch(deps, { debounceMs: 120, safetyNetMs: 60_000 });
+  try {
+    await writeFile(path.join(dir, "song.pro"), "AAA");
+    await new Promise((r) => setTimeout(r, 500));
+    assert.equal(w.status().unreadChanges, true);
+
+    armed = false;
+    await w.checkNow("after the service");
+    assert.equal(calls.reindexes, 1);
+    assert.equal(w.status().unreadChanges, false, "the notice must not outlive the work it described");
+  } finally {
+    w.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a check that finds nothing changed clears the waiting flag", async () => {
+  // An fs event that turned out not to change any presentation (a temp file,
+  // a touched mtime) must not leave the notice up forever.
+  const dir = await mkdtemp(path.join(tmpdir(), "refrain-watch-"));
+  let armed = true;
+  const { deps } = harness({
+    dirs: () => [dir],
+    frozen: () => armed,
+    plan: async () => incrementalPlan(0),
+  });
+  const w = startLibraryWatch(deps, { debounceMs: 120, safetyNetMs: 60_000 });
+  try {
+    await writeFile(path.join(dir, "song.pro"), "AAA");
+    await new Promise((r) => setTimeout(r, 500));
+    assert.equal(w.status().unreadChanges, true);
+
+    armed = false;
+    await w.checkNow("after");
+    assert.equal(w.status().unreadChanges, false);
+  } finally {
+    w.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a save that lands mid-reindex is still unread afterwards", async () => {
+  // The reindex in flight planned before this save existed, so completing it
+  // says nothing about the save. Marking it read here is how a deck goes
+  // missing from Search with no notice once performance mode arms -- and the
+  // debounced check for the second save is dropped outright while the first
+  // is still running, so nothing else catches it until the safety net.
+  const dir = await mkdtemp(path.join(tmpdir(), "refrain-watch-"));
+  let release = () => {};
+  const held = new Promise((r) => (release = r));
+  let reindexes = 0;
+  const { deps } = harness({
+    dirs: () => [dir],
+    reindex: async () => {
+      reindexes += 1;
+      await held;
+      return { buildDurationMs: 10 };
+    },
+  });
+  const w = startLibraryWatch(deps, { debounceMs: 120, safetyNetMs: 60_000 });
+  try {
+    await writeFile(path.join(dir, "a.pro"), "AAA");
+    await new Promise((r) => setTimeout(r, 400));
+    assert.equal(reindexes, 1, "the reindex should be in flight");
+
+    await writeFile(path.join(dir, "b.pro"), "BBB"); // the second save, while it runs
+    await new Promise((r) => setTimeout(r, 300));
+    release();
+    await new Promise((r) => setTimeout(r, 200));
+
+    assert.equal(w.status().unreadChanges, true, "the save that arrived mid-reindex is still unread");
+  } finally {
+    release();
+    w.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("performance mode does not overwrite what the last real check found", async () => {
+  // Health renders `pending` as a count or a full-rebuild warning. Performance
+  // mode resolves neither, so it must carry the finding forward rather than
+  // replacing it -- replacing it printed "undefined presentations have
+  // changed" and swallowed the full-rebuild warning.
+  let armed = false;
+  const { deps } = harness({ frozen: () => armed, plan: async () => incrementalPlan(300) });
+  const w = startLibraryWatch(deps, { debounceMs: 1, safetyNetMs: 60_000 });
+  try {
+    await w.checkNow("bulk import");
+    assert.equal(w.status().pending.count, 300, "too many to do unasked, so it is waiting");
+
+    armed = true;
+    await w.checkNow("service starts");
+    assert.equal(w.status().pending.count, 300, "still waiting, and Health still has a number to print");
+    // Independent signals: no fs event was seen here, so there is nothing
+    // unread even though a plan-derived backlog is waiting.
+    assert.equal(w.status().unreadChanges, false);
+  } finally {
+    w.stop();
+  }
+});
+
 // --- index staleness: the silent failure ---
 
 test("a fresh index says nothing at all", () => {

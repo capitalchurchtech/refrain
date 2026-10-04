@@ -2308,6 +2308,375 @@ in the UI just like history, maybe an alert icon for a pulldown?"
 - 40.6 (colour) waits for this, since it changes the screens.
 
 **Open for the owner:** Clear in the pulldown or only on Service › Now (suggested: in the pulldown); the tab names and order; build now, or queue it.
+## 42. UI audit, 2026-09-27 (six personas, read-only) — the feature-creep pass
+
+Owner: "I feel like the app has drifted into feature creep instead of solving
+operator woes. We have three main uses for ProPresenter. Design mode, Weekend
+Mode, Special Event Mode. Search can remain for all modes, but other features
+need to fall under these modes. Macros, looks not really very helpful. Slide
+previews mostly helpful for phone app and less so for desktop since
+ProPresenter is right there already."
+
+Six personas, run independently and blind to each other: the Reluctant
+Operator (afraid), the Fluent Regular (fast, docked narrow), the midweek
+builder (the owner's "Design mode"), the special-event lead (no playlist, no
+plan), the roaming director on a phone (interrupted), and the installer who
+leaves on Saturday. Every mechanism cited below was re-checked against the
+source or the running app before filing.
+
+### The call on "three modes", so it is not re-litigated
+
+**Do not build three modes.** The creative direction already defines two
+surfaces, BOOTH and DESK, and warns against averaging personas across a new
+axis. Design *is* DESK. Weekend and Special Event are both BOOTH, and differ
+only in whether a plan exists — which is Lock in, which already ships. So the
+work is: promote Lock in (§42a, §42d), and give the installer one desk-set
+switch that decides what the booth ever renders (§42e). No mode selector on
+the booth path, ever: the Fluent Regular would pay a press before his first
+press and gain a state he can be in wrongly at 10:29 on a Sunday.
+
+Core search stays outside all of it (CLAUDE.md invariant 1). A switch that can
+hide Search is wrong.
+
+### Order
+
+§42a first — it is the only finding that makes Search lie during a live
+service. Then §42b/§42c/§42d, which are one editing pass over Live. Then §42e.
+Then the phone pair §42f/§42g. §42h is the cut list and can ride with any of
+them. §42i is filed, not scheduled.
+
+---
+
+### 42a. BLOCKER — performance mode freezes the index, and Search says "No matches"
+
+**Context.** The special-event lead imports a deck from a thumb drive eight
+minutes before doors, searches its title, and gets `No matches`. Performance
+mode arms itself once something has been live for a couple of minutes, and
+arms deliberately when the operator presses Lock in — which is the *correct*
+thing to press for an unscheduled event. While armed, the server sets
+`indexWorkDeferred = "performance mode is on"` (`server/index.js:4657` and
+`:4691`) and skips both the rebuild and the changed-file reindex. That string
+is rendered only by `public/health.js:1387` and `public/setup.js:202`.
+`renderStaleness` on Search (`public/search.js:124`) keys on the index's *age*,
+and the lock-in variant (`lockinStaleness`, `server/index.js:1441`) does not
+fire until 24 hours in. So "this word is not in your library" and "Refrain
+stopped reading your library because you told it to watch closely" render as
+the same three words, on the path to screen, with no way to tell them apart.
+
+Two personas hit this. It is the worst thing in the audit because the feature
+built for the no-plan operator is the thing that blinds search for them.
+
+Do: make Search show the deferred-index state wherever it already shows
+staleness, using the reason the server already sends, and let a changed-file
+reindex (not a full rebuild) run while performance mode is armed, since it
+reads `stat()` metadata and a handful of changed presentations rather than
+crawling the library.
+Do not: add a banner and stop there — the state readout is the floor, not the
+fix. Do not let a full rebuild run under performance mode; that guard is
+correct and the README's warning about rebuild-near-a-service stands. Do not
+touch `/api/search` ranking or the fuzzy fallback (§39d, settled).
+Done when: with performance mode armed and a presentation saved in
+ProPresenter, that presentation is findable in Search within seconds; and with
+the reindex genuinely unable to run, Search says so in the staleness line
+rather than returning a bare "No matches". Exercised against a running
+ProPresenter, not a fake.
+
+**AMENDED 2026-09-30 — the first half of that "Done when" is now wrong, and
+must not be re-specced.** The #11-#13 stability work settled the opposite way,
+for good reasons measured on a real rig: an index run is refused outright
+while performance mode is armed with a known source or content is live
+(`operatorIndexRefusal`), and Refrain's own catch-up waits for an hour with
+nothing on the screens. So a presentation saved during a service is *not*
+findable within seconds, by design, and nothing here should try to make it so.
+What survives is the half that was always the point: Search must not report
+"the index has not read this yet" and "nobody ever wrote that word" with the
+same three words. Built accordingly — the notice states it and offers no
+button, because in every state it can appear the route would refuse a press.
+The remaining "Done when" is that clause alone.
+
+---
+
+### 42b. BLOCKER — Live's Next preview is a live control dressed as a picture
+
+**Context.** `livePreviewHtml` (`public/live.js:55-74`) renders Now as a
+`<figure>` and Next as `<button data-step="next">` — same class, same 16:9
+frame, same border, adjacent in a 2-column grid with a 10px gap. One click on
+the right-hand picture advances the presentation on the screens. The only
+disambiguator is `· click to show` appended to an 8-10px silkscreen caption:
+help text doing a control's job. It is the largest hit area on Live and it
+sits above every guarded control. The phone, performing the same action, arms
+and confirms on a second tap (`public/remote.js:366-410`) — so the
+less-supervised surface is the better-guarded one.
+
+The owner is already right that desktop previews are low value with
+ProPresenter on the next monitor; five of six personas said so unprompted.
+Removing them resolves this finding and half of §42c at once.
+
+Do: remove the Now/Next preview pair from the Live screen. Keep the previews
+on the phone, where they are the whole point. If an advance key is wanted on
+Live, it is a labelled key in the Live bank, not a picture.
+Do not: keep the pictures and add a confirm dialog — the direction guards by
+separation, never by "are you sure". Do not remove the preview *route* or the
+thumbnail cache; the phone depends on both. Do not touch the live readout
+above it, which is the one thing the Fluent Regular glances at.
+Done when: Live has no clickable slide image; nothing on Live can put a slide
+on the screens in a single unguarded click; and the phone's Now/Next still
+render (see §42f, which must land for that to be true for an unapproved
+phone).
+
+---
+
+### 42c. CRAFT — Clear moves between one Sunday and the next
+
+**Context.** The Fluent Regular needs to kill what is on the screens from
+Search, where he always sits, docked at ~455px. Search has no clear of any
+kind, so it is a rail press, a visual scan, arm, fire, and a press back. The
+scan is the expensive part, because five conditional panels sit above the
+Clear bank: the readout, the preview pair (§42b), the performance-mode card
+(§42d, a three-line body at docked width), Safe slides (`grid-cols-2` at that
+width, so zero to three rows depending on how many the church saved), and an
+offline banner that wraps to three lines. The keys land at a different height
+each week. Muscle memory is the only thing that works in the three seconds
+where this matters, and muscle memory needs a fixed target.
+
+The Reluctant Operator adds the other half: Safe slides renders
+`btn btn-outline h-16` in `grid-cols-2 sm:grid-cols-4` and Clear renders
+`btn btn-outline h-20` in the same grid, 4rem apart, and Clear's keys past the
+first read "Slide", "Media", "Messages" — nouns that name a thing, not an
+action. Two stacked banks of noun-labelled outline keys, where one puts a
+picture up and the other takes everything down, separated by a silkscreen
+heading that is the first thing to leave her attention under pressure.
+
+Handoff §39e already moved Messages *below* Clear so six rows could not push
+the Clear keys out of reach. The same argument applies to everything still
+above them and was not applied.
+
+Do: give the Clear bank a fixed position on Live that does not depend on how
+many safe slides exist, whether previews rendered, or whether the offline
+banner is showing. Make Clear's keys name their action rather than their
+object.
+Do not: solve it by shrinking the panels above — a conditional panel that is
+merely smaller still moves the keys. Do not remove Safe slides (§39a, the
+owner asked for it) and do not add an arm step to a safe slide; Clear All
+keeps its two presses.
+Done when: the Clear keys are at the same offset from the top of Live with
+zero safe slides and with eight, online and offline, at 455px and at full
+width — measured with `offsetHeight`, not `getBoundingClientRect()`.
+
+---
+
+### 42d. CRAFT — one machine state, three labels, two screens
+
+**Context.** Performance mode is offered as "Turn on"/"Turn off" and "Lock in"
+on Live (`public/live.js:227-253`), and as "Lock in for an event" with a name
+field on Service (`public/service.js:140-161`). Three labels, no two the same,
+for one state — and the card's own body says "Turns on by itself once
+something has been live for a couple of minutes", i.e. it is a full card with
+a lamp, a state string, a reason line and an explanation for something that
+needs no press. Lock in's only distinguishing explanation is a `title`
+attribute (`public/live.js:237`): nothing in a dark booth at a glance, nothing
+at all on touch. The creative direction names this failure by name ("Is any
+state reported in two places?"), and the card occupies the most expensive real
+estate on the booth path, between the readout and the emergency keys.
+
+Three personas stalled here. It is also where the owner's "Special Event mode"
+actually lives: Lock in is 80% of that mode and is currently filed as a
+sub-feature of a weekend records screen.
+
+Do: reduce automatic performance mode to a lamp in the status cluster, which
+already exists and already carries PERF. Promote Lock in to a single named
+control with one label wherever it appears, reachable without opening the
+Service screen, and make it state plainly what it suspends — including the
+index (§42a).
+Do not: keep a second Lock in on Service as well as the promoted one. Do not
+invent a fourth word for it. Do not remove the manual arm/disarm entirely; the
+operator holding it by hand is a real case (`server/index.js:1696`, `:1712`).
+Done when: the words "Lock in" appear once per screen and mean the same thing
+on both; the Live screen has no performance-mode card; and the state is
+readable from the rail on every screen.
+
+---
+
+### 42e. CRAFT — twelve destinations, eight with no off switch anywhere
+
+**Context.** The installer sets this up for a church that is not his, on a
+Saturday, and is not there on Sunday. He wants to hand the volunteers Search,
+Live and Flags, and nothing else. He cannot. `navEnabledFor`
+(`server/index.js:243`) special-cases exactly three ids — arrangement,
+library-sync, service — against a config status; every other module falls
+through to `return m.enabledByDefault`, a hardcoded literal inside
+`modules/<id>/module.js`. Eight of the twelve destinations have no off switch
+in the UI, none in `config.json`, and none in `config.example.json`. The only
+way to remove a screen is to delete its folder off disk, which the app never
+mentions and an update undoes. At 350px docked the rail spends 56px — 16% of
+the panel, permanently — on twelve unlabelled icons, and `#main-content`
+overflows horizontally by 10px.
+
+The first-run welcome dialog already states exactly the boundary the owner
+wants: "Setup, arrangements, and the image and QR tools belong to whoever owns
+the label maker. The three above are yours." It is the clearest statement of
+the product's shape anywhere in the repo, and it is a sentence where it should
+be a setting.
+
+This is the feature-creep finding proper, and it is the switch the owner is
+reaching for when he says "modes".
+
+Do: let config decide which modules render in the nav, for every module rather
+than three, and give the installer one place to set it — at the desk, on
+Health or in first-run setup, next to where they already are. Keep the
+auto-discovery architecture: this is a config-driven filter in
+`navEnabledFor`, not a registry of modules.
+Do not: put the switch on the booth path or in the rail. Do not let it hide
+Search (CLAUDE.md invariant 1). Do not make it a seventh place to turn things
+on — it has to subsume the per-screen toggles and the hand-edited
+`serviceModule.enabled`, not sit above them, or §42i's fourth item gets worse.
+Do not add a mode *name* to config; this is "what this booth shows", not
+"which of three modes am I in".
+Done when: a fresh install can be handed over showing Search, Live, Flags and
+Health only, set from the UI, surviving an update; and the rail at 350px has
+no horizontal overflow.
+
+---
+
+### 42f. BLOCKER — the phone's previews are gated behind booth approval
+
+**Context.** The roaming director wants to see what is on the screens from the
+back of the room. The Now/Next panes are nested inside `#control`
+(`public/remote.html:119`), which is `hidden` unless `state.phone.canControl`.
+So the previews — the one thing the owner's own thesis says the phone is
+genuinely for — are gated behind per-device control approval rather than
+behind the PIN. Both pieces of copy promise otherwise: the off-state says
+phones "see the current and next slide", and an unapproved phone is labelled
+"Search, preview and flag only". What an unapproved phone actually gets is
+three 96px thumbnails under the "Which slide" heading on the Flag tab.
+
+Wrong nesting has silently made the phone's best feature a control privilege.
+
+Do: move the Now/Next preview panes out of `#control` so any signed-in phone
+sees them, and leave the advance controls gated as they are.
+Do not: change what control approval grants. Do not widen the image route
+beyond the on-screen deck's slides plus each safe slide's own slide — that
+boundary is deliberate and was security-reviewed.
+Done when: a signed-in, unapproved phone shows Now and Next as pictures, and
+still cannot reach Next, Previous or the safe slides.
+
+---
+
+### 42g. BLOCKER — the phone needs the booth, for the case where the booth is empty
+
+**Context.** The roaming director is advancing slides because nobody is in the
+booth. Control is granted per device, only from the booth's Phone panel, and a
+device only appears in that list *after* it has signed in
+(`server/remote-devices.js:34` — every new or re-added device starts
+`approved: false`). So the grant is strictly ordered: he arrives, signs in,
+and then someone at the booth presses a button. The one scenario the feature
+exists for is the one in which nobody can grant it. The daily PIN has the same
+shape — its hint reads "Ask whoever is running the screens" — and the escape
+hatch, "Trust this phone", is an unchecked checkbox below the PIN field: opt-in
+at the only moment it can be ticked, easy to skip one-handed.
+
+Do: let a phone be pre-approved by name from the desk before it has ever
+signed in, so "Tomás runs the 10:30 from the floor" is set on Tuesday rather
+than begged for at 9:58. Make a correct PIN grant lasting trust by default,
+with the booth able to revoke.
+Do not: weaken the prepare-then-confirm on each control press, the per-phone
+pause, the daily wrong-PIN cap, or Forget all phones. Do not make any
+additional capability reachable from a phone — no Clear All, no Looks, no
+Macros. Do not store anything per phone that Forget cannot clear.
+Done when: a phone named at the desk on Tuesday can sign in on Sunday with the
+PIN and advance slides with no one in the booth; Forget all phones still signs
+everyone out and rotates the PIN.
+
+---
+
+### 42h. CRAFT — the cut list
+
+**Context.** The owner's read on Macros, Looks and desktop previews is
+confirmed, with a mechanism rather than a preference. Every label on a Look or
+Macro key was written in ProPresenter by someone who is not in the booth, so
+the Reluctant Operator cannot predict a single one and never presses any; the
+special-event lead has none at all, because an event built twenty minutes ago
+has no Looks and no macros. Looks is already folded into a `<details>` that
+reads "No Looks or Macros found" when offline. The Fluent Regular is the lone
+defender of Macros, and his reason is good: they fire things ProPresenter
+makes him hunt for, they self-hide when a church has none, and §39f's Edit
+toggle already prunes them.
+
+Do, in one pass:
+- Remove the Looks fold from Live, and the `/v1/look/current` read that feeds
+  its heading (audit finding #8, superseded by this).
+- Keep Macros, demoted: one switch for the bank rather than the per-macro hide
+  from §39f, which is the right idea at the wrong grain.
+- Remove Scripture as its own rail destination. It is the Lyrics
+  paste-and-split block with a different link builder on top, and it is the
+  buggier of the two copies (§42i, first item). Fold passage lookup into
+  Lyrics, or drop it behind §42e's switch.
+- Cut the Image Crop "add common size" list to about four entries. YouTube
+  thumbnail, Pinterest, LinkedIn and X header are a social-media tool that
+  wandered into a booth.
+Do not: remove Macros outright. Do not remove the paste-and-split block itself
+— it is the one thing the midweek builder came for.
+Done when: Live has no Looks section and one macro switch; the rail is one
+destination shorter; Image Crop's size list fits without scrolling.
+
+---
+
+### 42i. Filed, not scheduled
+
+Real, verified, and deliberately not in this pass. Do not work these without
+the owner saying so.
+
+- **CRAFT — paste-and-split silently no-ops.** `splitText`
+  (`public/slide-tools.js:54`) strips invisibles but never calls `cleanText`,
+  so Clean up and Straighten quotes only take effect if pressed in that order
+  *before* Preview Slides. Out of order, the preview looks right and the slides
+  carry curly quotes and double spaces into ProPresenter. Three controls, one
+  action, a hidden order dependency. Separately, Scripture hardcodes
+  `blank-line-delimited` (`public/scripture.js:44`) and ignores the configured
+  splitter, so the same job exists twice with different defaults and options.
+- **CRAFT — Flags opens with a screen the midweek builder cannot use.**
+  `render()` (`public/slide-flags.js:378-388`) emits the subtitle, "Flag the
+  live slide" and the 11-tile capture grid unconditionally, never checking
+  whether ProPresenter is connected or a slide is live. Midweek that is
+  two-thirds of a screen of dead controls above the review list — which is the
+  best midweek artifact in the product, and is filed under SERVICE.
+- **CRAFT — Return says Return and restores nothing.** `/api/return` is
+  focus-only by design, and the bar says so in a muted clause at `opacity-70`
+  (`public/return-bar.js:106`). The button is one word inside an
+  `alert-warning`, and the welcome dialog reinforces the wrong model: "a bar
+  appears up top to send you back to where the plan was". The product's stated
+  third step, "Sit back down", is the one whose label describes the opposite of
+  what it does, and the failure is silent and public.
+- **CRAFT — Health reports module states that are not true.** The
+  arrangement storage dropdown offers Firestore and SFTP with nothing marking
+  them as stubs; `getArrangementModuleStatus` validates only that the matching
+  `.env` names are non-empty, so setting `FIRESTORE_PROJECT_ID` to anything
+  makes the status strip read "Arrangement active" for a backend whose read and
+  write methods throw. The README is honest about these; the one screen whose
+  job is reporting truth is not. Related: `showModuleOffNotice`
+  (`public/nav.js:152`) says any disabled module can be turned on in Health —
+  false for `service` and `reportModule`, which exist only as hand-edits to
+  `config.json`.
+- **NOTE — the dock nudge fires at the desk.** `maybeShowDockNudge()`
+  (`public/search.js:24-38`) fires on any window over 900px, once per session,
+  on the one screen present in every mode. The creative direction already
+  caught this exact failure once and fixed it by rewording rather than
+  scoping; the reword still assumes the reader is approaching a service.
+- **NOTE — Spell Check takes a playlist only** (`public/spellcheck.js:29-33`).
+  The song just built is a library presentation and may be in no playlist, so
+  the check most wanted after a build is the one that cannot be run.
+
+### Audit conditions, for whoever repeats this
+
+The worktree had no `config.json`, so one was written from
+`config.example.json` with `arrangementModule`, `imageCropModule`,
+`librarySyncModule` and `serviceModule` enabled, to audit the maximal surface.
+It is gitignored and local to the worktree. ProPresenter was not running, so
+live-dependent panels were read in their offline state; every finding above
+turns on layout, labelling, routing or disclosure rather than on offline copy.
+Widths were measured with the viewport emulated at 350px and 430px.
+
+---
 
 **Decided (owner, 2026-09-30):** "4, clear all yes. Require confirm click. Start section 41." The pulldown above was replaced by menu option 4: the quick slides live **in the menu itself**, not in a pulldown, with the menu reshaped per option B.
 - **Service page:** tabs Now, Flags, Day (in that order), each module joining it with `nav.page: "service"` in its module.js. `#service` opens Now; `#live`, `#slide-flags` and `#service/service` still land on their tabs.
@@ -2931,6 +3300,9 @@ in the UI just like history, maybe an alert icon for a pulldown?"
 - 2026-09-30 — (branch prep-order, uncommitted) Prep tab order (owner): Lyrics, Spell Check, QR Codes, Image Crop, Scripture, then Arrangement (not in the owner's list, so last). Scripture is late because most churches use the Bible versions they bought inside ProPresenter. Set in each module.js `nav.order`. Prep opens on Lyrics now. 545 pass.
 - 2026-09-30 — (branch prep-order, uncommitted) "This Mac" becomes **Customize** (owner: build all six suggestions); `#settings/this-mac` still opens it. Display: Theme is four latched keys with swatches (System, Light, Dark, Blackroom) instead of a button that cycled; Menu side Left | Right; Menu Labels | Icons (was only on the collapse key). All three run through nav.js's new `display` object, so the menu stays the one owner of those settings. Keys marked `aria-checked` use `.rf-tab`'s latched look (refrain.css). "Open in its own window" sits under Display. A Welcome card has "Show the welcome card". Start at login says "Only on a Mac for now…" where it isn't supported, instead of vanishing. The update command moved to Status beside Updates ("Update by hand"), and the Terminal shortcuts card is gone; the update-nudge error now points to Settings > Status. Verified every control in the browser, then restored the dev settings. 545 pass.
 - 2026-09-30 — Pushed 3738ec0 (Prep order; This Mac → Customize) and updated this Mac's install.
+- 2026-09-27 — (branch claude/ui-audit-feature-creep) §42a built, **half of it deliberately not built**. The watcher now remembers that a `.pro` file changed while performance mode was holding (`unreadFileEvent` in `startLibraryWatch`, set from the fs.watch handler, reported as `pending.changedWhileFrozen`, cleared on a reindex or on a check that finds nothing changed). `deferredStaleness()` turns that into the staleness notice Search already renders — "A presentation changed since this index." — beside the Refresh button that already exists, which calls `/api/index/reindex-changed` and is `operatorInitiated`, so it is already allowed to run while performance mode is armed. Staleness order is now deferred → lock-in → age. **Departure from the written item, on purpose:** it says to let a changed-file reindex run in the background under performance mode. It must not. An incremental reindex still reads each changed presentation *through ProPresenter's API*; only the fingerprinting is `stat()`. Running that unattended while something is on the screens is precisely what performance mode exists to stop, and the watcher's "does not even check" comment and its test are a deliberate promise. Surfacing the state and letting the operator press Refresh solves the same stall (Search stops answering "No matches" indistinguishably from a word nobody wrote) without touching the invariant. **Not covered:** the cold case of no index at all under performance mode. Search still says only "Not built yet"; that is true, and a first build belongs on Health where the hour-long-crawl warning is. **Verification:** four new tests in `test/library-watch.test.js` (a save while frozen is reported with still zero API calls; nothing is reported when nothing was saved, so the notice stays quiet through a normal service; the flag clears when the reindex runs; and when a check finds nothing changed). Rendering was confirmed on the real Search screen at full width and at 380px docked by temporarily forcing the condition, since this machine has no ProPresenter and no index — the end-to-end path (edit a presentation during a live service, see the notice, press Refresh, find the deck) has NOT been run against a live rig and should be, once. Copy was cut from "A presentation changed while performance mode was on." after seeing it wrap to six lines and push the search box down at docked width. **Pre-existing, not from this change:** `test/crash-report.test.js:166` fails in a git worktree — `readGitHead(".git")` assumes a directory, and in a worktree `.git` is a file containing `gitdir: …`, so Refrain reports no commit when run from one. 534/535 otherwise. **Spotted in passing, not fixed:** `refreshStatus()` in `public/search.js` has no catch, so a status fetch that fails (a `node --watch` restart returning 502 was enough) leaves the index chip and the staleness line blank until the next reload, with nothing retrying.
+- 2026-09-27 — (branch claude/ui-audit-feature-creep) Code review of §42a, four findings, three fixed and one recorded as a known gap. (1) The frozen branch had reused the watcher's `pending` field with a different shape, which Health renders as `${pending.count} presentations have changed` — so an armed performance mode plus any .pro change printed "**undefined** presentations have changed", and overwrote a real `tooMany`/`needsFullRebuild` pending, losing the full-rebuild warning in the Library Sync case (ProPresenter closed, so performance mode armed, hundreds of files landing). The signal now has its own field, `unreadChanges`, and the frozen branch carries `pending` forward untouched. (2) `unreadFileEvent` was cleared unconditionally after a reindex, including for saves that landed *while* it ran — and the debounced check for such a save is dropped outright if one is still running, so the miss would have survived to the 30-minute safety net or past the moment performance mode arms, which is the exact silent failure §42a exists to remove. Replaced with a sequence pair (`fileEventSeq` bumped by the fs handler, `readEventSeq` set only to the value captured before `deps.plan()`), so each check marks off only the events it actually saw. (3) `frozen()` is also true when ProPresenter is merely unreachable, so the notice could appear with a Refresh button that can only 502 — reindexing reads through the API that is not there. Now gated on `liveState.connected`, so the Library-Sync-with-ProPresenter-closed case says nothing and leaves the link to the readout and the LINK lamp. (4) NOT fixed, and written into the function's comment instead: with `autoReindex: false` there is no watcher, so nothing local knows a file changed and this protection cannot fire at all — for exactly the churches whose index drifts furthest. Closing it needs a signal from somewhere other than the watcher that setting deliberately turns off, which is a bigger decision than this pass. Two more tests (a save landing mid-reindex is still unread afterwards; performance mode does not overwrite what the last real check found). Lint clean, 536/537, the one failure still the pre-existing worktree `.git` case.
+- 2026-09-30 — (branch claude/ui-audit-feature-creep) Merged main (v0.24.0) and reconciled §42a with it. The audit section renumbered 40 → **42**: main took 40 for the Prep/Settings tabs plan and 41 for the quick-slides proposal while this branch was out, and main's 40 is the one the shipped commits cite. **§42a still closes a gap main left open:** Search's staleness line is still `lockinStaleness() ?? indexStaleness()`, i.e. a lock-in over 24h or an index over a week, and `indexWorkDeferred` is still rendered only in Settings — so a deck saved or imported minutes ago still comes back as a bare "No matches" (`search.js:306`) with nothing separating it from a word nobody wrote. **What main changed, and what that cost §42a:** `operatorIndexRefusal()` now refuses a reindex whenever performance mode is armed with a known source or something is live, so the Refresh this notice was built around 409s in *every* state the notice can appear (connected implies the source is not "unknown"). Search does surface that 409's text now (`search.js:146`), so it was never silent — but it cost a press to read a sentence the server already had. Reconciled: the sync half of the refusal is split out as `indexRunHeldReason()` (one source of truth, used by both the route and the notice), `deferredStaleness()` returns `held: true`, and `renderStaleness` omits the Refresh when a notice is held. The notice reads "A presentation changed since this index. It catches up when the screens are quiet." — true for every held reason, since all of them end when the screens go quiet. Deliberately *not* the route's own sentence, which runs to three lines beside the index chip at docked width. Verified by forcing the condition: one 20px line at full width, three lines (60px) at 380px, no button, no horizontal overflow. Lint clean, 550/551 — still only the pre-existing worktree `.git` failure. Still unrun on a live rig: save a deck during a service, see the notice, watch the catch-up pick it up when the screens go quiet.
 - 2026-09-30 — (branch tab-icons, uncommitted) Tab rows switch to icons when they would wrap (owner). `fitTabs` in public/tabs.js measures instead of using a breakpoint: whenever the row's width changes, it checks whether the tabs fit on one line, and the class is set on the next frame so the height change can't loop the ResizeObserver. Names stay for screen readers (visually hidden) and show as tooltips. Prep and Settings both use it; checked at 520px (icons, one line) and 1280px (labels, one line). Status lights: hover now says what each light watches, then its state ("Performance mode: Refrain holds still during a service…" / "Now: off."), with an aria-label to match. 545 pass.
 - 2026-09-30 — (branch service-page, uncommitted; also carries tab-icons) Section 41 built as decided: one Service key with Now | Flags | Day tabs; menu option B (lights under the wordmark, slim icon footer); option 4 quick slides in the menu, two presses each (public/quick-slides.js, CSS "QUICK SLIDES IN THE MENU" in refrain.css). Now's safe-slide editor and Search's "keep this slide" dispatch `refrain:safe-slides-changed` so the menu updates at once; otherwise it re-reads every 60s while visible. Verified on the dev server (1280×900 and 1280×640, expanded and narrow): the lamp row fits the 144px rail; arming, the 3s timeout, switching keys, firing a safe slide and Clear all all behave (this Mac's ProPresenter, not the booth). Five placeholder safe slides ("Test 1"–"Test 5", from the Announcements deck) were added to the **dev** config.json to exercise it; remove them on Service › Now when done. Not checked closely in the light theme. 548 pass (new test: quick-slides.test.js); lint clean on the repo's code (the `.claude/worktrees/` copy from another session still trips the root lint run).
 - 2026-10-03 — Pushed 42ace15 (Service page, menu option B, quick slides in the menu, tab icons, lamp tooltips) and updated this Mac's install. Install checks: ProPresenter connected; Now, Flags and Day report `page: "service"`; quick-slides.js served. This install has no safe slides yet, so the menu's quick slides stay hidden until one is kept (Search › keep this slide). Still v0.24.0, no release. Not on the booth.
