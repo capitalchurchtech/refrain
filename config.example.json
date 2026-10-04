@@ -105,5 +105,14 @@
     "folder": null,
     "summaryFolder": null,
     "phases": null
+  },
+  "_serviceFeedModule": "Lets this console report to your own announcement server: which slide is showing, and its diagnostics log afterwards (see docs/service-feed.md). Off until enabled, and it only ever talks to the url you set: nothing goes to the Refrain project. url is the console address from the announcement server's admin page (https). Set these on the Telemetry tab of Settings. name is the station's name as the announcement server lists it (for example Main Campus FOH). The key goes in .env as SERVICE_FEED_TOKEN. includeSlideText sends the words on the slide as well as its title and number; leave it false unless you want that. windows are the only times it talks, in this machine's local time: outside it nothing is sent. consoleId is filled in by Refrain.",
+  "serviceFeedModule": {
+    "enabled": false,
+    "url": null,
+    "name": null,
+    "includeSlideText": false,
+    "windows": [{ "days": ["sun"], "from": "09:00", "until": "14:00" }],
+    "consoleId": null
   }
 }

@@ -17,8 +17,8 @@
  * `.git` is a legitimate way to run this, and boot must not care.
  */
 
-import { readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync, existsSync, statSync } from "node:fs";
+import { join, resolve, dirname } from "node:path";
 
 /**
  * Resolves HEAD to a commit SHA.
@@ -31,6 +31,17 @@ import { join } from "node:path";
 export function readGitHead(gitDir = ".git") {
   try {
     if (!existsSync(gitDir)) return { commit: null, branch: null };
+    // In a git worktree `.git` is a file holding "gitdir: <path>". HEAD lives
+    // there, but branch refs and packed-refs live in the main repository, which
+    // the worktree's `commondir` file points back to.
+    let commonDir = gitDir;
+    if (statSync(gitDir).isFile()) {
+      const pointer = readFileSync(gitDir, "utf-8").match(/^gitdir:\s*(.+)$/m)?.[1]?.trim();
+      if (!pointer) return { commit: null, branch: null };
+      gitDir = resolve(dirname(gitDir), pointer);
+      const common = join(gitDir, "commondir");
+      commonDir = existsSync(common) ? resolve(gitDir, readFileSync(common, "utf-8").trim()) : gitDir;
+    }
     const head = readFileSync(join(gitDir, "HEAD"), "utf-8").trim();
 
     if (!head.startsWith("ref:")) {
@@ -40,13 +51,13 @@ export function readGitHead(gitDir = ".git") {
     const ref = head.slice(4).trim();
     const branch = ref.replace(/^refs\/heads\//, "") || null;
 
-    const loose = join(gitDir, ref);
+    const loose = join(commonDir, ref);
     if (existsSync(loose)) {
       return { commit: readFileSync(loose, "utf-8").trim() || null, branch };
     }
 
     // Packed refs: lines of "<sha> <ref>", plus comments and peeled "^" lines.
-    const packedPath = join(gitDir, "packed-refs");
+    const packedPath = join(commonDir, "packed-refs");
     if (existsSync(packedPath)) {
       for (const line of readFileSync(packedPath, "utf-8").split("\n")) {
         if (!line || line.startsWith("#") || line.startsWith("^")) continue;

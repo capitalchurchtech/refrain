@@ -147,7 +147,7 @@ It's the simplest module: no saved config, no enable toggle, always available. C
 
 ## Privacy as a hard constraint
 
-Refrain sends data only to services the user configures. There is no telemetry, no analytics, no update check that leaks usage, nothing phoning home to any project controlled server. This is stated plainly in the README because churches reasonably care, and it's a checkable claim as long as it stays true. Treat it as a constraint on every future change, not a marketing line.
+Refrain sends data only to services the user configures. The one feature that reports status off the machine, the service feed (docs/service-feed.md), is off until a church sets it up and only ever talks to the address that church typed in. There is no telemetry, no analytics, no update check that leaks usage, nothing phoning home to any project controlled server. This is stated plainly in the README because churches reasonably care, and it's a checkable claim as long as it stays true. Treat it as a constraint on every future change, not a marketing line.
 
 ## What deliberately isn't extensible
 

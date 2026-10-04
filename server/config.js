@@ -13,6 +13,7 @@ import { writeFile, rename } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import "dotenv/config"; // TODO: add `dotenv` as a real dependency
 import { scheduleProblems } from "./service-days.js";
+import { serviceFeedProblems } from "./service-feed.js";
 
 const CONFIG_PATH = "./config.json";
 const CONFIG_EXAMPLE_PATH = "./config.example.json";
@@ -212,8 +213,27 @@ export function getServiceModuleStatus(config) {
   return scheduleProblems(mod.schedule).length ? "misconfigured" : "active";
 }
 
+/**
+ * The service feed: this console reporting to the church's own announcement
+ * server (server/service-feed.js). Off until enabled; a missing address, name
+ * or key is "misconfigured" with sentences for Health, never a crash.
+ * @returns {{ status: "off" | "misconfigured" | "active", problems: string[] }}
+ */
+export function getServiceFeedModuleStatus(config, env = process.env) {
+  if (!config.serviceFeedModule?.enabled) return { status: "off", problems: [] };
+  const problems = serviceFeedProblems(config.serviceFeedModule, env);
+  return { status: problems.length ? "misconfigured" : "active", problems };
+}
+
 export function getEnvRequirements(config) {
   const reqs = [];
+  if (config.serviceFeedModule?.enabled) {
+    reqs.push({
+      name: "SERVICE_FEED_TOKEN",
+      set: Boolean(process.env.SERVICE_FEED_TOKEN),
+      note: "Service feed: the key the announcement server issued for this console.",
+    });
+  }
   const arrangement = config.arrangementModule ?? {};
   if (!arrangement.enabled) return reqs;
 
