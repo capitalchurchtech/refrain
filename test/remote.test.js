@@ -54,7 +54,7 @@ test("progress is item N of M and time up, never a percentage, and honest when n
 test("only the phone routes exist: nothing that could change the screens is reachable", async () => {
   const { server, base } = await start({ recent: pushRecent([], slide(1)) });
   try {
-    for (const [method, path] of [["POST", "/api/trigger"], ["POST", "/api/live/clear"], ["POST", "/api/live/macro"], ["GET", "/api/health"], ["POST", "/api/preferences"], ["POST", "/api/live/look"], ["POST", "/api/live/message"]]) {
+    for (const [method, path] of [["POST", "/api/trigger"], ["POST", "/api/live/clear"], ["POST", "/api/live/macro"], ["GET", "/api/health"], ["POST", "/api/preferences"], ["POST", "/api/live/look"], ["POST", "/api/live/message"], ["POST", "/api/panic"], ["POST", "/api/live/stage-message"]]) {
       const res = await fetch(base + path, { method, headers: { "Content-Type": "application/json" }, body: method === "POST" ? "{}" : undefined });
       assert.equal(res.status, 404, `${method} ${path} must not exist here`);
     }
@@ -204,10 +204,10 @@ function startControl() {
       removed: (id) => isRemoved(reg, id),
       name: (id) => reg.devices[id]?.name ?? null,
     },
-    preview: () => ({ current: { presentationId: "H", slideIndex: 2, text: "now" }, next: { presentationId: "H", slideIndex: 3, text: "next" }, atEnd: false }),
     thumb: async () => ({ type: "image/jpeg", bytes: Buffer.from("jpg") }),
     currentSlides: () => ({ presentationId: "H", presentationName: "Hymn", currentIndex: 2, slides: [0, 1, 2, 3, 4].map((i) => ({ slideIndex: i, text: `line ${i + 1}` })) }),
-    safeSlides: () => [{ id: "logo", label: "Logo", presentationId: "LOGO", slideIndex: 0 }],
+    stage: async () => ({ presets: [{ id: "short", text: "Cut short, pressing for time" }], current: "" }),
+    messages: async () => [{ id: "PAGER", name: "Kids pager", active: false, fields: ["Code"], recent: {} }],
     noteActivity: () => activity.count++,
     control: async (action, deviceId) => (done.push({ ...action, deviceId }), { label: action.label }),
   });
@@ -218,26 +218,33 @@ function startControl() {
   });
 }
 
-test("control: unapproved phones can't; approved ones prepare then confirm, once; removal signs them out", async () => {
+test("alerts: unapproved phones can't; approved ones prepare then confirm, once; nothing moves a slide; removal signs them out", async () => {
   const t = await startControl();
   const post = (path, body, token) => fetch(t.base + path, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { "x-refrain-device": token } : {}) }, body: JSON.stringify(body) });
   try {
     const { token } = await (await post("/api/unlock", { pin: "2468", name: "Sam" })).json();
     const id = Object.keys(t.reg().devices)[0];
     assert.equal(t.reg().devices[id].name, "Sam");
-    assert.equal((await post("/api/control/prepare", { kind: "next" }, token)).status, 403, "not approved yet");
+    assert.equal((await post("/api/control/prepare", { kind: "stage-clear" }, token)).status, 403, "not approved yet");
     t.approve(id);
     const state = await (await fetch(`${t.base}/api/state`, { headers: { "x-refrain-device": token } })).json();
     assert.deepEqual(state.phone, { name: "Sam", canControl: true });
-    const { confirmId, label } = await (await post("/api/control/prepare", { kind: "safe", safeId: "logo" }, token)).json();
-    assert.equal(label, "Logo");
+    const { confirmId, label } = await (await post("/api/control/prepare", { kind: "stage-clear" }, token)).json();
+    assert.equal(label, "Take down the stage message");
     assert.equal(t.done.length, 0, "preparing does nothing");
     assert.equal((await post("/api/control/confirm", { confirmId }, token)).status, 200);
-    assert.deepEqual(t.done, [{ kind: "safe", safeId: "logo", label: "Logo", deviceId: id }]);
+    assert.deepEqual(t.done, [{ kind: "stage-clear", label, deviceId: id }]);
     const replay = await post("/api/control/confirm", { confirmId }, token);
     assert.ok([409, 429].includes(replay.status), "a confirm can't be replayed");
     assert.equal(t.done.length, 1, "and the replay did nothing");
-    assert.equal((await post("/api/control/prepare", { kind: "clear-all" }, token)).status, 400, "nothing beyond next, previous and safe slides");
+    // The phone is for alerts and flags (owner, 2026-10-04): nothing that
+    // moves a slide or opens the editor.
+    for (const kind of ["next", "previous", "safe", "focus", "clear-all"]) {
+      assert.equal((await post("/api/control/prepare", { kind, safeId: "logo", presentationId: "H" }, token)).status, 400, `${kind} isn't something a phone can do`);
+    }
+    for (const path of ["/api/preview", "/api/search?q=grace", "/api/safe-slides"]) {
+      assert.equal((await fetch(t.base + path, { headers: { "x-refrain-device": token } })).status, 404, `${path} is gone from the phone`);
+    }
     t.remove(id);
     assert.equal((await fetch(`${t.base}/api/state`, { headers: { "x-refrain-device": token } })).status, 401, "removed phones are signed out");
   } finally {
@@ -245,30 +252,57 @@ test("control: unapproved phones can't; approved ones prepare then confirm, once
   }
 });
 
-test("previews: words and pictures for the presentation on screen, and nothing else", async () => {
+test("pictures: the presentation on screen only, for flagging", async () => {
   const t = await startControl();
   try {
     const { token } = await (await fetch(`${t.base}/api/unlock`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin: "2468" }) })).json();
     const h = { headers: { "x-refrain-device": token } };
-    const p = await (await fetch(`${t.base}/api/preview`, h)).json();
-    assert.equal(p.current.text, "now");
-    assert.equal(p.next.slideNumber, 4);
-    assert.equal((await fetch(t.base + p.next.image, h)).status, 200);
+    assert.equal((await fetch(`${t.base}/api/preview/image/H/3`, h)).status, 200);
     assert.equal((await fetch(`${t.base}/api/preview/image/H/9`, h)).status, 404, "not past the end of the presentation");
     assert.equal((await fetch(`${t.base}/api/preview/image/OTHER/0`, h)).status, 404, "not another presentation");
     assert.equal((await fetch(`${t.base}/api/preview/image/H/0`, h)).status, 200, "any slide of the one on screen, for the tray");
     const all = await (await fetch(`${t.base}/api/flag-slides`, h)).json();
     assert.equal(all.currentIndex, 2);
     assert.deepEqual(all.slides.map((x) => x.slideNumber), [1, 2, 3, 4, 5]);
-    assert.equal((await fetch(`${t.base}/api/preview/image/LOGO/0`, h)).status, 200, "a safe slide's own picture");
-    assert.equal((await fetch(`${t.base}/api/preview/image/LOGO/1`, h)).status, 404, "but not the rest of its presentation");
+    assert.equal((await fetch(`${t.base}/api/preview/image/LOGO/0`, h)).status, 404, "no safe slides on the phone any more");
     // A tray pick with no words is never in the index; it's accepted as a
     // slide of the presentation on screen, and one of another isn't.
     const flag = (slide) => fetch(`${t.base}/api/flag`, { method: "POST", headers: { "Content-Type": "application/json", "x-refrain-device": token }, body: JSON.stringify({ slide }) });
     assert.equal((await flag({ presentationId: "H", slideIndex: 4 })).status, 200);
     assert.equal((await flag({ presentationId: "OTHER", slideIndex: 0 })).status, 404);
-    assert.equal((await fetch(`${t.base}/api/preview`)).status, 401, "behind the PIN");
+    assert.equal((await fetch(`${t.base}/api/flag-slides`)).status, 401, "behind the PIN");
     assert.ok(t.activity.count > 0, "a phone polling keeps the heartbeat at its active pace");
+  } finally {
+    t.server.close();
+  }
+});
+
+test("stage message and pager from a phone: presets only, codes upper-cased, two presses each", async () => {
+  const t = await startControl();
+  const post = (path, body, token) => fetch(t.base + path, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { "x-refrain-device": token } : {}) }, body: JSON.stringify(body) });
+  try {
+    const { token } = await (await post("/api/unlock", { pin: "2468", name: "Sam" })).json();
+    const id = Object.keys(t.reg().devices)[0];
+    assert.equal((await fetch(`${t.base}/api/stage`, { headers: { "x-refrain-device": token } })).status, 403, "approved phones only");
+    t.approve(id);
+    const stage = await (await fetch(`${t.base}/api/stage`, { headers: { "x-refrain-device": token } })).json();
+    assert.equal(stage.presets[0].id, "short");
+
+    const a = await (await post("/api/control/prepare", { kind: "stage", presetId: "short" }, token)).json();
+    assert.equal(a.label, 'Stage: "Cut short, pressing for time"');
+    assert.equal(t.done.length, 0, "preparing does nothing");
+    assert.equal((await post("/api/control/confirm", { confirmId: a.confirmId }, token)).status, 200);
+    assert.deepEqual(t.done.at(-1), { kind: "stage", text: "Cut short, pressing for time", label: a.label, deviceId: id });
+    assert.equal((await post("/api/control/prepare", { kind: "stage", presetId: "nope" }, token)).status, 400, "no typed text from a phone");
+    assert.equal((await post("/api/control/prepare", { kind: "stage", text: "anything" }, token)).status, 400);
+
+    await new Promise((r) => setTimeout(r, 1300)); // the per-phone cooldown (1.2s)
+    const m = await (await post("/api/control/prepare", { kind: "message", messageId: "PAGER", values: [{ name: "Code", text: " exvx " }, { name: "Other", text: "x" }] }, token)).json();
+    assert.equal(m.label, "Kids pager: EXVX");
+    assert.equal((await post("/api/control/confirm", { confirmId: m.confirmId }, token)).status, 200);
+    assert.deepEqual(t.done.at(-1).values, [{ name: "Code", text: "EXVX" }], "only the message's own field, upper-cased");
+    assert.equal((await post("/api/control/prepare", { kind: "message", messageId: "PAGER", values: [] }, token)).status, 400, "an empty code isn't posted");
+    assert.equal((await post("/api/control/prepare", { kind: "message", messageId: "OTHER", values: [] }, token)).status, 400);
   } finally {
     t.server.close();
   }

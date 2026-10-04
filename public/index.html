@@ -527,10 +527,21 @@
         </div>
 
         <div class="rf-chip-row mb-4 hidden" id="library-filter-wrap" data-chip-row-follows="search-filter-chips">
-          <button id="library-filter-toggle" class="btn btn-chip">
-            <i data-lucide="library"></i> Libraries
+          <button id="library-filter-toggle" class="btn btn-chip" aria-expanded="false" aria-controls="library-filter-panel">
+            <i data-lucide="library"></i> <span id="library-filter-label">Libraries</span>
           </button>
-          <div id="library-filter-panel" class="hidden flex flex-wrap items-center gap-2"></div>
+        </div>
+
+        <!-- Which libraries to search (owner, 2026-10-03: "always show when the
+             search box is empty, nicer than sporadic"). Open while the box is
+             empty; while typing it folds into the Libraries chip above, which
+             says when it's narrowed. -->
+        <div id="library-filter-panel" class="rf-lib-panel hidden" role="group" aria-labelledby="library-filter-head">
+          <div class="rf-lib-head">
+            <h2 id="library-filter-head" class="rf-subhead">Libraries</h2>
+            <button id="library-filter-all" type="button" class="btn btn-chip hidden">Search all</button>
+          </div>
+          <div id="library-filter-keys" class="rf-lib-keys"></div>
         </div>
 
         <div id="results" class="flex flex-col gap-3"></div>

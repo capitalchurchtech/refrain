@@ -18,8 +18,11 @@
  */
 
 /** Which kind of ProPresenter call a path is, for counting. */
-export function classifyCall(path) {
+export function classifyCall(path, method = "GET") {
   const p = String(path ?? "");
+  // Reading the stage message is a look, not a press; showing or taking it
+  // down is a press.
+  if (p === "/v1/stage/message") return String(method).toUpperCase() === "GET" ? "status" : "control";
   if (p.startsWith("/v1/status/") || p === "/v1/presentation/slide_index") return "status";
   if (/\/thumbnail\//.test(p)) return "thumbnail";
   if (/\/(trigger|focus)$/.test(p) || p.startsWith("/v1/clear/") || /\/clear$/.test(p)) return "control";

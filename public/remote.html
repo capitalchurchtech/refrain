@@ -42,12 +42,9 @@
   .status { margin-top:10px; font-size:14px; min-height:20px; }
   .status.fault { color:var(--fault); }
   label { display:block; font-size:13px; color:var(--muted); margin:12px 0 4px; }
-  .preview { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:12px; }
-  .preview figure { margin:0; }
-  .preview figcaption { font:600 10px/1 ui-monospace, Menlo, monospace; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin-bottom:4px; }
   .pv { aspect-ratio:16/9; background:#000; border:1px solid var(--hair); border-radius:3px; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:12px; text-align:center; overflow:hidden; }
   .pv img { width:100%; height:100%; object-fit:contain; display:block; }
-  .tabs { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin:14px 0 4px; }
+  .tabs { display:grid; grid-template-columns:repeat(2,1fr); gap:6px; margin:14px 0 4px; }
   .tab { min-height:44px; background:var(--surface); color:var(--muted); border:1px solid var(--hair); border-radius:3px; font:inherit; font-size:15px; }
   .tab[aria-selected="true"] { color:var(--text); border-color:var(--plum-lit); box-shadow:inset 0 -2px 0 var(--plum); }
   .ctl { min-height:72px; background:var(--raised); color:var(--text); border:1px solid var(--hair); border-radius:3px; font:inherit; font-size:17px; font-weight:600; }
@@ -60,19 +57,26 @@
   .tray-grid { flex:1 1 auto; min-height:0; align-content:start; grid-auto-rows:max-content; overflow-y:auto; padding:0 16px 24px; display:grid; grid-template-columns:1fr 1fr; gap:10px; -webkit-overflow-scrolling:touch; }
   .tray-grid .slide { min-height:0; padding:6px; display:block; }
   .tray-grid .slide .pv { width:100%; margin-bottom:4px; }
-  .pv.can-step { cursor:pointer; outline:1px solid var(--plum); }
-  .emergency { width:100%; min-height:60px; margin-bottom:12px; background:#7A2B2B; color:#fff; border:1px solid #B04A4A; border-radius:3px; font:inherit; font-size:17px; font-weight:700; }
-  .emergency[aria-expanded="true"] { background:var(--raised); color:var(--text); border-color:var(--hair); }
   /* Fixed, not in the flow: arming must not move the thing about to be
      tapped a second time. */
-  .confirm { position:fixed; left:16px; right:16px; bottom:calc(12px + env(safe-area-inset-bottom)); max-width:528px; margin-inline:auto; z-index:5; box-shadow:0 8px 30px rgba(0,0,0,.6); display:grid; grid-template-columns:120px 1fr; gap:12px; align-items:center; padding:10px; background:var(--plum); color:#fff; border-radius:3px; font-weight:600; }
-  .confirm .pv { width:120px; }
-  .safe-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-  .safe-grid .slide { min-height:0; padding:6px; }
-  .safe-grid .pv { width:100%; margin-bottom:4px; }
+  .confirm { position:fixed; left:16px; right:16px; bottom:calc(12px + env(safe-area-inset-bottom)); max-width:528px; margin-inline:auto; z-index:5; box-shadow:0 8px 30px rgba(0,0,0,.6); display:grid; grid-template-columns:1fr; gap:12px; align-items:center; padding:14px; background:var(--plum); color:#fff; border-radius:3px; font-weight:600; }
   .sent { display:grid; grid-template-columns:96px 1fr; gap:10px; align-items:center; }
   .sent .pv { width:96px; }
   .pv.armed { outline:2px solid var(--plum-lit); }
+  .sect { font:600 11px/1 ui-monospace, Menlo, monospace; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); }
+  summary.sect { min-height:44px; display:flex; align-items:center; cursor:pointer; }
+  .stage-keys { display:grid; gap:8px; }
+  .stage-keys .ctl { min-height:56px; text-align:left; padding:0 14px; }
+  .ctl.on { border-color:var(--plum-lit); box-shadow:inset 3px 0 0 var(--plum); }
+  .stage-clear { width:100%; min-height:56px; margin-top:8px; }
+  .msg { border-top:1px solid var(--hair); padding:10px 0; }
+  .msg:first-child { border-top:0; }
+  .msg-name { font-weight:600; }
+  .msg input { text-transform:uppercase; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+  .chip { min-height:44px; padding:0 14px; background:var(--surface); color:var(--text); border:1px solid var(--hair); border-radius:3px; font:inherit; font-size:15px; }
+  .msg-keys { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
+  .msg-keys .ctl { min-height:56px; }
 </style>
 </head>
 <body>
@@ -98,39 +102,34 @@
 
   <div class="tabs" role="tablist">
     <button class="tab" role="tab" data-tab="flag" aria-selected="true">Flag</button>
-    <button class="tab" role="tab" data-tab="search" aria-selected="false">Search</button>
-    <button class="tab" role="tab" data-tab="control" aria-selected="false">Control</button>
+    <button class="tab" role="tab" data-tab="alert" aria-selected="false">Alert</button>
   </div>
 
-  <section id="tab-search" hidden>
-    <input id="q" type="search" placeholder="Search any lyric..." autocomplete="off" />
-    <div id="search-results" class="slides" style="margin-top:10px"></div>
-  </section>
-
-  <!-- Shown while a control press is armed: the slide it will put up, so the
-       second tap is a decision about a picture, not a line of text. -->
+  <!-- Shown while an alert press is armed: what the second tap will do. -->
   <div id="confirm" class="confirm" role="button" tabindex="0" hidden>
-    <div class="pv"><img id="confirm-img" alt="" /></div>
+    <div class="pv" hidden><img id="confirm-img" alt="" /></div>
     <div id="confirm-text"></div>
   </div>
 
-  <section id="tab-control" hidden>
+  <!-- The phone is for alerts and flags (owner, 2026-10-04): a note to the
+       stage, a pager code, and flagging a slide. Nothing here moves slides. -->
+  <section id="tab-alert" hidden>
     <div id="control-locked" class="muted"></div>
     <div id="control" hidden>
-      <!-- Only this tab moves slides (owner request): Flag never does. -->
-      <button id="emergency" class="emergency" aria-expanded="false">Emergency slide</button>
-      <div id="emergency-pick" hidden>
-        <div class="muted" style="margin:8px 0">Tap the slide to put up, then tap it again.</div>
-        <div id="safe" class="safe-grid"></div>
+      <!-- Stage message (handoff section 42): a note only the stage sees.
+           Presets only from a phone; it stays up until it's taken down. -->
+      <div id="stage" class="card">
+        <div class="sect">Stage message</div>
+        <div id="stage-now" class="muted" style="margin:6px 0 10px"></div>
+        <div id="stage-keys" class="stage-keys"></div>
+        <button id="stage-clear" class="ctl stage-clear">Take down</button>
       </div>
-      <div class="preview" style="margin-bottom:10px">
-        <figure><figcaption>Now</figcaption><div id="pv-now" class="pv"></div></figure>
-        <figure><figcaption id="pv-next-cap">Next</figcaption><div id="pv-next" class="pv" role="button" tabindex="0" aria-label="Show the next slide"></div></figure>
-      </div>
-      <div class="types">
-        <button class="ctl" data-kind="previous">Previous slide</button>
-        <button class="ctl" data-kind="next">Next slide</button>
-      </div>
+
+      <!-- Messages with a field to fill, like a pager code. -->
+      <details id="msgs" class="card" style="margin-top:14px">
+        <summary class="sect">Messages</summary>
+        <div id="msg-list"></div>
+      </details>
       <div class="muted" style="margin-top:8px">Every press needs a second tap.</div>
       <div id="control-status" class="status" role="status" aria-live="polite"></div>
     </div>

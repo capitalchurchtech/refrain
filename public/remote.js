@@ -269,32 +269,12 @@ async function refresh() {
     if (!$("types").childElementCount) paintTypes();
     ready();
     flush();
-    paintPreview();
     paintControl();
   } catch (err) {
     if (err.status !== 401) $("progress").textContent = "Can't reach the booth. Retrying.";
   }
 }
 
-// --- preview: the current slide and the next -------------------------------
-let previewKey = "";
-let nextImage = null; // the Next preview's picture, for the confirm step
-async function paintPreview() {
-  try {
-    const p = await api("/api/preview");
-    const key = JSON.stringify([p.current?.image, p.next?.image, p.atEnd]);
-    if (key === previewKey) return;
-    previewKey = key;
-    // data-src, not src: a src in the markup would start a request without
-    // this phone's sign-in before loadImage could take it back.
-    const pane = (s, empty) => (s?.image ? `<img data-src="${esc(s.image)}" alt="${esc(s.text ?? "")}" />` : esc(empty));
-    // Images go through fetch so they carry this phone's sign-in.
-    $("pv-now").innerHTML = pane(p.current, "Nothing on screen");
-    $("pv-next").innerHTML = pane(p.next, p.atEnd ? "End of this presentation" : "");
-    for (const img of document.querySelectorAll(".pv img")) loadImage(img);
-    $("pv-next").classList.toggle("can-step", Boolean(state?.phone?.canControl && p.next));
-  } catch { /* the readout says if the booth is away */ }
-}
 /** True once the picture is in; false leaves it blank for a later try. */
 async function loadImage(img) {
   const src = img.dataset.src;
@@ -308,100 +288,32 @@ async function loadImage(img) {
   }
 }
 
-// After a press, check every 0.4s for a few seconds instead of waiting for
-// the next 3s refresh, so the preview shows the new slide almost at once.
-function refreshSoon() {
-  let n = 0;
-  const t = setInterval(() => {
-    previewKey = "";
-    paintPreview();
-    if (++n >= 8) clearInterval(t);
-  }, 400);
-}
-
-// Tapping the Next preview shows the next slide: an approved phone only, and
-// like every control press it arms first and confirms second. The prompt
-// goes in the caption, so the picture stays visible.
-$("pv-next").addEventListener("click", () => {
-  if (state?.phone?.canControl) press($("pv-next"), { kind: "next" }, $("pv-next-cap"), nextImage);
-});
-
 // The banner confirms too: it's the biggest target on the screen.
 $("confirm").addEventListener("click", () => armed?.el.click());
-
-// Emergency: the booth's safe slides, one tap to open, then the usual
-// arm-and-confirm on the one to put up.
-$("emergency").addEventListener("click", () => {
-  const open = $("emergency-pick").hidden;
-  $("emergency-pick").hidden = !open;
-  $("emergency").setAttribute("aria-expanded", String(open));
-  $("emergency").textContent = open ? "Close emergency slides" : "Emergency slide";
-  if (!open) disarm();
-});
 
 // --- tabs ---------------------------------------------------------------------
 document.querySelectorAll(".tab").forEach((t) =>
   t.addEventListener("click", () => {
     document.querySelectorAll(".tab").forEach((x) => x.setAttribute("aria-selected", String(x === t)));
-    for (const name of ["flag", "search", "control"]) $(`tab-${name}`).hidden = name !== t.dataset.tab;
+    for (const name of ["flag", "alert"]) $(`tab-${name}`).hidden = name !== t.dataset.tab;
     disarm(); // nothing stays armed on a tab you can't see
-    if (t.dataset.tab === "search") $("q").focus();
   })
 );
 
-// --- search: read-only --------------------------------------------------------
-let searchTimer = null;
-$("q").addEventListener("input", () => {
-  clearTimeout(searchTimer);
-  searchTimer = setTimeout(async () => {
-    const q = $("q").value.trim();
-    if (!q) return ($("search-results").innerHTML = "");
-    try {
-      const { results } = await api(`/api/search?q=${encodeURIComponent(q)}`);
-      $("search-results").innerHTML = results.length
-        ? results
-            .map(
-              (r) => `<div class="slide"><small>${esc(r.presentationName)}, slide ${r.slideNumber}</small>${esc((r.text ?? "").slice(0, 160))}${
-                state?.phone?.canControl ? `<button class="ctl" style="min-height:44px;margin-top:8px;width:100%" data-focus="${esc(r.presentationId)}">Show in editor</button>` : ""
-              }</div>`
-            )
-            .join("")
-        : `<div class="muted">No matches.</div>`;
-      // Opens it in ProPresenter's editor, not on the screens; confirmed like every control press.
-      $("search-results").querySelectorAll("[data-focus]").forEach((b) => b.addEventListener("click", () => press(b, { kind: "focus", presentationId: b.dataset.focus })));
-    } catch (err) {
-      $("search-results").innerHTML = `<div class="muted">${esc(err.message)}</div>`;
-    }
-  }, 250);
-});
-
-// --- control: approved phones, two presses ------------------------------------
+// --- alerts: approved phones, two presses ---------------------------------------
 // The first tap asks the booth's Refrain what it will do and gets a one-time
 // id; the second tap, within a few seconds, confirms it. The server enforces
-// both steps, so no single tap (or request) can take over ProPresenter.
-let armed = null; // { el, labelEl, confirmId, label, idle, timer }
+// both steps, so no single tap (or request) can reach ProPresenter.
+let armed = null; // { el, confirmId, label, idle, timer }
 function disarm() {
   if (!armed) return;
   clearTimeout(armed.timer);
   armed.el.classList.remove("armed");
-  armed.labelEl.textContent = armed.idle;
+  armed.el.textContent = armed.idle;
   armed = null;
   $("confirm").hidden = true;
 }
-function showConfirm(image, label) {
-  $("confirm-text").textContent = `Tap again: ${label}`;
-  $("confirm-img").removeAttribute("src");
-  $("confirm-img").parentElement.hidden = !image;
-  if (image) {
-    $("confirm-img").dataset.src = image;
-    loadImage($("confirm-img"));
-  }
-  $("confirm").hidden = false;
-}
-// `labelEl` is where "Tap again" is written: the button itself, or a
-// caption when the pressed thing is a picture. `image` is the slide it will
-// put up, shown large while armed instead of a line of text.
-async function press(el, body, labelEl = el, image = null) {
+async function press(el, body) {
   const status = $("control-status");
   if (armed && armed.el === el) {
     const { confirmId, label } = armed;
@@ -410,7 +322,9 @@ async function press(el, body, labelEl = el, image = null) {
       await api("/api/control/confirm", { method: "POST", body: JSON.stringify({ confirmId }) });
       status.textContent = `Done: ${label}.`;
       status.className = "status";
-      refreshSoon();
+      stageKey = "";
+      paintStage();
+      if ($("msgs").open && el.closest("#msgs")) setTimeout(paintMessages, 800);
     } catch (err) {
       status.textContent = err.message;
       status.className = "status fault";
@@ -420,42 +334,106 @@ async function press(el, body, labelEl = el, image = null) {
   disarm();
   try {
     const { confirmId, label } = await api("/api/control/prepare", { method: "POST", body: JSON.stringify(body) });
-    armed = { el, labelEl, confirmId, label, idle: labelEl.textContent, timer: setTimeout(disarm, 5000) };
+    armed = { el, confirmId, label, idle: el.textContent, timer: setTimeout(disarm, 5000) };
     el.classList.add("armed");
-    labelEl.textContent = `Tap again: ${label}`;
-    showConfirm(image, label);
+    el.textContent = `Tap again: ${label}`;
+    $("confirm-text").textContent = `Tap again: ${label}`;
+    $("confirm").hidden = false;
   } catch (err) {
     status.textContent = err.message;
     status.className = "status fault";
   }
 }
-document.querySelectorAll(".ctl[data-kind]").forEach((b) => b.addEventListener("click", () => press(b, { kind: b.dataset.kind }, b, b.dataset.kind === "next" ? nextImage : null)));
+// The banner confirms too: it's the biggest target on the screen.
+$("confirm").addEventListener("click", () => armed?.el.click());
 
-let safeKey = "";
-async function paintControl() {
+function paintControl() {
   const can = Boolean(state?.phone?.canControl);
   $("control").hidden = !can;
   $("control-locked").textContent = can
     ? ""
     : state?.pinRequired
-      ? `Control is off for this phone. Ask the booth to allow ${state?.phone?.name ? `"${state.phone.name}"` : "this phone"} in the Phone panel.`
-      : "Control from a phone needs phone PINs turned on in the booth.";
-  if (!can) return;
-  try {
-    const { safeSlides } = await api("/api/safe-slides");
-    const key = JSON.stringify(safeSlides);
-    if (key === safeKey) return;
-    safeKey = key;
-    $("emergency").hidden = !safeSlides.length;
-    $("safe").innerHTML = safeSlides.length
-      ? safeSlides.map((sl) => `<button class="slide" data-safe="${esc(sl.id)}" data-image="${esc(sl.image)}"><div class="pv"><img data-src="${esc(sl.image)}" alt="" /></div><small class="safe-label">${esc(sl.label)}</small></button>`).join("")
-      : `<div class="muted">No safe slides yet. The booth adds them from Search.</div>`;
-    $("safe").querySelectorAll("img").forEach((img) => loadImage(img));
-    $("safe").querySelectorAll("[data-safe]").forEach((b) =>
-      b.addEventListener("click", () => press(b, { kind: "safe", safeId: b.dataset.safe }, b.querySelector(".safe-label"), b.dataset.image))
-    );
-  } catch { /* keep the last list */ }
+      ? `Alerts are off for this phone. Ask the booth to allow ${state?.phone?.name ? `"${state.phone.name}"` : "this phone"} in the Phone panel.`
+      : "Alerts from a phone need phone PINs turned on in the booth.";
+  if (can) paintStage();
 }
+
+// --- stage message (handoff section 42) ---------------------------------------
+// Presets only, two taps. What the booth last saw on stage is shown, latched.
+// Take down is always there: the booth may not know about a message put up
+// in ProPresenter itself, and taking down nothing is harmless.
+let stageKey = "";
+async function paintStage() {
+  let data;
+  try {
+    data = await api("/api/stage");
+  } catch {
+    return; // keep what's shown
+  }
+  const key = JSON.stringify(data);
+  if (key === stageKey || armed?.el?.closest?.("#stage")) return;
+  stageKey = key;
+  const { presets = [], current = "" } = data;
+  $("stage-now").textContent = current ? `On stage now: "${current}"` : "Nothing on stage.";
+  $("stage-keys").innerHTML = presets
+    .map((p) => `<button class="ctl${p.text === current ? " on" : ""}" data-preset="${esc(p.id)}" aria-pressed="${p.text === current}">${esc(p.text)}</button>`)
+    .join("");
+  $("stage-keys").querySelectorAll("[data-preset]").forEach((b) => b.addEventListener("click", () => press(b, { kind: "stage", presetId: b.dataset.preset })));
+}
+$("stage-clear").addEventListener("click", () => press($("stage-clear"), { kind: "stage-clear" }));
+
+// --- messages with a field to fill (a pager code) ------------------------------
+// Loaded when the section is opened, and again after a press. Values are
+// upper-cased; the last few used are taps that fill the field, never post.
+// What's been typed survives a repaint, so taking down one message doesn't
+// wipe a code half-typed into another.
+async function paintMessages() {
+  const list = $("msg-list");
+  const typed = new Map([...list.querySelectorAll("[data-msg] input[data-field]")].map((i) => [`${i.closest("[data-msg]").dataset.msg}\u0000${i.dataset.field}`, i.value]));
+  let messages;
+  try {
+    ({ messages } = await api("/api/messages"));
+  } catch (err) {
+    list.innerHTML = `<div class="status fault">${esc(err.message)}</div>`;
+    return;
+  }
+  if (!messages.length) {
+    list.innerHTML = `<div class="muted">No message here has a field to fill in. Add a Text token to the message in ProPresenter.</div>`;
+    return;
+  }
+  list.innerHTML = messages
+    .map(
+      (m) => `<div class="msg" data-msg="${esc(m.id)}">
+        <div class="msg-name">${esc(m.name)}${m.active ? ` <span class="muted">(on screen)</span>` : ""}</div>
+        ${m.fields
+          .map(
+            (f) => `<label>${esc(f)}</label><input data-field="${esc(f)}" maxlength="60" autocapitalize="characters" autocomplete="off" value="${esc(typed.get(`${m.id}\u0000${f}`) ?? "")}" />
+            ${(m.recent?.[f] ?? []).length ? `<div class="chips">${m.recent[f].map((v) => `<button type="button" class="chip" data-fill="${esc(f)}" data-value="${esc(v)}">${esc(v)}</button>`).join("")}</div>` : ""}`
+          )
+          .join("")}
+        <div class="msg-keys">
+          <button class="ctl" data-post>Show</button>
+          <button class="ctl" data-take ${m.active ? "" : "disabled"}>Take down</button>
+        </div>
+      </div>`
+    )
+    .join("");
+  list.querySelectorAll("[data-msg]").forEach((box) => {
+    const id = box.dataset.msg;
+    box.querySelectorAll("[data-fill]").forEach((c) =>
+      c.addEventListener("click", () => {
+        box.querySelector(`input[data-field="${CSS.escape(c.dataset.fill)}"]`).value = c.dataset.value;
+      })
+    );
+    box.querySelectorAll("input").forEach((i) => i.addEventListener("input", () => (i.value = i.value.toUpperCase())));
+    const values = () => [...box.querySelectorAll("input[data-field]")].map((i) => ({ name: i.dataset.field, text: i.value }));
+    box.querySelector("[data-post]").addEventListener("click", (e) => press(e.currentTarget, { kind: "message", messageId: id, values: values() }));
+    box.querySelector("[data-take]").addEventListener("click", (e) => press(e.currentTarget, { kind: "message-clear", messageId: id }));
+  });
+}
+$("msgs").addEventListener("toggle", () => {
+  if ($("msgs").open) paintMessages();
+});
 
 $("lock-name").value = store.get("refrain.remote.name", "");
 $("name").value = store.get("refrain.remote.name", "");

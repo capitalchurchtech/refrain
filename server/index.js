@@ -111,10 +111,12 @@ import QRCode from "qrcode";
 import { emptyRegistry, seeDevice, setApproved, removeDevice, isApproved, isRemoved, deviceList, loadRegistry, saveRegistry } from "./remote-devices.js";
 import { previewTargets, createThumbCache } from "./slide-preview.js";
 import { createThumbStore } from "./thumb-store.js";
+import { readFingerprint } from "./index-fingerprint.js";
 import { envEntries, applyEnvEdits, saveEnvFile, readText as readEnvText } from "./env-file.js";
 import { crossSiteRefused } from "./request-guard.js";
 import { markHidden, setHidden, isControlId, rememberValues } from "./live-visibility.js";
 import { safeSlides, addSafeSlide, removeSafeSlide, renameSafeSlide, moveSafeSlide } from "./safe-slides.js";
+import { stageMessages, addStageMessage, removeStageMessage, editStageMessage, moveStageMessage, cleanStageText, messageFieldValue } from "./stage-messages.js";
 import { layoutThemes, themesInDeck, themeReport } from "./theme-report.js";
 import { createRemoteApp, pushRecent, serviceProgress, pinFailureGuard } from "./remote.js";
 import { dailyPin, newSecret, endOfDay } from "./remote-auth.js";
@@ -165,6 +167,7 @@ import { generateQr, getQrHistoryList, getQrHistoryEntry, addQrHistoryEntry, cle
 import { loadSpeller, findTypos, tokenize, addToAllowlist, removeFromAllowlist, parseWordList } from "./spellcheck.js";
 import { normalizeSongTitle } from "../providers/planning-center.js";
 import * as autostart from "./autostart.js";
+import { restartCommand, isConfirmedKill, runByLoginItem } from "./panic.js";
 
 const { version } = JSON.parse(readFileSync("./package.json", "utf-8"));
 
@@ -238,6 +241,30 @@ app.use((req, res, next) => {
   }
   next();
 });
+/**
+ * The kill switch (GitHub issue #15), first after the cross-site guard so
+ * nothing Refrain adds later can queue in front of it: it reads nothing from
+ * ProPresenter or the index. Only on this app, which listens on this Mac
+ * alone; the phone listener has no such route. Logs, answers, and exits 0
+ * once the answer has gone, so the page can tell a kill from a hang and the
+ * LaunchAgent (KeepAlive: SuccessfulExit false) leaves it stopped.
+ */
+app.post("/api/panic", express.json(), (req, res) => {
+  if (!isConfirmedKill(req.body)) return res.status(400).json({ error: "Send { confirm: true } to stop Refrain." });
+  let launchAgent = false;
+  try {
+    launchAgent = autostart.isSupported() && runByLoginItem(readFileSync(autostart.plistPath(), "utf8"), process.cwd());
+  } catch {
+    /* no login item */
+  }
+  const restart = restartCommand({ launchAgent, label: autostart.LABEL, installDir: process.cwd() });
+  // The moment someone panics is the moment most worth recording (#13).
+  console.log(`Stopped by the kill switch on Settings. Nothing on the screens was changed. To start again: ${restart}`);
+  res.on("finish", () => setTimeout(() => process.exit(0), 50));
+  setTimeout(() => process.exit(0), 3000); // if the answer never finishes sending
+  res.json({ stopping: true, restart, comesBackAtLogin: launchAgent });
+});
+
 app.use(express.static("public"));
 app.use(express.json());
 
@@ -1066,18 +1093,42 @@ function notePhoneAction(entry) {
 // ProPresenter (at most two at once, see slide-preview.js) and kept for next
 // time. Keyed to the index fingerprint, so an edited presentation re-renders.
 const thumbStore = createThumbStore({ dir: "./data/slide-pictures" });
-const pictureFingerprint = (pid) => getIndex().presentations?.[pid]?.fingerprint ?? null;
-const slideThumb = createThumbCache(
-  async (pid, idx) => {
+/**
+ * Which version of a presentation a picture belongs to: its .pro file's size
+ * and modified time, read now (a stat, local disk). Read live rather than
+ * taken from the index, which catches up with an edit only after the watcher
+ * settles: remove a slide in ProPresenter and every later slide moves up one,
+ * so a picture kept under the old version would show the wrong slide at its
+ * number. Falls back to the index's when the file can't be read (ProPresenter
+ * on another Mac).
+ */
+// Remembered for a few seconds: a screen asking for several pictures of one
+// presentation (or re-checking them) costs one look at the file.
+const pictureFingerprints = new Map(); // pid -> { at, fp }
+async function pictureFingerprint(pid) {
+  const seen = pictureFingerprints.get(pid);
+  if (seen && Date.now() - seen.at < 3000) return seen.fp;
+  const entry = getIndex().presentations?.[pid];
+  const fp = (client.isLocalHost && entry?.presentationPath ? await readFingerprint(entry.presentationPath) : null) ?? entry?.fingerprint ?? null;
+  pictureFingerprints.set(pid, { at: Date.now(), fp });
+  if (pictureFingerprints.size > 500) pictureFingerprints.delete(pictureFingerprints.keys().next().value);
+  return fp;
+}
+const thumbCache = createThumbCache(
+  async (pid, idx, fp) => {
     const img = await client.getSlideThumbnail(pid, idx);
-    const fp = pictureFingerprint(pid);
     if (img && fp) thumbStore.put(pid, idx, fp, img).catch(() => {});
     return img;
   },
   // Checked before a picture waits for one of the two ProPresenter slots:
   // a stored one is a disk read, and shouldn't queue behind renders.
-  { stored: (pid, idx) => thumbStore.get(pid, idx, pictureFingerprint(pid)).catch(() => null) }
+  { stored: (pid, idx, fp) => thumbStore.get(pid, idx, fp).catch(() => null) }
 );
+/** A picture already rendered and kept on disk, or null. Never asks ProPresenter. */
+async function storedSlideThumb(pid, idx) {
+  const fp = await pictureFingerprint(pid);
+  return fp ? thumbStore.get(pid, idx, fp).catch(() => null) : null;
+}
 // The store's size cap is kept whether or not pre-rendering is on.
 setInterval(() => thumbStore.prune().catch(() => {}), 3_600_000).unref();
 
@@ -1139,7 +1190,7 @@ async function maybePrerender(now = Date.now()) {
     targets = await prerenderTargets();
     for (const [pid] of targets) {
       const entry = getIndex().presentations?.[pid];
-      const fp = entry?.fingerprint;
+      const fp = await pictureFingerprint(pid);
       const count = Math.min(entry?.slides?.length ?? 0, 300);
       if (!fp || !count) continue;
       if (await thumbStore.complete(pid, fp, count)) {
@@ -1245,29 +1296,29 @@ function startRemoteListener() {
       removed: (id) => isRemoved(remoteDevices, id),
       name: (id) => remoteDevices.devices?.[id]?.name ?? null,
     },
-    search: (q) => search({ query: q }),
-    presentationName: (pid) => getIndex().presentations?.[pid]?.name ?? null,
     currentSlides,
     noteActivity: noteClientActivity,
-    preview: currentPreview,
-    thumb: slideThumb,
-    safeSlides: () => safeSlides(config.liveModule?.safeSlides),
-    // An approved phone's confirmed press. Next and previous are
-    // ProPresenter's own; safe slides fire exactly as they do on Live.
+    // Pictures already on disk only: a phone never makes ProPresenter draw.
+    thumb: storedSlideThumb,
+    stage: async () => ({ presets: stagePresets(), current: await readStage() }),
+    // Messages a phone can fill in: those with a text field (a pager code).
+    messages: async () => {
+      const recent = config.liveModule?.messageRecent ?? {};
+      return (await client.getMessages())
+        .map((m) => ({ id: m.id, name: m.name, active: m.active, fields: m.tokens.filter((t) => t.kind === "text").map((t) => t.name), recent: recent[m.id] ?? {} }))
+        .filter((m) => m.fields.length);
+    },
+    // An approved phone's confirmed press: an alert, never a slide (owner,
+    // 2026-10-04: the phone is for alerts and flags).
     control: async (action, deviceId) => {
       const phone = remoteDevices.devices?.[deviceId]?.name ?? "A phone";
       try {
-        if (action.kind === "next") await client.triggerNext();
-        else if (action.kind === "previous") await client.triggerPrevious();
-        else if (action.kind === "focus") await client.focusPresentation(action.presentationId);
-        else if (action.kind === "safe") {
-          const sl = safeSlides(config.liveModule?.safeSlides).find((x) => x.id === action.safeId);
-          if (!sl) throw new Error("That safe slide isn't there any more.");
-          const out = await fireSlide({ presentationId: sl.presentationId, slideIndex: sl.slideIndex, groupId: sl.groupId, groupOffset: sl.groupOffset, slideText: sl.slideText ?? "", requireAnchor: true });
-          if (out.refused) throw new Error(out.refused);
-        }
+        if (action.kind === "stage") await showStage(action.text);
+        else if (action.kind === "stage-clear") await clearStage();
+        else if (action.kind === "message") await postMessage(action.messageId, action.values);
+        else if (action.kind === "message-clear") await client.clearMessage(action.messageId);
+        else throw new Error("That isn't something a phone can do.");
         notePhoneAction({ phone, label: action.label, ok: true });
-        if (action.kind !== "focus") beatNow();
         return { label: action.label };
       } catch (err) {
         notePhoneAction({ phone, label: action.label, ok: false, error: err.message });
@@ -1536,8 +1587,8 @@ async function pruneDiagnostics(now = Date.now()) {
 setTimeout(() => pruneDiagnostics(), 30_000).unref();
 setInterval(() => pruneDiagnostics(), 86_400_000).unref();
 
-onProPresenterCall(({ path: p, ms, ok, timedOut }) => {
-  const kind = classifyCall(p);
+onProPresenterCall(({ path: p, method, ms, ok, timedOut }) => {
+  const kind = classifyCall(p, method);
   callStats.record({ kind, ms, ok, timedOut });
   if (ok) askedOfProPresenter.note(p);
   if (ms >= SLOW_CALL_MS || timedOut) {
@@ -3226,12 +3277,28 @@ app.get("/api/preview/image/:pid/:idx", async (req, res) => {
   // The church's own safe slides too (at most eight, same as the phone's
   // route), for the menu's quick slides. Rendered once and kept on disk.
   const aSafeSlide = safeSlides(config.liveModule?.safeSlides).some((x) => x.presentationId === req.params.pid && x.slideIndex === idx);
-  if (!nowOrNext && !aSafeSlide) {
-    return res.status(404).json({ error: "Only the current and next slide, or a safe slide, can be previewed." });
+  // And slides Spell Check flagged, so they can be found by eye in the editor.
+  // Each new picture costs ProPresenter memory until it restarts, so these are
+  // never drawn during a service.
+  const flagged = spellcheckPictures.has(`${req.params.pid}:${idx}`);
+  if (!nowOrNext && !aSafeSlide && !flagged) {
+    return res.status(404).json({ error: "Only the current and next slide, a safe slide, or a slide Spell Check found can be previewed." });
   }
-  const img = await slideThumb(req.params.pid, idx);
+  // The address can show a different slide after one is removed in
+  // ProPresenter, so the browser checks each time; the answer is tagged with
+  // the file's version, and an unchanged picture is a 304 before any picture
+  // work is done.
+  const fp = await pictureFingerprint(req.params.pid);
+  const tag = fp ? `"${fp}:${idx}"` : null;
+  if (tag && req.headers["if-none-match"] === tag) return res.status(304).end();
+  // During a service (performance mode), nothing new is drawn: only pictures
+  // already on disk, rendered ahead (owner, 2026-10-04: "pre cached so that it
+  // does not hurt performance at all").
+  const img = performance.armed ? await storedSlideThumb(req.params.pid, idx) : await thumbCache(req.params.pid, idx, fp);
   if (!img) return res.status(404).json({ error: "No picture for that slide." });
-  res.set("Cache-Control", "private, max-age=300").type(img.type).send(img.bytes);
+  res.set("Cache-Control", "private, no-cache");
+  if (tag) res.set("ETag", tag);
+  res.type(img.type).send(img.bytes);
 });
 
 /** New secret: every phone is signed out, and the daily PIN changes now. */
@@ -3345,22 +3412,31 @@ app.post("/api/live/macro", async (req, res) => {
   }
 });
 
+/**
+ * Posts a ProPresenter message with its fields filled, from Now or a phone.
+ * Field values are upper-cased (owner, 2026-10-03: pager codes). Returns the
+ * recent values for that message, or null if they couldn't be saved.
+ */
+async function postMessage(id, values) {
+  const filled = (Array.isArray(values) ? values : []).map((v) => ({ name: String(v?.name ?? ""), text: messageFieldValue(v?.text) }));
+  await client.triggerMessage(id, filled);
+  // Remembered only after ProPresenter accepted it. The message is already on
+  // the screens, so a failed save of the recents is reported and logged,
+  // never turned into "the post failed".
+  try {
+    const saved = await updateLiveModule((m) => ({ ...m, messageRecent: rememberValues(m.messageRecent, id, filled) }));
+    return saved.messageRecent?.[id] ?? {};
+  } catch (err) {
+    console.error("Couldn't save recent message values:", err.message);
+    return null;
+  }
+}
+
 app.post("/api/live/message", async (req, res) => {
   const { id, values } = req.body ?? {};
   if (!id) return res.status(400).json({ error: "id is required" });
   try {
-    await client.triggerMessage(id, values);
-    // Remembered only after ProPresenter accepted it. A failed save of the
-    // recents mustn't turn a message that is on screen into an error.
-    // The message is already on the screens, so a failed save of the recents
-    // is reported and logged, never turned into "the post failed".
-    let recent = null;
-    try {
-      const saved = await updateLiveModule((m) => ({ ...m, messageRecent: rememberValues(m.messageRecent, id, values) }));
-      recent = saved.messageRecent?.[id] ?? {};
-    } catch (err) {
-      console.error("Couldn't save recent message values:", err.message);
-    }
+    const recent = await postMessage(id, values);
     res.json({ ok: true, recent, recentSaved: recent !== null });
   } catch (err) {
     res.status(502).json({ error: err.message });
@@ -3378,6 +3454,107 @@ app.post("/api/live/message-clear", async (req, res) => {
   }
 });
 
+// --- Stage message (handoff section 42) --------------------------------------
+// A note for the people on stage, in the Stage Message box of the stage
+// layouts; the audience never sees it. It stays up until someone takes it
+// down, from Now or a phone. `stageNow` is what Refrain last saw or set, so a
+// phone checking every few seconds doesn't ask ProPresenter each time.
+let stageNow = "";
+let stageReadAt = 0;
+let stageConnected = true;
+
+/**
+ * What the stage says, re-read from ProPresenter when the last read is older
+ * than `maxAgeMs`, so a message put up or taken down in ProPresenter itself
+ * shows on Now and on phones within that time. However many screens ask, it
+ * is at most one read per `maxAgeMs`; a failed read keeps the last answer.
+ */
+async function readStage(maxAgeMs = 10_000) {
+  if (Date.now() - stageReadAt >= maxAgeMs) {
+    stageReadAt = Date.now();
+    try {
+      stageNow = await client.getStageMessage();
+      stageConnected = true;
+    } catch {
+      stageConnected = false;
+    }
+  }
+  return stageNow;
+}
+
+async function showStage(text) {
+  const clean = cleanStageText(text);
+  if (!clean) throw refuse(400, "Type the message first.");
+  await client.showStageMessage(clean);
+  stageNow = clean;
+  stageReadAt = Date.now();
+  return clean;
+}
+
+async function clearStage() {
+  await client.clearStageMessage();
+  stageNow = "";
+  stageReadAt = Date.now();
+}
+
+const stagePresets = () => stageMessages(config.liveModule?.stageMessages);
+
+/** The presets, and what the stage says now (read from ProPresenter when it answers). */
+app.get("/api/live/stage-message", async (req, res) => {
+  // `?fresh=1` when Now opens; its 10s check takes the shared answer.
+  const current = await readStage(req.query.fresh ? 0 : 10_000);
+  res.json({ presets: stagePresets(), current, connected: stageConnected });
+});
+
+/** Shows a preset (`{ presetId }`) or typed text (`{ text }`). One press, by design: only the stage sees it. */
+app.post("/api/live/stage-message", async (req, res) => {
+  const { presetId, text } = req.body ?? {};
+  const preset = presetId ? stagePresets().find((m) => m.id === presetId) : null;
+  if (presetId && !preset) return res.status(404).json({ error: "That message isn't there any more." });
+  try {
+    res.json({ ok: true, current: await showStage(preset ? preset.text : text) });
+  } catch (err) {
+    res.status(err.status ?? 502).json({ error: err.message });
+  }
+});
+
+app.post("/api/live/stage-message/clear", async (_req, res) => {
+  try {
+    await clearStage();
+    res.json({ ok: true, current: "" });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+/** Adds a preset. Saved to config.json; nothing in ProPresenter changes. */
+app.post("/api/live/stage-messages", async (req, res) => {
+  let added = null;
+  const saved = await saveLiveModule(res, (m) => {
+    const r = addStageMessage(m.stageMessages, req.body?.text);
+    if (r.error) throw refuse(400, r.error);
+    added = r.added;
+    return { ...m, stageMessages: r.list };
+  });
+  if (!saved) return;
+  res.json({ ok: true, added, presets: stageMessages(saved.stageMessages) });
+});
+
+/** Edits, moves or removes one preset. */
+app.post("/api/live/stage-messages/:id", async (req, res) => {
+  const { action, text, dir } = req.body ?? {};
+  if (!["remove", "edit", "move"].includes(action)) return res.status(400).json({ error: 'action must be "remove", "edit" or "move"' });
+  if (action === "move" && ![-1, 1].includes(Number(dir))) return res.status(400).json({ error: "dir must be -1 or 1" });
+  const saved = await saveLiveModule(res, (m) => {
+    const current = stageMessages(m.stageMessages);
+    if (!current.some((x) => x.id === req.params.id)) throw refuse(404, "That message isn't there any more.");
+    const list =
+      action === "remove" ? removeStageMessage(current, req.params.id) : action === "edit" ? editStageMessage(current, req.params.id, text) : moveStageMessage(current, req.params.id, Number(dir));
+    return { ...m, stageMessages: list };
+  });
+  if (!saved) return;
+  res.json({ ok: true, presets: stageMessages(saved.stageMessages) });
+});
 
 // --- Library Sync (optional): one library, one direction, through a shared folder ---
 //
@@ -3822,11 +3999,16 @@ async function scanPlaylist(playlistId, { only = null } = {}) {
   const scanned = items.slice(0, SPELLCHECK_MAX_PRESENTATIONS);
   for (const item of scanned) {
     let slides;
+    let liveSlides = [];
     let missingMedia = new Map();
     try {
       const doc = await client.getPresentation(item.id);
       docs.set(item.id, doc);
       slides = extractSlides(doc, preferredArrangements());
+      // The arrangement ProPresenter has selected, which is what its slide
+      // pictures are numbered by (and Go Live fires against). It can differ
+      // from the preferred one the findings are read in.
+      liveSlides = flattenGroups(resolveArrangement(doc, []).groups);
       const proPath = doc?.presentation?.presentation_path;
       if (proPath) {
         try {
@@ -3856,6 +4038,9 @@ async function scanPlaylist(playlistId, { only = null } = {}) {
       if (words.length || pastDates.length || media.length) {
         flaggedSlides.push({
           slideIndex: slide.index,
+          // Where this slide is in ProPresenter's selected arrangement, for its
+          // picture; null when it isn't played there.
+          pictureIndex: findLiveIndex(liveSlides, { groupId: slide.groupId ?? null, groupOffset: slide.groupOffset ?? null, index: slide.index, text: slide.text }),
           groupId: slide.groupId ?? null,
           groupOffset: slide.groupOffset ?? null,
           text: slide.text,
@@ -3872,6 +4057,23 @@ async function scanPlaylist(playlistId, { only = null } = {}) {
   return { items, presentations, docs, scannedCount: scanned.length, truncated: items.length > scanned.length, mediaUnreadable };
 }
 
+/**
+ * Slides a Spell Check scan flagged, by `presentationId:slideIndex`: the
+ * picture route may draw these. The newest scans' slides are kept, at most
+ * SPELLCHECK_PICTURES_MAX, so the set can't grow without end.
+ */
+const SPELLCHECK_PICTURES_MAX = 600;
+const spellcheckPictures = new Set();
+function allowSpellcheckPictures(presentations) {
+  for (const p of presentations) for (const s of p.slides) {
+    if (!Number.isInteger(s.pictureIndex)) continue;
+    const key = `${p.presentationId}:${s.pictureIndex}`;
+    spellcheckPictures.delete(key);
+    spellcheckPictures.add(key);
+  }
+  while (spellcheckPictures.size > SPELLCHECK_PICTURES_MAX) spellcheckPictures.delete(spellcheckPictures.values().next().value);
+}
+
 app.post("/api/spellcheck/scan", async (req, res) => {
   // Reads and decodes up to 120 presentation files on the thread that also
   // runs the heartbeat, Go Live and phone confirms: not during a service.
@@ -3882,6 +4084,17 @@ app.post("/api/spellcheck/scan", async (req, res) => {
   try {
     const only = one ? [{ id: one, name: getIndex().presentations?.[one]?.name ?? null }] : null;
     const { presentations, scannedCount, truncated, mediaUnreadable } = await scanPlaylist(playlistId, { only });
+    allowSpellcheckPictures(presentations);
+    // Pictures from before a slide was removed are dropped from memory: when
+    // the file's version can't be read (ProPresenter on another Mac), the
+    // version in the key can't tell old from new.
+    for (const p of presentations) {
+      thumbCache.forget(p.presentationId);
+      pictureFingerprints.delete(p.presentationId);
+    }
+    // Each presentation's version, for the picture addresses: a new version
+    // (a slide removed, then Check again) is a new address, never an old picture.
+    for (const p of presentations) p.pictureVersion = (await pictureFingerprint(p.presentationId)) ?? String(Date.now());
     res.json({ presentations, scannedCount, truncated, mediaUnreadable });
   } catch (err) {
     res.status(502).json({ error: err.message });

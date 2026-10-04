@@ -172,11 +172,22 @@ export function initSpellcheck() {
         (p) => `
       <div class="card bg-base-200">
         <div class="card-body p-3 gap-2">
-          <div class="font-medium">${escapeHtml(p.presentationName ?? "Untitled")}</div>
+          <div class="flex items-center justify-between gap-2">
+            <div class="font-medium">${escapeHtml(p.presentationName ?? "Untitled")}</div>
+            <!-- After a slide is removed or fixed in ProPresenter, the slide
+                 numbers here are out of date. This reads it again. -->
+            <button type="button" class="btn btn-chip shrink-0 spellcheck-again-btn" data-presentation-id="${escapeHtml(p.presentationId)}" data-name="${escapeHtml(p.presentationName ?? "")}" title="Read this presentation again, after fixing or removing a slide">Check again</button>
+          </div>
           ${p.slides
             .map(
               (s) => `
-            <div class="text-sm bg-base-100 rounded p-2 spellcheck-slide" data-presentation-id="${escapeHtml(p.presentationId)}" data-slide-index="${s.slideIndex}">
+            <div class="text-sm bg-base-100 rounded p-2 spellcheck-slide rf-sc-slide" data-presentation-id="${escapeHtml(p.presentationId)}" data-slide-index="${s.slideIndex}">
+              <!-- The slide as it looks, to find it by eye in the editor. -->
+              <div class="rf-sc-pic${Number.isInteger(s.pictureIndex) ? "" : " rf-sc-nopic"}">
+                ${Number.isInteger(s.pictureIndex) ? `<img src="/api/preview/image/${encodeURIComponent(p.presentationId)}/${s.pictureIndex}?v=${encodeURIComponent(p.pictureVersion ?? "")}" alt="" loading="lazy" />` : ""}
+                <span class="rf-sc-num">Slide ${s.slideIndex + 1}</span>
+              </div>
+              <div class="min-w-0">
               ${
                 // A video or image slide has no words, so the text that names
                 // every other result would be blank here. Say which slide.
@@ -212,7 +223,8 @@ export function initSpellcheck() {
                   .join("")}
                 <span class="flex-1"></span>
                 <button class="btn btn-brand btn-xs spellcheck-live-btn" data-presentation-id="${escapeHtml(p.presentationId)}" data-slide-index="${s.slideIndex}" data-group-id="${escapeHtml(s.groupId ?? "")}" data-group-offset="${s.groupOffset ?? ""}" data-slide-text="${escapeHtml(s.text ?? "")}">Go Live</button>
-                <button class="btn btn-outline btn-xs spellcheck-editor-btn" data-presentation-id="${escapeHtml(p.presentationId)}" title="Opens the presentation. Find the slide by its number.">Show slide ${s.slideIndex + 1} in Editor</button>
+                <button class="btn btn-outline btn-xs spellcheck-editor-btn" data-presentation-id="${escapeHtml(p.presentationId)}" title="Opens the presentation. Find the slide by its picture or number.">Show slide ${s.slideIndex + 1} in Editor</button>
+              </div>
               </div>
             </div>`
             )
@@ -282,6 +294,23 @@ export function initSpellcheck() {
   function wireResultActions() {
     const resultsEl = document.getElementById("spellcheck-results");
 
+    // No picture: tried twice more, a few seconds apart, since a busy render
+    // queue refuses rather than waits. Then the slide number stands alone
+    // rather than an empty frame (ProPresenter not answering, or performance
+    // mode with no picture rendered ahead).
+    resultsEl.querySelectorAll(".rf-sc-pic img").forEach((img) => {
+      let tries = 0;
+      img.addEventListener("error", () => {
+        if (++tries > 2 || !img.isConnected) return img.parentElement.classList.add("rf-sc-nopic");
+        const src = img.getAttribute("src");
+        setTimeout(() => {
+          if (img.isConnected) img.src = `${src.split("&retry=")[0]}&retry=${tries}`;
+        }, 3000 * tries);
+      });
+    });
+
+    resultsEl.querySelectorAll(".spellcheck-again-btn").forEach((btn) => btn.addEventListener("click", () => checkAgain(btn)));
+
     resultsEl.querySelectorAll(".spellcheck-live-btn").forEach((btn) =>
       btn.addEventListener("click", async () => {
         btn.disabled = true;
@@ -347,6 +376,41 @@ export function initSpellcheck() {
         loadAllowlist();
       })
     );
+  }
+
+  /**
+   * Reads one presentation again and puts its fresh findings in place of the
+   * old ones (owner, 2026-10-03: a past-date slide is usually removed, which
+   * moves every later slide up one, so the numbers, pictures and Go Live here
+   * were for the presentation as it was).
+   */
+  async function checkAgain(btn) {
+    const pid = btn.dataset.presentationId;
+    const name = btn.dataset.name || "this presentation";
+    btn.disabled = true;
+    btn.textContent = "Checking...";
+    try {
+      const res = await fetch("/api/spellcheck/scan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ presentationId: pid }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? res.statusText);
+      const fresh = data.presentations?.find((p) => p.presentationId === pid) ?? null;
+      // Found again by id, after the wait: the list may have changed under
+      // the request (a word ignored, a new scan), and splicing a stale or
+      // missing position would overwrite a different presentation.
+      const i = lastResults.presentations.findIndex((p) => p.presentationId === pid);
+      if (i < 0) return; // no longer in the list; nothing to replace
+      if (fresh) {
+        fresh.presentationName ??= lastResults.presentations[i].presentationName;
+        lastResults.presentations.splice(i, 1, fresh);
+      } else lastResults.presentations.splice(i, 1);
+      renderResults(lastResults);
+      const statusEl = document.getElementById("spellcheck-status");
+      statusEl.textContent = `${fresh ? `Checked ${name} again.` : `Nothing left to fix in ${name}.`} ${statusEl.textContent}`;
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = "Check again";
+      showFailure(`Couldn't check ${name} again: ${err.message}`);
+    }
   }
 
   // Removes a now-allowlisted word from the shown results (and any slide or

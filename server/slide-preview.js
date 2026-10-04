@@ -28,8 +28,12 @@ export function previewTargets(slide, textOf = () => null) {
  * together mid-service. `max` holds a whole tray, so scrolling back doesn't
  * render again. A wait that grows past `maxQueued` refuses new misses (null,
  * the same as "no picture") rather than piling up work nobody will see.
- * `stored(presentationId, slideIndex)`, when given, is asked first and outside
- * the limit: a picture already on disk costs ProPresenter nothing.
+ * `stored(presentationId, slideIndex, version)`, when given, is asked first
+ * and outside the limit: a picture already on disk costs ProPresenter nothing.
+ *
+ * `version` is the presentation file's fingerprint when the caller knows it.
+ * It's part of the key, so a slide removed in ProPresenter (every later slide
+ * moves up one) gets new pictures instead of the old slide's at its number.
  */
 export function createThumbCache(fetchThumb, { max = 300, concurrency = 2, maxQueued = 60, stored = null } = {}) {
   const cache = new Map();
@@ -54,8 +58,8 @@ export function createThumbCache(fetchThumb, { max = 300, concurrency = 2, maxQu
       queue.push({ run, resolve, reject });
       pump();
     });
-  return async function get(presentationId, slideIndex) {
-    const key = `${presentationId}:${slideIndex}`;
+  async function get(presentationId, slideIndex, version = null) {
+    const key = `${presentationId}:${slideIndex}:${version ?? ""}`;
     if (cache.has(key)) {
       const hit = cache.get(key);
       cache.delete(key);
@@ -65,7 +69,7 @@ export function createThumbCache(fetchThumb, { max = 300, concurrency = 2, maxQu
     if (inflight.has(key)) return inflight.get(key);
     // A picture already on disk is a local read: taken before the queue, so
     // it never waits for a render slot or counts toward maxQueued.
-    const fromDisk = stored ? await stored(presentationId, slideIndex) : null;
+    const fromDisk = stored ? await stored(presentationId, slideIndex, version) : null;
     if (fromDisk) {
       cache.set(key, fromDisk);
       while (cache.size > max) cache.delete(cache.keys().next().value);
@@ -73,7 +77,7 @@ export function createThumbCache(fetchThumb, { max = 300, concurrency = 2, maxQu
     }
     if (inflight.has(key)) return inflight.get(key);
     if (queue.length >= maxQueued) return null;
-    const p = limited(() => fetchThumb(presentationId, slideIndex))
+    const p = limited(() => fetchThumb(presentationId, slideIndex, version))
       .then((img) => {
         if (img) {
           cache.set(key, img);
@@ -85,5 +89,10 @@ export function createThumbCache(fetchThumb, { max = 300, concurrency = 2, maxQu
       .finally(() => inflight.delete(key));
     inflight.set(key, p);
     return p;
+  }
+  /** Drops every picture of one presentation from memory (the disk store keeps its own). */
+  get.forget = (presentationId) => {
+    for (const key of [...cache.keys()]) if (key.startsWith(`${presentationId}:`)) cache.delete(key);
   };
+  return get;
 }

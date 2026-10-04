@@ -345,6 +345,8 @@ export function initHealth() {
     });
 
 
+    wireKillSwitch();
+
     const updateNowBtn = document.getElementById("update-now-btn");
     if (updateNowBtn) {
       const statusEl = document.getElementById("update-status");
@@ -1175,6 +1177,103 @@ function updateCommand(installDir) {
   return `cd "${installDir}" && git checkout -- package-lock.json 2>/dev/null; git pull --ff-only && npm install --silent && echo "Updated. Restart Refrain"`;
 }
 /** A command to run in Terminal, shown with a one-click copy. */
+/**
+ * The kill switch's two presses (issue #15): the first shows Kill, the second
+ * stops Refrain. Anything else cancels: a click or tap elsewhere, Escape,
+ * scrolling. No countdown and no dialog. After the kill, the page watches
+ * Refrain go quiet before it says "stopped"; still answering after 10s, it
+ * says so and points at Terminal.
+ */
+function wireKillSwitch() {
+  const reveal = document.getElementById("kill-reveal");
+  const kill = document.getElementById("kill-confirm");
+  const status = document.getElementById("kill-status");
+  if (!reveal || !kill) return;
+  const cancel = () => {
+    kill.classList.add("hidden");
+    reveal.classList.remove("hidden");
+    status.textContent = "";
+    document.removeEventListener("pointerdown", outside, true);
+    document.removeEventListener("keydown", onKey, true);
+    window.removeEventListener("scroll", cancel, true);
+    window.removeEventListener("wheel", cancel, true);
+  };
+  const outside = (e) => {
+    if (e.target !== kill && !kill.contains(e.target)) cancel();
+  };
+  const onKey = (e) => {
+    if (e.key === "Escape" || (e.target !== kill && !["Enter", " ", "Tab", "Shift"].includes(e.key))) cancel();
+  };
+  reveal.addEventListener("click", () => {
+    reveal.classList.add("hidden");
+    kill.classList.remove("hidden");
+    status.textContent = "Press Kill to stop Refrain. Anything else cancels.";
+    kill.focus();
+    // Next tick, so the press that revealed it isn't taken as "elsewhere".
+    setTimeout(() => {
+      document.addEventListener("pointerdown", outside, true);
+      document.addEventListener("keydown", onKey, true);
+      window.addEventListener("scroll", cancel, true);
+      window.addEventListener("wheel", cancel, true);
+    }, 0);
+  });
+  kill.addEventListener("click", async () => {
+    document.removeEventListener("pointerdown", outside, true);
+    document.removeEventListener("keydown", onKey, true);
+    window.removeEventListener("scroll", cancel, true);
+    window.removeEventListener("wheel", cancel, true);
+    kill.disabled = true;
+    status.textContent = "Stopping...";
+    let answer = null;
+    try {
+      const res = await fetch("/api/panic", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirm: true }), signal: AbortSignal.timeout(5000) });
+      answer = await res.json().catch(() => null);
+    } catch {
+      /* it may have gone before answering; watching says which */
+    }
+    // Stopped is something seen, not assumed: Refrain has to stop answering.
+    const started = Date.now();
+    while (Date.now() - started < 10_000) {
+      await new Promise((r) => setTimeout(r, 500));
+      try {
+        await fetch("/api/health", { cache: "no-store", signal: AbortSignal.timeout(1000) });
+      } catch {
+        return showStopped(answer);
+      }
+    }
+    kill.disabled = false;
+    status.innerHTML = `<strong>Refrain is still answering.</strong> Use the Stream Deck key, or in Terminal: <code class="font-mono">launchctl bootout gui/$(id -u)/com.refrain.server</code>`;
+  });
+}
+
+/** The whole page becomes the stopped state: not an error, and no dead buttons. */
+function showStopped(answer) {
+  const restart = answer?.restart ?? "launchctl kickstart gui/$(id -u)/com.refrain.server";
+  const el = document.createElement("div");
+  el.id = "refrain-stopped";
+  el.className = "rf-stopped";
+  el.setAttribute("role", "alert");
+  el.innerHTML = `
+    <div class="rf-stopped-box">
+      <h1 class="text-2xl font-semibold">Refrain is stopped.</h1>
+      <p>Nothing on the screens is affected. ProPresenter carries on as it was.</p>
+      <p>To start Refrain again, run this in Terminal:</p>
+      <div class="flex items-center gap-2 min-w-0">
+        <code class="text-sm bg-base-300 rounded px-2 py-1 flex-1 min-w-0 overflow-x-auto whitespace-nowrap">${escapeHtml(restart)}</code>
+        <button type="button" class="btn btn-chip shrink-0" id="stopped-copy">Copy</button>
+      </div>
+      ${answer?.comesBackAtLogin ? `<p class="opacity-70">It also starts again the next time this Mac's user logs in.</p>` : ""}
+      <p class="opacity-70">This page can't restart it: the part of Refrain it would ask has stopped. Reload it once Refrain is running.</p>
+    </div>`;
+  document.body.appendChild(el);
+  el.querySelector("#stopped-copy").addEventListener("click", (e) => {
+    navigator.clipboard?.writeText(restart).then(
+      () => (e.target.textContent = "Copied"),
+      () => (e.target.textContent = "Select and copy it")
+    );
+  });
+}
+
 function commandRow(label, help, cmd) {
   return `
     <div class="flex flex-col gap-1">
@@ -2092,6 +2191,25 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
     </div>
   `;
 
+  // The kill switch (GitHub issue #15). On Status, where Settings always
+  // opens, so someone stressed lands on it. Amber, the Settings colour for
+  // "needs a hand", not red: a red card on a health screen reads as a fault
+  // every time anyone opens it. The out-of-app line is always visible,
+  // because a page that's stuck is exactly when this button can't help.
+  const killCard = `
+    <div id="kill-card" class="card bg-base-200 rf-kill">
+      <div class="card-body p-3 gap-2">
+        <h2 class="card-title text-base">Stop Refrain</h2>
+        <p class="text-sm rf-measure">If the booth feels slow, this stops Refrain at once. ProPresenter and the screens aren't touched.</p>
+        <p class="text-xs opacity-70 rf-measure">If this page isn't responding, use the Stream Deck key or Terminal instead.</p>
+        <div class="flex flex-wrap items-center gap-2">
+          <button type="button" id="kill-reveal" class="btn btn-outline btn-sm rf-kill-reveal">Stop Refrain</button>
+          <button type="button" id="kill-confirm" class="btn btn-sm rf-kill-confirm hidden">Kill</button>
+          <span id="kill-status" class="text-sm" role="status" aria-live="polite"></span>
+        </div>
+      </div>
+    </div>`;
+
   // How Refrain looks here (owner, 2026-09-30). Choices, not a button that
   // cycles: the old "Theme: System" button said where you were, not what
   // pressing it would do. The menu owns these settings (nav.js, `display`).
@@ -2146,7 +2264,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
       <div id="settings-tabs" class="rf-tabs" role="tablist" aria-label="Settings" style="margin-bottom:0">
         ${SETTINGS_TABS.map(([id, label, icon], i) => `<button type="button" role="tab" id="settings-tab-${id}" aria-controls="settings-panel-${id}" class="rf-tab" data-settings-tab="${id}" aria-selected="false" tabindex="-1"><i data-lucide="${icon}" class="w-4 h-4 shrink-0"></i><span>${label}</span><kbd class="kbd kbd-xs tab-key" aria-hidden="true">${i + 1}</kbd></button>`).join("")}
       </div>
-      ${panel("status", statusStrip, propresenterCard, updatesCard)}
+      ${panel("status", statusStrip, killCard, propresenterCard, updatesCard)}
       ${panel("search", libraryCard, indexCard)}
       ${panel("features", configCard, arrangementCard)}
       ${panel("phones", phoneCard)}

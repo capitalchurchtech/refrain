@@ -3,6 +3,13 @@ import { mountFlagButton } from "./slide-flags.js";
 import { showFailure } from "./notice.js";
 import { crumb } from "./breadcrumbs.js";
 
+// The safe-slide shield, drawn inline: results never run Lucide's icon pass
+// (it walks the whole page, and a broad search is a thousand rows), so an
+// <i data-lucide> here stayed an empty box and the button looked missing.
+// Lucide's shield-check, same strokes.
+const SHIELD_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>`;
+
+
 export function initSearch() {
   /**
    * Ask for a docked window, on the surface where it matters.
@@ -53,6 +60,11 @@ export function initSearch() {
   const libraryFilterWrap = document.getElementById("library-filter-wrap");
   const libraryFilterToggle = document.getElementById("library-filter-toggle");
   const libraryFilterPanel = document.getElementById("library-filter-panel");
+  const libraryFilterKeys = document.getElementById("library-filter-keys");
+  const libraryFilterAll = document.getElementById("library-filter-all");
+  const libraryFilterLabel = document.getElementById("library-filter-label");
+  // Opened with the chip while typing; with an empty box the panel is open anyway.
+  let libraryPanelOpened = false;
 
   let debounceTimer = null;
   // Which search is the current one. Two can be in flight at once -- the
@@ -75,26 +87,57 @@ export function initSearch() {
     // single synced folder has nothing to narrow.
     if (folders.length <= 1) return;
 
-    libraryFilterWrap.classList.remove("hidden");
-    libraryFilterPanel.innerHTML = folders
+    // Latching keys, one per library, all the same size: a key reads as "on"
+    // or "off" at a glance, where a row of tiny checkboxes didn't.
+    libraryFilterKeys.innerHTML = folders
       .map(
-        (name) => `
-      <label class="label cursor-pointer gap-1 py-0">
-        <input type="checkbox" class="checkbox checkbox-xs library-filter-checkbox" value="${escapeHtml(name)}" checked />
-        <span class="label-text text-xs">${escapeHtml(name)}</span>
-      </label>
-    `
+        (name) =>
+          `<button type="button" role="checkbox" class="rf-tab rf-lib-key" data-library="${escapeHtml(name)}" aria-checked="true"><i data-lucide="check" class="w-4 h-4 shrink-0 rf-lib-check"></i><span class="truncate">${escapeHtml(name)}</span></button>`
       )
       .join("");
-
-    libraryFilterPanel.querySelectorAll(".library-filter-checkbox").forEach((cb) => {
-      cb.addEventListener("change", () => runSearch(queryInput.value));
+    libraryFilterKeys.querySelectorAll(".rf-lib-key").forEach((key) =>
+      key.addEventListener("click", () => {
+        const on = key.getAttribute("aria-checked") === "true";
+        // Never none: a search of no libraries finds nothing and says so
+        // confusingly. The last one stays on.
+        if (on && libraryFilterKeys.querySelectorAll('[aria-checked="true"]').length === 1) return;
+        key.setAttribute("aria-checked", String(!on));
+        syncLibraryLabel();
+        if (queryInput.value.trim()) runSearch(queryInput.value);
+      })
+    );
+    libraryFilterAll.addEventListener("click", () => {
+      libraryFilterKeys.querySelectorAll(".rf-lib-key").forEach((k) => k.setAttribute("aria-checked", "true"));
+      syncLibraryLabel();
+      if (queryInput.value.trim()) runSearch(queryInput.value);
     });
+    if (window.lucide) window.lucide.createIcons();
+    syncLibraryLabel();
+    syncLibraryPanel();
+  }
+
+  /** The chip says when the search is narrowed, so a filter is never invisible. */
+  function syncLibraryLabel() {
+    const on = libraryFilterKeys.querySelectorAll('[aria-checked="true"]').length;
+    const all = allLibraryFolders.length;
+    libraryFilterLabel.textContent = on < all ? `Libraries · ${on} of ${all}` : "Libraries";
+    libraryFilterAll.classList.toggle("hidden", on === all);
+  }
+
+  /** Open while the box is empty, or when the chip opened it. */
+  function syncLibraryPanel() {
+    if (allLibraryFolders.length <= 1) return;
+    const empty = !queryInput.value.trim();
+    const open = empty || libraryPanelOpened;
+    libraryFilterPanel.classList.toggle("hidden", !open);
+    // The chip is only the way back to the panel while typing.
+    libraryFilterWrap.classList.toggle("hidden", empty);
+    libraryFilterToggle.setAttribute("aria-expanded", String(open));
   }
 
   function selectedFolders() {
     if (allLibraryFolders.length <= 1) return null;
-    const checked = Array.from(libraryFilterPanel.querySelectorAll(".library-filter-checkbox:checked")).map((cb) => cb.value);
+    const checked = Array.from(libraryFilterKeys.querySelectorAll('.rf-lib-key[aria-checked="true"]')).map((k) => k.dataset.library);
     // All checked (the default) means "no filter" — only send a subset
     // when the user has actually narrowed it down.
     return checked.length < allLibraryFolders.length ? checked : null;
@@ -375,7 +418,7 @@ export function initSearch() {
                   <button class="btn btn-chip show-in-editor-btn" data-presentation-id="${r.presentationId}" title="Opens in ProPresenter's editor. Nothing goes to the screens.">
                     Show slide ${r.slideIndex + 1}
                   </button>
-                  <button class="btn btn-chip make-safe-btn" aria-label="Keep as a safe slide on Live" title="Keep as a safe slide on Live" data-presentation-id="${r.presentationId}" data-presentation-name="${escapeHtml(r.presentationName ?? "")}" data-slide-index="${r.slideIndex}" data-group-id="${escapeHtml(r.groupId ?? "")}" data-group-offset="${r.groupOffset ?? ""}" data-slide-text="${escapeHtml(r.snippet ?? "")}"><i data-lucide="shield-check" class="w-3.5 h-3.5"></i></button>
+                  <button class="btn btn-chip make-safe-btn" aria-label="Keep as a safe slide on Live" title="Keep as a safe slide on Live" data-presentation-id="${r.presentationId}" data-presentation-name="${escapeHtml(r.presentationName ?? "")}" data-slide-index="${r.slideIndex}" data-group-id="${escapeHtml(r.groupId ?? "")}" data-group-offset="${r.groupOffset ?? ""}" data-slide-text="${escapeHtml(r.snippet ?? "")}">${SHIELD_SVG}</button>
                   <button class="btn btn-brand btn-xs go-live-btn" data-presentation-id="${r.presentationId}" data-slide-index="${r.slideIndex}" data-group-id="${escapeHtml(r.groupId ?? "")}" data-group-offset="${r.groupOffset ?? ""}" data-slide-text="${escapeHtml(r.snippet ?? "")}" data-presentation-name="${escapeHtml(r.presentationName ?? "")}" data-arrangement-name="${escapeHtml(r.arrangementName ?? "")}">
                     Go Live
                   </button>
@@ -608,6 +651,7 @@ export function initSearch() {
   queryInput.addEventListener("input", () => {
     clearTimeout(debounceTimer);
     syncClearButton();
+    syncLibraryPanel();
     acknowledgeInput(queryInput.value);
     debounceTimer = setTimeout(() => runSearch(queryInput.value), SEARCH_DEBOUNCE_MS);
   });
@@ -617,7 +661,8 @@ export function initSearch() {
   });
 
   libraryFilterToggle.addEventListener("click", () => {
-    libraryFilterPanel.classList.toggle("hidden");
+    libraryPanelOpened = !libraryPanelOpened;
+    syncLibraryPanel();
   });
 
   [dateFieldSelect, dateFromInput, dateToInput].forEach((el) => {
@@ -637,6 +682,8 @@ export function initSearch() {
     dateFromInput.value = "";
     dateToInput.value = "";
     syncClearButton();
+    libraryPanelOpened = false;
+    syncLibraryPanel();
     showEmptyHint();
     queryInput.focus({ preventScroll: true });
   }

@@ -62,3 +62,29 @@ test("a picture already stored skips the render queue entirely", async () => {
   assert.ok(got.every(Boolean), "all 20 stored pictures served while ProPresenter is busy");
   assert.equal(renders, 1, "and none of them asked for a render");
 });
+
+test("a new version of a presentation gets new pictures, not the old slide's at its number", async () => {
+  let calls = 0;
+  const get = createThumbCache(async (id, i, v) => (calls++, { bytes: Buffer.from(`${id}${i}${v}`) }));
+  const before = await get("P", 3, "v1");
+  assert.equal((await get("P", 3, "v1")).bytes.toString(), before.bytes.toString(), "same version: from memory");
+  assert.equal(calls, 1);
+  const after = await get("P", 3, "v2");
+  assert.equal(calls, 2, "a slide removed in ProPresenter changes the version, so it's drawn again");
+  assert.equal(after.bytes.toString(), "P3v2");
+  const stored = [];
+  const withDisk = createThumbCache(async () => ({ bytes: Buffer.from("x") }), { stored: async (id, i, v) => (stored.push(v), null) });
+  await withDisk("P", 1, "v9");
+  assert.deepEqual(stored, ["v9"], "the disk store is asked for that version");
+});
+
+test("forget drops one presentation's pictures from memory, and only that one", async () => {
+  let calls = 0;
+  const get = createThumbCache(async (id, i) => (calls++, { bytes: Buffer.from(`${id}${i}`) }));
+  await get("P", 1);
+  await get("Q", 1);
+  get.forget("P");
+  await get("P", 1);
+  await get("Q", 1);
+  assert.equal(calls, 3, "P drawn again, Q still remembered");
+});

@@ -254,8 +254,9 @@ export function initLive() {
         </div>
 
         <!-- Safe slides (handoff §39a): the church's own known-good slides to
-             cut to in a hurry. Above Clear, because a known picture is usually
-             a better answer to "something's wrong" than an empty screen. -->
+             cut to in a hurry. First on the page, because a known picture is
+             usually a better answer to "something's wrong" than an empty
+             screen. -->
         <div id="live-safe-wrap">
           <div class="flex items-center justify-between gap-2">
             <h2 class="rf-subhead">Safe slides</h2>
@@ -264,27 +265,25 @@ export function initLive() {
           <div id="live-safe" class="grid grid-cols-2 sm:grid-cols-4 gap-3"></div>
         </div>
 
-        <div>
-          <h2 class="rf-subhead">Clear</h2>
-          <!-- Across the top of the bank whenever the LINK lamp is dark. The
-               keys stay live on purpose: a clear is the one thing an operator
-               may still need, and it may land the moment the link comes back.
-               The banner is there so nobody presses one believing it will. -->
-          <div id="live-clear-offline" class="hidden rf-offline-banner" role="status">
-            <span class="rf-offline-word">Offline</span>
-            <span>ProPresenter isn't answering. A clear may not reach the screens.</span>
+        <!-- Stage message (handoff section 42): a note only the people on
+             stage see, in the Stage Message box of the stage layouts. One
+             press, because the audience never sees it; it stays up until
+             Take down. -->
+        <div id="live-stage-wrap">
+          <div class="flex items-center justify-between gap-2">
+            <h2 class="rf-subhead">Stage message</h2>
+            <button id="live-stage-edit" type="button" class="btn btn-chip" aria-pressed="false">Edit</button>
           </div>
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <button class="btn btn-outline h-20 text-base" data-clear="all" data-arm="true"><span class="flex flex-col items-center gap-1"><i data-lucide="x-octagon" class="w-6 h-6"></i> Clear all</span></button>
-            <button class="btn btn-outline h-20 text-base" data-clear="slide"><span class="flex flex-col items-center gap-1"><i data-lucide="type" class="w-6 h-6"></i> Slide</span></button>
-            <button class="btn btn-outline h-20 text-base" data-clear="media"><span class="flex flex-col items-center gap-1"><i data-lucide="image" class="w-6 h-6"></i> Media</span></button>
-            <button class="btn btn-outline h-20 text-base" data-clear="messages"><span class="flex flex-col items-center gap-1"><i data-lucide="message-square" class="w-6 h-6"></i> Messages</span></button>
+          <p id="live-stage-now" class="text-sm opacity-70 mb-2"></p>
+          <div id="live-stage" class="grid grid-cols-1 sm:grid-cols-3 gap-3"></div>
+          <div class="flex flex-wrap gap-2 mt-3">
+            <input id="live-stage-text" class="input input-bordered flex-1 min-w-0" maxlength="80" placeholder="Say something else" aria-label="Stage message to show" />
+            <button id="live-stage-show" type="button" class="btn btn-outline">Show</button>
+            <button id="live-stage-clear" type="button" class="btn btn-outline">Take down</button>
           </div>
         </div>
 
         <div id="live-message-wrap" class="hidden">
-          <!-- Below Clear, never above it: six message rows would otherwise
-               push the Clear keys out of reach at the moment they matter. -->
           <h2 class="rf-subhead">Messages</h2>
           <!-- Messages with no fill-in field (countdowns, a fixed pager
                line): Show and Take down, with what each says and whether it's
@@ -317,6 +316,30 @@ export function initLive() {
           <div id="live-macros" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3"></div>
         </div>
 
+        <!-- Folded, beside Looks (owner, 2026-10-03): Refrain runs beside
+             ProPresenter, whose own clear keys are right there, so these are
+             the spare set, not the first thing on the screen. Clear all is
+             also in the menu's quick slides, two presses, on every screen. -->
+        <details id="live-clear-wrap" class="rf-looks-fold">
+          <summary class="rf-subhead cursor-pointer">Clear</summary>
+          <div class="mt-2">
+          <!-- Across the top of the bank whenever the LINK lamp is dark. The
+               keys stay live on purpose: a clear is the one thing an operator
+               may still need, and it may land the moment the link comes back.
+               The banner is there so nobody presses one believing it will. -->
+          <div id="live-clear-offline" class="hidden rf-offline-banner" role="status">
+            <span class="rf-offline-word">Offline</span>
+            <span>ProPresenter isn't answering. A clear may not reach the screens.</span>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <button class="btn btn-outline h-20 text-base" data-clear="all" data-arm="true"><span class="flex flex-col items-center gap-1"><i data-lucide="x-octagon" class="w-6 h-6"></i> Clear all</span></button>
+            <button class="btn btn-outline h-20 text-base" data-clear="slide"><span class="flex flex-col items-center gap-1"><i data-lucide="type" class="w-6 h-6"></i> Slide</span></button>
+            <button class="btn btn-outline h-20 text-base" data-clear="media"><span class="flex flex-col items-center gap-1"><i data-lucide="image" class="w-6 h-6"></i> Media</span></button>
+            <button class="btn btn-outline h-20 text-base" data-clear="messages"><span class="flex flex-col items-center gap-1"><i data-lucide="message-square" class="w-6 h-6"></i> Messages</span></button>
+          </div>
+          </div>
+        </details>
+
         <!-- Folded away and after Macros: Looks change rarely here, and a
              macro usually switches the Look as part of what it does. Closed on
              every load, so the bank someone reaches for mid-service is Macros. -->
@@ -342,6 +365,7 @@ export function initLive() {
 
     wireClearButtons();
     loadSafeSlides();
+    wireStageMessage();
     document.getElementById("live-safe-edit")?.addEventListener("click", () => {
       editingSafe = !editingSafe;
       paintSafeSlides();
@@ -516,6 +540,129 @@ export function initLive() {
       // Keep what's shown; the next visit re-reads it.
     }
   }
+  /**
+   * The stage message card. Presets are one press each and the one that's up
+   * stays latched; typed text goes up with Show. Edit turns the keys into
+   * rows to reword, reorder or remove, and Show into Add.
+   */
+  let stagePresets = [];
+  let stageCurrent = "";
+  let editingStage = false;
+  let stageTimer = null;
+  async function wireStageMessage() {
+    const edit = document.getElementById("live-stage-edit");
+    const text = document.getElementById("live-stage-text");
+    const show = document.getElementById("live-stage-show");
+    const clear = document.getElementById("live-stage-clear");
+    if (!edit) return;
+    edit.addEventListener("click", () => {
+      editingStage = !editingStage;
+      paintStage();
+    });
+    show.addEventListener("click", async () => {
+      if (editingStage) {
+        const res = await fetch("/api/live/stage-messages", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: text.value }) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return setStatus(`Couldn't add it: ${data.error ?? res.statusText}`);
+        stagePresets = data.presets ?? stagePresets;
+        text.value = "";
+        return paintStage();
+      }
+      const answer = await fire(show, "/api/live/stage-message", { text: text.value }, "Stage message");
+      if (answer) {
+        stageCurrent = answer.current ?? "";
+        text.value = "";
+        paintStage();
+      }
+    });
+    text.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") show.click();
+    });
+    clear.addEventListener("click", async () => {
+      if (await fire(clear, "/api/live/stage-message/clear", {}, "Take down")) {
+        stageCurrent = "";
+        paintStage();
+      }
+    });
+    try {
+      const data = await fetch("/api/live/stage-message?fresh=1").then((r) => r.json());
+      stagePresets = data.presets ?? [];
+      stageCurrent = data.current ?? "";
+    } catch {
+      /* painted empty below */
+    }
+    paintStage();
+    // A phone, or ProPresenter itself, can change the stage message; check
+    // every 10s while Now is on screen, so "On stage now" stays true. The
+    // server reads ProPresenter at most that often however many ask.
+    clearInterval(stageTimer);
+    stageTimer = setInterval(async () => {
+      if (!document.getElementById("live-stage") || container.classList.contains("hidden")) return clearInterval(stageTimer);
+      if (document.hidden || editingStage) return;
+      try {
+        const data = await fetch("/api/live/stage-message").then((r) => r.json());
+        if ((data.current ?? "") !== stageCurrent) {
+          stageCurrent = data.current ?? "";
+          paintStage();
+        }
+      } catch {
+        /* keep what's shown */
+      }
+    }, 10_000);
+  }
+
+  function paintStage() {
+    const grid = document.getElementById("live-stage");
+    if (!grid) return;
+    const edit = document.getElementById("live-stage-edit");
+    edit.textContent = editingStage ? "Done" : "Edit";
+    edit.setAttribute("aria-pressed", String(editingStage));
+    document.getElementById("live-stage-show").textContent = editingStage ? "Add" : "Show";
+    document.getElementById("live-stage-clear").classList.toggle("hidden", editingStage);
+    document.getElementById("live-stage-text").placeholder = editingStage ? "A new message to keep" : "Say something else";
+    document.getElementById("live-stage-now").textContent = stageCurrent ? `On stage now: "${stageCurrent}"` : "Nothing on stage.";
+    if (editingStage) {
+      grid.innerHTML = stagePresets
+        .map(
+          (m, i) => `<div class="flex items-center gap-1 col-span-full" data-stage-row="${escapeHtml(m.id)}">
+          <input class="input input-bordered input-sm flex-1 live-stage-name" maxlength="80" value="${escapeHtml(m.text)}" aria-label="Stage message" />
+          <button type="button" class="btn btn-chip live-stage-move" data-dir="-1" ${i === 0 ? "disabled" : ""} aria-label="Move earlier">↑</button>
+          <button type="button" class="btn btn-chip live-stage-move" data-dir="1" ${i === stagePresets.length - 1 ? "disabled" : ""} aria-label="Move later">↓</button>
+          <button type="button" class="btn btn-chip live-stage-remove">Remove</button>
+        </div>`
+        )
+        .join("");
+      const change = async (id, body) => {
+        const res = await fetch(`/api/live/stage-messages/${encodeURIComponent(id)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return setStatus(`Couldn't save that: ${data.error ?? res.statusText}`);
+        stagePresets = data.presets ?? stagePresets;
+        paintStage();
+      };
+      grid.querySelectorAll("[data-stage-row]").forEach((row) => {
+        const id = row.dataset.stageRow;
+        row.querySelector(".live-stage-name").addEventListener("change", (e) => change(id, { action: "edit", text: e.target.value }));
+        row.querySelectorAll(".live-stage-move").forEach((b) => b.addEventListener("click", () => change(id, { action: "move", dir: Number(b.dataset.dir) })));
+        row.querySelector(".live-stage-remove").addEventListener("click", () => change(id, { action: "remove" }));
+      });
+      return;
+    }
+    grid.innerHTML = stagePresets.length
+      ? stagePresets
+          .map((m) => `<button type="button" class="btn btn-outline h-16 text-base live-stage-key" data-stage="${escapeHtml(m.id)}" aria-pressed="${m.text === stageCurrent}"><span class="truncate">${escapeHtml(m.text)}</span></button>`)
+          .join("")
+      : `<p class="text-sm opacity-70 col-span-full">No saved messages. Press Edit to add some.</p>`;
+    grid.querySelectorAll(".live-stage-key").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        const answer = await fire(btn, "/api/live/stage-message", { presetId: btn.dataset.stage }, "Stage message");
+        if (answer) {
+          stageCurrent = answer.current ?? "";
+          paintStage();
+        }
+      })
+    );
+  }
+
   let safeList = [];
   let editingSafe = false;
 

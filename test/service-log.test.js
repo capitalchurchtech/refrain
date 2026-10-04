@@ -91,3 +91,10 @@ test("what Refrain asked of this ProPresenter is counted once per thing, and sta
   assert.equal(n.kind, "documents");
   assert.match(n.message, /read 320 presentations through this ProPresenter.*Restart ProPresenter before the service/);
 });
+
+test("the stage message: reading it is a look, showing or taking it down is a press", () => {
+  assert.equal(classifyCall("/v1/stage/message", "GET"), "status");
+  assert.equal(classifyCall("/v1/stage/message", "PUT"), "control");
+  assert.equal(classifyCall("/v1/stage/message", "DELETE"), "control");
+  assert.equal(classifyCall("/v1/stage/message"), "status");
+});

@@ -1,12 +1,13 @@
 /**
  * The Phone panel, from the rail on any screen: how to start a phone session,
- * and which phones may control ProPresenter (owner request, 2026-09-26).
+ * and which phones may send alerts (owner request, 2026-09-26).
  *
  * Steps first, because "I can't tell how to start my phone session" is why
- * this exists. Then the phones that have signed in: each can search, preview
- * and flag with today's PIN; control (next/previous slide, safe slides) is
- * for the ones approved here, by name, and every control press on the phone
- * still needs a second press to confirm it.
+ * this exists. Then the phones that have signed in: each can flag with
+ * today's PIN; alerts (a stage message, a pager code) are for the ones
+ * approved here, by name, and every alert still needs a second tap to
+ * confirm it. No phone moves slides (owner, 2026-10-04: the phone is an
+ * alert tool and a flag tool).
  */
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -17,8 +18,8 @@ export function phonePanelHtml(d) {
   if (!d) return `<div>Couldn't load phone settings.</div>`;
   if (d.status === "off") {
     return `
-      <p>Use a phone to search lyrics, see the current and next slide, and flag problems from anywhere in the room. Phones you approve here can also move to the next slide or put up a safe slide.</p>
-      <p class="opacity-70">Turning this on lets phones on the same Wi-Fi as this Mac open Refrain's phone page. They can't change the screens unless you approve them here.</p>
+      <p>Use a phone to flag a slide that needs fixing, from anywhere in the room. Phones you approve here can also send a stage message or a pager code.</p>
+      <p class="opacity-70">Turning this on lets phones on the same Wi-Fi as this Mac open Refrain's phone page. A phone never moves slides.</p>
       <button type="button" id="phone-enable" class="btn btn-brand btn-sm w-fit">Turn on phones</button>`;
   }
   if (d.status === "misconfigured") {
@@ -33,12 +34,12 @@ export function phonePanelHtml(d) {
       </li>
       ${
         d.pinMode === "none"
-          ? `<li>No PIN is set: phones can search and flag, but no phone can control ProPresenter.</li>`
+          ? `<li>No PIN is set: phones can flag, but no phone can send alerts.</li>`
           : `<li>Enter ${d.pinMode === "daily" ? "today's PIN" : "the PIN"}: <strong class="font-mono text-lg">${esc(d.pin ?? "")}</strong>${
               d.pinMode === "daily" ? ` <span class="opacity-60">(changes at midnight)</span>` : ""
             }. Tick <em>Trust this phone</em> to skip this for 30 days.</li>`
       }
-      <li>To let it move slides or put up safe slides, press <em>Allow control</em> beside its name below.</li>
+      <li>To let it send stage messages and pager codes, press <em>Allow alerts</em> beside its name below.</li>
     </ol>
     ${d.loopbackOnly ? `<p class="opacity-80">This address only works on this Mac. For phones, set networkModule.host to 0.0.0.0.</p>` : ""}
     ${d.wrongToday ? `<p class="opacity-80">${d.wrongToday} wrong PIN${d.wrongToday === 1 ? "" : "s"} today.</p>` : ""}`;
@@ -50,15 +51,15 @@ export function phonePanelHtml(d) {
       <div class="flex items-center justify-between gap-2" data-phone="${esc(p.id)}">
         <div class="min-w-0">
           <div class="font-medium truncate">${esc(p.name)}</div>
-          <div class="text-xs opacity-70">${p.approved ? "Can control ProPresenter" : "Search, preview and flag only"} · seen ${esc(clock(p.lastSeen))}</div>
+          <div class="text-xs opacity-70">${p.approved ? "Can send alerts" : "Flags only"} · seen ${esc(clock(p.lastSeen))}</div>
         </div>
         <div class="flex gap-1 shrink-0">
           ${
             p.approved
-              ? `<button type="button" class="btn btn-chip phone-act" data-action="unapprove">Take control back</button>`
+              ? `<button type="button" class="btn btn-chip phone-act" data-action="unapprove">Stop alerts</button>`
               : d.pinMode === "none"
                 ? ""
-                : `<button type="button" class="btn btn-outline btn-xs phone-act" data-action="approve">Allow control</button>`
+                : `<button type="button" class="btn btn-outline btn-xs phone-act" data-action="approve">Allow alerts</button>`
           }
           <button type="button" class="btn btn-chip phone-act" data-action="remove">Remove</button>
         </div>
@@ -72,7 +73,7 @@ export function phonePanelHtml(d) {
         .slice(0, 5)
         .map((a) => `<div class="text-xs">${esc(clock(a.at))} · ${esc(a.phone)}: ${esc(a.label)}${a.ok ? "" : ` <span class="opacity-80">(didn't work: ${esc(a.error)})</span>`}</div>`)
         .join("")}</div>`
-    : `<div class="text-xs opacity-70">No phone has controlled ProPresenter yet.</div>`;
+    : `<div class="text-xs opacity-70">No phone has sent an alert yet.</div>`;
 
   return `
     ${steps}

@@ -2316,6 +2316,91 @@ in the UI just like history, maybe an alert icon for a pulldown?"
 - The main app's picture route (`/api/preview/image`) now also serves safe slides, as the phone's already did (at most eight, cached on disk).
 
 
+## 42. Stage messages, preset and custom, from desktop and phone (owner request 2026-10-03; built on branch stage-messages, uncommitted)
+
+**Ask (owner):** "Add a way to show a stage message for our confidence monitor,
+perhaps even preset ones. Make these selectable via mobile or desktop: Keep
+going, we're delayed / Cut short, pressing for time / Killing it!" Plus: can
+Refrain put a code on screen for the Kids pager?
+
+**What ProPresenter offers.** The stage layout already has a Stage Message box
+(linked text, flashes when shown). ProPresenter's API has `/v1/stage/message`:
+GET reads it, PUT shows a text, DELETE takes it down. Checked read-only on this
+Mac's ProPresenter 21.3: GET answers 200 with "" (nothing up). It only reaches
+the stage screens, never the audience.
+
+**Plan:**
+1. **Client** (`server/propresenter-client.js`): `getStageMessage()`,
+   `showStageMessage(text)`, `clearStageMessage()`. `classifyCall` counts
+   them as control.
+2. **Presets** (`server/stage-messages.js`, pure, tested, like safe-slides.js):
+   kept in config.json as `liveModule.stageMessages`, at most 8, 80 characters
+   each. Seeded with the owner's three the first time. Add, rename, reorder,
+   remove on Now.
+3. **Routes** (main app): GET `/api/live/stage-message` (presets, and what's
+   up now), POST `/api/live/stage-message` (`{ presetId }` or `{ text }`),
+   POST `/api/live/stage-message/clear`, POST `/api/live/stage-messages/:id`
+   for edits.
+4. **Desktop, Service › Now:** a "Stage message" card. One key per preset,
+   a "Say something else" field with Show, and Take down. The key that's up
+   stays latched, so the operator can see what the pastor sees.
+5. **Phone:** a Stage message section with the presets and Take down,
+   through the existing prepare/confirm flow (two taps, standing rule for any
+   phone press that reaches ProPresenter). Approved phones only.
+6. Tests for the preset list and for the routes' refusals (empty, too long,
+   line breaks).
+
+**Pager (39e).** Refrain can already do this: Now › Messages shows a field for
+every text token in a ProPresenter message, and remembers recent values. The
+Kids PAGER message has no token (its whole text is the code, "EXVX", retyped
+each time), so Refrain has nothing to fill in. One change in ProPresenter
+makes it work: edit the message and replace EXVX with a Text token named Code.
+Then Now shows a Code field, upper-cased, with the last few codes as keys.
+
+**Decided (owner, 2026-10-03):** one press on desktop; presets only from a
+phone; a stage message stays up until it's taken down, from Now or a phone;
+every message field is upper-cased, whatever the church uses it for; the
+pager can be posted from a phone too (two taps, like every phone press).
+
+## 43. Kill switch card (GitHub issue #15; owner 2026-10-04: on Status, amber, no phone kill; built)
+
+The issue is the brief; read it in full (`gh issue view 15`). In short: a
+booth-only "stop Refrain now" control on Settings, for when the booth feels
+sluggish mid-service. Not on the phone. An escape hatch the operator can find
+under stress, honest that it's the least reliable one (the out-of-app paths
+are `scripts/refrain-panic.sh` and `REFRAIN-ESCAPE-HATCH.md` in the
+weekend-services repo).
+
+**Hard requirements (from the issue):** answer, flush, then `process.exit(0)`
+(the LaunchAgent's KeepAlive is `SuccessfulExit: false`, checked in
+~/Library/LaunchAgents/com.refrain.server.plist, so exit 0 stays down); log the
+kill first (#13); the page confirms by watching the port go silent, and says
+plainly if it's still answering after ~10s; tap reveals Kill, tap Kill stops,
+anything else cancels; no countdown, no second dialog; a stopped state, not an
+error, with the restart command and "it comes back at next login".
+
+**Plan:**
+1. `POST /api/panic { confirm: true }` registered first in server/index.js,
+   before every other middleware and route, so it can't queue behind
+   anything Refrain adds; it reads nothing from ProPresenter or disk. Logs
+   one line ("Stopped from Settings by the kill switch"), sends
+   `{ stopping: true }`, and exits 0 once the response has finished
+   (`res.on("finish")`), with a short fallback timer.
+2. Only on the main app (this machine); the phone listener has no such route
+   (a test asserts it, alongside the existing "only the phone routes exist").
+3. A card on Settings (see question 1), amber accent per the brief's
+   fault-amber (already the Settings colour for "needs a hand"), not red,
+   visually unlike the index controls. One always-visible line: "If this page
+   isn't responding, use the Stream Deck key or Terminal."
+4. Client: reveal-then-confirm, cancelled by a click elsewhere, Escape,
+   scroll, or another control. Then poll `/api/health` every 500ms with a
+   short timeout; silent → the stopped state; still answering at 10s → say
+   so, with the Terminal command.
+5. Tests: the route refuses without `confirm: true`; the phone app has no
+   `/api/panic`.
+
+**Decided (owner, 2026-10-04):** on Status, amber, no kill from the phone.
+
 ## Status log
 
 `YYYY-MM-DD · <item> · done | partial | blocked · <one line>`
@@ -2934,3 +3019,14 @@ in the UI just like history, maybe an alert icon for a pulldown?"
 - 2026-09-30 — (branch tab-icons, uncommitted) Tab rows switch to icons when they would wrap (owner). `fitTabs` in public/tabs.js measures instead of using a breakpoint: whenever the row's width changes, it checks whether the tabs fit on one line, and the class is set on the next frame so the height change can't loop the ResizeObserver. Names stay for screen readers (visually hidden) and show as tooltips. Prep and Settings both use it; checked at 520px (icons, one line) and 1280px (labels, one line). Status lights: hover now says what each light watches, then its state ("Performance mode: Refrain holds still during a service…" / "Now: off."), with an aria-label to match. 545 pass.
 - 2026-09-30 — (branch service-page, uncommitted; also carries tab-icons) Section 41 built as decided: one Service key with Now | Flags | Day tabs; menu option B (lights under the wordmark, slim icon footer); option 4 quick slides in the menu, two presses each (public/quick-slides.js, CSS "QUICK SLIDES IN THE MENU" in refrain.css). Now's safe-slide editor and Search's "keep this slide" dispatch `refrain:safe-slides-changed` so the menu updates at once; otherwise it re-reads every 60s while visible. Verified on the dev server (1280×900 and 1280×640, expanded and narrow): the lamp row fits the 144px rail; arming, the 3s timeout, switching keys, firing a safe slide and Clear all all behave (this Mac's ProPresenter, not the booth). Five placeholder safe slides ("Test 1"–"Test 5", from the Announcements deck) were added to the **dev** config.json to exercise it; remove them on Service › Now when done. Not checked closely in the light theme. 548 pass (new test: quick-slides.test.js); lint clean on the repo's code (the `.claude/worktrees/` copy from another session still trips the root lint run).
 - 2026-10-03 — Pushed 42ace15 (Service page, menu option B, quick slides in the menu, tab icons, lamp tooltips) and updated this Mac's install. Install checks: ProPresenter connected; Now, Flags and Day report `page: "service"`; quick-slides.js served. This install has no safe slides yet, so the menu's quick slides stay hidden until one is kept (Search › keep this slide). Still v0.24.0, no release. Not on the booth.
+- 2026-10-03 — Section 42 written (planning): stage messages from desktop and phone, and the pager answer. Not started.
+- 2026-10-03 — (branch stage-messages, uncommitted) Section 42 built. ProPresenter client: `getStageMessage`/`showStageMessage`/`clearStageMessage` (`/v1/stage/message` GET/PUT/DELETE). `server/stage-messages.js` (pure, tested): presets in `liveModule.stageMessages`, the owner's three until the list is first saved, at most 8 of 80 characters. Now has a Stage message card: one press per preset (the one up stays latched), "Say something else" with Show, Take down, and Edit (reword, reorder, remove, add). Phone Control tab: Stage message presets and Take down, and Messages (any ProPresenter message with a text field, e.g. the pager: type or tap a recent code, Show, Take down), all two taps; a phone can't type a stage message. Every message field is upper-cased on desktop and phone. Verified on this Mac's ProPresenter (not the booth): a preset, typed text and Take down each read back from ProPresenter; Edit added and removed one. The phone side is covered by tests (presets only, codes upper-cased, only the message's own fields, empty refused); not clicked through on a phone. The pager still needs its Text token in ProPresenter (see above).
+- 2026-10-03 — (same branch) **Fix: the Day tab did nothing** (owner). Day's module id is `service`, the same as its page's, and a tab press passed the bare id, which means the page and so its first tab, Now. Tab presses and arrow keys now navigate by `page/tab`. This bug is in the installed 42ace15.
+- 2026-10-03 — (same branch) Search libraries (owner: "always show when the search box is empty; nicer than sporadic"). With an empty box, "Libraries" is an open group of equal-width latching keys with a tick (`.rf-lib-*` in refrain.css, the Customize latch); typing folds it into the Libraries chip, which reads "Libraries · 1 of 2" when narrowed, with "Search all" to undo. The last library can't be switched off (a search of none finds nothing). Session only, as before. 553 pass, lint clean.
+- 2026-10-04 — (branch stage-messages, uncommitted) Spell Check shows each flagged slide's picture (owner: "it was hard to find the slides"), numbered by ProPresenter's *selected* arrangement (found while checking: pictures follow the arrangement ProPresenter has selected, while findings are read in the preferred FS/T one, so a picture by the finding's own number showed a different slide; now matched by anchor, as Go Live does). Each presentation has **Check again**, which reads it again after a slide is removed or fixed, so the numbers, pictures and Go Live are current. Pictures are drawn only for flagged slides, never during performance mode. **Fix, all slide pictures:** the in-memory picture cache was keyed by slide number alone, so after a slide was removed every later picture was the old slide's until a restart; pictures are now keyed to the .pro file's current size and modified time (read at request time), and the main app's picture route asks the browser to re-check rather than reuse for 5 minutes. Verified on this Mac: the flagged chorus slides show their own picture; Check again re-reads.
+- 2026-10-04 — (same branch) Now: Clear is folded, closed, beside Looks (owner: "Refrain is a sidecar; ProPresenter's own clear keys are right there"). Clear all is still two presses inside it, and in the menu's quick slides.
+- 2026-10-04 — (same branch) **Fix: Search's safe-slide button was invisible** (owner: "no button on any slide"). Results never run Lucide's icon pass (too slow on a broad search), so the shield stayed an empty box. Drawn inline now. 554 pass, lint clean.
+- 2026-10-04 — Section 43 written (planning) from issue #15, kill switch card. Not started.
+- 2026-10-04 — (branch stage-messages, uncommitted) **The phone is an alert tool and a flag tool** (owner: "worried about the phone"). Tabs are Flag and Alert. Alert: stage message presets and Take down (always shown; the booth may not know about a message put up in ProPresenter itself), and Messages (pager), each two taps. Removed from the phone: Next/Previous, the Now/Next preview, Emergency safe slides, Search and Show in editor; their routes (`/api/preview`, `/api/search`, `/api/safe-slides`) and prepare kinds are gone, and the booth's phone handler refuses anything but the four alert kinds. Phone panel and README say so ("Allow alerts", "Flags only"). **Phone pictures come only from disk** (`storedSlideThumb`): a phone never makes ProPresenter draw. **On every screen, during performance mode only stored pictures are shown**; nothing new is drawn. Pre-render is still off by default (and on this Mac's install), so in a service most pictures will be missing on the phone unless it's turned on; owner asked.
+- 2026-10-04 — (same branch) Code review (high) of section 42 and the picture work: 10 findings, all fixed. (1, 4) The stage message is re-read from ProPresenter at most every 10s (`readStage`), for phones and for Now, which now checks every 10s while on screen; checked by putting one up in ProPresenter directly: Refrain showed it within 10s. (2) Check again drops that presentation's pictures from memory (`thumbCache.forget`), so a version that can't be read can't serve an old picture. (3) Check again finds its presentation by id after the wait, and does nothing if it's gone. (5) The picture route answers 304 from the file's version before any picture work (ETag `"fingerprint:index"`), and the version check is remembered for 3s per presentation; `no-cache` stays so a removed slide can't show from the browser's cache. (6) The phone cleans message fields with the same `messageFieldValue` as Now (60-character cap for both). (7) A code typed on the phone survives the list repainting. (8) Spell Check retries a missing picture twice before giving up. (9) Moving a preset needs dir -1 or 1 (400 otherwise). (10) Reading the stage message counts as a status call, not a control press. 556 pass, lint clean. Phone page checked at 375px against a stand-in phone server (two taps, latch, typed code kept).
+- 2026-10-04 — Section 43 built (issue #15). `POST /api/panic { confirm: true }` is registered right after the cross-site guard, before static files and every other route; it reads nothing from ProPresenter, logs one line, answers `{ stopping, restart, comesBackAtLogin }`, and exits 0 once the answer is sent (3s fallback). The restart command is the login item's `launchctl kickstart` only when the login item runs this folder (`runByLoginItem`, server/panic.js), else `npm start` in this folder. Settings › Status has the Stop Refrain card second, after the status strip: amber ring and heading, the out-of-app line always visible, Stop Refrain reveals a solid amber Kill; a click elsewhere, Escape, other keys or scrolling cancel. After Kill the page polls /api/health until it stops answering, then covers the page with "Refrain is stopped" and the restart command; still answering after 10s, it says so and gives the Terminal command. The phone listener has no /api/panic (test). Verified on the dev copy: unconfirmed 400, cross-site 403, a real click elsewhere cancels, Kill → log line, port silent, stopped page. README has a paragraph.

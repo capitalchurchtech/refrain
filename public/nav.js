@@ -296,7 +296,9 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
         row.style.marginBottom = "0";
         row.setAttribute("role", "tablist");
         row.setAttribute("aria-label", p.navLabel);
-        wireTabKeys(row, (tab) => setActive(tab.dataset.id));
+        // By page/tab, never the bare id: Day's module id is "service", the same
+        // as its page's, and the bare name means the page (its first tab).
+        wireTabKeys(row, (tab) => setActive(`${p.id}/${tab.dataset.id}`));
         head.appendChild(row);
       }
       const on = p.id === current;
@@ -320,7 +322,7 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
             `<button type="button" role="tab" id="${p.id}-tab-${t.id}" aria-controls="view-${t.id}" class="rf-tab relative" data-id="${t.id}" aria-selected="${t.id === activeId}" tabindex="${t.id === activeId ? 0 : -1}"><i data-lucide="${t.icon}" class="w-4 h-4 shrink-0"></i><span>${t.navLabel}</span>${i < 9 ? `<kbd class="kbd kbd-xs tab-key" aria-hidden="true">${i + 1}</kbd>` : ""}</button>`
         )
         .join("");
-      row.querySelectorAll(".rf-tab").forEach((b) => b.addEventListener("click", () => setActive(b.dataset.id)));
+      row.querySelectorAll(".rf-tab").forEach((b) => b.addEventListener("click", () => setActive(`${p.id}/${b.dataset.id}`)));
       fitTabs(row);
     }
   }

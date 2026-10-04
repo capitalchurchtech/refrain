@@ -78,10 +78,10 @@ async function timedFetch(path, url, init, read) {
     const res = await fetch(url, init);
     ok = res.ok;
     const out = await read(res);
-    callObserver?.({ path, ms: performance.now() - started, ok, timedOut: false });
+    callObserver?.({ path, method: init?.method ?? "GET", ms: performance.now() - started, ok, timedOut: false });
     return out;
   } catch (err) {
-    callObserver?.({ path, ms: performance.now() - started, ok: false, timedOut: err?.name === "TimeoutError" });
+    callObserver?.({ path, method: init?.method ?? "GET", ms: performance.now() - started, ok: false, timedOut: err?.name === "TimeoutError" });
     throw err;
   }
 }
@@ -102,15 +102,19 @@ export class ProPresenterClient {
   }
 
   // Some endpoints (message triggering) are POST with a JSON body, unlike
-  // the GET-based trigger/clear calls used everywhere else.
+  // the GET-based trigger/clear calls used everywhere else; the stage
+  // message is PUT and DELETE.
   async #post(path, body) {
+    return this.#send("POST", path, body);
+  }
+
+  async #send(method, path, body) {
     return timedFetch(
       path,
       `${this.baseUrl}${path}`,
       {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        method,
+        ...(body === undefined ? {} : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
         signal: AbortSignal.timeout(8000),
       },
       async (res) => {
@@ -431,6 +435,24 @@ export class ProPresenterClient {
   /** Hides a message that's currently showing. */
   async clearMessage(id) {
     await this.#get(`/v1/message/${seg(id)}/clear`);
+  }
+
+  // --- Stage message (section 42) ---
+  // The Stage Message box on the stage layouts: seen by the people on
+  // stage, never by the audience. It stays up until it's taken down.
+
+  /** What the stage message says now; "" when nothing is up. */
+  async getStageMessage() {
+    const text = await this.#get("/v1/stage/message");
+    return typeof text === "string" ? text : "";
+  }
+
+  async showStageMessage(text) {
+    await this.#send("PUT", "/v1/stage/message", String(text));
+  }
+
+  async clearStageMessage() {
+    await this.#send("DELETE", "/v1/stage/message");
   }
 }
 

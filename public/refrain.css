@@ -4237,3 +4237,158 @@ html.blackroom #nav-rail.w-36 #rail-foot > .btn:hover {
 #nav-rail.w-14 .rf-quick-note {
   display: none;
 }
+
+/* ============================================================
+   STAGE MESSAGE ON NOW (handoff section 42)
+
+   The preset that's on stage stays latched: the plum underline the tab
+   keys use, so "this one is up" reads the same everywhere. Set by
+   aria-pressed from live.js, an attribute, so no JIT class to miss.
+   Message fields show capitals as you type; the server upper-cases what's
+   posted (owner, 2026-10-03: pager codes).
+   ============================================================ */
+#live-stage .live-stage-key[aria-pressed="true"] {
+  border-color: var(--rf-plum-lit);
+  box-shadow: inset 0 -2px 0 var(--rf-plum);
+}
+.live-message-token {
+  text-transform: uppercase;
+}
+
+/* ============================================================
+   SEARCH: WHICH LIBRARIES (owner, 2026-10-03)
+
+   Open under the filter chips while the search box is empty; folded into
+   the Libraries chip while typing. One latching key per library, all the
+   same width, using the option-key latch (.rf-tab[aria-checked]) so "on"
+   reads the same here as on Settings > Customize. The tick is the second
+   signal, for anyone who can't tell the latch from the colour.
+   ============================================================ */
+.rf-lib-panel {
+  margin: 0 0 16px;
+}
+.rf-lib-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.rf-lib-keys {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: 6px;
+}
+.rf-lib-key {
+  justify-content: flex-start;
+  min-width: 0;
+  border: 1px solid var(--rf-hairline, rgba(127, 127, 127, 0.3));
+  border-radius: 3px;
+}
+.rf-lib-key .rf-lib-check {
+  visibility: hidden;
+}
+.rf-lib-key[aria-checked="true"] .rf-lib-check {
+  visibility: visible;
+}
+.rf-lib-key[aria-checked="false"] {
+  color: var(--rf-muted, inherit);
+}
+
+/* ============================================================
+   SPELL CHECK: THE SLIDE AS IT LOOKS (owner, 2026-10-03)
+
+   Each flagged slide shows its picture beside the finding, to find it by
+   eye in ProPresenter's editor. Stacks on a narrow window. With no picture
+   (performance mode, ProPresenter not answering) only the number shows.
+   ============================================================ */
+.rf-sc-slide {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+@media (max-width: 599px) {
+  .rf-sc-slide {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.rf-sc-pic {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rf-sc-pic img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  background: #000;
+  border: 1px solid var(--rf-hairline, rgba(127, 127, 127, 0.3));
+  border-radius: 3px;
+}
+.rf-sc-num {
+  font-family: var(--rf-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+.rf-sc-nopic img {
+  display: none;
+}
+
+/* ============================================================
+   KILL SWITCH (GitHub issue #15)
+
+   Findable in a hurry, without reading as a fault: an amber ring and an
+   amber heading on the card (the Settings "needs a hand" colour, never a
+   fill), and only the revealed Kill key is solid amber, the one bright
+   thing on the screen while it waits. Unlike the index controls, which
+   stay in the quiet chip style. `.hidden` toggles are Tailwind's static
+   class; nothing here is a JS-only utility.
+   ============================================================ */
+#view-health .rf-kill {
+  box-shadow: inset 0 0 0 1px var(--rf-fault);
+}
+#view-health .rf-kill .card-title {
+  color: var(--rf-fault);
+}
+#view-health .rf-kill-reveal {
+  border-color: var(--rf-fault);
+  color: var(--rf-fault);
+}
+#view-health .rf-kill-confirm,
+#view-health .rf-kill-confirm:hover {
+  background: var(--rf-fault);
+  border-color: var(--rf-fault);
+  color: #1a1206;
+  font-weight: 700;
+  min-width: 6rem;
+}
+@media (hover: none) {
+  #view-health .rf-kill-reveal,
+  #view-health .rf-kill-confirm {
+    min-height: 44px;
+  }
+}
+
+/* The stopped page: covers everything, since every screen behind it has lost
+   its server. A plain statement, not an error. */
+.rf-stopped {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: var(--rf-ground, #0d0b10);
+  color: var(--rf-text, #eee);
+}
+.rf-stopped-box {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 34rem;
+  width: 100%;
+}

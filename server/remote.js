@@ -29,6 +29,7 @@ import path from "node:path";
 import { buildFlag } from "./slide-flags.js";
 import { pinMatches, issueToken, tokenDevice } from "./remote-auth.js";
 import { createConfirmer, createCooldown } from "./remote-devices.js";
+import { messageFieldValue } from "./stage-messages.js";
 
 export const RECENT_SLIDES = 12;
 
@@ -175,11 +176,9 @@ export function createRemoteApp({
   knownSlide = () => null,
   pinGuard = null,
   devices = { see() {}, approved: () => false, removed: () => false, name: () => null },
-  search = () => [],
-  preview = () => ({ current: null, next: null, atEnd: false }),
   thumb = async () => null,
-  safeSlides = () => [],
-  presentationName = () => null,
+  stage = async () => ({ presets: [], current: "" }),
+  messages = async () => [],
   currentSlides = () => null,
   noteActivity = () => {},
   control = async () => {
@@ -265,27 +264,8 @@ export function createRemoteApp({
   });
 
   // --- helper level: read-only --------------------------------------------
-
-  app.get("/api/search", (req, res) => {
-    const q = String(req.query.q ?? "").slice(0, 80);
-    const results = q.trim()
-      ? search(q)
-          .slice(0, 20)
-          .map((r) => ({ presentationId: r.presentationId, presentationName: r.presentationName, slideNumber: r.slideIndex + 1, text: r.snippet }))
-      : [];
-    res.json({ results });
-  });
-
-  app.get("/api/preview", (_req, res) => {
-    const p = preview();
-    const img = (t) => (t ? `/api/preview/image/${encodeURIComponent(t.presentationId)}/${t.slideIndex}` : null);
-    res.json({
-      presentationName: p.presentationName ?? null,
-      atEnd: p.atEnd,
-      current: p.current ? { slideNumber: p.current.slideIndex + 1, text: p.current.text, image: img(p.current) } : null,
-      next: p.next ? { slideNumber: p.next.slideIndex + 1, text: p.next.text, image: img(p.next) } : null,
-    });
-  });
+  // The phone is for alerts and flags (owner, 2026-10-04). It has no search,
+  // no preview of what's next, and nothing that moves a slide.
 
   /**
    * Every slide of the presentation on the screens, for the Flag tab:
@@ -308,16 +288,16 @@ export function createRemoteApp({
     });
   });
 
-  // Pictures of the presentation on the screens only: a phone can't use this
-  // to make ProPresenter render some other presentation.
+  // Pictures of the presentation on the screens only, and only ones already
+  // on disk (owner, 2026-10-04: "pre cached so it does not hurt performance
+  // at all"). `thumb` never asks ProPresenter to draw: a picture that wasn't
+  // rendered ahead of the service is simply not shown, and the slide's words
+  // stand in for it.
   app.get("/api/preview/image/:pid/:idx", async (req, res) => {
     const d = currentSlides();
     const idx = Number(req.params.idx);
     const onScreenDeck = d && d.presentationId === req.params.pid && Number.isInteger(idx) && idx >= 0 && idx < d.slides.length;
-    // The church's own safe slides too (at most eight), so an approved phone
-    // sees what each will put up.
-    const aSafeSlide = safeSlides().some((x) => x.presentationId === req.params.pid && x.slideIndex === idx);
-    if (!onScreenDeck && !aSafeSlide) return res.status(404).json({ error: "Only slides of the presentation on screen can be previewed." });
+    if (!onScreenDeck) return res.status(404).json({ error: "Only slides of the presentation on screen can be previewed." });
     if (!allowImage(req.deviceId ?? req.ip)) return res.status(429).json({ error: "Too many pictures at once. Wait a moment." });
     const imgData = await thumb(req.params.pid, idx);
     if (!imgData) return res.status(404).json({ error: "No picture for that slide." });
@@ -326,26 +306,53 @@ export function createRemoteApp({
 
   // --- control level: approved phones, confirmed presses -------------------
 
-  app.get("/api/safe-slides", approvedOnly, (_req, res) => {
-    res.json({ safeSlides: safeSlides().map((s) => ({ id: s.id, label: s.label, image: `/api/preview/image/${encodeURIComponent(s.presentationId)}/${s.slideIndex}` })) });
+  // The stage message (handoff section 42): presets only from a phone, so a
+  // phone can't put a typo in front of whoever is speaking.
+  app.get("/api/stage", approvedOnly, async (_req, res) => {
+    res.json(await stage());
+  });
+
+  // Messages with a field to fill (a pager code), asked of ProPresenter at
+  // most every 10s however many phones are looking.
+  let messagesCache = { at: 0, list: null };
+  const messageList = async () => {
+    if (!messagesCache.list || Date.now() - messagesCache.at > 10_000) messagesCache = { at: Date.now(), list: await messages() };
+    return messagesCache.list;
+  };
+  app.get("/api/messages", approvedOnly, async (_req, res) => {
+    try {
+      res.json({ messages: await messageList() });
+    } catch {
+      res.status(502).json({ error: "ProPresenter isn't answering." });
+    }
   });
 
   /**
    * Step one of a control press: says what it will do and hands back a
    * one-time id. Nothing happens until the same phone confirms it.
    */
-  app.post("/api/control/prepare", approvedOnly, (req, res) => {
-    const { kind, safeId } = req.body ?? {};
+  app.post("/api/control/prepare", approvedOnly, async (req, res) => {
+    const { kind } = req.body ?? {};
     let action = null;
-    if (kind === "next" || kind === "previous") action = { kind, label: kind === "next" ? "Next slide" : "Previous slide" };
-    else if (kind === "safe") {
-      const s = safeSlides().find((x) => x.id === safeId);
-      if (s) action = { kind, safeId: s.id, label: s.label };
-    } else if (kind === "focus") {
-      // Opens a presentation in ProPresenter's editor, nothing on the screens;
-      // still the phone taking over ProPresenter, so still confirmed.
-      const name = presentationName(String(req.body?.presentationId ?? ""));
-      if (name) action = { kind, presentationId: req.body.presentationId, label: `Show "${name}" in the editor` };
+    if (kind === "stage") {
+      const p = (await stage()).presets.find((x) => x.id === req.body?.presetId);
+      if (p) action = { kind, text: p.text, label: `Stage: "${p.text}"` };
+    } else if (kind === "stage-clear") {
+      action = { kind, label: "Take down the stage message" };
+    } else if (kind === "message" || kind === "message-clear") {
+      const m = await messageList()
+        .then((list) => list.find((x) => x.id === req.body?.messageId))
+        .catch(() => null);
+      if (m && kind === "message-clear") action = { kind, messageId: m.id, label: `Take down ${m.name}` };
+      else if (m) {
+        // Only the message's own fields, cleaned exactly as the booth's Now
+        // screen cleans them (messageFieldValue), so the label confirmed is
+        // what goes up.
+        const given = Array.isArray(req.body?.values) ? req.body.values : [];
+        const values = m.fields.map((name) => ({ name, text: messageFieldValue(given.find((v) => v?.name === name)?.text) }));
+        if (values.every((v) => v.text)) action = { kind, messageId: m.id, values, label: `${m.name}: ${values.map((v) => v.text).join(", ")}` };
+        else return res.status(400).json({ error: `Fill in ${m.fields.join(" and ")} first.` });
+      }
     }
     if (!action) return res.status(400).json({ error: "That isn't something a phone can do." });
     res.json({ confirmId: confirmer.prepare(req.deviceId, action), label: action.label });
@@ -359,6 +366,7 @@ export function createRemoteApp({
     cooldown.mark(req.deviceId);
     try {
       const out = await control(action, req.deviceId);
+      if (action.kind.startsWith("message")) messagesCache = { at: 0, list: null }; // show what changed
       res.json({ ok: true, label: out?.label ?? action.label });
     } catch (err) {
       res.status(502).json({ error: err.message });
