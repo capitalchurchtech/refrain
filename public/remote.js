@@ -88,9 +88,11 @@ function paintProgress(p) {
 let flagSlides = null;
 let chosenSlide = null; // { presentationId, slideIndex }
 let slidesKey = "";
+// A picture only where the booth has opened pictures for phones; otherwise words only.
+const pvHtml = (sl) => (sl.image ? `<div class="pv"><img data-src="${esc(sl.image)}" alt="" /></div>` : "");
 const slideCard = (sl, caption) => `
   <button class="slide${chosenSlide && chosenSlide.slideIndex === sl.slideIndex ? " picked" : ""}" data-idx="${sl.slideIndex}" aria-pressed="${Boolean(chosenSlide && chosenSlide.slideIndex === sl.slideIndex)}">
-    <div class="thumb">
+    <div class="thumb${sl.image ? "" : " nopic"}">${pvHtml(sl)}
     <div><small>${esc(caption)} · slide ${sl.slideNumber}</small>${esc((sl.text ?? "").slice(0, 90)) || "<i>No words on this slide</i>"}</div></div>
   </button>`;
 
@@ -127,8 +129,9 @@ async function paintSlides() {
   }
   $("slides").innerHTML = cards.map(([sl, cap]) => slideCard(sl, cap)).join("");
   $("slides").querySelectorAll("[data-idx]").forEach((b) => b.addEventListener("click", () => pick(Number(b.dataset.idx))));
+  for (const img of $("slides").querySelectorAll("img")) loadImage(img);
   $("open-tray").hidden = false;
-  $("open-tray").textContent = `Show all ${d.slides.length} slides`;
+  $("open-tray").textContent = `Show all ${d.slides.length} previews`;
   ready();
 }
 
@@ -140,14 +143,30 @@ function pick(idx) {
   $("types").scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
-// The tray: every slide of the presentation, by its words. No pictures on a phone.
+// The tray: every slide's picture, loaded as it scrolls into view so opening
+// it doesn't ask ProPresenter for thirty pictures at once.
+let trayObserver = null;
 $("open-tray").addEventListener("click", () => {
   const d = flagSlides;
   if (!d?.presentationId) return;
   $("tray-title").textContent = d.presentationName ?? "All slides";
   $("tray-grid").innerHTML = d.slides
-    .map((sl) => `<button class="slide" data-idx="${sl.slideIndex}"><small>Slide ${sl.slideNumber}${sl.slideIndex === d.currentIndex ? " · on screen" : ""}</small>${esc((sl.text ?? "").slice(0, 90)) || "<i>No words on this slide</i>"}</button>`)
+    .map((sl) => `<button class="slide" data-idx="${sl.slideIndex}">${pvHtml(sl)}<small>Slide ${sl.slideNumber}${sl.slideIndex === d.currentIndex ? " · on screen" : ""}</small>${sl.image ? "" : esc((sl.text ?? "").slice(0, 90)) || "<i>No words on this slide</i>"}</button>`)
     .join("");
+  trayObserver?.disconnect();
+  trayObserver = new IntersectionObserver((entries) => {
+    // Stop watching a picture only once it's in: one the booth refused
+    // (busy, or too many at once) is tried again when it scrolls back.
+    for (const e of entries) {
+      if (!e.isIntersecting || e.target.dataset.loading) continue;
+      e.target.dataset.loading = "1";
+      loadImage(e.target).then((ok) => {
+        delete e.target.dataset.loading;
+        if (ok) trayObserver?.unobserve(e.target);
+      });
+    }
+  }, { root: $("tray-grid"), rootMargin: "200px" });
+  $("tray-grid").querySelectorAll("img").forEach((img) => trayObserver.observe(img));
   $("tray-grid").querySelectorAll("[data-idx]").forEach((b) =>
     b.addEventListener("click", () => {
       pick(Number(b.dataset.idx));
@@ -226,8 +245,9 @@ $("send").addEventListener("click", async () => {
     const sl = flagSlides?.slides?.find((x) => x.slideIndex === item.slide?.slideIndex);
     $("status").className = "status";
     $("status").innerHTML = sl
-      ? `<div class="sent"><div>Sent to the booth: slide ${sl.slideNumber}.</div></div>`
+      ? `<div class="sent">${pvHtml(sl)}<div>Sent to the booth: slide ${sl.slideNumber}.</div></div>`
       : "Sent to the booth.";
+    $("status").querySelectorAll("img").forEach((img) => loadImage(img));
     $("note").value = "";
     chosenType = null;
     paintTypes();
@@ -254,6 +274,19 @@ async function refresh() {
     paintControl();
   } catch (err) {
     if (err.status !== 401) $("progress").textContent = "Can't reach the booth. Retrying.";
+  }
+}
+
+/** True once the picture is in; false leaves it blank for a later try. */
+async function loadImage(img) {
+  const src = img.dataset.src;
+  try {
+    const res = await fetch(src, { headers: token ? { "x-refrain-device": token } : {} });
+    if (!res.ok) return false;
+    img.src = URL.createObjectURL(await res.blob());
+    return true;
+  } catch {
+    return false;
   }
 }
 

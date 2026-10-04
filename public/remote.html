@@ -18,7 +18,7 @@
      a quick double tap (which is exactly how a confirm is pressed), no text
      resizing on rotate. */
   html, body { overscroll-behavior: none; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
-  button, a, input, textarea, .slide { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+  button, a, input, textarea, .slide, .pv { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
   /* 16px or more, or Safari zooms in when a box gets the cursor. */
   input, textarea, select { font-size: 16px; }
   body { margin:0; background:var(--ground); color:var(--text); font:16px/1.4 -apple-system, system-ui, sans-serif; padding:16px; max-width:560px; margin-inline:auto; }
@@ -42,21 +42,28 @@
   .status { margin-top:10px; font-size:14px; min-height:20px; }
   .status.fault { color:var(--fault); }
   label { display:block; font-size:13px; color:var(--muted); margin:12px 0 4px; }
+  .pv { aspect-ratio:16/9; background:#000; border:1px solid var(--hair); border-radius:3px; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:12px; text-align:center; overflow:hidden; }
+  .pv img { width:100%; height:100%; object-fit:contain; display:block; }
   .tabs { display:grid; grid-template-columns:repeat(2,1fr); gap:6px; margin:14px 0 4px; }
   .tab { min-height:44px; background:var(--surface); color:var(--muted); border:1px solid var(--hair); border-radius:3px; font:inherit; font-size:15px; }
   .tab[aria-selected="true"] { color:var(--text); border-color:var(--plum-lit); box-shadow:inset 0 -2px 0 var(--plum); }
   .ctl { min-height:72px; background:var(--raised); color:var(--text); border:1px solid var(--hair); border-radius:3px; font:inherit; font-size:17px; font-weight:600; }
   .ctl.armed, .slide.armed { background:var(--plum); border-color:var(--plum-lit); color:#fff; }
   input[type="search"] { font-size:17px; }
-  .slide .thumb { display:block; }
+  .slide .thumb { display:grid; grid-template-columns:96px 1fr; gap:10px; align-items:center; }
+  .slide .thumb .pv { width:96px; }
+  .slide .thumb.nopic { display:block; }
   .tray { position:fixed; inset:12% 0 0 0; background:var(--ground); border-top:1px solid var(--hair); border-radius:10px 10px 0 0; box-shadow:0 -8px 30px rgba(0,0,0,.6); display:flex; flex-direction:column; z-index:10; overscroll-behavior:contain; }
   .tray-head { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:12px 16px; font-weight:600; }
   .tray-grid { flex:1 1 auto; min-height:0; align-content:start; grid-auto-rows:max-content; overflow-y:auto; padding:0 16px 24px; display:grid; grid-template-columns:1fr 1fr; gap:10px; -webkit-overflow-scrolling:touch; }
   .tray-grid .slide { min-height:0; padding:6px; display:block; }
+  .tray-grid .slide .pv { width:100%; margin-bottom:4px; }
   /* Fixed, not in the flow: arming must not move the thing about to be
      tapped a second time. */
   .confirm { position:fixed; left:16px; right:16px; bottom:calc(12px + env(safe-area-inset-bottom)); max-width:528px; margin-inline:auto; z-index:5; box-shadow:0 8px 30px rgba(0,0,0,.6); display:grid; grid-template-columns:1fr; gap:12px; align-items:center; padding:14px; background:var(--plum); color:#fff; border-radius:3px; font-weight:600; }
   .sent { display:grid; grid-template-columns:96px 1fr; gap:10px; align-items:center; }
+  .sent .pv { width:96px; }
+  .pv.armed { outline:2px solid var(--plum-lit); }
   .sect { font:600 11px/1 ui-monospace, Menlo, monospace; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); }
   summary.sect { min-height:44px; display:flex; align-items:center; cursor:pointer; }
   .stage-keys { display:grid; gap:8px; }
@@ -101,6 +108,7 @@
 
   <!-- Shown while an alert press is armed: what the second tap will do. -->
   <div id="confirm" class="confirm" role="button" tabindex="0" hidden>
+    <div class="pv" hidden><img id="confirm-img" alt="" /></div>
     <div id="confirm-text"></div>
   </div>
 
@@ -132,7 +140,7 @@
 
   <h2>Which slide</h2>
   <div id="slides" class="slides"></div>
-  <button id="open-tray" class="type" style="width:100%;margin-top:8px" hidden>Show all slides</button>
+  <button id="open-tray" class="type" style="width:100%;margin-top:8px" hidden>Show all previews</button>
 
   <h2>What's wrong</h2>
   <div id="types" class="types"></div>

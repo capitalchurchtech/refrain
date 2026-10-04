@@ -12,10 +12,10 @@
  *   - report what's live, the last few slides, and service progress,
  *   - add a flag (a type, a note, a name) for one of those slides.
  * There is no route to Go Live, Clear, Looks, Macros, messages, settings or
- * anything on the main app. A phone is never sent a slide picture: it sees
- * the words only, and no route serves one. One thing reaches ProPresenter,
- * and only for a phone the booth approved by name: next/previous slide and
- * the church's own safe slides, each needing a second, confirming press. The main app stays bound
+ * anything on the main app. Two things reach ProPresenter, both narrow:
+ * pictures of the current and next slide (cached), and, for a phone the
+ * booth approved by name, next/previous slide and the church's own safe
+ * slides, each needing a second, confirming press. The main app stays bound
  * to 127.0.0.1 regardless.
  *
  * "Nobody knows the URL" is not access control, so when a PIN is set (daily
@@ -162,6 +162,8 @@ export function rateLimiter({ max = 20, windowMs = 60_000 } = {}) {
  * @param {object} [deps.devices]   { see(id, {name, signIn}), approved(id), removed(id), name(id) }
  * @param {(q: string) => Array} [deps.search]      read-only search, for the Search tab
  * @param {() => object} [deps.preview]              previewTargets for what's live
+ * @param {(pid, idx) => Promise<{type, bytes}|null>} [deps.thumb]
+ * @param {() => boolean} [deps.pictures] whether a phone may be sent slide pictures at all; closed unless the booth opens it (networkModule.phonePictures)
  * @param {() => Array} [deps.safeSlides]
  * @param {(action: object, deviceId: string) => Promise<{label: string}>} [deps.control]
  *   performs an approved, confirmed control action; throws with a sentence on failure
@@ -175,6 +177,8 @@ export function createRemoteApp({
   knownSlide = () => null,
   pinGuard = null,
   devices = { see() {}, approved: () => false, removed: () => false, name: () => null },
+  thumb = async () => null,
+  pictures = () => false,
   stage = async () => ({ presets: [], current: "" }),
   messages = async () => [],
   currentSlides = () => null,
@@ -190,6 +194,7 @@ export function createRemoteApp({
   const allow = rateLimiter();
   // Pictures per phone: a whole tray scrolled end to end is ~30-60, so this
   // only stops a runaway loop or a scripted flood, not a person.
+  const allowImage = rateLimiter({ max: 240, windowMs: 60_000 });
   // Five PIN tries a minute per device, and a daily cap across every device
   // (pinGuard). Four digits is the point, since it's read aloud across a room;
   // the cap, not the device limit, is what keeps guessing it unlikely.
@@ -280,8 +285,28 @@ export function createRemoteApp({
         slideIndex: sl.slideIndex,
         slideNumber: sl.slideIndex + 1,
         text: sl.text,
+        ...(pictures() ? { image: `/api/preview/image/${encodeURIComponent(d.presentationId)}/${sl.slideIndex}` } : {}),
       })),
     });
+  });
+
+  // Pictures of the presentation on the screens only, and only ones already
+  // on disk (owner, 2026-10-04: "pre cached so it does not hurt performance
+  // at all"). `thumb` never asks ProPresenter to draw: a picture that wasn't
+  // rendered ahead of the service is simply not shown, and the slide's words
+  // stand in for it.
+  app.get("/api/preview/image/:pid/:idx", async (req, res) => {
+    // Closed unless networkModule.phonePictures is true. Checked here, on the
+    // server, so a phone page cannot open it by itself.
+    if (!pictures()) return res.status(404).json({ error: "Pictures are not sent to phones." });
+    const d = currentSlides();
+    const idx = Number(req.params.idx);
+    const onScreenDeck = d && d.presentationId === req.params.pid && Number.isInteger(idx) && idx >= 0 && idx < d.slides.length;
+    if (!onScreenDeck) return res.status(404).json({ error: "Only slides of the presentation on screen can be previewed." });
+    if (!allowImage(req.deviceId ?? req.ip)) return res.status(429).json({ error: "Too many pictures at once. Wait a moment." });
+    const imgData = await thumb(req.params.pid, idx);
+    if (!imgData) return res.status(404).json({ error: "No picture for that slide." });
+    res.set("Cache-Control", "private, max-age=300").type(imgData.type).send(imgData.bytes);
   });
 
   // --- control level: approved phones, confirmed presses -------------------
