@@ -2770,6 +2770,35 @@ error, with the restart command and "it comes back at next login".
 
 **Decided (owner, 2026-10-04):** on Status, amber, no kill from the phone.
 
+## 46. Ending the day on its own, and sending the summary (owner 2026-10-04; built)
+
+**Ask (owner):** "Can the log auto send if idle for a couple of hours ... and/or
+when ProPresenter has been quit." The log is the day summary; email; the owner
+adds addresses later. "The quit for 15 mins would cover crashed cases."
+
+**Built:** `server/auto-end.js` (pure, tested) decides; index.js checks once a
+minute beside the service log. Ends the day (the End key's own code, now
+`endDay()`), whichever first: `idleMinutes` (120) with nothing on the screens
+since the last thing was, or ProPresenter not running on this Mac for
+`closedMinutes` (15; a restart is back sooner; a crash counts). Never on a
+day nothing went live, before a service still scheduled today, during a
+lock-in, performance mode or content on screen, and at most once a day. Then
+sends with `deliverSummary` if `reportModule` is active (enabling auto-end is
+the consent to send unreviewed); a failed send retries every 15 min, up to 8.
+The summary says "Ended automatically: …" under its title; the day-ended
+event carries `auto`. ProPresenter on another Mac: only the idle rule (a quit
+there can't be told from a network drop). Settings › Features › Day summary:
+the switch, both times, send by email, the addresses (validated); the mail
+login stays in Secrets. Service › Day says ahead of time ("Ends on its own and
+sends the summary at 2:40 PM, if nothing goes live before then"), why it's
+waiting, or that sending isn't set up.
+
+**Not yet seen end to end:** an automatic end on a real day (needs the screens
+clear for 15+ minutes, or ProPresenter quit) and a real send (no addresses or
+mail server yet). Checked: the plan's rules (7 tests), the Day line (test),
+the settings route and validation, the Day payload, and that the End key still
+works after the move into `endDay()` (ended the dev day).
+
 ## Status log
 
 `YYYY-MM-DD · <item> · done | partial | blocked · <one line>`
@@ -3418,3 +3447,5 @@ error, with the restart command and "it comes back at next login".
 - 2026-10-04 — (same) **Narrow windows** (owner: a 15" laptop's docked window overlapped ProPresenter; 13" and 11" need narrower). Measured: Chrome's own app window can be resized to 240px, so the limit was Refrain. Every screen checked at 340px: Search results now put their keys under the words below 560px; performance mode's keys wrap; Image Crop's folder fields and size picker shrink (`#main-content .flex > input.flex-1 { min-width: 0 }`, `select { max-width: 100% }`). Settings › Search showed 431px in the phone emulator only, from an invisible tooltip bubble; body already hides sideways overflow on a desktop window. "Open in its own window" now opens at 420×1000.
 - 2026-10-04 — (uncommitted, on main) Code review (high) of search preferences and narrow windows: 10 findings, all addressed. (1) The narrow-window `min-width: 0` no longer overrides deliberate `min-w-*` (Service's name fields wrap again; 216px at 320). (2) A failed preference save is put back and retried after 5s, not dropped; `res.ok` is checked. (3) `saveConfig` saves take turns (one shared temp file had let two at once fail), and /api/preferences applies its changes to the settings as they are at its turn; tested with 10 simultaneous saves (all 200, both keys kept, no temp file) and a unit test. (4) Search takes the preferences main.js already read (no third request, no late answer overwriting a fresh choice), and re-runs a search typed before the libraries arrived. (5) Checked: a running Chrome ignores `--window-size`; the help line now says it opens 420 wide only if Chrome is closed, otherwise drag it. (6) A pending save is sent with `keepalive` on page close; checked with a reload inside the 400ms. (7) The library preference stores libraries switched **off** (`searchLibrariesOff`), so one added later is searched; the open Libraries panel on an empty box shows the state. (8) See 4. (9) `searchLibrariesOff` and `searchDateField` documented in config.example.json. (10) Every screen now checked at **320px**, every fold open: also fixed Lyrics' search keys, Now's countdown rows, Settings' folds (DaisyUI grid column could not shrink) and long arrangement-name suggestions. 570 pass.
 - 2026-10-04 — Pushed 3a1d36f (search preferences, 320px windows, config saves take turns) and updated this Mac's install; ProPresenter connected, search preferences answer. Still v0.25.0. Not on the booth.
+- 2026-10-04 — (uncommitted, on main) Section 46 built: auto-end and send. See the section for what was and wasn't checked. Off by default; turned on per machine in Settings › Features › Day summary.
+- 2026-10-04 — (uncommitted, on main) Code review (high) of section 46: 10 findings, all fixed. (1) `foldDay` reopens a day only on new activity (service added, lock-in, item live, checks run), not on the summary being sent, a checklist tick or something being taken down; before, every automatic send made the ended day read "End the day again" (test). (2, 7, 8) Each End records `auto` and `autoSend` (whether it was to send then); the retry only sends the latest End when it ended on its own while sending was set up and it isn't reopened, never a day ended by hand or one that ended while sending was off; retries are counted from the day's summary-sent record, so a restart doesn't start again. "On its own" reads the latest End. (3) Delivery backends carry `takesRecipients` (email true): Settings only edits sending and addresses for such a backend, so a folder church's setup can't be switched off by saving; the label uses the backend's name. (4) Auto-end holds while a service is in its window and not ended (crash or backup Mac mid-service) (test). (5) `endDay` runs one at a time: a press during an automatic end gets that same result; checked with two simultaneous presses on the dev copy (one summary written). (6) Out-of-range minutes are refused (400), shown on the screen; checked. (9) A failed or timed-out `ps` no longer counts as ProPresenter closed. (10) Save redraws Settings so the section heading updates, keeping it open; checked. 580 pass. Note: `library-watch` "the waiting flag clears once the reindex it was waiting for runs" failed once and passed on three reruns: a timing test, unrelated, worth a look.

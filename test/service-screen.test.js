@@ -57,3 +57,15 @@ test("Send appears only when summaries are on, says when it leaves the machine, 
   assert.match(html, /Send by Email to 3 recipients/);
   assert.match(html, /Didn't send at .*refused the password/);
 });
+
+import { autoEndLine } from "../public/service.js";
+
+test("Day says ahead of time what auto-end will do", () => {
+  assert.equal(autoEndLine({ status: "off" }), "");
+  assert.equal(autoEndLine({ status: "done" }), "");
+  const at = "2026-10-04T14:40:00";
+  assert.match(autoEndLine({ status: "waiting", dueAt: at, trigger: "idle", sendable: true }), /Ends on its own and sends the summary at .*, if nothing goes live before then\./);
+  assert.match(autoEndLine({ status: "waiting", dueAt: at, trigger: "closed", sendable: true }), /since ProPresenter is closed/);
+  assert.match(autoEndLine({ status: "waiting", dueAt: at, trigger: "idle", sendable: false }), /won't be sent: sending isn't set up/);
+  assert.match(autoEndLine({ status: "held", reason: "A lock-in is on." }), /For now: A lock-in is on\./);
+});

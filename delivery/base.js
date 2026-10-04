@@ -20,6 +20,14 @@ export class DeliveryBackend {
    */
   static sendsOffMachine = false;
 
+  /**
+   * Whether this backend sends to a list of addresses
+   * (`reportModule.recipients`), which Settings › Features › Day summary
+   * then lets the church edit. A backend without one (a folder) is set up
+   * in config.json and left alone by that screen.
+   */
+  static takesRecipients = false;
+
   /** Environment variables it needs, as { name, roles? } (same shape as providers). */
   static requiredEnv = [];
 

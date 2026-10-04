@@ -241,11 +241,31 @@ export function renderSendHtml(report) {
     ${last}`;
 }
 
+/**
+ * One line saying what auto-end will do, ahead of time (owner, 2026-10-04),
+ * so nobody is surprised by a day that ended itself. Empty when it's off.
+ * Pure, for tests.
+ */
+export function autoEndLine(a) {
+  if (!a || a.status === "off" || a.status === "done") return "";
+  const when = a.dueAt ? escapeHtml(formatClock(a.dueAt, { seconds: false })) : "";
+  const unsent = a.sendable ? "" : " The summary won't be sent: sending isn't set up (Settings › Features › Day summary).";
+  let text;
+  if (a.status === "nothing") text = "Ends on its own once something has gone live today and then gone quiet.";
+  else if (a.status === "held") text = `Ends on its own later. For now: ${escapeHtml(a.reason ?? "")}`;
+  else if (a.status === "due") text = "Ending the day now.";
+  else {
+    const what = a.sendable ? "Ends on its own and sends the summary" : "Ends on its own";
+    text = `${what} at ${when}, ${a.trigger === "closed" ? "since ProPresenter is closed" : "if nothing goes live before then"}.${unsent}`;
+  }
+  return `<div class="text-xs opacity-70 rf-auto-end-line">${text}</div>`;
+}
+
 export function renderEndHtml(data) {
   if (data.dayEnded && !data.reopened) {
     return `
       <div class="flex items-center justify-between gap-3 flex-wrap">
-        <div class="text-sm">Day ended at ${escapeHtml(formatClock(data.dayEnded.at, { seconds: false }))}. Summary saved.</div>
+        <div class="text-sm">Day ended at ${escapeHtml(formatClock(data.dayEnded.at, { seconds: false }))}${data.autoEnd?.endedAutomatically ? " on its own" : ""}. Summary saved.</div>
         <div class="flex gap-2"><button type="button" id="service-summary-btn" class="btn btn-outline btn-sm">View summary</button></div>
       </div>
       ${renderSendHtml(data.report)}`;
@@ -256,7 +276,8 @@ export function renderEndHtml(data) {
     <div class="flex items-center justify-between gap-3 flex-wrap">
       <div class="text-xs opacity-70">Closes today's services and any lock-in, compares the songs with the plan (the plan isn't changed), and writes the day summary.</div>
       <button type="button" id="service-end-day-btn" class="btn btn-outline btn-sm">End the day</button>
-    </div>`;
+    </div>
+    ${autoEndLine(data.autoEnd)}`;
 }
 
 export function paceNote(data) {

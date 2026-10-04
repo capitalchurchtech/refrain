@@ -346,6 +346,7 @@ export function initHealth() {
 
 
     wireKillSwitch();
+    wireDaySummarySettings(render);
 
     document.querySelectorAll("[data-prerender]").forEach((key) =>
       key.addEventListener("click", async () => {
@@ -1210,6 +1211,112 @@ function updateCommand(installDir) {
   return `cd "${installDir}" && git checkout -- package-lock.json 2>/dev/null; git pull --ff-only && npm install --silent && echo "Updated. Restart Refrain"`;
 }
 /** A command to run in Terminal, shown with a one-click copy. */
+/**
+ * Settings › Features › Day summary (owner, 2026-10-04): ending the day on
+ * its own and sending the summary by email. The mail server login is in
+ * Secrets (.env) below; this says when it's missing rather than failing later.
+ */
+function renderDaySummarySection(health) {
+  const d = health.daySummary ?? {};
+  const a = d.autoEnd ?? { enabled: false, idleMinutes: 120, closedMinutes: 15 };
+  const report = health.reportModule ?? { status: "off", problems: [] };
+  const sending =
+    report.status === "active"
+      ? "Ready to send."
+      : report.status === "off"
+        ? "Sending is off: the summary is kept on this Mac only."
+        : `Not ready to send: ${(report.problems ?? []).join(" ")}`;
+  return `
+        <details id="day-summary-details" class="collapse collapse-arrow bg-base-200 rounded">
+          <summary class="collapse-title min-h-0 py-2">
+            <span class="flex items-center gap-2 text-sm font-medium">
+              <i data-lucide="mail" class="w-4 h-4 opacity-70 shrink-0"></i> Day summary
+              <span class="text-xs opacity-50 font-normal">${a.enabled ? "ends on its own" : "ends when you press End"}</span>
+            </span>
+          </summary>
+          <div class="collapse-content flex flex-col gap-3">
+            ${d.serviceModuleOn === false ? `<p class="text-sm">The Service timeline is off, so there's no day to end. Turn it on to use this.</p>` : ""}
+            <label class="flex items-start gap-2 cursor-pointer">
+              <input id="auto-end-enabled" type="checkbox" class="checkbox checkbox-sm mt-0.5" ${a.enabled ? "checked" : ""} />
+              <span class="text-sm"><strong>End the day on its own and send the summary.</strong> Nobody reads it before it goes.</span>
+            </label>
+            <div class="flex flex-wrap gap-3 items-end">
+              <label class="form-control">
+                <span class="label-text text-xs opacity-70">After nothing on the screens for (minutes)</span>
+                <input id="auto-end-idle" type="number" min="15" max="1440" step="15" class="input input-bordered input-sm w-28" value="${a.idleMinutes}" />
+              </label>
+              <label class="form-control">
+                <span class="label-text text-xs opacity-70">Or ProPresenter closed for (minutes)</span>
+                <input id="auto-end-closed" type="number" min="5" max="360" step="5" class="input input-bordered input-sm w-28" value="${a.closedMinutes}" ${d.closedWatch ? "" : "disabled"} />
+              </label>
+            </div>
+            <p class="text-xs opacity-70 rf-measure">${
+              d.closedWatch
+                ? "Whichever comes first. A restart between services doesn't count; ProPresenter is back long before then."
+                : "ProPresenter is on another Mac, so only the time with nothing on the screens is used: a quit there can't be told from a network drop."
+            } Never on a day nothing went live, before a service still to come, or during a lock-in.</p>
+            ${
+              // Sending is only edited here for a backend that takes a list of
+              // addresses; one that doesn't (a folder) is set in config.json and
+              // left alone, so saving this section can't switch it off.
+              d.backend?.takesRecipients
+                ? `<label class="flex items-start gap-2 cursor-pointer">
+              <input id="report-send-email" type="checkbox" class="checkbox checkbox-sm mt-0.5" ${d.sendByEmail ? "checked" : ""} />
+              <span class="text-sm">Send the summary by ${escapeHtml(String(d.backend.name).toLowerCase())}</span>
+            </label>
+            <label class="form-control">
+              <span class="label-text text-xs opacity-70">To (one address per line)</span>
+              <textarea id="report-recipients" rows="3" class="textarea textarea-bordered textarea-sm font-mono" placeholder="name@yourchurch.org" spellcheck="false">${escapeHtml((d.recipients ?? []).join("\n"))}</textarea>
+            </label>
+            <p class="text-xs opacity-70 rf-measure">The mail server and the From address are in Secrets (.env) below: SMTP_HOST, SMTP_FROM, and SMTP_USERNAME and SMTP_PASSWORD if it needs a login.</p>`
+                : `<p class="text-sm">The summary goes ${d.backend ? `by ${escapeHtml(d.backend.name)}` : "nowhere yet"}, set in config.json (reportModule).</p>`
+            }
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" id="day-summary-save" class="btn btn-outline btn-sm">Save</button>
+              <span id="day-summary-status" class="text-sm" role="status">${escapeHtml(sending)}</span>
+            </div>
+          </div>
+        </details>`;
+}
+
+function wireDaySummarySettings(rerender) {
+  const save = document.getElementById("day-summary-save");
+  if (!save) return;
+  save.addEventListener("click", async () => {
+    const status = document.getElementById("day-summary-status");
+    const closed = document.getElementById("auto-end-closed");
+    const body = {
+      autoEnd: {
+        enabled: document.getElementById("auto-end-enabled").checked,
+        idleMinutes: Number(document.getElementById("auto-end-idle").value),
+        ...(closed.disabled ? {} : { closedMinutes: Number(closed.value) }),
+      },
+    };
+    const send = document.getElementById("report-send-email");
+    const to = document.getElementById("report-recipients");
+    if (send) body.sendByEmail = send.checked;
+    if (to) body.recipients = to.value.split(/[\n,;]+/).map((r) => r.trim()).filter(Boolean);
+    save.disabled = true;
+    try {
+      const res = await fetch("/api/day-summary-settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? res.statusText);
+      const r = data.report ?? {};
+      const said = `Saved. ${r.status === "active" ? "Ready to send." : r.status === "off" ? "Sending is off." : `Not ready to send: ${(r.problems ?? []).join(" ")}`}`;
+      // Redrawn so the section's heading says what's now set; the fold
+      // stays open and the result stays said.
+      await rerender?.();
+      document.getElementById("day-summary-details")?.setAttribute("open", "");
+      const after = document.getElementById("day-summary-status");
+      if (after) after.textContent = said;
+    } catch (err) {
+      status.textContent = `Not saved: ${err.message}`;
+    } finally {
+      save.disabled = false;
+    }
+  });
+}
+
 /**
  * The kill switch's two presses (issue #15): the first shows Kill, the second
  * stops Refrain. Anything else cancels: a click or tap elsewhere, Escape,
@@ -2177,6 +2284,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
             </div>
           </div>
         </details>
+        ${renderDaySummarySection(health)}
         ${renderEnvSection(envRequirements, envEntryList)}
       </div>
   `;

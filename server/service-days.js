@@ -88,6 +88,9 @@ export function isEventId(id) {
   return typeof id === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-[0-9a-f]{8}$/.test(id);
 }
 
+/** Events that mean the day is going again after an End. */
+const REOPENING = new Set(["service-added", "lockin-started", "item-live", "checks-run"]);
+
 export const EVENT_TYPES = new Set([
   "service-added",
   "service-ended",
@@ -244,13 +247,16 @@ export function foldDay(events, { schedule = [], day = null, now = Date.now() } 
     } else if (e.type === "summary-sent") {
       lastSent = { at: atMs, ok: Boolean(e.ok), detail: e.detail ?? null, backend: e.backend ?? null, summaryFile: e.summaryFile ?? null };
     } else if (e.type === "day-ended") {
-      dayEnds.push({ at: atMs, eventId: e.id, summaryFile: e.summaryFile ?? null });
+      dayEnds.push({ at: atMs, eventId: e.id, summaryFile: e.summaryFile ?? null, auto: e.auto ?? null, autoSend: Boolean(e.autoSend) });
     }
   }
   const lastEnd = dayEnds.at(-1) ?? null;
-  // Anything recorded after End means the day was picked up again: a late
-  // service, or someone putting a song back up. Shown, never silently merged.
-  const reopened = Boolean(lastEnd) && ordered.some((e) => Date.parse(e.at) > lastEnd.at && e.type !== "day-ended");
+  // New activity after End means the day was picked up again: a late
+  // service, a lock-in, someone putting a song back up, checks run. Shown,
+  // never silently merged. Bookkeeping is not activity: the summary being
+  // sent, a checklist tick ("After the service" is done after End), or
+  // something already up being taken down.
+  const reopened = Boolean(lastEnd) && ordered.some((e) => Date.parse(e.at) > lastEnd.at && REOPENING.has(e.type));
 
   return {
     services: [...services.values()].sort((a, b) => (a.startsAt ?? a.addedAt ?? 0) - (b.startsAt ?? b.addedAt ?? 0)),
