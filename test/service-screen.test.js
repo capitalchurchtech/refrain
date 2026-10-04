@@ -69,3 +69,16 @@ test("Day says ahead of time what auto-end will do", () => {
   assert.match(autoEndLine({ status: "waiting", dueAt: at, trigger: "idle", sendable: false }), /won't be sent: sending isn't set up/);
   assert.match(autoEndLine({ status: "held", reason: "A lock-in is on." }), /For now: A lock-in is on\./);
 });
+
+import { picturesHtml } from "../public/service.js";
+
+test("Slide pictures on Day: progress while it runs, and what the last run left ready", () => {
+  assert.match(picturesHtml({ run: { running: true, presentations: 6, done: 2, drawn: 14, kept: 90 } }), /Updating pictures: 2 of 6 presentations\. 14 drawn, 90 kept/);
+  assert.match(picturesHtml({ run: { running: true, presentations: 6 } }), /disabled/);
+  assert.match(picturesHtml({ last: { lastRunAt: null } }), /Not updated yet today/);
+  assert.match(picturesHtml({ last: { lastRunAt: new Date().toISOString(), presentations: 0 } }), /No playlists set for today's services/);
+  const done = picturesHtml({ last: { lastRunAt: new Date().toISOString(), presentations: 5, ready: 120, total: 124, rendered: 8, kept: 112, stopped: true } });
+  assert.match(done, /120 of 124 slides ready/);
+  assert.match(done, /8 drawn, 112 kept/);
+  assert.match(done, /Stopped part-way/);
+});

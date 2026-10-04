@@ -273,6 +273,36 @@ export function autoEndLine(a) {
   return `<div class="text-xs opacity-70 rf-auto-end-line">${text}</div>`;
 }
 
+/**
+ * The Slide pictures card on Day: the last run or the one going, and the
+ * key. Pure, for tests. `status` is /api/slide-pictures/status.
+ */
+export function picturesHtml(status) {
+  const run = status?.run;
+  const last = status?.last;
+  const key = (label, disabled = false) =>
+    `<button type="button" id="service-pictures-btn" class="btn btn-outline btn-sm" ${disabled ? "disabled" : ""}>${label}</button>`;
+  if (run?.running) {
+    const where = run.presentations ? `${run.done} of ${run.presentations} presentations` : "Starting";
+    return `<div class="flex items-center justify-between gap-3 flex-wrap">
+      <div class="text-sm">Updating pictures: ${where}. ${run.drawn} drawn, ${run.kept} kept as they were.</div>
+      ${key("Updating...", true)}
+    </div>`;
+  }
+  let said;
+  if (!last?.lastRunAt) said = "Not updated yet today.";
+  else if (!last.presentations) said = "No playlists set for today's services, so there's nothing to draw. Add one under Today's services.";
+  else {
+    const at = escapeHtml(formatClock(last.lastRunAt, { seconds: false }));
+    said = `${last.ready} of ${last.total ?? last.ready} slides ready (updated ${at}${last.rendered ? `; ${last.rendered} drawn` : ""}${last.kept ? `, ${last.kept} kept` : ""}).${last.stopped ? " Stopped part-way: press again." : ""}`;
+  }
+  return `<div class="flex items-center justify-between gap-3 flex-wrap">
+      <div class="text-sm">${said}</div>
+      ${key("Update pictures")}
+    </div>
+    <div class="text-xs opacity-70 rf-measure">After the last edits: slides that didn't change keep their pictures; only new or changed ones are drawn, so the phone and Now show them in the service. Not during the service (performance mode).</div>`;
+}
+
 export function renderEndHtml(data) {
   if (data.dayEnded && !data.reopened) {
     return `
@@ -508,6 +538,42 @@ export function initService() {
     }
   }
 
+  // The Slide pictures card: checked every 2s while a run goes, every 30s
+  // otherwise, while Day is on screen.
+  let picturesTimer = null;
+  async function paintPictures() {
+    const host = document.getElementById("service-pictures");
+    clearTimeout(picturesTimer);
+    if (!host || container.classList.contains("hidden")) return;
+    let status = null;
+    try {
+      status = await fetch("/api/slide-pictures/status").then((r) => r.json());
+    } catch {
+      /* keep what's shown */
+    }
+    if (status) {
+      host.innerHTML = picturesHtml(status);
+      host.querySelector("#service-pictures-btn")?.addEventListener("click", startPictures);
+    }
+    picturesTimer = setTimeout(paintPictures, status?.run?.running ? 2000 : 30_000);
+  }
+  async function startPictures(e) {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+      const res = await fetch("/api/slide-pictures/update", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? res.statusText);
+    } catch (err) {
+      const host = document.getElementById("service-pictures");
+      host?.insertAdjacentHTML("beforeend", `<div class="text-sm">${escapeHtml(err.message)}</div>`);
+    }
+    setTimeout(paintPictures, 300);
+  }
+  function wirePictures() {
+    paintPictures();
+  }
+
   async function render() {
     if (!container) return;
     container.innerHTML = `
@@ -545,6 +611,15 @@ export function initService() {
           <div id="service-list" class="flex flex-col gap-3 text-sm opacity-70">Loading...</div>
         </div>
 
+        <!-- Pictures for today's playlists (owner, 2026-10-04: edits go on
+             until about 15 minutes before the service). One press after the
+             last edit: unchanged slides keep their pictures, only new or
+             changed ones are drawn. -->
+        <div>
+          <h2 class="rf-subhead">Slide pictures</h2>
+          <div class="card bg-base-200"><div id="service-pictures" class="card-body p-3 gap-2"></div></div>
+        </div>
+
         <div id="service-outside"></div>
 
         <!-- Folded away by default: many teams keep their run-of-show
@@ -576,6 +651,7 @@ export function initService() {
         document.getElementById("service-add-name").focus();
       }
     });
+    wirePictures();
     const fold = document.getElementById("service-checklist-fold");
     fold.open = checklistOpen();
     fold.addEventListener("toggle", () => rememberChecklist(fold.open));

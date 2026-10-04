@@ -2799,6 +2799,34 @@ mail server yet). Checked: the plan's rules (7 tests), the Day line (test),
 the settings route and validation, the Day payload, and that the End key still
 works after the move into `endDay()` (ended the dev day).
 
+## 47. Update pictures after Sunday-morning edits (owner 2026-10-04; built)
+
+**Ask (owner):** "we make updates until about 15 mins before service starts.
+Is there a way to reload the image for items registering changes?" Then: edits
+are mostly words, and "arrangements change on songs".
+
+**Built:** pictures are stored with a slide key (group id, place in the group,
+words; `slideKey` in thumb-store.js). `carryOver(pid, fingerprint, keys)` moves
+a set to a new version (or a new order in the same file, when an arrangement
+was switched without the file changing) keeping every picture whose key is
+unchanged, wherever it now sits; pictures drawn without a key adopt the key of
+the slide at their place. `refreshPictures()` in index.js: for each of today's
+presentations, read it (ProPresenter's selected arrangement), carry over, draw
+the rest one at a time; drops that presentation from the memory cache. Pressed
+("Update pictures" card on Service › Day, `POST /api/slide-pictures/update`):
+reads every presentation, runs with content on the screens, refuses and stops
+in performance mode. Automatic pre-render uses the same routine but only for
+changed files and only while quiet. Progress at `/api/slide-pictures/status`.
+
+**Checked** on the dev copy against this Mac's ProPresenter (a test service
+with a song playlist): first press drew 22 and found 11; after the key-adoption
+fix, two further presses drew 0 and kept 33. Word edits and arrangement
+reorders are covered by thumb-store tests (an edited verse redrawn, a moved and
+repeated chorus kept); not yet seen with a real edit in ProPresenter.
+**Limit:** a slide whose words and group are unchanged but whose look changed
+(a new background on that slide only) keeps its old picture until the set is
+20 hours old.
+
 ## Status log
 
 `YYYY-MM-DD · <item> · done | partial | blocked · <one line>`
@@ -3450,3 +3478,4 @@ works after the move into `endDay()` (ended the dev day).
 - 2026-10-04 — (uncommitted, on main) Section 46 built: auto-end and send. See the section for what was and wasn't checked. Off by default; turned on per machine in Settings › Features › Day summary.
 - 2026-10-04 — (uncommitted, on main) Code review (high) of section 46: 10 findings, all fixed. (1) `foldDay` reopens a day only on new activity (service added, lock-in, item live, checks run), not on the summary being sent, a checklist tick or something being taken down; before, every automatic send made the ended day read "End the day again" (test). (2, 7, 8) Each End records `auto` and `autoSend` (whether it was to send then); the retry only sends the latest End when it ended on its own while sending was set up and it isn't reopened, never a day ended by hand or one that ended while sending was off; retries are counted from the day's summary-sent record, so a restart doesn't start again. "On its own" reads the latest End. (3) Delivery backends carry `takesRecipients` (email true): Settings only edits sending and addresses for such a backend, so a folder church's setup can't be switched off by saving; the label uses the backend's name. (4) Auto-end holds while a service is in its window and not ended (crash or backup Mac mid-service) (test). (5) `endDay` runs one at a time: a press during an automatic end gets that same result; checked with two simultaneous presses on the dev copy (one summary written). (6) Out-of-range minutes are refused (400), shown on the screen; checked. (9) A failed or timed-out `ps` no longer counts as ProPresenter closed. (10) Save redraws Settings so the section heading updates, keeping it open; checked. 580 pass. Note: `library-watch` "the waiting flag clears once the reindex it was waiting for runs" failed once and passed on three reruns: a timing test, unrelated, worth a look.
 - 2026-10-04 — Released v0.26.0 (tag and release page): auto-end and send (46) with its review fixes, plus everything since v0.25.0 (indexing bar, safe slides from Now, search preferences, messages hide and fold, Now's folds, 320px windows, no password fields, config saves take turns). Installed on this Mac afterwards (owner asked): 0.26.0 running, ProPresenter connected, auto-end off until switched on. Not on the booth.
+- 2026-10-04 — Section 47 built: Update pictures, keeping unchanged slides' pictures across edits and arrangement changes. Pushed and installed (see below).

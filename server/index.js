@@ -111,7 +111,7 @@ import { heartbeatInterval } from "./heartbeat-pacing.js";
 import QRCode from "qrcode";
 import { emptyRegistry, seeDevice, setApproved, removeDevice, isApproved, isRemoved, deviceList, loadRegistry, saveRegistry } from "./remote-devices.js";
 import { previewTargets, createThumbCache } from "./slide-preview.js";
-import { createThumbStore } from "./thumb-store.js";
+import { createThumbStore, slideKey as pictureKey } from "./thumb-store.js";
 import { readFingerprint } from "./index-fingerprint.js";
 import { envEntries, applyEnvEdits, saveEnvFile, readText as readEnvText } from "./env-file.js";
 import { crossSiteRefused } from "./request-guard.js";
@@ -1187,7 +1187,6 @@ setInterval(() => thumbStore.prune().catch(() => {}), 3_600_000).unref();
 // before or between services, which is when the work belongs.
 const PRERENDER_CHECK_MS = 5 * 60_000;
 const PRERENDER_PACING_MS = 100;
-let prerenderRunning = false;
 let prerenderCheckedAt = 0;
 let slidePicturesStatus = { lastRunAt: null, presentations: 0, ready: 0, rendered: 0, stopped: false };
 async function prerenderTargets() {
@@ -1218,61 +1217,119 @@ const quietForPictures = (now = Date.now()) =>
   now - performanceOffSince >= PRERENDER_QUIET_MS &&
   !holdHeartbeatPace(now) &&
   !getRebuildProgress().inProgress;
-async function maybePrerender(now = Date.now()) {
-  if (now - prerenderCheckedAt < PRERENDER_CHECK_MS) return;
-  prerenderCheckedAt = now;
-  if (config.slidePictures?.prerender !== true || prerenderRunning || !quietForPictures(now) || !client.isLocalHost) return;
-  const readyFor = await propresenterReadyForMs();
-  if (readyFor == null || readyFor < WATCH_SETTLE_MS) return;
-  prerenderRunning = true;
+/**
+ * Brings today's slide pictures up to date (owner, 2026-10-04: "we make
+ * updates until about 15 minutes before service"). For each presentation in
+ * today's playlists: read it from ProPresenter, keep every picture whose
+ * slide is unchanged (same group, place and words, wherever an edit or an
+ * arrangement change moved it; thumb-store.carryOver), and draw only the new
+ * or changed ones, one at a time.
+ *
+ * `operator`: pressed on Service › Day or Settings. Reads every presentation
+ * (an arrangement switch may not change the file), runs with content on the
+ * screens, and stops only for performance mode. Otherwise it's pre-render:
+ * only presentations whose file changed, and only while it's quiet.
+ */
+let picturesRun = null; // progress while running
+async function refreshPictures({ operator = false } = {}) {
+  const stop = operator ? () => performance.armed : () => !quietForPictures();
   const started = Date.now();
-  let rendered = 0;
-  let ready = 0;
-  let stopped = false;
-  let targets = new Map();
+  const run = { running: true, operator, startedAt: new Date(started).toISOString(), presentations: 0, done: 0, ready: 0, total: 0, drawn: 0, kept: 0, stopped: false };
+  picturesRun = run;
   try {
-    targets = await prerenderTargets();
+    const targets = await prerenderTargets();
+    run.presentations = targets.size;
     for (const [pid] of targets) {
-      const entry = getIndex().presentations?.[pid];
+      if (stop()) {
+        run.stopped = true;
+        break;
+      }
       const fp = await pictureFingerprint(pid);
-      const count = Math.min(entry?.slides?.length ?? 0, 300);
-      if (!fp || !count) continue;
-      if (await thumbStore.complete(pid, fp, count)) {
-        ready += count;
+      if (!fp) {
+        run.done += 1;
         continue;
       }
-      for (let i = 0; i < count; i++) {
-        if (!quietForPictures()) {
-          stopped = true;
+      const known = await thumbStore.info(pid);
+      if (!operator && known?.fingerprint === fp && known.count && (await thumbStore.complete(pid, fp, known.count))) {
+        run.ready += known.count;
+        run.total += known.count;
+        run.done += 1;
+        continue;
+      }
+      let slides;
+      try {
+        const doc = await client.getPresentation(pid);
+        // The arrangement ProPresenter has selected: its pictures are
+        // numbered by it (as Go Live and the Now preview are).
+        slides = flattenGroups(resolveArrangement(doc, []).groups).slice(0, 300);
+      } catch {
+        run.done += 1;
+        continue;
+      }
+      const keys = slides.map((sl) => pictureKey(sl));
+      run.kept += await thumbStore.carryOver(pid, fp, keys);
+      // Anything Now or the menu kept in memory for this presentation may be
+      // from before the change.
+      thumbCache.forget(pid);
+      pictureFingerprints.delete(pid);
+      run.total += keys.length;
+      for (let i = 0; i < keys.length; i++) {
+        if (stop()) {
+          run.stopped = true;
           break;
         }
         if (await thumbStore.get(pid, i, fp)) {
-          ready += 1;
+          run.ready += 1;
           continue;
         }
         const img = await client.getSlideThumbnail(pid, i).catch(() => null);
         if (img) {
-          await thumbStore.put(pid, i, fp, img);
-          rendered += 1;
-          ready += 1;
+          await thumbStore.put(pid, i, fp, img, Date.now(), keys[i]);
+          run.drawn += 1;
+          run.ready += 1;
         }
         await new Promise((r) => setTimeout(r, PRERENDER_PACING_MS));
       }
-      if (stopped) break;
+      run.done += 1;
+      if (run.stopped) break;
     }
     await thumbStore.prune();
   } catch (err) {
     console.log(`Slide pictures: couldn't finish (${err.message}).`);
   } finally {
-    prerenderRunning = false;
-    slidePicturesStatus = { lastRunAt: new Date().toISOString(), presentations: targets.size, ready, rendered, stopped };
-    if (rendered || stopped) {
+    run.running = false;
+    run.finishedAt = new Date().toISOString();
+    slidePicturesStatus = { lastRunAt: run.finishedAt, presentations: run.presentations, ready: run.ready, total: run.total, rendered: run.drawn, kept: run.kept, stopped: run.stopped, operator };
+    if (run.drawn || run.stopped || operator) {
       console.log(
-        `Slide pictures: rendered ${rendered} ahead of time in ${((Date.now() - started) / 1000).toFixed(0)}s; ${ready} ready across ${targets.size} presentation(s) in today's playlists${stopped ? ". Stopped: something went on the screens" : ""}.`
+        `Slide pictures${operator ? " (pressed)" : ""}: drew ${run.drawn}, kept ${run.kept} unchanged, ${run.ready} of ${run.total} ready across ${run.presentations} presentation(s) in today's playlists, in ${((Date.now() - started) / 1000).toFixed(0)}s${run.stopped ? ". Stopped: " + (operator ? "performance mode came on" : "something went on the screens") : ""}.`
       );
     }
   }
+  return run;
 }
+
+async function maybePrerender(now = Date.now()) {
+  if (now - prerenderCheckedAt < PRERENDER_CHECK_MS) return;
+  prerenderCheckedAt = now;
+  if (config.slidePictures?.prerender !== true || picturesRun?.running || !quietForPictures(now) || !client.isLocalHost) return;
+  const readyFor = await propresenterReadyForMs();
+  if (readyFor == null || readyFor < WATCH_SETTLE_MS) return;
+  await refreshPictures();
+}
+
+/** "Update pictures for today", from Service › Day or Settings. Runs in the background; progress below. */
+app.post("/api/slide-pictures/update", (_req, res) => {
+  if (performance.armed) return res.status(409).json({ error: "Performance mode is on, so no pictures are drawn now. Update them before the service, or after." });
+  if (picturesRun?.running) return res.status(409).json({ error: "Already updating the pictures.", run: picturesRun });
+  refreshPictures({ operator: true }).catch((err) => console.error("Updating pictures failed:", err.message));
+  res.json({ ok: true, run: picturesRun });
+});
+
+app.get("/api/slide-pictures/status", (_req, res) => {
+  res.json({ run: picturesRun, last: slidePicturesStatus });
+});
+
 /**
  * How many slides a presentation has, for one the index doesn't know (not in
  * a searched library). Asked of ProPresenter once per presentation, then
