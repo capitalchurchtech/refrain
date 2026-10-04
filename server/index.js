@@ -430,14 +430,26 @@ app.get("/api/preferences", (_req, res) => {
     navMode: config.navMode ?? null,
     navSide: config.navSide === "right" ? "right" : "left",
     welcomeDismissed: Boolean(config.welcomeDismissed),
+    // Search's own choices (owner, 2026-10-04: "so reloading doesn't wipe
+    // them"): the libraries switched off (so a library added later is
+    // searched), and which date the date filter uses. The date range itself
+    // is never kept: a forgotten range would quietly hide songs on a later
+    // Sunday.
+    searchLibrariesOff: Array.isArray(config.searchLibrariesOff) ? config.searchLibrariesOff.filter((n) => typeof n === "string") : [],
+    searchDateField: config.searchDateField === "created" ? "created" : "modified",
   });
 });
 
+// Preference saves take turns, and each applies its own changes to the
+// settings as they are when its turn comes, not when it was asked for, so a
+// Search preference and a theme change made together both survive.
+let preferencesTurn = Promise.resolve();
+
 app.post("/api/preferences", async (req, res) => {
-  const { theme, navPinned, navMode, navSide, welcomeDismissed } = req.body ?? {};
-  const newConfig = { ...config };
-  if (theme !== undefined) newConfig.theme = theme;
-  if (navPinned !== undefined) newConfig.navPinned = Boolean(navPinned);
+  const { theme, navPinned, navMode, navSide, welcomeDismissed, searchLibrariesOff, searchDateField } = req.body ?? {};
+  const changes = {};
+  if (theme !== undefined) changes.theme = theme;
+  if (navPinned !== undefined) changes.navPinned = Boolean(navPinned);
   // Three rail widths rather than two. `navPinned` is still written alongside
   // it so an older Refrain reading this config still gets a sensible rail
   // instead of a missing key.
@@ -445,23 +457,38 @@ app.post("/api/preferences", async (req, res) => {
     if (navSide !== "left" && navSide !== "right") {
       return res.status(400).json({ error: "navSide must be left or right" });
     }
-    newConfig.navSide = navSide;
+    changes.navSide = navSide;
   }
   if (navMode !== undefined) {
     if (!["full", "icons", "sliver"].includes(navMode)) {
       return res.status(400).json({ error: "navMode must be full, icons or sliver" });
     }
-    newConfig.navMode = navMode;
-    newConfig.navPinned = navMode === "full";
+    changes.navMode = navMode;
+    changes.navPinned = navMode === "full";
   }
-  if (welcomeDismissed !== undefined) newConfig.welcomeDismissed = Boolean(welcomeDismissed);
+  if (welcomeDismissed !== undefined) changes.welcomeDismissed = Boolean(welcomeDismissed);
+  if (searchLibrariesOff !== undefined) {
+    if (!(Array.isArray(searchLibrariesOff) && searchLibrariesOff.length <= 200 && searchLibrariesOff.every((n) => typeof n === "string" && n.length <= 200))) {
+      return res.status(400).json({ error: "searchLibrariesOff must be a list of library names" });
+    }
+    changes.searchLibrariesOff = searchLibrariesOff;
+  }
+  if (searchDateField !== undefined) {
+    if (!["modified", "created"].includes(searchDateField)) return res.status(400).json({ error: "searchDateField must be modified or created" });
+    changes.searchDateField = searchDateField;
+  }
 
+  const turn = preferencesTurn.then(async () => {
+    const next = { ...config, ...changes };
+    await saveConfig(next);
+    config = next;
+  });
+  preferencesTurn = turn.catch(() => {});
   try {
-    await saveConfig(newConfig);
+    await turn;
   } catch (err) {
     return res.status(500).json({ error: `Failed to save config.json: ${err.message}` });
   }
-  config = newConfig;
   res.json({ ok: true });
 });
 

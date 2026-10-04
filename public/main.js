@@ -41,22 +41,22 @@ async function boot() {
     initSetup({
       onComplete: () => {
         viewSetup.classList.add("hidden");
-        startApp();
+        startApp(prefs);
       },
     });
   } else {
-    startApp();
+    startApp(prefs);
   }
 
   if (window.lucide) window.lucide.createIcons();
 }
 
-async function startApp() {
+async function startApp(prefs = {}) {
   installGlobalErrorBoundary();
   viewApp.classList.remove("hidden");
   initTooltipFit();
   initUpdateNudge();
-  initSearch();
+  initSearch({ prefs });
   const health = initHealth();
   const renderers = { health: health.render };
   initReturnBar();

@@ -20,6 +20,9 @@
   "autoReindex": true,
   "_slidePictures": "Slide pictures for phones and the Live preview are kept in data/slide-pictures, so each is asked of ProPresenter once. With prerender true, Refrain also renders today's service playlists (and any playlists named here) ahead of time while nothing is on the screens. Off by default: ProPresenter keeps memory for every slide it draws until it restarts, so this only pays if ProPresenter is restarted before the service.",
   "slidePictures": { "prerender": false, "playlists": [] },
+  "_searchLibrariesOff": "Search's own choices, set on the Search screen and kept on this machine. searchLibrariesOff is the libraries switched off there (a library added later is searched); searchDateField is which date the Date filter uses, modified or created. The date range itself is never kept.",
+  "searchLibrariesOff": [],
+  "searchDateField": "modified",
   "librarySync": {
     "folders": null,
     "crawlPlaylists": false

@@ -47,10 +47,18 @@ export function isConfigComplete(config) {
 }
 
 /** Atomically writes config.json (Section 5.2's write-safety pattern). */
-export async function saveConfig(config) {
-  const tmpPath = `${CONFIG_PATH}.tmp`;
-  await writeFile(tmpPath, JSON.stringify(config, null, 2));
-  await rename(tmpPath, CONFIG_PATH);
+// Saves take turns: every save shares one temp file, so two at once (a
+// Search preference and a theme change, say) could rename each other's file
+// away and fail. One after another, each still temp-then-rename.
+let saving = Promise.resolve();
+export function saveConfig(config) {
+  const run = saving.then(async () => {
+    const tmpPath = `${CONFIG_PATH}.tmp`;
+    await writeFile(tmpPath, JSON.stringify(config, null, 2));
+    await rename(tmpPath, CONFIG_PATH);
+  });
+  saving = run.catch(() => {});
+  return run;
 }
 
 /**

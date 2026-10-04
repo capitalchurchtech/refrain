@@ -44,7 +44,7 @@ export function initLyricsAssist() {
                 <input id="lyrics-artist" type="text" class="input input-bordered w-full" />
               </div>
             </div>
-            <div class="flex items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2">
               <button id="lyrics-search-btn" class="btn btn-outline btn-sm w-fit"
                       title="Searches ${escapeHtml(lyricsSites.join(", "))} in a new tab">
                 <i data-lucide="search" class="w-3.5 h-3.5"></i> Search lyrics

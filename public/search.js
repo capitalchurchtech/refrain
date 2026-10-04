@@ -5,7 +5,7 @@ import { crumb } from "./breadcrumbs.js";
 
 
 
-export function initSearch() {
+export function initSearch({ prefs = {} } = {}) {
   /**
    * Ask for a docked window, on the surface where it matters.
    *
@@ -75,6 +75,45 @@ export function initSearch() {
   dateFromInput.max = today;
   dateToInput.max = today;
 
+  /**
+   * Search's own choices, kept on this Mac (owner, 2026-10-04: "so reloading
+   * doesn't wipe them"): the libraries and the date filter's field. Saved a
+   * moment after the last change, so a run of presses is one write. The date
+   * range is never kept: a forgotten range would quietly hide songs on a
+   * later Sunday.
+   */
+  // From the preferences main.js already read at start, so there's no
+  // second request and no moment where a late answer overwrites a choice
+  // the operator has just made.
+  const savedOff = new Set(Array.isArray(prefs.searchLibrariesOff) ? prefs.searchLibrariesOff : []);
+  if (prefs.searchDateField === "created" || prefs.searchDateField === "modified") dateFieldSelect.value = prefs.searchDateField;
+  let prefsTimer = null;
+  let pendingPrefs = {};
+  const sendPrefs = (keepalive = false) => {
+    clearTimeout(prefsTimer);
+    if (!Object.keys(pendingPrefs).length) return;
+    const body = pendingPrefs;
+    pendingPrefs = {};
+    fetch("/api/preferences", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), keepalive })
+      .then((res) => {
+        if (!res.ok) throw new Error(res.statusText);
+      })
+      .catch(() => {
+        // Not lost: put back under anything newer, and tried again shortly.
+        pendingPrefs = { ...body, ...pendingPrefs };
+        prefsTimer = setTimeout(() => sendPrefs(), 5000);
+      });
+  };
+  const saveSearchPrefs = (prefsChange) => {
+    // Merged, so a library press right after a date-field change keeps both.
+    pendingPrefs = { ...pendingPrefs, ...prefsChange };
+    clearTimeout(prefsTimer);
+    prefsTimer = setTimeout(() => sendPrefs(), 400);
+  };
+  // A change made just before a reload is the case this exists for.
+  window.addEventListener("pagehide", () => sendPrefs(true));
+  dateFieldSelect.addEventListener("change", () => saveSearchPrefs({ searchDateField: dateFieldSelect.value }));
+
   async function initLibraryFilter() {
     const { folders } = await fetch("/api/search/folders").then((r) => r.json());
     allLibraryFolders = folders;
@@ -82,12 +121,18 @@ export function initSearch() {
     // single synced folder has nothing to narrow.
     if (folders.length <= 1) return;
 
+    // The saved choice: libraries switched off stay off, and any library
+    // added since is on. If every library would be off, all are on: a search
+    // of nothing finds nothing.
+    const allOff = folders.every((n) => savedOff.has(n));
+    const libraryOn = (name) => allOff || !savedOff.has(name);
+
     // Latching keys, one per library, all the same size: a key reads as "on"
     // or "off" at a glance, where a row of tiny checkboxes didn't.
     libraryFilterKeys.innerHTML = folders
       .map(
         (name) =>
-          `<button type="button" role="checkbox" class="rf-tab rf-lib-key" data-library="${escapeHtml(name)}" aria-checked="true"><i data-lucide="check" class="w-4 h-4 shrink-0 rf-lib-check"></i><span class="truncate">${escapeHtml(name)}</span></button>`
+          `<button type="button" role="checkbox" class="rf-tab rf-lib-key" data-library="${escapeHtml(name)}" aria-checked="${libraryOn(name)}"><i data-lucide="check" class="w-4 h-4 shrink-0 rf-lib-check"></i><span class="truncate">${escapeHtml(name)}</span></button>`
       )
       .join("");
     libraryFilterKeys.querySelectorAll(".rf-lib-key").forEach((key) =>
@@ -98,17 +143,28 @@ export function initSearch() {
         if (on && libraryFilterKeys.querySelectorAll('[aria-checked="true"]').length === 1) return;
         key.setAttribute("aria-checked", String(!on));
         syncLibraryLabel();
+        saveLibraries();
         if (queryInput.value.trim()) runSearch(queryInput.value);
       })
     );
     libraryFilterAll.addEventListener("click", () => {
       libraryFilterKeys.querySelectorAll(".rf-lib-key").forEach((k) => k.setAttribute("aria-checked", "true"));
       syncLibraryLabel();
+      saveLibraries();
       if (queryInput.value.trim()) runSearch(queryInput.value);
     });
     if (window.lucide) window.lucide.createIcons();
     syncLibraryLabel();
     syncLibraryPanel();
+    // A search typed before the libraries arrived ran across all of them; if
+    // some are off, run it again so the results match the keys.
+    if (queryInput.value.trim() && selectedFolders()) runSearch(queryInput.value);
+  }
+
+  /** Saves which libraries are switched off, so a library added later is searched. */
+  function saveLibraries() {
+    const off = [...libraryFilterKeys.querySelectorAll('.rf-lib-key[aria-checked="false"]')].map((k) => k.dataset.library);
+    saveSearchPrefs({ searchLibrariesOff: off });
   }
 
   /** The chip says when the search is narrowed, so a filter is never invisible. */

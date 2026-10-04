@@ -1193,9 +1193,14 @@ function renderIndexShortfall(index) {
  * a copy button beside a command you can read is more trustworthy than a button
  * that promises to do something to your machine.
  */
-/** Open Refrain as its own window: Chrome with no tabs or address bar. */
+/**
+ * Open Refrain as its own window: Chrome with no tabs or address bar. The
+ * 420px width only applies when Chrome isn't already running: a running
+ * Chrome takes the --app but keeps its own window size (checked 2026-10-04),
+ * so the help line says to drag it narrow. Every screen was checked at 320px.
+ */
 function appModeCommand(port) {
-  return `open -na "Google Chrome" --args --app=http://localhost:${port}`;
+  return `open -na "Google Chrome" --args --app=http://localhost:${port} --window-size=420,1000`;
 }
 // `git checkout -- package-lock.json` first: npm rewrites the lockfile
 // whenever it syncs it to package.json, and a modified lockfile makes
@@ -2011,7 +2016,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
               (configOptions.arrangementNameCandidates ?? []).length
                 ? `<div class="text-xs opacity-60 mt-1">
                      Found in your library (click to add):
-                     <span class="inline-flex flex-wrap gap-1 ml-1">
+                     <span class="flex flex-wrap gap-1 mt-1">
                        ${configOptions.arrangementNameCandidates
                          .map(
                            (n) =>
@@ -2296,7 +2301,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
             <div class="rf-tabs" role="radiogroup" aria-label="Menu width" style="margin-bottom:0">${choice("width", "full", "Labels")}${choice("width", "icons", "Icons")}</div>
           </div>
         </div>
-        ${commandRow("Open in its own window", "Chrome with no tabs or address bar, so it can dock narrow beside ProPresenter.", appModeCommand(port))}
+        ${commandRow("Open in its own window", "Chrome with no tabs or address bar, to dock beside ProPresenter. It opens 420 wide if Chrome is closed; otherwise drag it narrow.", appModeCommand(port))}
       </div>
     </div>`;
   const welcomeCard = `
