@@ -204,7 +204,6 @@ function startControl() {
       removed: (id) => isRemoved(reg, id),
       name: (id) => reg.devices[id]?.name ?? null,
     },
-    thumb: async () => ({ type: "image/jpeg", bytes: Buffer.from("jpg") }),
     currentSlides: () => ({ presentationId: "H", presentationName: "Hymn", currentIndex: 2, slides: [0, 1, 2, 3, 4].map((i) => ({ slideIndex: i, text: `line ${i + 1}` })) }),
     stage: async () => ({ presets: [{ id: "short", text: "Cut short, pressing for time" }], current: "" }),
     messages: async () => [{ id: "PAGER", name: "Kids pager", active: false, fields: ["Code"], recent: {} }],
@@ -252,19 +251,16 @@ test("alerts: unapproved phones can't; approved ones prepare then confirm, once;
   }
 });
 
-test("pictures: the presentation on screen only, for flagging", async () => {
+test("no pictures on a phone: the slide list is words only and no route serves an image", async () => {
   const t = await startControl();
   try {
     const { token } = await (await fetch(`${t.base}/api/unlock`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin: "2468" }) })).json();
     const h = { headers: { "x-refrain-device": token } };
-    assert.equal((await fetch(`${t.base}/api/preview/image/H/3`, h)).status, 200);
-    assert.equal((await fetch(`${t.base}/api/preview/image/H/9`, h)).status, 404, "not past the end of the presentation");
-    assert.equal((await fetch(`${t.base}/api/preview/image/OTHER/0`, h)).status, 404, "not another presentation");
-    assert.equal((await fetch(`${t.base}/api/preview/image/H/0`, h)).status, 200, "any slide of the one on screen, for the tray");
+    for (const p of ["H/3", "H/0", "H/9", "OTHER/0"]) assert.equal((await fetch(`${t.base}/api/preview/image/${p}`, h)).status, 404, "a phone is never served a picture");
     const all = await (await fetch(`${t.base}/api/flag-slides`, h)).json();
     assert.equal(all.currentIndex, 2);
     assert.deepEqual(all.slides.map((x) => x.slideNumber), [1, 2, 3, 4, 5]);
-    assert.equal((await fetch(`${t.base}/api/preview/image/LOGO/0`, h)).status, 404, "no safe slides on the phone any more");
+    assert.equal(all.slides.some((x) => "image" in x), false, "the slide list carries no picture address");
     // A tray pick with no words is never in the index; it's accepted as a
     // slide of the presentation on screen, and one of another isn't.
     const flag = (slide) => fetch(`${t.base}/api/flag`, { method: "POST", headers: { "Content-Type": "application/json", "x-refrain-device": token }, body: JSON.stringify({ slide }) });

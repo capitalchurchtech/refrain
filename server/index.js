@@ -1343,7 +1343,6 @@ function startRemoteListener() {
     currentSlides,
     noteActivity: noteClientActivity,
     // Pictures already on disk only: a phone never makes ProPresenter draw.
-    thumb: storedSlideThumb,
     stage: async () => ({ presets: stagePresets(), current: await readStage() }),
     // Messages a phone can fill in: those with a text field (a pager code).
     messages: async () => {
