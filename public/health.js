@@ -368,9 +368,9 @@ export function initHealth() {
     const feedWindows = document.getElementById("feed-windows");
     if (feedWindows) {
       const radio = (attr, val) => document.querySelector(`[${attr}][aria-checked="true"]`)?.getAttribute(attr) === val;
-      document.querySelectorAll("[data-feed-enabled], [data-feed-text]").forEach((key) =>
+      document.querySelectorAll("[data-feed-enabled], [data-feed-text], [data-feed-image]").forEach((key) =>
         key.addEventListener("click", () => {
-          const attr = key.hasAttribute("data-feed-enabled") ? "data-feed-enabled" : "data-feed-text";
+          const attr = ["data-feed-enabled", "data-feed-text", "data-feed-image"].find((a) => key.hasAttribute(a));
           document.querySelectorAll(`[${attr}]`).forEach((k) => k.setAttribute("aria-checked", String(k === key)));
         })
       );
@@ -405,6 +405,7 @@ export function initHealth() {
           name: document.getElementById("feed-name").value,
           url: document.getElementById("feed-url").value,
           includeSlideText: radio("data-feed-text", "true"),
+          includeSlideImage: radio("data-feed-image", "true"),
           windows,
         };
         try {
@@ -2082,6 +2083,14 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
             <button type="button" role="radio" class="rf-tab" data-feed-text="false" aria-checked="${!fs.includeSlideText}"><span>Title and number only</span></button>
           </div>
           <span class="text-xs opacity-60 rf-measure">A prayer or care slide can carry a name, so the default is the title and slide number only.</span>
+        </div>
+        <div class="flex flex-col gap-1">
+          <div class="text-sm">Picture of the slide</div>
+          <div class="rf-tabs" role="radiogroup" aria-label="Send a picture of the slide" style="margin-bottom:0">
+            <button type="button" role="radio" class="rf-tab" data-feed-image="true" aria-checked="${fs.includeSlideImage}"><span>Send it</span></button>
+            <button type="button" role="radio" class="rf-tab" data-feed-image="false" aria-checked="${!fs.includeSlideImage}"><span>Don't send</span></button>
+          </div>
+          <span class="text-xs opacity-60 rf-measure">A small picture of the slide on screen, about 25 KB each time it changes. During a service only slides already drawn ahead of time are sent (Settings &gt; Phones &gt; Slide pictures), so nothing new is drawn on ProPresenter. A picture can show a name, like the words can.</span>
         </div>
         <div class="rf-control-row">
           <button type="button" id="feed-save" class="btn btn-primary btn-sm">Save</button>

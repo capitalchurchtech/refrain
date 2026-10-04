@@ -66,7 +66,8 @@ truth.
     "arrangementName": null,
     "slideIndex": 2,
     "slideCount": 6,
-    "text": "only present when includeSlideText is on"
+    "text": "only present when includeSlideText is on",
+    "imageKey": "only present when picture sending is on"
   }
 }
 ```
@@ -78,6 +79,16 @@ means Refrain itself, or its network, is down.
 When a send window closes while something is live, Refrain sends one last status
 with `live: false` and `slide: null`, then goes quiet, so the server reads the
 end of a service as ended, not lost.
+
+### `PUT {url}/image` (only if the church turned on "Picture of the slide")
+
+Sent right after a status whose `slide.imageKey` is set, once per slide. The body
+is the JPEG (about 25 KB, never over 200 KB), `Content-Type: image/jpeg`, with
+header `X-Slide-Key` equal to that status's `slide.imageKey`. Latest wins per
+console: keep one image, replace it, and show it only while its key matches the
+console's current `slide.imageKey`. Refrain never draws a slide for this, so a
+slide with no picture ready simply has none; `404`/`4xx` here is ignored and
+never affects status.
 
 ### `PUT {url}/logs/{YYYY-MM-DD}.jsonl`
 
