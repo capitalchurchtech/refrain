@@ -1344,6 +1344,7 @@ function startRemoteListener() {
     noteActivity: noteClientActivity,
     // Pictures already on disk only: a phone never makes ProPresenter draw.
     thumb: storedSlideThumb,
+    pictures: () => config.networkModule?.phonePictures === true,
     stage: async () => ({ presets: stagePresets(), current: await readStage() }),
     // Messages a phone can fill in: those with a text field (a pager code).
     messages: async () => {
@@ -1642,6 +1643,9 @@ const serviceFeed = createServiceFeed({
   getModule: () => config.serviceFeedModule,
   getLive: () => liveStatePayload(),
   isFrozen: () => frozen(),
+  // The same rule as the Now screen's pictures: during a service only one
+  // already on disk, so telemetry never makes ProPresenter draw anything.
+  getPicture: async (pid, idx) => (performance.armed ? storedSlideThumb(pid, idx) : thumbCache(pid, idx, await pictureFingerprint(pid))),
   appVersion: version,
   listLogs: async () => {
     const names = await readdir(DIAGNOSTICS_DIR).catch(() => []);
@@ -5664,6 +5668,7 @@ app.get("/api/health", async (_req, res) => {
         name: config.serviceFeedModule?.name ?? "",
         url: config.serviceFeedModule?.url ?? "",
         includeSlideText: config.serviceFeedModule?.includeSlideText === true,
+        includeSlideImage: config.serviceFeedModule?.includeSlideImage === true,
         windows: effectiveWindows(config.serviceFeedModule),
         keySet: Boolean(process.env.SERVICE_FEED_TOKEN),
       },

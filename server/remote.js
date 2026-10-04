@@ -163,6 +163,7 @@ export function rateLimiter({ max = 20, windowMs = 60_000 } = {}) {
  * @param {(q: string) => Array} [deps.search]      read-only search, for the Search tab
  * @param {() => object} [deps.preview]              previewTargets for what's live
  * @param {(pid, idx) => Promise<{type, bytes}|null>} [deps.thumb]
+ * @param {() => boolean} [deps.pictures] whether a phone may be sent slide pictures at all; closed unless the booth opens it (networkModule.phonePictures)
  * @param {() => Array} [deps.safeSlides]
  * @param {(action: object, deviceId: string) => Promise<{label: string}>} [deps.control]
  *   performs an approved, confirmed control action; throws with a sentence on failure
@@ -177,6 +178,7 @@ export function createRemoteApp({
   pinGuard = null,
   devices = { see() {}, approved: () => false, removed: () => false, name: () => null },
   thumb = async () => null,
+  pictures = () => false,
   stage = async () => ({ presets: [], current: "" }),
   messages = async () => [],
   currentSlides = () => null,
@@ -283,7 +285,7 @@ export function createRemoteApp({
         slideIndex: sl.slideIndex,
         slideNumber: sl.slideIndex + 1,
         text: sl.text,
-        image: `/api/preview/image/${encodeURIComponent(d.presentationId)}/${sl.slideIndex}`,
+        ...(pictures() ? { image: `/api/preview/image/${encodeURIComponent(d.presentationId)}/${sl.slideIndex}` } : {}),
       })),
     });
   });
@@ -294,6 +296,9 @@ export function createRemoteApp({
   // rendered ahead of the service is simply not shown, and the slide's words
   // stand in for it.
   app.get("/api/preview/image/:pid/:idx", async (req, res) => {
+    // Closed unless networkModule.phonePictures is true. Checked here, on the
+    // server, so a phone page cannot open it by itself.
+    if (!pictures()) return res.status(404).json({ error: "Pictures are not sent to phones." });
     const d = currentSlides();
     const idx = Number(req.params.idx);
     const onScreenDeck = d && d.presentationId === req.params.pid && Number.isInteger(idx) && idx >= 0 && idx < d.slides.length;

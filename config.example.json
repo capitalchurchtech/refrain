@@ -78,13 +78,14 @@
     "safeSlides": [],
     "messageRecent": {}
   },
-  "_networkModule": "Phone flags and the service progress feed (off until enabled). A separate listener on its own port that anyone on the church network can open on a phone: it shows what's live, the last few slides and where the service is, and adds a flag with a note and a name. It has no route that can change the screens, and never calls ProPresenter. Refrain's main screens stay on this machine only. pin is \"daily\" (a four-digit PIN that changes at midnight, shown in the booth on the Flags screen and Health), a fixed 4 to 8 digits, or empty for none. pinHint is what the phone's PIN screen says about where to find it. A correct PIN signs the phone in until midnight, or for 30 days if the person ticks \"Trust this phone\"; Forget all phones on Health signs them all out. host defaults to every network address (0.0.0.0); set 127.0.0.1 to try it on this machine only.",
+  "_networkModule": "Phone flags and the service progress feed (off until enabled). A separate listener on its own port that anyone on the church network can open on a phone: it shows what's live, the last few slides and where the service is, and adds a flag with a note and a name. It has no route that can change the screens, and never calls ProPresenter. Refrain's main screens stay on this machine only. pin is \"daily\" (a four-digit PIN that changes at midnight, shown in the booth on the Flags screen and Health), a fixed 4 to 8 digits, or empty for none. pinHint is what the phone's PIN screen says about where to find it. A correct PIN signs the phone in until midnight, or for 30 days if the person ticks \"Trust this phone\"; Forget all phones on Health signs them all out. phonePictures is false: a phone is never sent a slide picture, and the route that would serve one answers 404 whatever the page asks. Set it to true only if you want phones to see pictures (only ones already drawn ahead; nothing new is rendered). host defaults to every network address (0.0.0.0); set 127.0.0.1 to try it on this machine only.",
   "networkModule": {
     "enabled": false,
     "host": "0.0.0.0",
     "port": 9997,
     "pin": "daily",
-    "pinHint": null
+    "pinHint": null,
+    "phonePictures": false
   },
   "_reportModule": "Sending End's day summary somewhere (off until enabled). deliveryBackend is a file in delivery/: email (SMTP settings in .env, recipients here) or folder (folder here). A person presses Send after reading the summary unless requireReview is false. Email is the one thing in Refrain that sends data off the machine; it only happens for a church that turns this on.",
   "reportModule": {
@@ -106,12 +107,13 @@
     "summaryFolder": null,
     "phases": null
   },
-  "_serviceFeedModule": "Lets this console report to your own announcement server: which slide is showing, and its diagnostics log afterwards (see docs/service-feed.md). Off until enabled, and it only ever talks to the url you set: nothing goes to the Refrain project. url is the console address from the announcement server's admin page (https). Set these on the Telemetry tab of Settings. name is the station's name as the announcement server lists it (for example Main Campus FOH). The key goes in .env as SERVICE_FEED_TOKEN. includeSlideText sends the words on the slide as well as its title and number; leave it false unless you want that. windows are the only times it talks, in this machine's local time: outside it nothing is sent. consoleId is filled in by Refrain.",
+  "_serviceFeedModule": "Lets this console report to your own announcement server: which slide is showing, and its diagnostics log afterwards (see docs/service-feed.md). Off until enabled, and it only ever talks to the url you set: nothing goes to the Refrain project. url is the console address from the announcement server's admin page (https). Set these on the Telemetry tab of Settings. name is the station's name as the announcement server lists it (for example Main Campus FOH). The key goes in .env as SERVICE_FEED_TOKEN. includeSlideText sends the words on the slide as well as its title and number; leave it false unless you want that. includeSlideImage sends a small picture of the slide on screen (only one already drawn; nothing new is rendered). windows are the only times it talks, in this machine's local time: outside it nothing is sent. consoleId is filled in by Refrain.",
   "serviceFeedModule": {
     "enabled": false,
     "url": null,
     "name": null,
     "includeSlideText": false,
+    "includeSlideImage": false,
     "windows": [{ "days": ["sun"], "from": "09:00", "until": "14:00" }],
     "consoleId": null
   }

@@ -88,9 +88,11 @@ function paintProgress(p) {
 let flagSlides = null;
 let chosenSlide = null; // { presentationId, slideIndex }
 let slidesKey = "";
+// A picture only where the booth has opened pictures for phones; otherwise words only.
+const pvHtml = (sl) => (sl.image ? `<div class="pv"><img data-src="${esc(sl.image)}" alt="" /></div>` : "");
 const slideCard = (sl, caption) => `
   <button class="slide${chosenSlide && chosenSlide.slideIndex === sl.slideIndex ? " picked" : ""}" data-idx="${sl.slideIndex}" aria-pressed="${Boolean(chosenSlide && chosenSlide.slideIndex === sl.slideIndex)}">
-    <div class="thumb"><div class="pv"><img data-src="${esc(sl.image)}" alt="" /></div>
+    <div class="thumb${sl.image ? "" : " nopic"}">${pvHtml(sl)}
     <div><small>${esc(caption)} · slide ${sl.slideNumber}</small>${esc((sl.text ?? "").slice(0, 90)) || "<i>No words on this slide</i>"}</div></div>
   </button>`;
 
@@ -149,7 +151,7 @@ $("open-tray").addEventListener("click", () => {
   if (!d?.presentationId) return;
   $("tray-title").textContent = d.presentationName ?? "All slides";
   $("tray-grid").innerHTML = d.slides
-    .map((sl) => `<button class="slide" data-idx="${sl.slideIndex}"><div class="pv"><img data-src="${esc(sl.image)}" alt="" /></div><small>Slide ${sl.slideNumber}${sl.slideIndex === d.currentIndex ? " · on screen" : ""}</small></button>`)
+    .map((sl) => `<button class="slide" data-idx="${sl.slideIndex}">${pvHtml(sl)}<small>Slide ${sl.slideNumber}${sl.slideIndex === d.currentIndex ? " · on screen" : ""}</small>${sl.image ? "" : esc((sl.text ?? "").slice(0, 90)) || "<i>No words on this slide</i>"}</button>`)
     .join("");
   trayObserver?.disconnect();
   trayObserver = new IntersectionObserver((entries) => {
@@ -243,7 +245,7 @@ $("send").addEventListener("click", async () => {
     const sl = flagSlides?.slides?.find((x) => x.slideIndex === item.slide?.slideIndex);
     $("status").className = "status";
     $("status").innerHTML = sl
-      ? `<div class="sent"><div class="pv"><img data-src="${esc(sl.image)}" alt="" /></div><div>Sent to the booth: slide ${sl.slideNumber}.</div></div>`
+      ? `<div class="sent">${pvHtml(sl)}<div>Sent to the booth: slide ${sl.slideNumber}.</div></div>`
       : "Sent to the booth.";
     $("status").querySelectorAll("img").forEach((img) => loadImage(img));
     $("note").value = "";
