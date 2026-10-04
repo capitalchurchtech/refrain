@@ -136,6 +136,19 @@ Two shipped modules are worth reading as templates, both added exactly the way a
 
 If you're not sure whether something belongs in core or as a plugin, open an issue and ask before you build it. Happy to think it through with you.
 
+## Changing the search index format
+
+Each machine keeps its search index in `cache/search-index.json`, and an update leaves it alone. After an update the next reindex is incremental: it re-reads only the presentations whose file changed.
+
+`SCHEMA_VERSION` in `server/search-index.js` is what breaks that. When it changes, every client's existing index counts as built by an older version, and the next reindex becomes a full crawl of the whole library. A full crawl takes minutes to over an hour on a real library and makes ProPresenter sluggish while it runs (see the rebuild warning in the README). Refrain starts it by itself once nothing has been on the screens for an hour.
+
+So:
+
+- **Only bump it when an index entry gains a field the app relies on.** If the change doesn't need a new stored field, don't bump it. Search keeps working on an old index without the bump.
+- **Changing what a build option means is a separate trigger.** `sameBuildOptions` in `server/index-fingerprint.js` also forces a full rebuild when it returns false. Adding an option that changes what an entry contains belongs there, not in a version bump.
+- **Say so in the release notes** when you do bump it, so a church admin doesn't update the day before a service.
+- **Add a test** in `test/` for the plan that follows, as the existing reindex-planning tests do.
+
 ## Code style
 
 Nothing elaborate. Match what's already there, keep functions small, prefer plain `async`/`await`. CI runs the linter on every pull request, so run `npm run lint` before you push.
