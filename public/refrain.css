@@ -3829,6 +3829,15 @@ html.rail-right #rf-notices {
   text-align: center;
   padding: 8px;
 }
+/* The slide's words in place of its picture (slide pictures off): its own
+   line breaks, readable, and never taller than the 16:9 box. */
+#view-live .live-preview-empty.live-preview-words {
+  white-space: pre-line;
+  overflow: hidden;
+  color: var(--rf-text);
+  font-size: 13px;
+  line-height: 1.35;
+}
 
 /* A folded section's heading is the control that opens it, so it meets the
    touch floor (the Service screen's checklist). Padding, not display:flex,

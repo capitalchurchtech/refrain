@@ -59,7 +59,15 @@ export function livePreviewHtml(p) {
   const pane = (label, s, empty, step = false, keep = false) => {
     const inner = `
       <figcaption class="rf-subhead">${label}${s ? ` · slide ${s.slideNumber}` : ""}${step ? " · click to show" : ""}</figcaption>
-      ${s?.image ? `<img src="${esc(s.image)}" alt="${esc(s.text ?? "")}" />` : `<div class="live-preview-empty">${esc(empty)}</div>`}
+      ${
+        // No picture (slide pictures off, or none drawn): the slide's words,
+        // so Now and Next still say what's up and what's coming.
+        // A slide with no words (a logo, a video) says so: an empty black
+        // box would read the same as "nothing showing".
+        s?.image
+          ? `<img src="${esc(s.image)}" alt="${esc(s.text ?? "")}" />`
+          : `<div class="live-preview-empty${s?.text?.trim() ? " live-preview-words" : ""}">${esc(s?.text?.trim() ? s.text : s ? "No words on this slide" : empty)}</div>`
+      }
       ${
         // The slide worth keeping (the logo, a blank) is usually the one up,
         // so it can be kept from here as well as from Search.
@@ -184,7 +192,9 @@ export function initLive() {
       if (!host || container.classList.contains("hidden")) return clearInterval(previewTimer);
       try {
         const p = await fetch("/api/preview").then((r) => r.json());
-        const key = JSON.stringify([p.current?.image, p.next?.image, p.atEnd, p.lastPhoneAction?.at]);
+        // The slide itself, not only its picture: with pictures off there's
+        // no picture address to change when the slide does.
+        const key = JSON.stringify([p.current?.image, p.next?.image, p.current?.slideNumber, p.current?.text, p.next?.slideNumber, p.next?.text, p.presentationName, p.atEnd, p.lastPhoneAction?.at]);
         if (key === previewKey) return;
         previewKey = key;
         host.innerHTML = livePreviewHtml(p);

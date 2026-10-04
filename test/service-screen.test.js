@@ -82,3 +82,9 @@ test("Slide pictures on Day: progress while it runs, and what the last run left 
   assert.match(done, /8 drawn, 112 kept/);
   assert.match(done, /Stopped part-way/);
 });
+
+test("Slide pictures off: Day says so and offers nothing to press", () => {
+  const off = picturesHtml({ show: false, last: { lastRunAt: null } });
+  assert.match(off, /Slide pictures are off/);
+  assert.doesNotMatch(off, /service-pictures-btn/);
+});

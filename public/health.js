@@ -348,6 +348,21 @@ export function initHealth() {
     wireKillSwitch();
     wireDaySummarySettings(render);
 
+    document.querySelectorAll("[data-pictures-show]").forEach((key) =>
+      key.addEventListener("click", async () => {
+        try {
+          const res = await fetch("/api/slide-pictures", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ show: key.dataset.picturesShow === "true" }) });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error ?? res.statusText);
+          // The menu's quick slides follow at once, not at their next check.
+          document.dispatchEvent(new CustomEvent("refrain:safe-slides-changed"));
+          render(); // the card's wording and the draw-ahead keys follow it
+        } catch (err) {
+          showFailure(`Couldn't change slide pictures: ${err.message}`);
+        }
+      })
+    );
+
     document.querySelectorAll("[data-prerender]").forEach((key) =>
       key.addEventListener("click", async () => {
         const prerender = key.dataset.prerender === "true";
@@ -1727,8 +1742,8 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
           propresenter.load ? `<div class="text-sm rf-flag rf-measure" role="status">${escapeHtml(propresenter.load.message)}</div>` : ""
         }
         ${
-          propresenter.slidePictures?.lastRunAt && propresenter.slidePictures.presentations
-            ? `<div class="text-sm opacity-60 rf-measure">Slide pictures: ${propresenter.slidePictures.ready} ready for today's playlists (checked ${new Date(propresenter.slidePictures.lastRunAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}${propresenter.slidePictures.stopped ? "; stopped when something went live" : ""}).</div>`
+          propresenter.slidePictures?.show && propresenter.slidePictures?.lastRunAt && propresenter.slidePictures.presentations
+            ? `<div class="text-sm opacity-60 rf-measure">Slide pictures: ${propresenter.slidePictures.ready} ready for today's playlists (checked ${new Date(propresenter.slidePictures.lastRunAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}${propresenter.slidePictures.stopped ? `; stopped: ${escapeHtml(propresenter.slidePictures.stopReason ?? "something went live")}` : ""}).</div>`
             : ""
         }
         ${
@@ -2023,18 +2038,33 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
     <div class="card bg-base-200">
       <div class="card-body p-3 gap-2">
         <h2 class="card-title text-base"><i data-lucide="images" class="w-4 h-4 opacity-70"></i> Slide pictures</h2>
+        <!-- The one switch for every picture (owner, 2026-10-04: "disable all
+             image previews ... temporary"). Off: ProPresenter is asked for
+             none, and the screens show the slides' words. -->
+        <div class="rf-tabs" role="radiogroup" aria-label="Show slide pictures" style="margin-bottom:0">
+          <button type="button" role="radio" class="rf-tab" data-pictures-show="true" aria-checked="${pictures.show === true}"><span>Show pictures</span></button>
+          <button type="button" role="radio" class="rf-tab" data-pictures-show="false" aria-checked="${pictures.show !== true}"><span>Words only</span></button>
+        </div>
+        <p class="text-xs opacity-70 rf-measure">${
+          pictures.show === true
+            ? "Now, Next, the menu's quick slides and Spell Check show slide pictures."
+            : "Off: Refrain asks ProPresenter for no pictures. Now, Next and the menu show each slide's words."
+        }</p>
+        <div class="rf-subhead mt-2">Draw ahead of time</div>
         <p class="text-sm rf-measure">Phones and the Now screen only show pictures drawn before the service. Turn this on to draw today's service playlists while nothing is on the screens.</p>
         <p class="text-xs opacity-70 rf-measure">ProPresenter holds on to memory for each picture it draws until it restarts, so restart ProPresenter after the pictures are drawn and before the service. The pictures are kept.</p>
         <div class="rf-tabs" role="radiogroup" aria-label="Slide pictures ahead of time" style="margin-bottom:0">
-          <button type="button" role="radio" class="rf-tab" data-prerender="true" aria-checked="${picturesOn}"><span>On</span></button>
-          <button type="button" role="radio" class="rf-tab" data-prerender="false" aria-checked="${!picturesOn}"><span>Off</span></button>
+          <button type="button" role="radio" class="rf-tab" data-prerender="true" aria-checked="${picturesOn}" ${pictures.show === true ? "" : "disabled"}><span>On</span></button>
+          <button type="button" role="radio" class="rf-tab" data-prerender="false" aria-checked="${!picturesOn}" ${pictures.show === true ? "" : "disabled"}><span>Off</span></button>
         </div>
         <div id="prerender-status" class="text-xs opacity-70 rf-measure">${
-          pictures.onThisMac === false
+          pictures.show !== true
+            ? "Nothing is drawn ahead while pictures are off (Words only above)."
+            : pictures.onThisMac === false
             ? "ProPresenter is on another Mac, so pictures can't be drawn ahead from here."
             : picturesOn
               ? pictures.lastRunAt
-                ? `${pictures.ready} ready for today's playlists (checked ${new Date(pictures.lastRunAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}${pictures.stopped ? "; stopped when something went live" : ""}).`
+                ? `${pictures.ready} ready for today's playlists (checked ${new Date(pictures.lastRunAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}${pictures.stopped ? `; stopped: ${escapeHtml(pictures.stopReason ?? "something went live")}` : ""}).`
                 : "Waits until nothing is on the screens and no service is near, then starts. Needs today's services set up on Service › Day."
               : "Off."
         }</div>

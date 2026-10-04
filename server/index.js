@@ -444,10 +444,27 @@ app.get("/api/preferences", (_req, res) => {
   });
 });
 
-// Preference saves take turns, and each applies its own changes to the
-// settings as they are when its turn comes, not when it was asked for, so a
-// Search preference and a theme change made together both survive.
-let preferencesTurn = Promise.resolve();
+/**
+ * Every change to config.json goes through this one queue (code review,
+ * 2026-10-04). Each change is computed from the settings as they are when its
+ * turn comes, not when it was asked for, so two changes made together (a
+ * Search preference and a theme, an ignored word and a safe slide) can't each
+ * save a copy that drops the other's. The write is saveConfig's atomic
+ * temp-then-rename, and the running settings are swapped only once it lands.
+ * @param {(current: object) => object|Promise<object>} change  returns the new config
+ * @returns {Promise<object>} the saved config
+ */
+let configTurn = Promise.resolve();
+function updateConfig(change) {
+  const run = configTurn.then(async () => {
+    const next = await change(config);
+    await saveConfig(next);
+    config = next;
+    return next;
+  });
+  configTurn = run.catch(() => {});
+  return run;
+}
 
 app.post("/api/preferences", async (req, res) => {
   const { theme, navPinned, navMode, navSide, welcomeDismissed, searchLibrariesOff, searchDateField } = req.body ?? {};
@@ -482,14 +499,8 @@ app.post("/api/preferences", async (req, res) => {
     changes.searchDateField = searchDateField;
   }
 
-  const turn = preferencesTurn.then(async () => {
-    const next = { ...config, ...changes };
-    await saveConfig(next);
-    config = next;
-  });
-  preferencesTurn = turn.catch(() => {});
   try {
-    await turn;
+    await updateConfig((c) => ({ ...c, ...changes }));
   } catch (err) {
     return res.status(500).json({ error: `Failed to save config.json: ${err.message}` });
   }
@@ -715,12 +726,15 @@ app.post("/api/config", async (req, res) => {
       }
     }
 
+    // Only the sections this form changed are written over the settings as
+    // they are at its turn, so a change saved meanwhile elsewhere stays.
+    const before = config;
+    const touched = Object.keys(newConfig).filter((k) => JSON.stringify(newConfig[k]) !== JSON.stringify(before[k]));
     try {
-      await saveConfig(newConfig);
+      await updateConfig((c) => ({ ...c, ...Object.fromEntries(touched.map((k) => [k, newConfig[k]])) }));
     } catch (err) {
       return res.status(500).json({ error: `Failed to save config.json: ${err.message}` });
     }
-    config = newConfig;
     if (changingConnection) client = new ProPresenterClient(config.propresenter);
     res.json({ ok: true });
   } catch (err) {
@@ -1158,8 +1172,19 @@ async function pictureFingerprint(pid) {
   if (pictureFingerprints.size > 500) pictureFingerprints.delete(pictureFingerprints.keys().next().value);
   return fp;
 }
+/**
+ * Slide pictures on or off, everywhere (owner, 2026-10-04: "disable all image
+ * previews ... temporary"). **Off unless `slidePictures.show` is true**, set
+ * on Settings › Phones › Slide pictures. While off, Refrain asks ProPresenter
+ * for no picture at all: every route that serves one answers "no picture",
+ * the Update and pre-render runs don't start, and the screens show the
+ * slide's words instead. Turning it back on is the one switch.
+ */
+const picturesOn = () => config.slidePictures?.show === true;
+
 const thumbCache = createThumbCache(
   async (pid, idx, fp) => {
+    if (!picturesOn()) return null;
     const img = await client.getSlideThumbnail(pid, idx);
     if (img && fp) thumbStore.put(pid, idx, fp, img).catch(() => {});
     return img;
@@ -1232,7 +1257,15 @@ const quietForPictures = (now = Date.now()) =>
  */
 let picturesRun = null; // progress while running
 async function refreshPictures({ operator = false } = {}) {
-  const stop = operator ? () => performance.armed : () => !quietForPictures();
+  // Why a run stops, said as it is: the switch, performance mode, or (for
+  // pre-render) something going on the screens.
+  const stopReason = () =>
+    !picturesOn() ? "slide pictures were turned off" : operator ? (performance.armed ? "performance mode came on" : null) : !quietForPictures() ? "something went on the screens" : null;
+  const stop = () => {
+    const why = stopReason();
+    if (why) run.stopReason = why;
+    return Boolean(why);
+  };
   const started = Date.now();
   const run = { running: true, operator, startedAt: new Date(started).toISOString(), presentations: 0, done: 0, ready: 0, total: 0, drawn: 0, kept: 0, stopped: false };
   picturesRun = run;
@@ -1299,10 +1332,10 @@ async function refreshPictures({ operator = false } = {}) {
   } finally {
     run.running = false;
     run.finishedAt = new Date().toISOString();
-    slidePicturesStatus = { lastRunAt: run.finishedAt, presentations: run.presentations, ready: run.ready, total: run.total, rendered: run.drawn, kept: run.kept, stopped: run.stopped, operator };
+    slidePicturesStatus = { lastRunAt: run.finishedAt, presentations: run.presentations, ready: run.ready, total: run.total, rendered: run.drawn, kept: run.kept, stopped: run.stopped, stopReason: run.stopReason ?? null, operator };
     if (run.drawn || run.stopped || operator) {
       console.log(
-        `Slide pictures${operator ? " (pressed)" : ""}: drew ${run.drawn}, kept ${run.kept} unchanged, ${run.ready} of ${run.total} ready across ${run.presentations} presentation(s) in today's playlists, in ${((Date.now() - started) / 1000).toFixed(0)}s${run.stopped ? ". Stopped: " + (operator ? "performance mode came on" : "something went on the screens") : ""}.`
+        `Slide pictures${operator ? " (pressed)" : ""}: drew ${run.drawn}, kept ${run.kept} unchanged, ${run.ready} of ${run.total} ready across ${run.presentations} presentation(s) in today's playlists, in ${((Date.now() - started) / 1000).toFixed(0)}s${run.stopped ? `. Stopped: ${run.stopReason ?? "interrupted"}` : ""}.`
       );
     }
   }
@@ -1312,7 +1345,7 @@ async function refreshPictures({ operator = false } = {}) {
 async function maybePrerender(now = Date.now()) {
   if (now - prerenderCheckedAt < PRERENDER_CHECK_MS) return;
   prerenderCheckedAt = now;
-  if (config.slidePictures?.prerender !== true || picturesRun?.running || !quietForPictures(now) || !client.isLocalHost) return;
+  if (!picturesOn() || config.slidePictures?.prerender !== true || picturesRun?.running || !quietForPictures(now) || !client.isLocalHost) return;
   const readyFor = await propresenterReadyForMs();
   if (readyFor == null || readyFor < WATCH_SETTLE_MS) return;
   await refreshPictures();
@@ -1320,6 +1353,7 @@ async function maybePrerender(now = Date.now()) {
 
 /** "Update pictures for today", from Service › Day or Settings. Runs in the background; progress below. */
 app.post("/api/slide-pictures/update", (_req, res) => {
+  if (!picturesOn()) return res.status(409).json({ error: "Slide pictures are off (Settings › Phones › Slide pictures)." });
   if (performance.armed) return res.status(409).json({ error: "Performance mode is on, so no pictures are drawn now. Update them before the service, or after." });
   if (picturesRun?.running) return res.status(409).json({ error: "Already updating the pictures.", run: picturesRun });
   refreshPictures({ operator: true }).catch((err) => console.error("Updating pictures failed:", err.message));
@@ -1327,7 +1361,7 @@ app.post("/api/slide-pictures/update", (_req, res) => {
 });
 
 app.get("/api/slide-pictures/status", (_req, res) => {
-  res.json({ run: picturesRun, last: slidePicturesStatus });
+  res.json({ show: picturesOn(), run: picturesRun, last: slidePicturesStatus });
 });
 
 /**
@@ -1401,7 +1435,7 @@ function startRemoteListener() {
     noteActivity: noteClientActivity,
     // Pictures already on disk only: a phone never makes ProPresenter draw.
     thumb: storedSlideThumb,
-    pictures: () => config.networkModule?.phonePictures === true,
+    pictures: () => picturesOn() && config.networkModule?.phonePictures === true,
     stage: async () => ({ presets: stagePresets(), current: await readStage() }),
     // Messages a phone can fill in: those with a text field (a pager code).
     messages: async () => {
@@ -1702,7 +1736,7 @@ const serviceFeed = createServiceFeed({
   isFrozen: () => frozen(),
   // The same rule as the Now screen's pictures: during a service only one
   // already on disk, so telemetry never makes ProPresenter draw anything.
-  getPicture: async (pid, idx) => (performance.armed ? storedSlideThumb(pid, idx) : thumbCache(pid, idx, await pictureFingerprint(pid))),
+  getPicture: async (pid, idx) => (!picturesOn() ? null : performance.armed ? storedSlideThumb(pid, idx) : thumbCache(pid, idx, await pictureFingerprint(pid))),
   appVersion: version,
   listLogs: async () => {
     const names = await readdir(DIAGNOSTICS_DIR).catch(() => []);
@@ -2308,13 +2342,11 @@ app.post("/api/library-folders", async (req, res) => {
     return res.status(400).json({ error: "folders must be an array of names, or null for all" });
   }
 
-  const newConfig = { ...config, librarySync: { ...config.librarySync, folders } };
   try {
-    await saveConfig(newConfig);
+    await updateConfig((c) => ({ ...c, librarySync: { ...c.librarySync, folders } }));
   } catch (err) {
     return res.status(500).json({ error: `Failed to save config.json: ${err.message}` });
   }
-  config = newConfig;
   // Said, not swallowed (owner, 2026-10-04: "there was no indication"). With
   // something on the screens a run would stand down at once and only the log
   // knew; now the save answers with why it isn't indexing, and doesn't start.
@@ -2510,21 +2542,18 @@ app.post("/api/day-summary-settings", async (req, res) => {
   const cleanRecipients = recipients?.map((r) => r.trim()).filter(Boolean);
   const bad = (cleanRecipients ?? []).filter((r) => !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(r));
   if (bad.length) return res.status(400).json({ error: `Not an email address: ${bad.join(", ")}` });
-  const turn = preferencesTurn.then(async () => {
-    const next = { ...config, serviceModule: { ...config.serviceModule }, reportModule: { ...config.reportModule } };
-    if (autoEnd !== undefined) next.serviceModule.autoEnd = autoEndSettings({ ...autoEndSettings(config.serviceModule?.autoEnd), ...autoEnd });
-    // Sending and addresses only where the backend takes a list of
-    // addresses: a church sending to a folder keeps its setup untouched.
-    if (deliveryBackendFor(config)?.takesRecipients) {
-      if (sendByEmail !== undefined) next.reportModule.enabled = Boolean(sendByEmail);
-      if (cleanRecipients) next.reportModule.recipients = cleanRecipients;
-    }
-    await saveConfig(next);
-    config = next;
-  });
-  preferencesTurn = turn.catch(() => {});
   try {
-    await turn;
+    await updateConfig((c) => {
+      const next = { ...c, serviceModule: { ...c.serviceModule }, reportModule: { ...c.reportModule } };
+      if (autoEnd !== undefined) next.serviceModule.autoEnd = autoEndSettings({ ...autoEndSettings(c.serviceModule?.autoEnd), ...autoEnd });
+      // Sending and addresses only where the backend takes a list of
+      // addresses: a church sending to a folder keeps its setup untouched.
+      if (deliveryBackendFor(c)?.takesRecipients) {
+        if (sendByEmail !== undefined) next.reportModule.enabled = Boolean(sendByEmail);
+        if (cleanRecipients) next.reportModule.recipients = cleanRecipients;
+      }
+      return next;
+    });
   } catch (err) {
     return res.status(500).json({ error: `Couldn't save it: ${err.message}` });
   }
@@ -3492,17 +3521,9 @@ app.get("/api/live/current-look", async (_req, res) => {
  * @param {(liveModule: object) => object} change  returns the new liveModule
  * @returns {Promise<object>} the saved liveModule
  */
-let liveModuleQueue = Promise.resolve();
 function updateLiveModule(change) {
-  const run = liveModuleQueue.then(async () => {
-    const liveModule = change({ ...(config.liveModule ?? {}) });
-    const newConfig = { ...config, liveModule };
-    await saveConfig(newConfig);
-    config = newConfig;
-    return liveModule;
-  });
-  liveModuleQueue = run.catch(() => {});
-  return run;
+  // The same queue as every other config change (updateConfig).
+  return updateConfig((c) => ({ ...c, liveModule: change({ ...(c.liveModule ?? {}) }) })).then((saved) => saved.liveModule);
 }
 
 /**
@@ -3559,9 +3580,7 @@ app.get("/api/network/setup", async (_req, res) => {
 
 /** Saves networkModule over the latest config, atomically. */
 async function saveNetworkModule(change) {
-  const newConfig = { ...config, networkModule: { ...(config.networkModule ?? {}), ...change } };
-  await saveConfig(newConfig);
-  config = newConfig;
+  await updateConfig((c) => ({ ...c, networkModule: { ...(c.networkModule ?? {}), ...change } }));
 }
 
 /**
@@ -3628,7 +3647,7 @@ app.post("/api/live/step", async (req, res) => {
 app.get("/api/preview", (_req, res) => {
   noteClientActivity();
   const p = currentPreview();
-  const img = (t) => (t ? `/api/preview/image/${encodeURIComponent(t.presentationId)}/${t.slideIndex}` : null);
+  const img = (t) => (t && picturesOn() ? `/api/preview/image/${encodeURIComponent(t.presentationId)}/${t.slideIndex}` : null);
   res.json({
     presentationName: p.presentationName ?? null,
     atEnd: p.atEnd,
@@ -3639,6 +3658,7 @@ app.get("/api/preview", (_req, res) => {
 });
 
 app.get("/api/preview/image/:pid/:idx", async (req, res) => {
+  if (!picturesOn()) return res.status(404).json({ error: "Slide pictures are off." });
   const p = currentPreview();
   const idx = Number(req.params.idx);
   const nowOrNext = [p.current, p.next].some((t) => t && t.presentationId === req.params.pid && t.slideIndex === idx);
@@ -3680,7 +3700,7 @@ app.post("/api/network/forget-phones", async (_req, res) => {
 });
 
 app.get("/api/live/safe-slides", (_req, res) => {
-  res.json({ safeSlides: safeSlides(config.liveModule?.safeSlides) });
+  res.json({ safeSlides: safeSlides(config.liveModule?.safeSlides), pictures: picturesOn() });
 });
 
 /** Saves a slide from Search as a safe slide. Reads nothing from ProPresenter. */
@@ -4326,13 +4346,11 @@ app.post("/api/library-sync/config", async (req, res) => {
     next.snapshotsToKeep = n;
   }
 
-  const newConfig = { ...config, librarySyncModule: next };
   try {
-    await saveConfig(newConfig);
+    await updateConfig((c) => ({ ...c, librarySyncModule: next }));
   } catch (err) {
     return res.status(500).json({ error: `Failed to save config.json: ${err.message}` });
   }
-  config = newConfig;
   res.json({ ok: true, settings: librarySyncSettings(), status: getLibrarySyncModuleStatus(config) });
 });
 
@@ -4497,6 +4515,7 @@ app.post("/api/spellcheck/scan", async (req, res) => {
   try {
     const only = one ? [{ id: one, name: getIndex().presentations?.[one]?.name ?? null }] : null;
     const { presentations, scannedCount, truncated, mediaUnreadable } = await scanPlaylist(playlistId, { only });
+    if (!picturesOn()) for (const p of presentations) for (const sl of p.slides) sl.pictureIndex = null;
     allowSpellcheckPictures(presentations);
     // Pictures from before a slide was removed are dropped from memory: when
     // the file's version can't be read (ProPresenter on another Mac), the
@@ -4520,14 +4539,17 @@ app.post("/api/spellcheck/scan", async (req, res) => {
  * actually landed. The previous version updated config first, so a failed write
  * left the running app disagreeing with the file on disk.
  */
-async function saveAllowlist(allowlist, res) {
-  const next = { ...config, spellcheckModule: { ...config.spellcheckModule, allowlist } };
+async function saveAllowlist(change, res) {
+  let allowlist;
   try {
-    await saveConfig(next);
+    const saved = await updateConfig((c) => {
+      allowlist = change(c.spellcheckModule?.allowlist ?? []);
+      return { ...c, spellcheckModule: { ...c.spellcheckModule, allowlist } };
+    });
+    allowlist = saved.spellcheckModule.allowlist;
   } catch (err) {
     return res.status(500).json({ error: `Failed to save the ignored words: ${err.message}` });
   }
-  config = next;
   return res.json({ ok: true, allowlist });
 }
 
@@ -4538,16 +4560,16 @@ async function saveAllowlist(allowlist, res) {
  * check; nothing is rendered by pressing it.
  */
 app.post("/api/slide-pictures", async (req, res) => {
-  const { prerender } = req.body ?? {};
-  if (typeof prerender !== "boolean") return res.status(400).json({ error: "prerender must be true or false" });
-  const next = { ...config, slidePictures: { playlists: [], ...config.slidePictures, prerender } };
+  const { prerender, show } = req.body ?? {};
+  if (prerender !== undefined && typeof prerender !== "boolean") return res.status(400).json({ error: "prerender must be true or false" });
+  if (show !== undefined && typeof show !== "boolean") return res.status(400).json({ error: "show must be true or false" });
+  if (prerender === undefined && show === undefined) return res.status(400).json({ error: "Send show and/or prerender." });
   try {
-    await saveConfig(next);
+    await updateConfig((c) => ({ ...c, slidePictures: { playlists: [], ...c.slidePictures, ...(prerender !== undefined ? { prerender } : {}), ...(show !== undefined ? { show } : {}) } }));
   } catch (err) {
     return res.status(500).json({ error: `Couldn't save it: ${err.message}` });
   }
-  config = next;
-  res.json({ ok: true, prerender });
+  res.json({ ok: true, prerender: config.slidePictures.prerender === true, show: picturesOn() });
 });
 
 /**
@@ -4559,13 +4581,11 @@ app.post("/api/slide-pictures", async (req, res) => {
 app.post("/api/service-feed", async (req, res) => {
   const cleaned = cleanServiceFeedSettings(req.body);
   if (!cleaned.ok) return res.status(400).json({ error: cleaned.error });
-  const next = applyServiceFeedSettings(config, cleaned.value, randomUUID);
   try {
-    await saveConfig(next);
+    await updateConfig((c) => applyServiceFeedSettings(c, cleaned.value, randomUUID));
   } catch (err) {
     return res.status(500).json({ error: `Couldn't save it: ${err.message}` });
   }
-  config = next;
   res.json({ ok: true, ...getServiceFeedModuleStatus(config), ...serviceFeed.state() });
 });
 
@@ -4579,14 +4599,14 @@ app.post("/api/spellcheck/allow", async (req, res) => {
   // set of known-good church vocabulary can be pasted in at once.
   const incoming = parseWordList(words ?? word);
   if (!incoming.length) return res.status(400).json({ error: "Type at least one word to ignore." });
-  return saveAllowlist(addToAllowlist(config.spellcheckModule?.allowlist ?? [], incoming), res);
+  return saveAllowlist((list) => addToAllowlist(list, incoming), res);
 });
 
 app.post("/api/spellcheck/unallow", async (req, res) => {
   const { word, words } = req.body ?? {};
   const outgoing = parseWordList(words ?? word);
   if (!outgoing.length) return res.status(400).json({ error: "Say which word to stop ignoring." });
-  return saveAllowlist(removeFromAllowlist(config.spellcheckModule?.allowlist ?? [], outgoing), res);
+  return saveAllowlist((list) => removeFromAllowlist(list, outgoing), res);
 });
 
 // --- Lyrics search-assist (Section 14) ---
@@ -4773,13 +4793,11 @@ app.post("/api/arrangement/folders", async (req, res) => {
       return res.status(400).json({ error: "folders must be an array of names, or null for all" });
     }
 
-    const newConfig = { ...config, arrangementModule: { ...config.arrangementModule, folders } };
     try {
-      await saveConfig(newConfig);
+      await updateConfig((c) => ({ ...c, arrangementModule: { ...c.arrangementModule, folders } }));
     } catch (err) {
       return res.status(500).json({ error: `Failed to save config.json: ${err.message}` });
     }
-    config = newConfig;
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: `Failed to update arrangement folders: ${err.message}` });
@@ -5310,8 +5328,9 @@ app.post("/api/image-crop/config", async (req, res) => {
     // so a bad path (permission denied, etc.) surfaces as a 400 the user
     // sees instead of leaving a broken enabled=true saved to disk.
     await startImageCropWatcher(getImageCropModuleStatus(newConfig) === "active" ? newConfig.imageCropModule : null);
-    config = newConfig;
-    await saveConfig(config);
+    // In turn with every other change; only imageCropModule is taken from
+    // the form, so a change made meanwhile elsewhere isn't undone.
+    await updateConfig((c) => ({ ...c, imageCropModule: newConfig.imageCropModule }));
     res.json({ ok: true, config: config.imageCropModule });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -5551,14 +5570,12 @@ app.post("/api/setup", async (req, res) => {
     return res.status(400).json({ error: "host, port, and a valid role are required" });
   }
 
-  const newConfig = { ...config, propresenter: { host, port: Number(port) }, role };
   try {
-    await saveConfig(newConfig);
+    await updateConfig((c) => ({ ...c, propresenter: { host, port: Number(port) }, role }));
   } catch (err) {
     return res.status(500).json({ error: `Failed to save config.json: ${err.message}` });
   }
 
-  config = newConfig;
   client = new ProPresenterClient(config.propresenter);
 
   res.json({ ok: true });
@@ -5655,7 +5672,7 @@ app.get("/api/health", async (_req, res) => {
   // is the thing to watch on a long service day, and only this machine sees it.
   propresenter.process = propresenterSamples.at(-1) ?? null;
   propresenter.load = propresenterLoad;
-  propresenter.slidePictures = { ...slidePicturesStatus, prerender: config.slidePictures?.prerender === true, onThisMac: client.isLocalHost };
+  propresenter.slidePictures = { ...slidePicturesStatus, show: picturesOn(), prerender: config.slidePictures?.prerender === true, onThisMac: client.isLocalHost };
   res.json({
     version,
     role: config.role ?? null,
@@ -5960,9 +5977,7 @@ const server = app.listen(port, "127.0.0.1", async () => {
   // atomically like every config change; a failure just means no feed yet.
   if (config.serviceFeedModule?.enabled && !config.serviceFeedModule.consoleId) {
     try {
-      const next = { ...config, serviceFeedModule: { ...config.serviceFeedModule, consoleId: randomUUID() } };
-      await saveConfig(next);
-      config = next;
+      await updateConfig((c) => ({ ...c, serviceFeedModule: { ...c.serviceFeedModule, consoleId: c.serviceFeedModule?.consoleId ?? randomUUID() } }));
     } catch (err) {
       console.error("Service feed: could not save this console's id:", err.message);
     }

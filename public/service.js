@@ -280,6 +280,9 @@ export function autoEndLine(a) {
 export function picturesHtml(status) {
   const run = status?.run;
   const last = status?.last;
+  if (status?.show === false) {
+    return `<div class="text-sm">Slide pictures are off, so none are drawn: Now and the menu show the slides' words. Turn them on in Settings › Phones › Slide pictures.</div>`;
+  }
   const key = (label, disabled = false) =>
     `<button type="button" id="service-pictures-btn" class="btn btn-outline btn-sm" ${disabled ? "disabled" : ""}>${label}</button>`;
   if (run?.running) {

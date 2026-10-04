@@ -31,6 +31,7 @@ export function initQuickSlides() {
   const host = document.getElementById("rail-quick");
   if (!host) return;
   let list = [];
+  let picturesShown = true;
   let key = "";
   let armed = null; // { btn, timer }
   let noteTimer = null;
@@ -93,7 +94,7 @@ export function initQuickSlides() {
 
   function paint() {
     const { shown, more } = quickSlidesView(list);
-    const next = JSON.stringify([shown, more]);
+    const next = JSON.stringify([shown, more, picturesShown]);
     if (next === key) return;
     key = next;
     disarm();
@@ -105,7 +106,7 @@ export function initQuickSlides() {
     const keys = shown
       .map(
         (sl, i) => `<button type="button" class="rf-quick-key" data-safe="${escapeHtml(sl.id)}" data-name="${escapeHtml(sl.label)}" title="${escapeHtml(sl.label)}" aria-label="${escapeHtml(sl.label)}">
-          <span class="rf-quick-pic"><img src="${img(sl)}" alt="" loading="lazy" /><span class="rf-quick-fallback">${escapeHtml(sl.label)}</span></span>
+          <span class="rf-quick-pic${picturesShown ? "" : " rf-quick-nopic"}">${picturesShown ? `<img src="${img(sl)}" alt="" loading="lazy" />` : ""}<span class="rf-quick-fallback">${escapeHtml(sl.label)}</span></span>
           <span class="rf-quick-num" aria-hidden="true"><i data-lucide="shield-check"></i><b>${i + 1}</b></span>
           <span class="rf-quick-again" aria-hidden="true">Again</span>
         </button>`
@@ -130,7 +131,10 @@ export function initQuickSlides() {
 
   async function load() {
     try {
-      list = (await fetch("/api/live/safe-slides").then((r) => r.json())).safeSlides ?? [];
+      const data = await fetch("/api/live/safe-slides").then((r) => r.json());
+      list = data.safeSlides ?? [];
+      // Slide pictures off: the keys show names, and ask for no picture.
+      picturesShown = data.pictures !== false;
     } catch {
       return; // keep what's shown: a blip shouldn't empty the menu
     }

@@ -37,3 +37,10 @@ test("Live's preview: Now and Next pictures, the end of a presentation, and the 
   assert.match(html, /Phone: Lee pressed Next slide/);
   assert.equal(livePreviewHtml({ current: null }), "");
 });
+
+test("Now and Next show the slide's words when there's no picture", () => {
+  const html = livePreviewHtml({ current: { slideNumber: 2, image: null, text: "Amazing grace" }, next: { slideNumber: 3, image: null, text: "How sweet the sound" }, atEnd: false });
+  assert.match(html, /Amazing grace/);
+  assert.match(html, /How sweet the sound/);
+  assert.doesNotMatch(html, /<img/);
+});
