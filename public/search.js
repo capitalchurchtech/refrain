@@ -172,6 +172,16 @@ export function initSearch() {
       return;
     }
     el.classList.remove("hidden");
+    // A notice that says `held` is one the server already knows Refresh would
+    // refuse -- performance mode is on, or something is live. Printing the
+    // button anyway would spend a press to show a sentence we have in hand,
+    // on the screen and for the operator least willing to press something
+    // whose outcome they can't predict. So say the reason instead of offering
+    // the remedy, in the route's own words.
+    if (notice.held) {
+      el.innerHTML = `<span class="rf-nominal">${escapeHtml(notice.message)}</span>`;
+      return;
+    }
     el.innerHTML = `
       <span class="rf-nominal">${escapeHtml(notice.message)}</span>
       <button id="index-refresh-btn" class="btn btn-chip ml-2">Refresh</button>`;

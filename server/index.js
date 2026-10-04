@@ -867,13 +867,26 @@ function startRebuild({ incremental = false, operatorInitiated = false } = {}) {
  * ProPresenter only just launched and is still busy loading (issue #11: a
  * crawl started at 113% CPU three minutes after launch).
  */
-async function operatorIndexRefusal() {
+/**
+ * The reasons an index run is held that can be answered without an await, so
+ * a screen can know *before* offering a button whether pressing it would be
+ * refused. Split out of operatorIndexRefusal() rather than duplicated, so the
+ * sentence an operator reads on Search is the same one the route would have
+ * sent back after a wasted press.
+ */
+function indexRunHeldReason() {
   if (performance.armed && performance.source !== "unknown") {
     return `Performance mode is on: ${describePerformance(performance)} The index won't run now; it catches up on its own after an hour with nothing on the screens.`;
   }
   // Performance mode arms after two minutes of content, so just after a
   // restart it can be off with a service on the screens.
   if (liveState.live) return "Something is on the screens, so the index won't run now: each presentation it reads makes ProPresenter wait. Run it when nothing is live.";
+  return null;
+}
+
+async function operatorIndexRefusal() {
+  const held = indexRunHeldReason();
+  if (held) return held;
   const readyFor = await propresenterReadyForMs();
   if (readyFor != null && readyFor < WATCH_SETTLE_MS) {
     const wait = Math.max(1, Math.ceil((WATCH_SETTLE_MS - readyFor) / 60_000));
@@ -1894,6 +1907,66 @@ function lockinStaleness(now = Date.now()) {
   return { message: `Not reindexing: locked in for "${lockin.name}" since ${new Date(lockin.startedAt).toLocaleDateString([], { weekday: "long" })}. Release it on the Service screen once the event is over.` };
 }
 
+/**
+ * A deck changed while performance mode was holding, so search is behind and
+ * "No matches" is a lie the operator has no way to see through.
+ *
+ * This is the special-event case above all: the operator imports a deck ten
+ * minutes before doors, or presses Lock in (which is the *right* press for an
+ * event with no set time), and from then on nothing reindexes. Search then
+ * answers "No matches" for a presentation that is sitting in the library,
+ * identically to how it answers for a word nobody ever wrote.
+ *
+ * Nothing here starts work of its own, so performance mode's promise is
+ * untouched. It only stops the operator being kept in the dark about work
+ * that is waiting.
+ *
+ * **It carries no Refresh.** It used to, on the reasoning that a press is
+ * operator-initiated and therefore allowed. The stability work for #11-#13
+ * ended that: `operatorIndexRefusal()` now refuses a run whenever performance
+ * mode is armed with a known source, which is every state this notice can
+ * appear in. So the button could only ever spend a press to print a sentence,
+ * and the sentence is better said up front -- the operator who will not press
+ * a control whose outcome they cannot predict is the one this notice is for.
+ * `indexRunHeldReason()` decides whether that is the case, so the notice and
+ * the route agree on the state even though they word it differently: the
+ * route explains a press that failed, this explains why there is nothing to
+ * press. The route's own sentence is too long for a row that sits beside the
+ * index chip at docked width, and the operator here does not need the
+ * mechanism named -- only that it fixes itself.
+ *
+ * Two conditions have to hold before saying any of it:
+ *
+ * - **ProPresenter has to be answering.** Performance mode also arms when it
+ *   is unreachable, not only when something is live, and an index that cannot
+ *   be read is the link's problem, not the index's. The readout and the LINK
+ *   lamp already report that; this notice stays out of the way.
+ * - **The watcher has to exist.** With `autoReindex: false` there is none, so
+ *   nothing local knows a file changed and this cannot fire at all. That is a
+ *   real gap for exactly the churches whose index drifts furthest, and it is
+ *   not closeable here: the signal would have to come from somewhere other
+ *   than a watcher that setting deliberately turns off.
+ */
+function deferredStaleness() {
+  if (!frozen()) return null;
+  if (!liveState.connected) return null;
+  if (!libraryWatch?.status()?.unreadChanges) return null;
+  const held = indexRunHeldReason();
+  if (!held) return null;
+  // Short on purpose. This row is `flex items-center` beside the index chip,
+  // so at docked width every extra word wraps and pushes the search box down
+  // -- and the booth path is the one place that cost is unacceptable. The
+  // reason (performance mode) is already on the PERF lamp and spelled out on
+  // Health; what the operator needs here is that search is behind and that
+  // the button beside this fixes it. No trailing "Refresh." either: the
+  // button says it.
+  // One sentence, no button: what is true, then what happens next. Both
+  // clauses hold for every reason `indexRunHeldReason()` gives -- performance
+  // mode armed by content, by hand, or by a lock-in, and content live just
+  // after a restart -- because all of them end when the screens go quiet.
+  return { message: "A presentation changed since this index. It catches up when the screens are quiet.", held: true };
+}
+
 function indexStatusPayload() {
   const index = getIndex();
   return {
@@ -1914,7 +1987,11 @@ function indexStatusPayload() {
       lastError: performance.lastError,
     },
     fullRebuildSuggestion: fullRebuildSuggestion(daysSinceFullBuild(index)),
-    staleness: lockinStaleness() ?? indexStaleness(index?.builtAt ?? null),
+    // Order is by how actionable each one is, not by severity. A named deck
+    // that changed minutes ago outranks "you have been locked in since
+    // Saturday", which outranks "this index is a few days old" -- and all
+    // three share the one Refresh button beside them.
+    staleness: deferredStaleness() ?? lockinStaleness() ?? indexStaleness(index?.builtAt ?? null),
     // Accuracy is reported separately from age because they are different
     // problems: a week-old index misses new songs, a stale-schema one can fire
     // the wrong slide. The second is worse and must not be readable as the first.
