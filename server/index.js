@@ -4195,6 +4195,25 @@ async function saveAllowlist(allowlist, res) {
   return res.json({ ok: true, allowlist });
 }
 
+/**
+ * Pictures ahead of time on or off, from Settings › Phones (owner,
+ * 2026-10-04). Saved to config.json (atomic), and swapped into the running
+ * config only once the write has landed. Takes effect at the next quiet
+ * check; nothing is rendered by pressing it.
+ */
+app.post("/api/slide-pictures", async (req, res) => {
+  const { prerender } = req.body ?? {};
+  if (typeof prerender !== "boolean") return res.status(400).json({ error: "prerender must be true or false" });
+  const next = { ...config, slidePictures: { playlists: [], ...config.slidePictures, prerender } };
+  try {
+    await saveConfig(next);
+  } catch (err) {
+    return res.status(500).json({ error: `Couldn't save it: ${err.message}` });
+  }
+  config = next;
+  res.json({ ok: true, prerender });
+});
+
 app.get("/api/spellcheck/allowlist", (_req, res) => {
   res.json({ allowlist: config.spellcheckModule?.allowlist ?? [] });
 });
@@ -5281,7 +5300,7 @@ app.get("/api/health", async (_req, res) => {
   // is the thing to watch on a long service day, and only this machine sees it.
   propresenter.process = propresenterSamples.at(-1) ?? null;
   propresenter.load = propresenterLoad;
-  propresenter.slidePictures = slidePicturesStatus;
+  propresenter.slidePictures = { ...slidePicturesStatus, prerender: config.slidePictures?.prerender === true, onThisMac: client.isLocalHost };
   res.json({
     version,
     role: config.role ?? null,

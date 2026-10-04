@@ -347,6 +347,22 @@ export function initHealth() {
 
     wireKillSwitch();
 
+    document.querySelectorAll("[data-prerender]").forEach((key) =>
+      key.addEventListener("click", async () => {
+        const prerender = key.dataset.prerender === "true";
+        const status = document.getElementById("prerender-status");
+        try {
+          const res = await fetch("/api/slide-pictures", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prerender }) });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error ?? res.statusText);
+          document.querySelectorAll("[data-prerender]").forEach((k) => k.setAttribute("aria-checked", String(k.dataset.prerender === String(prerender))));
+          if (status) status.textContent = prerender ? "On. Starts when nothing is on the screens and no service is near." : "Off.";
+        } catch (err) {
+          showFailure(`Couldn't change slide pictures: ${err.message}`);
+        }
+      })
+    );
+
     const updateNowBtn = document.getElementById("update-now-btn");
     if (updateNowBtn) {
       const statusEl = document.getElementById("update-status");
@@ -1794,7 +1810,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
   // Always here, off or on, because Health is where people look for setup.
   // The Phone panel (rail) does the work; this says the state and opens it.
   const phoneStatus = !net || net.status === "off"
-    ? "Off. Phones can search lyrics, see the current and next slide, flag slides, and (if you approve them) move slides."
+    ? "Off. Phones can flag slides and, if you approve them, send a stage message or a pager code."
     : net.status === "active"
       ? `On at ${escapeHtml((net.urls ?? [])[0] ?? "this Mac")}${net.pinMode === "none" ? ", with no PIN" : net.pinMode === "daily" ? ", with a daily PIN" : ", with a PIN"}.`
       : `Not running: ${escapeHtml((net.problems ?? []).join(" "))}`;
@@ -1804,6 +1820,33 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
         <h2 class="card-title text-base"><i data-lucide="smartphone" class="w-4 h-4 opacity-70"></i> Phones</h2>
         <div class="text-sm rf-measure">${phoneStatus}</div>
         <button type="button" id="health-open-phone" class="btn btn-outline btn-xs w-fit">Open the Phone panel</button>
+      </div>
+    </div>`;
+
+  // Pictures ahead of time (owner, 2026-10-04): here, beside Phones, because
+  // the phone's flag tray is what needs them. During a service nothing new is
+  // drawn, so a picture that wasn't rendered ahead just isn't shown.
+  const pictures = propresenter.slidePictures ?? {};
+  const picturesOn = pictures.prerender === true;
+  const picturesCard = `
+    <div class="card bg-base-200">
+      <div class="card-body p-3 gap-2">
+        <h2 class="card-title text-base"><i data-lucide="images" class="w-4 h-4 opacity-70"></i> Slide pictures</h2>
+        <p class="text-sm rf-measure">Phones and the Now screen only show pictures drawn before the service. Turn this on to draw today's service playlists while nothing is on the screens.</p>
+        <p class="text-xs opacity-70 rf-measure">ProPresenter holds on to memory for each picture it draws until it restarts, so restart ProPresenter after the pictures are drawn and before the service. The pictures are kept.</p>
+        <div class="rf-tabs" role="radiogroup" aria-label="Slide pictures ahead of time" style="margin-bottom:0">
+          <button type="button" role="radio" class="rf-tab" data-prerender="true" aria-checked="${picturesOn}"><span>On</span></button>
+          <button type="button" role="radio" class="rf-tab" data-prerender="false" aria-checked="${!picturesOn}"><span>Off</span></button>
+        </div>
+        <div id="prerender-status" class="text-xs opacity-70 rf-measure">${
+          pictures.onThisMac === false
+            ? "ProPresenter is on another Mac, so pictures can't be drawn ahead from here."
+            : picturesOn
+              ? pictures.lastRunAt
+                ? `${pictures.ready} ready for today's playlists (checked ${new Date(pictures.lastRunAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}${pictures.stopped ? "; stopped when something went live" : ""}).`
+                : "Waits until nothing is on the screens and no service is near, then starts. Needs today's services set up on Service › Day."
+              : "Off."
+        }</div>
       </div>
     </div>`;
 
@@ -2267,7 +2310,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
       ${panel("status", statusStrip, killCard, propresenterCard, updatesCard)}
       ${panel("search", libraryCard, indexCard)}
       ${panel("features", configCard, arrangementCard)}
-      ${panel("phones", phoneCard)}
+      ${panel("phones", phoneCard, picturesCard)}
       ${panel("customize", displayCard, welcomeCard, autostartCard)}
       ${panel("audit", duplicateNamesCard, preferredCard, themesCard, orphanedMediaCard)}
       <div class="text-xs opacity-50 text-center mt-2 flex flex-col items-center gap-1">
