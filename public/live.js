@@ -284,12 +284,18 @@ export function initLive() {
         </div>
 
         <div id="live-message-wrap" class="hidden">
-          <h2 class="rf-subhead">Messages</h2>
-          <!-- Messages with no fill-in field (countdowns, a fixed pager
-               line): Show and Take down, with what each says and whether it's
-               up. Listed rather than hidden, which used to leave the whole
-               section missing with no word why (handoff §39e). -->
-          <div id="live-message-plain" class="flex flex-col gap-2 mb-3"></div>
+          <div class="flex items-center justify-between gap-2">
+            <h2 class="rf-subhead">Messages</h2>
+            <span class="flex items-center gap-2">
+              <span id="live-messages-hidden-note" class="text-xs opacity-60"></span>
+              <button id="live-messages-edit" type="button" class="btn btn-chip" aria-pressed="false">Edit</button>
+            </span>
+          </div>
+          <!-- Edit: one row per ProPresenter message, to keep it here or put
+               it away (owner, 2026-10-04). Nothing is shown or taken down
+               while editing. -->
+          <p id="live-messages-editing" class="hidden text-sm mb-2">Choose which messages show here and on phones. Hidden ones stay in ProPresenter.</p>
+          <div id="live-messages-edit-list" class="hidden flex flex-col gap-2 mb-3"></div>
           <div id="live-message-poster" class="card bg-base-200 hidden">
             <div class="card-body p-3 gap-3">
               <select id="live-message-select" class="select select-bordered select-sm hidden"></select>
@@ -300,6 +306,16 @@ export function initLive() {
               </div>
             </div>
           </div>
+          <!-- Messages with no fill-in field (countdowns): Show and Take down,
+               with what each says and whether it's up. Folded, closed, under
+               the pager (owner, 2026-10-04: the pager and the stage message
+               are the ones used; the rest stay one press away). Its heading
+               says when one of them is on screen, so a running countdown
+               isn't hidden by the fold. -->
+          <details id="live-message-plain-wrap" class="rf-looks-fold hidden mt-3">
+            <summary class="rf-subhead cursor-pointer">Other messages <span id="live-message-plain-count" class="opacity-60"></span></summary>
+            <div id="live-message-plain" class="flex flex-col gap-2 mt-2"></div>
+          </details>
         </div>
 
         <div id="live-macros-wrap" class="hidden">
@@ -401,16 +417,22 @@ export function initLive() {
   // posted from here, so timer-only messages are left out. When several
   // qualify, a small picker chooses between them.
   function renderMessages(messages) {
-    const all = messages ?? [];
-    renderedMessageKey = messageKey(all);
+    messageList = messages ?? [];
+    const all = messageList.filter((m) => !m.hidden);
+    renderedMessageKey = messageKey(messageList);
     const postable = all.filter((m) => m.tokens?.some((t) => t.kind === "text"));
     const plain = all.filter((m) => !postable.includes(m));
     const wrap = document.getElementById("live-message-wrap");
-    if (!all.length) return;
+    // Shown while any message exists, even with all of them hidden, so the
+    // Edit that brings them back is still there.
+    if (!messageList.length) return;
     wrap.classList.remove("hidden");
-    renderPlainMessages(plain);
-    if (!postable.length) return;
-    document.getElementById("live-message-poster").classList.remove("hidden");
+    paintMessageEdit();
+    wireMessageEdit();
+    const poster = document.getElementById("live-message-poster");
+    renderPlainMessages(editingMessages ? [] : plain);
+    poster.classList.toggle("hidden", editingMessages || !postable.length);
+    if (editingMessages || !postable.length) return;
 
     const select = document.getElementById("live-message-select");
     const fields = document.getElementById("live-message-fields");
@@ -482,6 +504,13 @@ export function initLive() {
     const host = document.getElementById("live-message-plain");
     if (!host) return;
     host.innerHTML = plainMessagesHtml(plain);
+    // The fold: hidden when there's nothing in it; its heading counts them
+    // and says when one is on screen, since a closed fold would hide that.
+    const list = plain ?? [];
+    const onScreen = list.filter((m) => m.active).length;
+    document.getElementById("live-message-plain-wrap")?.classList.toggle("hidden", !list.length);
+    const count = document.getElementById("live-message-plain-count");
+    if (count) count.textContent = list.length ? `(${list.length})${onScreen ? ` · ${onScreen} on screen` : ""}` : "";
     host.querySelectorAll("[data-message-show]").forEach((btn) =>
       btn.addEventListener("click", async () => {
         await fire(btn, "/api/live/message", { id: btn.dataset.messageShow, values: [] }, "Show message");
@@ -501,12 +530,13 @@ export function initLive() {
   // list both need rebuilding, so Live redraws itself; otherwise only the
   // rows' "On screen" state is updated.
   let renderedMessageKey = "";
-  const messageKey = (list) => (list ?? []).map((m) => `${m.id}:${m.tokens?.some((t) => t.kind === "text") ? 1 : 0}`).join("|");
+  const messageKey = (list) => (list ?? []).map((m) => `${m.id}:${m.tokens?.some((t) => t.kind === "text") ? 1 : 0}:${m.hidden ? 1 : 0}`).join("|");
   async function refreshMessages() {
     try {
       const { messages } = await fetch("/api/live/controls").then((r) => r.json());
       if (messageKey(messages) !== renderedMessageKey) return render();
-      renderPlainMessages((messages ?? []).filter((m) => !m.tokens?.some((t) => t.kind === "text")));
+      if (editingMessages) return;
+      renderPlainMessages((messages ?? []).filter((m) => !m.hidden && !m.tokens?.some((t) => t.kind === "text")));
     } catch {
       // Leave the list as it was; the next visit re-reads it.
     }
@@ -514,6 +544,71 @@ export function initLive() {
 
   let messageRecent = {};
   let lookCount = 0;
+
+  /**
+   * Edit on the Messages heading: every ProPresenter message as a row with
+   * Keep here / Hide. Saved per machine (liveModule.hiddenMessages); a hidden
+   * message leaves Now and the phone, and stays in ProPresenter.
+   */
+  let messageList = [];
+  let editingMessages = false;
+  function paintMessageEdit() {
+    const edit = document.getElementById("live-messages-edit");
+    const note = document.getElementById("live-messages-hidden-note");
+    const line = document.getElementById("live-messages-editing");
+    const list = document.getElementById("live-messages-edit-list");
+    if (!edit) return;
+    const hiddenCount = messageList.filter((m) => m.hidden).length;
+    note.textContent = hiddenCount && !editingMessages ? `${hiddenCount} hidden` : "";
+    edit.textContent = editingMessages ? "Done" : "Edit";
+    edit.setAttribute("aria-pressed", String(editingMessages));
+    line.classList.toggle("hidden", !editingMessages);
+    list.classList.toggle("hidden", !editingMessages);
+    list.innerHTML = editingMessages
+      ? messageList
+          .map(
+            (m) => `<div class="flex items-center justify-between gap-2 bg-base-200 rounded p-2${m.hidden ? " opacity-60" : ""}">
+          <span class="min-w-0 truncate">${escapeHtml(m.name)}</span>
+          <span class="rf-tabs shrink-0" role="radiogroup" aria-label="${escapeHtml(m.name)}" style="margin-bottom:0">
+            <button type="button" role="radio" class="rf-tab live-message-vis" data-id="${escapeHtml(m.id)}" data-hidden="false" aria-checked="${!m.hidden}"><span>Show here</span></button>
+            <button type="button" role="radio" class="rf-tab live-message-vis" data-id="${escapeHtml(m.id)}" data-hidden="true" aria-checked="${Boolean(m.hidden)}"><span>Hide</span></button>
+          </span>
+        </div>`
+          )
+          .join("")
+      : "";
+    list.querySelectorAll(".live-message-vis").forEach((b) =>
+      b.addEventListener("click", async () => {
+        const hidden = b.dataset.hidden === "true";
+        try {
+          const res = await fetch("/api/live/visibility", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "message", id: b.dataset.id, hidden }) });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error ?? res.statusText);
+          const set = new Set(data.hiddenMessages ?? []);
+          messageList = messageList.map((m) => ({ ...m, hidden: set.has(m.id) }));
+          renderedMessageKey = messageKey(messageList);
+          paintMessageEdit();
+        } catch (err) {
+          setStatus(`Couldn't save that: ${err.message}`);
+        }
+      })
+    );
+  }
+  // Wired once per drawing of Now (the key is new each time Now is drawn).
+  // Done redraws Now rather than re-running the poster's setup here, which
+  // would give Post a second click handler and post twice.
+  function wireMessageEdit() {
+    const edit = document.getElementById("live-messages-edit");
+    if (!edit || edit.dataset.wired) return;
+    edit.dataset.wired = "1";
+    edit.addEventListener("click", () => {
+      editingMessages = !editingMessages;
+      if (!editingMessages) return render();
+      paintMessageEdit();
+      renderPlainMessages([]);
+      document.getElementById("live-message-poster")?.classList.add("hidden");
+    });
+  }
 
   /**
    * Which Look is on, in the folded heading and on its tile, so a tap on the
@@ -691,7 +786,7 @@ export function initLive() {
     edit.setAttribute("aria-pressed", String(editingSafe));
     if (!safeList.length) {
       editingSafe = false;
-      grid.innerHTML = `<p class="text-sm opacity-70 col-span-full">None yet. On Search, press <i data-lucide="shield-check" class="w-4 h-4 inline"></i> on a slide to keep it here.</p>`;
+      grid.innerHTML = `<p class="text-sm opacity-70 col-span-full">None yet. On Search, press <strong>Safe slide</strong> beside any slide to keep it here.</p>`;
     } else if (editingSafe) {
       grid.innerHTML = safeList
         .map(

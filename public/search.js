@@ -428,7 +428,7 @@ export function initSearch() {
                   <button class="btn btn-chip show-in-editor-btn" data-presentation-id="${r.presentationId}" title="Opens in ProPresenter's editor. Nothing goes to the screens.">
                     Show slide ${r.slideIndex + 1}
                   </button>
-                  <button class="btn btn-chip make-safe-btn" aria-label="Keep as a safe slide on Live" title="Keep as a safe slide on Live" data-presentation-id="${r.presentationId}" data-presentation-name="${escapeHtml(r.presentationName ?? "")}" data-slide-index="${r.slideIndex}" data-group-id="${escapeHtml(r.groupId ?? "")}" data-group-offset="${r.groupOffset ?? ""}" data-slide-text="${escapeHtml(r.snippet ?? "")}">${SHIELD_SVG}</button>
+                  <button class="btn btn-chip make-safe-btn" title="Keep this slide to put up in a hurry, from Service › Now and the menu's quick slides" data-presentation-id="${r.presentationId}" data-presentation-name="${escapeHtml(r.presentationName ?? "")}" data-slide-index="${r.slideIndex}" data-group-id="${escapeHtml(r.groupId ?? "")}" data-group-offset="${r.groupOffset ?? ""}" data-slide-text="${escapeHtml(r.snippet ?? "")}">${SHIELD_SVG}<span class="make-safe-label">Safe slide</span></button>
                   <button class="btn btn-brand btn-xs go-live-btn" data-presentation-id="${r.presentationId}" data-slide-index="${r.slideIndex}" data-group-id="${escapeHtml(r.groupId ?? "")}" data-group-offset="${r.groupOffset ?? ""}" data-slide-text="${escapeHtml(r.snippet ?? "")}" data-presentation-name="${escapeHtml(r.presentationName ?? "")}" data-arrangement-name="${escapeHtml(r.arrangementName ?? "")}">
                     Go Live
                   </button>
@@ -608,8 +608,11 @@ export function initSearch() {
         safeBtn.classList.add("rf-safe-kept");
         // The menu's quick slides, if Live is on, listen for this.
         document.dispatchEvent(new CustomEvent("refrain:safe-slides-changed"));
-        safeBtn.title = `Kept on Live as "${data.added?.label ?? "safe slide"}"`;
-        safeBtn.setAttribute("aria-label", safeBtn.title);
+        // Said on the key itself: an icon changing colour was too quiet to
+        // notice (owner, 2026-10-04: "there's no UI at all for this").
+        const label = safeBtn.querySelector(".make-safe-label");
+        if (label) label.textContent = "Kept";
+        safeBtn.title = `Kept as a safe slide, "${data.added?.label ?? "safe slide"}", on Service › Now and in the menu`;
       } catch (err) {
         showFailure(`Couldn't keep that slide: ${err.message}`);
       } finally {

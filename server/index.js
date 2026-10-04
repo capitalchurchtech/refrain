@@ -114,7 +114,7 @@ import { createThumbStore } from "./thumb-store.js";
 import { readFingerprint } from "./index-fingerprint.js";
 import { envEntries, applyEnvEdits, saveEnvFile, readText as readEnvText } from "./env-file.js";
 import { crossSiteRefused } from "./request-guard.js";
-import { markHidden, setHidden, isControlId, rememberValues } from "./live-visibility.js";
+import { markHidden, setHidden, isControlId, rememberValues, hiddenIds } from "./live-visibility.js";
 import { safeSlides, addSafeSlide, removeSafeSlide, renameSafeSlide, moveSafeSlide } from "./safe-slides.js";
 import { stageMessages, addStageMessage, removeStageMessage, editStageMessage, moveStageMessage, cleanStageText, messageFieldValue } from "./stage-messages.js";
 import { layoutThemes, themesInDeck, themeReport } from "./theme-report.js";
@@ -1317,7 +1317,9 @@ function startRemoteListener() {
     // Messages a phone can fill in: those with a text field (a pager code).
     messages: async () => {
       const recent = config.liveModule?.messageRecent ?? {};
+      const hidden = new Set(hiddenIds(config.liveModule?.hiddenMessages));
       return (await client.getMessages())
+        .filter((m) => !hidden.has(m.id))
         .map((m) => ({ id: m.id, name: m.name, active: m.active, fields: m.tokens.filter((t) => t.kind === "text").map((t) => t.name), recent: recent[m.id] ?? {} }))
         .filter((m) => m.fields.length);
     },
@@ -3182,7 +3184,7 @@ app.get("/api/live/controls", async (_req, res) => {
     client.getMessages().catch(() => []),
     client.getCurrentLook().catch(() => null),
   ]);
-  res.json({ looks, currentLook, macros: markHidden(macros, config.liveModule?.hiddenMacros), messages, messageRecent: config.liveModule?.messageRecent ?? {} });
+  res.json({ looks, currentLook, macros: markHidden(macros, config.liveModule?.hiddenMacros), messages: markHidden(messages, config.liveModule?.hiddenMessages), messageRecent: config.liveModule?.messageRecent ?? {} });
 });
 
 /** Just the current Look, for Live to refresh after a Look or a macro. */
@@ -3441,11 +3443,15 @@ app.post("/api/live/safe-slides/:id", async (req, res) => {
  */
 app.post("/api/live/visibility", async (req, res) => {
   const { kind, id, hidden } = req.body ?? {};
-  if (kind !== "macro") return res.status(400).json({ error: 'kind must be "macro"' });
+  // Macros, and messages (owner, 2026-10-04: "we really only want the pager
+  // and the stage messages, but let the church decide"). A hidden message
+  // stays in ProPresenter; it leaves Now and the phone.
+  const field = { macro: "hiddenMacros", message: "hiddenMessages" }[kind];
+  if (!field) return res.status(400).json({ error: 'kind must be "macro" or "message"' });
   if (!isControlId(id) || typeof hidden !== "boolean") return res.status(400).json({ error: "id and hidden are required" });
-  const saved = await saveLiveModule(res, (m) => ({ ...m, hiddenMacros: setHidden(m.hiddenMacros, id, hidden) }));
+  const saved = await saveLiveModule(res, (m) => ({ ...m, [field]: setHidden(m[field], id, hidden) }));
   if (!saved) return;
-  res.json({ ok: true, hiddenMacros: saved.hiddenMacros });
+  res.json({ ok: true, [field]: saved[field] });
 });
 
 app.post("/api/live/clear", async (req, res) => {

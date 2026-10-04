@@ -888,7 +888,11 @@ export function initHealth() {
 
     const envShow = document.getElementById("env-show");
     envShow?.addEventListener("change", () => {
-      container.querySelectorAll(".env-value").forEach((i) => (i.type = envShow.checked ? "text" : "password"));
+      // Masked by CSS, not type="password": Settings is always in the page, and
+      // Chrome paired a password field here with the search box and offered to
+      // save the search as a login, which could also have stored a real secret
+      // in the browser (owner, 2026-10-04).
+      container.querySelectorAll(".env-value").forEach((i) => (i.dataset.masked = String(!envShow.checked)));
     });
     const envSave = document.getElementById("env-save");
     envSave?.addEventListener("click", async () => {
@@ -1497,7 +1501,7 @@ function renderEnvSection(envRequirements, entries) {
                   (e) => `
               <div class="rf-field">
                 <label for="env-${escapeHtml(e.name)}" class="font-mono">${escapeHtml(e.name)}${e.inExample ? "" : ` <span class="opacity-60">(not in .env.example)</span>`}</label>
-                <input type="password" id="env-${escapeHtml(e.name)}" class="input input-bordered input-sm font-mono env-value" data-name="${escapeHtml(e.name)}" data-original="${escapeHtml(e.value)}" value="${escapeHtml(e.value)}" autocomplete="off" spellcheck="false" />
+                <input type="text" data-masked="true" id="env-${escapeHtml(e.name)}" class="input input-bordered input-sm font-mono env-value" data-1p-ignore data-lpignore="true" data-name="${escapeHtml(e.name)}" data-original="${escapeHtml(e.value)}" value="${escapeHtml(e.value)}" autocomplete="off" spellcheck="false" />
               </div>`
                 )
                 .join("")}

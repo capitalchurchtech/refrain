@@ -69,7 +69,7 @@
   "slideFlagsModule": {
     "folder": null
   },
-  "_liveModule": "Live screen choices. hiddenMacros is the ProPresenter macro ids the church has put away with Edit on the Macros heading; they stay in ProPresenter and can be brought back from the same place. safeSlides is up to 8 known-good slides (a logo, a blank, a standing announcement) kept with the shield on a Search result and shown above Clear on Live; each is stored by the slide's anchor, and refuses to fire if the presentation no longer has that slide. messageRecent is the last five values posted into each message field (for example pager codes), offered as taps under the field; it fills in, it never posts.",
+  "_liveModule": "Live screen choices. hiddenMacros is the ProPresenter macro ids the church has put away with Edit on the Macros heading; they stay in ProPresenter and can be brought back from the same place. safeSlides is up to 8 known-good slides (a logo, a blank, a standing announcement) kept with the shield on a Search result and shown above Clear on Live; each is stored by the slide's anchor, and refuses to fire if the presentation no longer has that slide. messageRecent is the last five values posted into each message field (for example pager codes), offered as taps under the field; it fills in, it never posts. hiddenMessages is the ProPresenter message ids put away with Edit on the Messages heading (left off Now and the phone); they stay in ProPresenter and can be brought back from the same place. stageMessages is the stage message presets, edited on Now; absent means the three defaults.",
   "liveModule": {
     "hiddenMacros": [],
     "safeSlides": [],

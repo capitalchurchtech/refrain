@@ -707,6 +707,11 @@ html.blackroom .spellcheck-live-btn {
 #results .make-safe-btn.rf-safe-kept {
   color: var(--rf-plum-lit);
 }
+/* Shield and words together: the bare shield read as decoration. */
+#results .make-safe-btn {
+  gap: 6px;
+  white-space: nowrap;
+}
 
 /* The slide chosen from the keyboard (handoff §39c). An outline on the row,
    not a fill, so it reads as "this one" without looking like a pressed or
@@ -4254,6 +4259,10 @@ html.blackroom #nav-rail.w-36 #rail-foot > .btn:hover {
 .live-message-token {
   text-transform: uppercase;
 }
+/* The hint stays in plain case; only what's typed is shown in capitals. */
+.live-message-token::placeholder {
+  text-transform: none;
+}
 
 /* ============================================================
    SEARCH: WHICH LIBRARIES (owner, 2026-10-03)
@@ -4391,4 +4400,12 @@ html.blackroom #nav-rail.w-36 #rail-foot > .btn:hover {
   gap: 12px;
   max-width: 34rem;
   width: 100%;
+}
+
+/* .env values on Settings › Features, masked until "Show values". By CSS
+   rather than type="password", so the browser never takes the page for a
+   login form and offers to save a search, or a secret, as a password. Set
+   with a data attribute from health.js, so there's no JS-only class. */
+.env-value[data-masked="true"] {
+  -webkit-text-security: disc;
 }
