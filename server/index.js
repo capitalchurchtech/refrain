@@ -30,6 +30,7 @@ import {
   registerProviders,
   registerDeliveryBackends,
   getReportModuleStatus,
+  getServiceFeedModuleStatus,
   getNetworkModuleStatus,
   deliveryBackendFor,
   cleanFolderSetting,
@@ -120,7 +121,9 @@ import { stageMessages, addStageMessage, removeStageMessage, editStageMessage, m
 import { layoutThemes, themesInDeck, themeReport } from "./theme-report.js";
 import { createRemoteApp, pushRecent, serviceProgress, pinFailureGuard } from "./remote.js";
 import { dailyPin, newSecret, endOfDay } from "./remote-auth.js";
+import { randomUUID } from "node:crypto";
 import { writeAtomic } from "./append-store.js";
+import { createServiceFeed, cleanServiceFeedSettings, applyServiceFeedSettings, effectiveWindows } from "./service-feed.js";
 import {
   DEFAULT_DAYS_FOLDER,
   DEFAULT_LEAD_MINUTES,
@@ -1602,6 +1605,26 @@ async function pruneDiagnostics(now = Date.now()) {
 setTimeout(() => pruneDiagnostics(), 30_000).unref();
 setInterval(() => pruneDiagnostics(), 86_400_000).unref();
 
+// Service feed (server/service-feed.js): off unless the church sets it up, and
+// it only talks to the address they typed in. Status reads the heartbeat's
+// cache, never ProPresenter; logs are copies of the files above, sent only when
+// someone presses Send log on the Service screen.
+const SERVICE_FEED_STATE = "./data/service-feed";
+const serviceFeed = createServiceFeed({
+  getModule: () => config.serviceFeedModule,
+  getLive: () => liveStatePayload(),
+  isFrozen: () => frozen(),
+  appVersion: version,
+  listLogs: async () => {
+    const names = await readdir(DIAGNOSTICS_DIR).catch(() => []);
+    return Promise.all(names.map(async (name) => ({ name, size: (await stat(path.join(DIAGNOSTICS_DIR, name)).catch(() => ({ size: 0 }))).size })));
+  },
+  readLog: (name) => readFile(path.join(DIAGNOSTICS_DIR, name), "utf-8"),
+  loadSent: async () => JSON.parse(await readFile(path.join(SERVICE_FEED_STATE, "sent.json"), "utf-8").catch(() => "{}")),
+  saveSent: (sent) => writeAtomic(SERVICE_FEED_STATE, "sent.json", sent),
+});
+setInterval(() => serviceFeed.tickStatus().catch(() => {}), 2_000).unref();
+
 onProPresenterCall(({ path: p, method, ms, ok, timedOut }) => {
   const kind = classifyCall(p, method);
   callStats.record({ kind, ms, ok, timedOut });
@@ -2345,6 +2368,7 @@ function servicePayload(now = Date.now()) {
     dayEnded: state.dayEnds.length ? { at: jsonTime(state.dayEnds.at(-1).at), summaryFile: state.dayEnds.at(-1).summaryFile } : null,
     reopened: state.reopened,
     report: reportPayload(state),
+    telemetry: { status: getServiceFeedModuleStatus(config).status, lastLogOkAt: serviceFeed.state().lastLogOkAt },
     holdingPace: holdHeartbeatPace(now),
     beatMs: heartbeatInterval({ lastClientAt, hold: holdHeartbeatPace(now), now }),
     performance: { armed: performance.armed, source: performance.source },
@@ -2695,6 +2719,13 @@ app.post("/api/service/send-summary", async (_req, res) => {
   } catch (err) {
     res.status(502).json({ error: err.message, ...servicePayload() });
   }
+});
+
+/** Send log (Service screen): hands this machine's diagnostics to the announcement server. */
+app.post("/api/service/send-log", async (_req, res) => {
+  const out = await serviceFeed.sendLogs();
+  // Also pressed from Settings > Telemetry, so it must not need the Service screen.
+  res.status(out.ok ? 200 : 409).json({ ...out, ...(serviceModuleOn() ? servicePayload() : {}) });
 });
 
 /** The latest summary for a day, as Markdown. */
@@ -4270,6 +4301,25 @@ app.post("/api/slide-pictures", async (req, res) => {
   res.json({ ok: true, prerender });
 });
 
+/**
+ * Settings > Telemetry. Saves the station's name, address, slide-text choice and
+ * send windows to config.json (atomic, swapped in once written). The key is a
+ * secret and stays in .env. Takes effect on the next tick; a station gets its
+ * id the first time it is turned on.
+ */
+app.post("/api/service-feed", async (req, res) => {
+  const cleaned = cleanServiceFeedSettings(req.body);
+  if (!cleaned.ok) return res.status(400).json({ error: cleaned.error });
+  const next = applyServiceFeedSettings(config, cleaned.value, randomUUID);
+  try {
+    await saveConfig(next);
+  } catch (err) {
+    return res.status(500).json({ error: `Couldn't save it: ${err.message}` });
+  }
+  config = next;
+  res.json({ ok: true, ...getServiceFeedModuleStatus(config), ...serviceFeed.state() });
+});
+
 app.get("/api/spellcheck/allowlist", (_req, res) => {
   res.json({ allowlist: config.spellcheckModule?.allowlist ?? [] });
 });
@@ -5418,6 +5468,18 @@ app.get("/api/health", async (_req, res) => {
     envRequirements: getEnvRequirements(config),
     networkModule: { ...getNetworkModuleStatus(config, port), urls: getNetworkModuleStatus(config, port).status === "active" ? networkUrls() : [], pinMode: remotePinMode() },
     reportModule: getReportModuleStatus(config),
+    serviceFeedModule: {
+      ...getServiceFeedModuleStatus(config),
+      ...serviceFeed.state(),
+      settings: {
+        enabled: Boolean(config.serviceFeedModule?.enabled),
+        name: config.serviceFeedModule?.name ?? "",
+        url: config.serviceFeedModule?.url ?? "",
+        includeSlideText: config.serviceFeedModule?.includeSlideText === true,
+        windows: effectiveWindows(config.serviceFeedModule),
+        keySet: Boolean(process.env.SERVICE_FEED_TOKEN),
+      },
+    },
   });
 });
 
@@ -5630,6 +5692,18 @@ const server = app.listen(port, "127.0.0.1", async () => {
       }
     } catch (err) {
       console.error("Service days could not start:", err.message);
+    }
+  }
+
+  // The service feed names this console by a stable id it makes once. Written
+  // atomically like every config change; a failure just means no feed yet.
+  if (config.serviceFeedModule?.enabled && !config.serviceFeedModule.consoleId) {
+    try {
+      const next = { ...config, serviceFeedModule: { ...config.serviceFeedModule, consoleId: randomUUID() } };
+      await saveConfig(next);
+      config = next;
+    } catch (err) {
+      console.error("Service feed: could not save this console's id:", err.message);
     }
   }
 

@@ -435,7 +435,7 @@ Either way you have to restart. The running server doesn't reload its own code o
 
 ## Privacy
 
-Refrain talks only to services you set up yourself: your own ProPresenter, and optionally your chosen church management API or storage backend. Image cropping and QR generation never leave your machine at all. There is no telemetry, no analytics, and no phoning home to anything the project controls. This is a real, checkable claim, and we intend to keep it that way.
+Refrain talks only to services you set up yourself: your own ProPresenter, and optionally your chosen church management API or storage backend. Image cropping and QR generation never leave your machine at all. There is no telemetry, no analytics, and no phoning home to anything the project controls. The one feature that sends status off the machine, the [service feed](docs/service-feed.md), is off until a church sets it up and only ever talks to the address that church typed in. This is a real, checkable claim, and we intend to keep it that way.
 
 What Refrain does record stays on the machine. During a service it writes a line a minute to its own log (`logs/refrain.out.log` when installed to start at login): how often it asked ProPresenter for something and how long that took, its own CPU and memory, and ProPresenter's. It also keeps the same numbers as one JSON line a minute in `data/diagnostics/`, one file per day, deleted after 14 days. Nothing reads these but you. They exist so that after a bad Sunday there's a record of what Refrain was doing.
 

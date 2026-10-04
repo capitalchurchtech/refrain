@@ -241,6 +241,18 @@ export function renderSendHtml(report) {
     ${last}`;
 }
 
+/** Send log: only when Telemetry is set up. A person presses it, after the service. */
+export function renderLogSendHtml(telemetry) {
+  if (!telemetry || telemetry.status === "off") return "";
+  if (telemetry.status !== "active") return `<div class="text-xs opacity-70">Sending the log isn't set up. See Settings &gt; Telemetry.</div>`;
+  const last = telemetry.lastLogOkAt ? `Last sent at ${escapeHtml(formatClock(telemetry.lastLogOkAt, { seconds: false }))}.` : "Not sent yet.";
+  return `
+    <div class="flex items-center justify-between gap-3 flex-wrap">
+      <div class="text-xs opacity-70">Sends this station's log to your announcement server so the service can be reviewed. ${last}</div>
+      <button type="button" id="service-send-log-btn" class="btn btn-outline btn-sm">Send log</button>
+    </div>`;
+}
+
 export function renderEndHtml(data) {
   if (data.dayEnded && !data.reopened) {
     return `
@@ -248,7 +260,8 @@ export function renderEndHtml(data) {
         <div class="text-sm">Day ended at ${escapeHtml(formatClock(data.dayEnded.at, { seconds: false }))}. Summary saved.</div>
         <div class="flex gap-2"><button type="button" id="service-summary-btn" class="btn btn-outline btn-sm">View summary</button></div>
       </div>
-      ${renderSendHtml(data.report)}`;
+      ${renderSendHtml(data.report)}
+      ${renderLogSendHtml(data.telemetry)}`;
   }
   const again = data.reopened ? `<div class="text-sm">More went live after the last End. End the day again for a new summary; the earlier one is kept.</div>` : "";
   return `
@@ -256,7 +269,8 @@ export function renderEndHtml(data) {
     <div class="flex items-center justify-between gap-3 flex-wrap">
       <div class="text-xs opacity-70">Closes today's services and any lock-in, compares the songs with the plan (the plan isn't changed), and writes the day summary.</div>
       <button type="button" id="service-end-day-btn" class="btn btn-outline btn-sm">End the day</button>
-    </div>`;
+    </div>
+    ${renderLogSendHtml(data.telemetry)}`;
 }
 
 export function paceNote(data) {
@@ -412,6 +426,19 @@ export function initService() {
         paint(await post("/api/service/send-summary"));
       } catch (err) {
         showFailure(`The summary didn't send: ${err.message}`);
+        load();
+      }
+    });
+    document.getElementById("service-send-log-btn")?.addEventListener("click", async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      btn.textContent = "Sending...";
+      try {
+        const data = await post("/api/service/send-log");
+        paint(data);
+        if (!data.sent) showFailure("Nothing new to send. The server already has every log.");
+      } catch (err) {
+        showFailure(`The log didn't send: ${err.message}`);
         load();
       }
     });

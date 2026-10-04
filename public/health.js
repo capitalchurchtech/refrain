@@ -363,6 +363,60 @@ export function initHealth() {
       })
     );
 
+    // Telemetry tab: collected from the fields, validated by the server.
+    const feedWindows = document.getElementById("feed-windows");
+    if (feedWindows) {
+      const radio = (attr, val) => document.querySelector(`[${attr}][aria-checked="true"]`)?.getAttribute(attr) === val;
+      document.querySelectorAll("[data-feed-enabled], [data-feed-text]").forEach((key) =>
+        key.addEventListener("click", () => {
+          const attr = key.hasAttribute("data-feed-enabled") ? "data-feed-enabled" : "data-feed-text";
+          document.querySelectorAll(`[${attr}]`).forEach((k) => k.setAttribute("aria-checked", String(k === key)));
+        })
+      );
+      feedWindows.addEventListener("click", (e) => e.target.closest("[data-feed-remove]")?.closest("[data-feed-window]")?.remove());
+      document.getElementById("feed-add-window").addEventListener("click", () => {
+        feedWindows.insertAdjacentHTML("beforeend", feedWindowRow({ days: ["sun"], from: "09:00", until: "14:00" }));
+      });
+      document.getElementById("feed-send-log").addEventListener("click", async (e) => {
+        const btn = e.currentTarget;
+        const status = document.getElementById("feed-status");
+        btn.disabled = true;
+        try {
+          const res = await fetch("/api/service/send-log", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error ?? res.statusText);
+          status.textContent = data.sent ? `Sent ${data.sent} day${data.sent === 1 ? "" : "s"} of log.` : "Nothing new to send. The server already has every log.";
+        } catch (err) {
+          showFailure(`The log didn't send: ${err.message}`);
+        } finally {
+          btn.disabled = false;
+        }
+      });
+      document.getElementById("feed-save").addEventListener("click", async () => {
+        const status = document.getElementById("feed-status");
+        const windows = [...feedWindows.querySelectorAll("[data-feed-window]")].map((row) => ({
+          days: [...row.querySelectorAll("[data-feed-day]")].filter((c) => c.checked).map((c) => c.dataset.feedDay),
+          from: row.querySelector("[data-feed-from]").value,
+          until: row.querySelector("[data-feed-until]").value,
+        }));
+        const body = {
+          enabled: radio("data-feed-enabled", "true"),
+          name: document.getElementById("feed-name").value,
+          url: document.getElementById("feed-url").value,
+          includeSlideText: radio("data-feed-text", "true"),
+          windows,
+        };
+        try {
+          const res = await fetch("/api/service-feed", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error ?? res.statusText);
+          status.textContent = data.status === "misconfigured" ? `Saved, but not ready: ${(data.problems ?? []).join(" ")}` : body.enabled ? "Saved." : "Saved. Off.";
+        } catch (err) {
+          showFailure(`Couldn't save telemetry: ${err.message}`);
+        }
+      });
+    }
+
     const updateNowBtn = document.getElementById("update-now-btn");
     if (updateNowBtn) {
       const statusEl = document.getElementById("update-status");
@@ -1101,6 +1155,17 @@ function renderArrangementFoldersSection({ folders, selected, error }) {
 // escapeHtml() output straight into attribute values (data-tip="...",
 // value="...", etc.), where an unescaped `"` in the source string closes
 // the attribute early and corrupts the rest of the tag.
+const DAY_LABELS = [["sun", "Sun"], ["mon", "Mon"], ["tue", "Tue"], ["wed", "Wed"], ["thu", "Thu"], ["fri", "Fri"], ["sat", "Sat"]];
+function feedWindowRow(w) {
+  return `
+    <div class="feed-window rf-control-row flex-wrap" data-feed-window>
+      <div class="flex gap-1" role="group" aria-label="Days">${DAY_LABELS.map(([d, l]) => `<label class="flex items-center gap-1 text-xs"><input type="checkbox" class="checkbox checkbox-xs" data-feed-day="${d}" ${w.days.includes(d) ? "checked" : ""} aria-label="${l}"> ${l}</label>`).join("")}</div>
+      <label class="text-xs flex items-center gap-1">From <input type="time" class="input input-bordered input-xs" data-feed-from value="${escapeHtml(w.from)}" aria-label="Window start"></label>
+      <label class="text-xs flex items-center gap-1">Until <input type="time" class="input input-bordered input-xs" data-feed-until value="${escapeHtml(w.until)}" aria-label="Window end"></label>
+      <button type="button" class="btn btn-ghost btn-xs" data-feed-remove aria-label="Remove this window">Remove</button>
+    </div>`;
+}
+
 function escapeHtml(str) {
   return String(str ?? "")
     .replace(/&/g, "&amp;")
@@ -1449,6 +1514,7 @@ export function summarizeModules(health) {
     { name: "Arrangement", status: health.arrangementModule?.status },
     { name: "Phone flags", status: health.networkModule?.status },
     { name: "Summary sending", status: health.reportModule?.status },
+    { name: "Service feed", status: health.serviceFeedModule?.status },
   ].filter((m) => m.status);
   const rank = { misconfigured: 0, active: 1, off: 2 };
   mods.sort((a, b) => (rank[a.status] ?? 3) - (rank[b.status] ?? 3));
@@ -1859,6 +1925,57 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
                 : "Waits until nothing is on the screens and no service is near, then starts. Needs today's services set up on Service › Day."
               : "Off."
         }</div>
+      </div>
+    </div>`;
+
+  // Telemetry (owner, 2026-10-04): this station reporting to the church's own
+  // announcement server. Off until set up; talks only inside its windows.
+  const feed = health.serviceFeedModule ?? {};
+  const fs = feed.settings ?? { enabled: false, name: "", url: "", includeSlideText: false, windows: [], keySet: false };
+  const feedStatusLine = !fs.enabled
+    ? "Off. Nothing is sent anywhere."
+    : feed.status === "misconfigured"
+      ? (feed.problems ?? []).join(" ")
+      : feed.lastError
+        ? feed.lastError
+        : feed.inWindow
+          ? feed.lastOkAt ? `Sending. Last heard by the server at ${new Date(feed.lastOkAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.` : "Inside a send window. Waiting for the first send."
+          : "Outside its send windows, so it is quiet.";
+  const telemetryCard = `
+    <div class="card bg-base-200">
+      <div class="card-body p-3 gap-3">
+        <h2 class="card-title text-base"><i data-lucide="radio-tower" class="w-4 h-4 opacity-70"></i> This station</h2>
+        <p class="text-sm rf-measure">Lets your own announcement server see which slide this station is showing, and keep its log for review. It only talks to the address below, and only inside the windows below. Nothing goes to the Refrain project.</p>
+        <div class="rf-tabs" role="radiogroup" aria-label="Telemetry" style="margin-bottom:0">
+          <button type="button" role="radio" class="rf-tab" data-feed-enabled="true" aria-checked="${fs.enabled}"><span>On</span></button>
+          <button type="button" role="radio" class="rf-tab" data-feed-enabled="false" aria-checked="${!fs.enabled}"><span>Off</span></button>
+        </div>
+        <label class="flex flex-col gap-1 text-sm">Station name
+          <input id="feed-name" type="text" maxlength="60" class="input input-bordered input-sm max-w-sm" value="${escapeHtml(fs.name)}" placeholder="Main Campus FOH" autocomplete="off">
+          <span class="text-xs opacity-60">How the announcement server lists this station, so its data is told apart from the others.</span>
+        </label>
+        <label class="flex flex-col gap-1 text-sm">Announcement server address
+          <input id="feed-url" type="url" class="input input-bordered input-sm max-w-xl" value="${escapeHtml(fs.url)}" placeholder="https://" autocomplete="off">
+          <span class="text-xs opacity-60">The console address from its admin page. The key for this station goes in Secrets as SERVICE_FEED_TOKEN${fs.keySet ? " (set)" : " (not set yet)"}. A key saved in Secrets takes effect when Refrain is restarted.</span>
+        </label>
+        <div class="flex flex-col gap-1">
+          <div class="text-sm">Send windows <span class="text-xs opacity-60">(this Mac's local time; nothing is sent outside them)</span></div>
+          <div id="feed-windows" class="flex flex-col gap-2">${fs.windows.map(feedWindowRow).join("")}</div>
+          <button type="button" id="feed-add-window" class="btn btn-outline btn-xs w-fit">Add a window</button>
+        </div>
+        <div class="flex flex-col gap-1">
+          <div class="text-sm">Words on the slide</div>
+          <div class="rf-tabs" role="radiogroup" aria-label="Send the words on the slide" style="margin-bottom:0">
+            <button type="button" role="radio" class="rf-tab" data-feed-text="true" aria-checked="${fs.includeSlideText}"><span>Send them</span></button>
+            <button type="button" role="radio" class="rf-tab" data-feed-text="false" aria-checked="${!fs.includeSlideText}"><span>Title and number only</span></button>
+          </div>
+          <span class="text-xs opacity-60 rf-measure">A prayer or care slide can carry a name, so the default is the title and slide number only.</span>
+        </div>
+        <div class="rf-control-row">
+          <button type="button" id="feed-save" class="btn btn-primary btn-sm">Save</button>
+          <button type="button" id="feed-send-log" class="btn btn-outline btn-sm">Send log</button>
+          <span id="feed-status" class="text-xs opacity-70 rf-measure">${escapeHtml(feedStatusLine)}</span>
+        </div>
       </div>
     </div>`;
 
@@ -2328,6 +2445,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
       ${panel("features", configCard, arrangementCard)}
       ${panel("phones", phoneCard, picturesCard)}
       ${panel("customize", displayCard, welcomeCard, autostartCard)}
+      ${panel("telemetry", telemetryCard)}
       ${panel("audit", duplicateNamesCard, preferredCard, themesCard, orphanedMediaCard)}
       <div class="text-xs opacity-50 text-center mt-2 flex flex-col items-center gap-1">
         <div>

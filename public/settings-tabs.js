@@ -7,6 +7,7 @@ export const SETTINGS_TABS = [
   ["features", "Features", "toggle-right"],
   ["phones", "Phones", "smartphone"],
   ["customize", "Customize", "sliders-horizontal"],
+  ["telemetry", "Telemetry", "radio-tower"],
   // Last: the least used (owner, 2026-09-30).
   ["audit", "Audit", "clipboard-check"],
 ];
