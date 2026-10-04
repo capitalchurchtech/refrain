@@ -172,6 +172,7 @@ import { normalizeSongTitle } from "../providers/planning-center.js";
 import * as autostart from "./autostart.js";
 import { restartCommand, isConfirmedKill, runByLoginItem } from "./panic.js";
 import { autoEndSettings, autoEndPlan, autoEndNote, withAutoNote } from "./auto-end.js";
+import { catchAsyncRoutes, routeErrorHandler } from "./async-routes.js";
 
 const { version } = JSON.parse(readFileSync("./package.json", "utf-8"));
 
@@ -232,6 +233,8 @@ process.on("uncaughtException", (err) => {
 });
 
 const app = express();
+// Every route registered below answers even when it throws (async-routes.js).
+catchAsyncRoutes(app);
 let config = loadConfig();
 // Before anything asks for module status: the arrangement checks read each
 // provider's declared requiredEnv instead of naming a vendor.
@@ -469,7 +472,11 @@ function updateConfig(change) {
 app.post("/api/preferences", async (req, res) => {
   const { theme, navPinned, navMode, navSide, welcomeDismissed, searchLibrariesOff, searchDateField } = req.body ?? {};
   const changes = {};
-  if (theme !== undefined) changes.theme = theme;
+  if (theme !== undefined) {
+    // Only a theme the app has: a stray value would leave every screen unstyled.
+    if (!["system", "light", "dark", "blackroom"].includes(theme)) return res.status(400).json({ error: "theme must be system, light, dark or blackroom" });
+    changes.theme = theme;
+  }
   if (navPinned !== undefined) changes.navPinned = Boolean(navPinned);
   // Three rail widths rather than two. `navPinned` is still written alongside
   // it so an older Refrain reading this config still gets a sensible rail
@@ -3156,7 +3163,16 @@ app.post("/api/performance-mode", (req, res) => {
 });
 
 app.get("/api/search", (req, res) => {
-  const { q, playlistId, dateField, dateFrom, dateTo, folders } = req.query;
+  // Query strings can carry lists and objects (?q[]=a, ?q[a]=b); search
+  // takes text only, so anything else counts as not given (stress test,
+  // 2026-10-04: q.trim threw).
+  const text = (v) => (typeof v === "string" ? v : undefined);
+  const q = text(req.query.q);
+  const playlistId = text(req.query.playlistId);
+  const dateField = text(req.query.dateField);
+  const dateFrom = text(req.query.dateFrom);
+  const dateTo = text(req.query.dateTo);
+  const folders = Array.isArray(req.query.folders) ? req.query.folders.filter((f) => typeof f === "string") : text(req.query.folders);
   const folderList = Array.isArray(folders) ? folders : folders ? String(folders).split(",") : undefined;
   const params = { query: q ?? "", playlistId, dateField, dateFrom, dateTo, folders: folderList };
   let results = search(params);
@@ -3962,6 +3978,7 @@ app.post("/api/live/stage-message/clear", async (_req, res) => {
 
 /** Adds a preset. Saved to config.json; nothing in ProPresenter changes. */
 app.post("/api/live/stage-messages", async (req, res) => {
+  if (typeof req.body?.text !== "string") return res.status(400).json({ error: "Type the message first." });
   let added = null;
   const saved = await saveLiveModule(res, (m) => {
     const r = addStageMessage(m.stageMessages, req.body?.text);
@@ -3977,6 +3994,7 @@ app.post("/api/live/stage-messages", async (req, res) => {
 app.post("/api/live/stage-messages/:id", async (req, res) => {
   const { action, text, dir } = req.body ?? {};
   if (!["remove", "edit", "move"].includes(action)) return res.status(400).json({ error: 'action must be "remove", "edit" or "move"' });
+  if (action === "edit" && typeof text !== "string") return res.status(400).json({ error: "text must be the new wording" });
   if (action === "move" && ![-1, 1].includes(Number(dir))) return res.status(400).json({ error: "dir must be -1 or 1" });
   const saved = await saveLiveModule(res, (m) => {
     const current = stageMessages(m.stageMessages);
@@ -4640,7 +4658,7 @@ app.get("/api/slide-splitters", async (_req, res) => {
 // Scripture page (both let the user paste text they copied from a site).
 app.post("/api/slides/split", async (req, res) => {
   const { text, splitterId } = req.body ?? {};
-  if (!text) return res.status(400).json({ error: "text is required" });
+  if (typeof text !== "string" || !text.trim()) return res.status(400).json({ error: "text is required" });
 
   const splitters = await discoverSlideSplitters();
   const Splitter = splitters.find((S) => S.splitterId === splitterId) ?? splitters[0];
@@ -5823,6 +5841,10 @@ app.use((req, res) => {
 </body>
 </html>`);
 });
+
+// Last: an error from any route (thrown, rejected, or a body that wasn't
+// JSON) gets one plain answer, never a hang or a stack trace.
+app.use(routeErrorHandler);
 
 const server = app.listen(port, "127.0.0.1", async () => {
   /**

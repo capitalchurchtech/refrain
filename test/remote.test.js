@@ -322,3 +322,27 @@ test("stage message and pager from a phone: presets only, codes upper-cased, two
     t.server.close();
   }
 });
+
+test("a phone route that throws still answers, instead of leaving the phone waiting", async () => {
+  const app = createRemoteApp({
+    getState: () => ({ liveState: { connected: true, live: true }, recent: [] }),
+    saveFlag: async () => ({}),
+    flagTypes: () => [],
+    auth: { expectedPin: () => null, secret: () => "s", hint: () => "", daily: () => true },
+    currentSlides: () => ({ presentationId: "H", presentationName: "Hymn", currentIndex: 0, slides: [{ slideIndex: 0, text: "x" }] }),
+    pictures: () => true,
+    thumb: async () => {
+      throw new Error("disk went away");
+    },
+  });
+  const server = await new Promise((resolve) => {
+    const s = app.listen(0, "127.0.0.1", () => resolve(s));
+  });
+  try {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const res = await fetch(`${base}/api/preview/image/H/0`, { signal: AbortSignal.timeout(2000) });
+    assert.ok(res.status >= 400, `answered ${res.status}, not left hanging`);
+  } finally {
+    server.close();
+  }
+});

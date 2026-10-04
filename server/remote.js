@@ -30,6 +30,7 @@ import { buildFlag } from "./slide-flags.js";
 import { pinMatches, issueToken, tokenDevice } from "./remote-auth.js";
 import { createConfirmer, createCooldown } from "./remote-devices.js";
 import { messageFieldValue } from "./stage-messages.js";
+import { catchAsyncRoutes } from "./async-routes.js";
 
 export const RECENT_SLIDES = 12;
 
@@ -188,7 +189,9 @@ export function createRemoteApp({
   },
   publicDir = "./public",
 }) {
-  const app = express();
+  // Every route answers even when it throws (async-routes.js): Express 4
+  // otherwise leaves an async route's caller waiting with no answer.
+  const app = catchAsyncRoutes(express());
   app.disable("x-powered-by");
   app.use(express.json({ limit: "8kb" }));
   const allow = rateLimiter();
