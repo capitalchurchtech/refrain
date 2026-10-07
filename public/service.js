@@ -396,7 +396,9 @@ export function changedSongsHtml(data, now = Date.now()) {
   const parts = [
     section("During the service", data.during ?? [], "during"),
     section("Before the service", data.before ?? [], "before", `<button type="button" class="btn btn-chip" data-changed="dismiss-before" title="Keep these as they are now. They were saved before the service started.">Dismiss all</button>`),
-    section("Changed since", data.since ?? [], "during"),
+    // With a service start known this is what was saved after the last service
+    // ended, usually the clean-up; without one it is simply everything.
+    section(data.serviceStart ? "After the service" : "Changed since", data.since ?? [], data.serviceStart ? "before" : "during"),
   ].join("");
   return parts || `<p class="text-sm opacity-70">No arrangement has changed since you last looked.</p>`;
 }

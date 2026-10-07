@@ -154,13 +154,15 @@ export function flattenGroups(groups) {
  * This is what Deep Search reads. It needs no extra call to ProPresenter: it is
  * built from the same document the index already read.
  *
- * `slideIndex` and `slideCount` are null for a group that no arrangement uses
- * at all; such a slide can be found but not placed.
+ * One record per group (its slides listed inside), so the names and the
+ * arrangement's slide count are stored once. `start` and `slideCount` are null
+ * for a group that no arrangement uses at all; its slides can be found but not
+ * placed.
  *
  * @param {object} presentationDoc the document read from ProPresenter
  * @param {{groups: object[]}} resolved what resolveArrangement chose
- * @returns {{groupId: string|null, groupName: string|null, groupOffset: number, text: string,
- *   arrangementName: string|null, slideIndex: number|null, slideCount: number|null}[]}
+ * @returns {{groupId: string|null, groupName: string|null, arrangementName: string|null,
+ *   start: number|null, slideCount: number|null, slides: {offset: number, text: string}[]}[]}
  */
 export function otherArrangementSlides(presentationDoc, resolved) {
   const presentation = presentationDoc?.presentation ?? {};
@@ -182,18 +184,23 @@ export function otherArrangementSlides(presentationDoc, resolved) {
   for (const group of rawGroups) {
     if (played.has(group.uuid)) continue;
     const home = layouts.find((l) => l.starts.has(group.uuid)) ?? null;
+    // One record per group, so the arrangement's name, the group's name and the
+    // arrangement's slide count are written once, not once per slide.
+    const slides = [];
     (group.slides ?? []).forEach((slide, offset) => {
       const text = normalizeText(slide.text);
-      if (!text) return;
-      out.push({
-        groupId: group.uuid ?? null,
-        groupName: group.name ?? null,
-        groupOffset: offset,
-        text,
-        arrangementName: home?.name ?? null,
-        slideIndex: home ? home.starts.get(group.uuid) + offset : null,
-        slideCount: home ? home.total : null,
-      });
+      if (text) slides.push({ offset, text });
+    });
+    if (!slides.length) continue;
+    out.push({
+      groupId: group.uuid ?? null,
+      groupName: group.name ?? null,
+      arrangementName: home?.name ?? null,
+      // Where the group's first slide sits in that arrangement; a slide's own
+      // place is start + offset. Null when no arrangement uses the group.
+      start: home ? home.starts.get(group.uuid) : null,
+      slideCount: home ? home.total : null,
+      slides,
     });
   }
   return out;

@@ -118,12 +118,18 @@ export function compareToKnownGood(known, presentations) {
  * Splits changes into those saved during the service and those before it, by
  * when the song was last saved. With no service start there is no split: all are
  * "since". Anything saved at or after the start counts as during, so a song saved
- * both before and during lands where the person looks hardest.
+ * both before and during lands where the person looks hardest. When every
+ * service has ended (`serviceEndMs`), a save after the last one is not "during":
+ * it is returned in `since`, as the clean-up it usually is.
  */
-export function splitByService(changes, serviceStartMs) {
+export function splitByService(changes, serviceStartMs, serviceEndMs = null) {
   if (!Number.isFinite(serviceStartMs)) return { during: [], before: [], since: changes };
   const at = (c) => (c.modifiedDate ? new Date(c.modifiedDate).getTime() : NaN);
-  const during = changes.filter((c) => !(at(c) < serviceStartMs));
+  const ended = Number.isFinite(serviceEndMs);
+  const after = ended ? changes.filter((c) => at(c) > serviceEndMs) : [];
+  const during = changes.filter((c) => !(at(c) < serviceStartMs) && !(ended && at(c) > serviceEndMs));
   const before = changes.filter((c) => at(c) < serviceStartMs);
-  return { during, before, since: [] };
+  // After the last service ended: usually the clean-up itself, so it is not
+  // shown as something done live. `since` carries it when a start is known.
+  return { during, before, since: after };
 }

@@ -114,7 +114,7 @@ message from the announcement app that someone at this console approves before
 anything reaches the screens. It uses the address, key and console id above, so
 Telemetry has to be set up first (its on/off switch can stay off).
 
-Refrain asks; nothing connects in to the console. Every five seconds it calls,
+Refrain asks; nothing connects in to the console. Every five seconds, and only inside the send windows set under Telemetry (the same quiet-all-week rule as the status feed), it calls,
 with the same `Authorization: Bearer <key>` and `X-Console-Id` headers:
 
 - `GET <console address>/requests` answers `{ "requests": [{ "id", "text", "from"?, "createdAt"? }] }`.

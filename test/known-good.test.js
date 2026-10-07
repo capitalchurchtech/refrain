@@ -59,6 +59,17 @@ test("a rename alone is not a change, but the new name is kept", () => {
   assert.equal(r.learn.a.name, "New");
 });
 
+test("a save after the last service ended is not 'during'", () => {
+  const start = Date.parse("2026-10-11T09:00:00Z");
+  const end = Date.parse("2026-10-11T12:00:00Z");
+  const c = (id, iso) => ({ presentationId: id, modifiedDate: iso });
+  const s = splitByService([c("live", "2026-10-11T10:12:00Z"), c("cleanup", "2026-10-11T18:00:00Z"), c("early", "2026-10-10T16:00:00Z")], start, end);
+  assert.deepEqual(s.during.map((x) => x.presentationId), ["live"]);
+  assert.deepEqual(s.since.map((x) => x.presentationId), ["cleanup"]);
+  assert.deepEqual(s.before.map((x) => x.presentationId), ["early"]);
+  assert.equal(splitByService([c("late", "2026-10-11T18:00:00Z")], start, null).during.length, 1, "with a service still going, a late save is during");
+});
+
 test("splitByService puts a save at or after the start under during, earlier ones under before", () => {
   const start = Date.parse("2026-10-11T09:00:00Z");
   const c = (id, iso) => ({ presentationId: id, modifiedDate: iso });

@@ -62,28 +62,24 @@ const ICON = {
 const LAMPS = [
   {
     id: "link",
-    legend: "Link",
     read: (s) => (s?.connected ? "on" : "fault"),
     about: "Link: whether Refrain can reach ProPresenter.",
     title: (st) => (st === "on" ? "Now: connected." : "Now: lost ProPresenter. Retrying."),
   },
   {
     id: "live",
-    legend: "Live",
     read: (s) => (s?.live ? "live" : "off"),
     about: "Live: whether anything is on the screens right now.",
     title: (st) => (st === "live" ? "Now: something is on the screens." : "Now: nothing on the screens."),
   },
   {
     id: "perf",
-    legend: "Perf",
     read: (s) => (s?.performanceMode?.armed ? "on" : "off"),
     about: "Performance mode: Refrain holds still during a service, with no indexing or background work. It turns on by itself.",
     title: (st) => (st === "on" ? "Now: on, holding still." : "Now: off."),
   },
   {
     id: "feed",
-    legend: "Feed",
     // The status feed to the church's own announcement server (Settings >
     // Telemetry). Off unless the church turned it on; amber when it is on but
     // cannot reach the server or is not set up; dim between send windows.

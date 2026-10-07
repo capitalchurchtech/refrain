@@ -12,19 +12,16 @@
  * pulses — a moving light in a live tool means something is wrong, and that
  * signal is not spent on decoration.
  *
- * Latency is the whole product here, so the readout paints optimistically the
- * instant a key goes down and corrects itself when the server answers. An
- * operator forgives a plain interface that answers instantly and never trusts a
- * beautiful one that hesitates.
+ * It lives on Settings > Status and the Live screen's folds now, not above the
+ * search box. The instant acknowledgement of a Go Live press is the button's own
+ * ("Going...", public/search.js), so this only reports what the server says.
  */
 
 const POLL_MS = 2000;
 
-// Mount points that want a readout. Each screen that can send something to the
-// screens gets one; they all read the same state.
+// Mount points that want a readout; they all read the same state.
 const mounts = new Set();
 let latest = null;
-let optimistic = null;
 let pollTimer = null;
 let tickTimer = null;
 
@@ -52,17 +49,6 @@ function escapeHtml(str) {
  * "LIVE", never "Success".
  */
 function readoutContent(state) {
-  if (optimistic) {
-    return {
-      mode: "going",
-      status: "GOING",
-      primary: optimistic.presentationName || "Sending",
-      secondary: optimistic.arrangementName ? `${optimistic.arrangementName}` : "",
-      slide: optimistic.slideIndex != null ? `SLIDE ${optimistic.slideIndex + 1}` : "",
-      time: "",
-      detail: optimistic.text || "",
-    };
-  }
   if (!state) {
     return { mode: "standby", status: "----", primary: "Checking", secondary: "", slide: "", time: "", detail: "" };
   }
@@ -137,28 +123,6 @@ async function load() {
   render();
 }
 
-/**
- * Called on mousedown, before the request is even sent, so the acknowledgement
- * lands inside 50ms. Corrected by the next poll either way, so a failed trigger
- * cannot leave a false "GOING" on screen for long.
- */
-export function paintGoing(target) {
-  optimistic = target;
-  render();
-  setTimeout(() => {
-    if (optimistic === target) {
-      optimistic = null;
-      load();
-    }
-  }, 1500);
-}
-
-/** Clears an optimistic paint immediately, for a trigger that failed outright. */
-export function clearGoing() {
-  optimistic = null;
-  render();
-}
-
 export function mountLiveReadout(el) {
   if (!el) return;
   mounts.add(el);
@@ -169,7 +133,7 @@ export function mountLiveReadout(el) {
     // The elapsed clock ticks on its own so the readout counts up between
     // polls rather than jumping in two-second steps.
     tickTimer = setInterval(() => {
-      if (latest?.liveSince && !optimistic) render();
+      if (latest?.liveSince) render();
     }, 1000);
   }
 }

@@ -1810,9 +1810,9 @@ html.blackroom .card-title > svg {
 /* ============================================================
    21. CHIP ROW
 
-   Date filter and Libraries were two 48px controls with ~72px of dead
-   space between them and no container, which made the largest empty
-   region on the primary screen. They are filters, not actions: inert
+   Search's filters (Libraries, and once a Date filter) were 48px controls with
+   ~72px of dead space between them and no container, which made the largest
+   empty region on the primary screen. They are filters, not actions: inert
    until pressed, and secondary to everything around them.
 
    A tight row of small chips, rowed with a gap rather than spaced
@@ -1826,19 +1826,11 @@ html.blackroom .card-title > svg {
 }
 
 /**
- * The Date filter and Libraries toggles live in two separate wrappers, because
- * the Libraries one is hidden until a library scope exists. As block-level
- * siblings they stacked, which left the chips as two rows of one rather than
- * the tight row they are meant to be.
- *
- * inline-flex makes each wrapper an inline-level box, so the two flow onto the
- * same line while each keeps its own contents laid out as a flex row. The
- * hidden toggle still hides with its wrapper, and no markup moves.
- *
- * display: contents would have been wrong here: it lifts the children into the
- * grandparent, which is the section rather than a flex row.
+ * The Libraries toggle's wrapper is hidden until a library scope exists, so it
+ * is its own element; inline-flex keeps it a tight chip on the strip beside the
+ * Flag chip rather than a block that takes a row. (The Date filter that used to
+ * sit in the same row left the Search screen on 2026-10-07.)
  */
-#search-filter-chips,
 #library-filter-wrap {
   display: inline-flex;
   vertical-align: top;

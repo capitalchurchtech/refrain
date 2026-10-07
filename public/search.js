@@ -662,8 +662,17 @@ export function initSearch({ prefs = {} } = {}) {
   // sent; the row lights as live when the next poll confirms it.
   resultsEl.addEventListener("mousedown", (e) => {
     const btn = e.target.closest(".go-live-btn");
-    if (!btn || btn.disabled) return;
+    if (e.button !== 0 || !btn || btn.disabled) return;
+    btn.dataset.pressing = "1";
     btn.textContent = "Going...";
+  });
+  // Pressed, then slid off before letting go: no click is coming, so the label
+  // must not be left saying "Going...".
+  resultsEl.addEventListener("mouseout", (e) => {
+    const btn = e.target.closest(".go-live-btn");
+    if (!btn?.dataset.pressing || btn.contains(e.relatedTarget) || btn.disabled) return;
+    delete btn.dataset.pressing;
+    btn.textContent = "Go Live";
   });
 
   resultsEl.addEventListener("click", async (e) => {
@@ -697,6 +706,7 @@ export function initSearch({ prefs = {} } = {}) {
       } finally {
         liveBtn.disabled = false;
         liveBtn.textContent = "Go Live";
+        delete liveBtn.dataset.pressing;
       }
       crumb("golive", { presentation: liveBtn.dataset.presentationId, slide: Number(liveBtn.dataset.slideIndex) });
       return;

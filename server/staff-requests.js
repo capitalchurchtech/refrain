@@ -5,8 +5,8 @@
  * The flow, and why it is shaped this way:
  *
  * - **Refrain asks; nothing connects in.** This console polls the announcement
- *   server (the same address and key as the status feed in Settings >
- *   Telemetry) for requests waiting for it. Nothing listens on a port for the
+ *   server (the same address, key and send windows as the status feed in
+ *   Settings > Telemetry) for requests waiting for it. Nothing listens on a port for the
  *   announcement app to reach, so a church needs no router setting and the
  *   console exposes nothing new.
  * - **Nothing displays without a press.** A request only ever becomes a card
@@ -30,7 +30,7 @@
  * `createStaffRequests` takes everything it touches (fetch, the clock, the
  * message post, the saved list) so the tests run it with none of them real.
  */
-import { serviceFeedProblems, TOKEN_ENV } from "./service-feed.js";
+import { serviceFeedProblems, inWindow, TOKEN_ENV } from "./service-feed.js";
 
 /** How long a request stays good for, from when it was made. */
 export const REQUEST_TTL_MS = 8 * 60_000;
@@ -150,14 +150,19 @@ export function createStaffRequests({
     }
   }
 
-  /** Drops what has run out, remembering it so it never comes back. */
-  async function expireOld(mod) {
+  /**
+   * Drops what has run out, remembering it so it never comes back. The server is
+   * told with the other results, inside the send window, not the moment it
+   * happens: a request that runs out at 2:05 must not make a call at 2:05 when
+   * the window closed at 2.
+   */
+  async function expireOld() {
     const t = now();
     for (const [id, r] of [...waiting]) {
       if (r.expiresAt > t) continue;
       waiting.delete(id);
       await remember(id);
-      if (mod) await report(mod, id, "expired");
+      unreported.set(id, "expired");
     }
   }
 
@@ -168,8 +173,12 @@ export function createStaffRequests({
     try {
       await ensureLoaded();
       const mod = usable();
-      await expireOld(mod);
+      await expireOld();
       if (!isOn() || !mod) return;
+      // The announcement server hears from this console only inside the send
+      // windows from Settings > Telemetry (default Sunday 9 to 2), like the
+      // status feed: a console left on all week stays quiet.
+      if (!inWindow(mod, new Date(now()))) return;
       for (const [id, status] of [...unreported]) await report(mod, id, status);
       let body;
       try {

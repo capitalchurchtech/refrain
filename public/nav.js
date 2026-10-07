@@ -612,7 +612,9 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
     if (el) showTip(el);
   });
   rail.addEventListener("mouseout", (e) => {
-    if (e.target.closest(".nav-item, #rail-foot .btn")) hideTip();
+    const el = e.target.closest(".nav-item, #rail-foot .btn");
+    // Moving between a key's own icon and label is not leaving the key.
+    if (el && !el.contains(e.relatedTarget)) hideTip();
   });
   rail.addEventListener("focusin", (e) => {
     const el = e.target.closest(".nav-item, #rail-foot .btn");

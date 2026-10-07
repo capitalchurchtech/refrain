@@ -1,9 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { cleanRequest, createStaffRequests, REQUEST_TTL_MS, MAX_WAITING, MAX_REQUEST_TEXT } from "../server/staff-requests.js";
+import { DAYS } from "../server/service-feed.js";
 
 const T0 = Date.parse("2026-10-11T10:00:00Z");
-const mod = { enabled: true, url: "https://announce.example.org/api/consoles", name: "Main", consoleId: "c1" };
+// Open all week, so these tests do not depend on the clock of the machine running them.
+const mod = { enabled: true, url: "https://announce.example.org/api/consoles", name: "Main", consoleId: "c1", windows: [{ days: DAYS, from: "00:00", until: "23:59" }] };
 const env = { SERVICE_FEED_TOKEN: "k" };
 const iso = (ms) => new Date(ms).toISOString();
 
@@ -28,8 +30,8 @@ test("a request made in the future counts as made now, so it cannot outlive eigh
 });
 
 /** A console with a fake announcement server, a fake clock and a fake ProPresenter. */
-function rig({ server = [], on = true, postFails = false, handled = [] } = {}) {
-  const clock = { t: T0 };
+function rig({ server = [], on = true, postFails = false, handled = [], module = mod, at = T0 } = {}) {
+  const clock = { t: at };
   const calls = { results: [], posted: [], fetches: 0, saved: null, logs: [] };
   let serverList = server;
   let resultFails = false;
@@ -43,7 +45,7 @@ function rig({ server = [], on = true, postFails = false, handled = [] } = {}) {
     return { ok: true, status: 200 };
   };
   const sr = createStaffRequests({
-    getModule: () => mod,
+    getModule: () => module,
     isOn: () => on,
     env,
     fetchImpl,
@@ -194,4 +196,31 @@ test("switched on without Telemetry set up, it says why nothing can arrive", asy
   assert.match(make(mod, true, {}).state().problem, /SERVICE_FEED_TOKEN/, "no key");
   assert.equal(make(mod).state().problem, null, "set up: nothing to say");
   assert.equal(make({ ...mod, consoleId: undefined }, false).state().problem, null, "switched off: nothing to say");
+});
+
+test("it asks the announcement server only inside the send windows", async () => {
+  const sundayNoon = new Date(2026, 9, 11, 12, 0).getTime(); // local time, whatever the machine's zone
+  const closed = { ...mod, windows: [{ days: ["sun"], from: "00:00", until: "00:01" }] };
+  const { sr, calls } = rig({ server: [req("a", "48213")], module: closed, at: sundayNoon });
+  await sr.tick();
+  assert.equal(calls.fetches, 0, "nothing is asked outside the window");
+  assert.deepEqual(sr.list(), []);
+  const open = rig({ server: [{ id: "a", text: "48213", createdAt: iso(sundayNoon - 1000) }], module: { ...mod, windows: [{ days: ["sun"], from: "11:00", until: "13:00" }] }, at: sundayNoon });
+  await open.sr.tick();
+  assert.equal(open.sr.list().length, 1, "and it is asked inside it");
+});
+
+test("a request that runs out after the window closes is told to the server when it next opens, not before", async () => {
+  const noon = new Date(2026, 9, 11, 12, 0).getTime();
+  const m = { ...mod, windows: [{ days: ["sun"], from: "11:00", until: "13:00" }] };
+  const { sr, clock, calls } = rig({ server: [{ id: "a", text: "48213", createdAt: iso(noon) }], module: m, at: noon });
+  await sr.tick();
+  assert.equal(sr.list().length, 1);
+  clock.t = new Date(2026, 9, 11, 13, 30).getTime(); // window closed, and eight minutes have passed
+  await sr.tick();
+  assert.deepEqual(sr.list(), []);
+  assert.deepEqual(calls.results, [], "nothing is sent while the window is closed");
+  clock.t = new Date(2026, 9, 18, 12, 0).getTime(); // next Sunday, window open
+  await sr.tick();
+  assert.deepEqual(calls.results, [["a", "expired"]]);
 });

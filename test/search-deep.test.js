@@ -27,19 +27,15 @@ const doc = () => ({
 test("otherArrangementSlides lists only what the chosen arrangement skips, placed in the first arrangement that plays it", () => {
   const d = doc();
   const out = otherArrangementSlides(d, resolveArrangement(d, ["FS"]));
-  assert.deepEqual(
-    out.map((s) => [s.groupName, s.groupOffset, s.text, s.arrangementName, s.slideIndex, s.slideCount]),
-    [
-      // Long = Verse(2) + Chorus(1) + Verse(2) = 5 slides before the Tag, so its
-      // first line is index 5 of 8 (the Tag itself has three slides).
-      ["Tag", 0, "tag line one", "Long", 5, 8],
-      // The blank slide at offset 1 is not listed, but it still holds a place in
-      // the arrangement, so the next line keeps its real position.
-      ["Tag", 2, "tag line two", "Long", 7, 8],
-      // No arrangement uses the Bridge: found, but not placed.
-      ["Bridge", 0, "orphan bridge", null, null, null],
-    ]
-  );
+  assert.deepEqual(out, [
+    // Long = Verse(2) + Chorus(1) + Verse(2) = 5 slides before the Tag, so its
+    // first line is index 5 of 8 (the Tag itself has three slides). The blank
+    // slide at offset 1 is not listed, but it still holds a place, so the
+    // next line keeps offset 2 and so index 7.
+    { groupId: "g-t", groupName: "Tag", arrangementName: "Long", start: 5, slideCount: 8, slides: [{ offset: 0, text: "tag line one" }, { offset: 2, text: "tag line two" }] },
+    // No arrangement uses the Bridge: found, but not placed.
+    { groupId: "g-b", groupName: "Bridge", arrangementName: null, start: null, slideCount: null, slides: [{ offset: 0, text: "orphan bridge" }] },
+  ]);
 });
 
 test("otherArrangementSlides is empty when the song has no arrangements", () => {

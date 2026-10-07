@@ -19,7 +19,7 @@ import { showFailure } from "./notice.js";
  *   in Editor.
  *
  * Every press answers instantly ("Flagging...") before the server replies, for
- * the same reason the readout paints optimistically: a press that shows
+ * the same reason Go Live says "Going..." on mousedown: a press that shows
  * nothing gets pressed twice, and a duplicate is noise in a list someone has
  * to work through.
  */

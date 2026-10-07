@@ -169,10 +169,15 @@ export function initHistoryFlyout() {
   key.addEventListener("mouseleave", closeSoon);
   flyout.addEventListener("mouseenter", () => clearTimeout(closeTimer));
   flyout.addEventListener("mouseleave", closeSoon);
-  key.addEventListener("click", () => {
+  key.addEventListener("click", (e) => {
     if (!flyout.hidden && pinned) return setOpen(false);
     pinned = true;
-    if (flyout.hidden) setOpen(true);
+    const wasHidden = flyout.hidden;
+    if (wasHidden) setOpen(true);
+    // Opened from the keyboard (Enter or Space has no pointer position): the
+    // flyout sits apart from the rail in the page, so Tab would never reach it.
+    // Put focus on its first control; Esc closes it and returns here.
+    if (wasHidden && e.detail === 0) flyout.querySelector("button:not([disabled])")?.focus();
   });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !flyout.hidden) {

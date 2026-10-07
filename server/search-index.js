@@ -1166,26 +1166,28 @@ export function searchOtherArrangements({ query, folders }) {
     if (!Array.isArray(entry.otherSlides)) continue;
     if (folderSet && !folderSet.has(entry.folder)) continue;
     const seen = new Set();
-    for (const slide of entry.otherSlides) {
-      const lower = String(slide.text ?? "").toLowerCase();
-      const unified = unifyApostrophes(lower);
-      const hasApostrophe = HAS_APOSTROPHE.test(unified);
-      if (!slideMatches(unified, hasApostrophe ? foldApostrophes(unified) : unified, hasApostrophe, unifiedQ, queryHasApostrophe)) continue;
-      // The same line in the same group twice is one finding.
-      const key = `${slide.groupId}:${lower}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      results.push({
-        presentationId,
-        presentationName: entry.name,
-        snippet: slide.text,
-        groupId: slide.groupId ?? null,
-        groupName: slide.groupName ?? null,
-        groupOffset: slide.groupOffset ?? 0,
-        arrangementName: slide.arrangementName ?? null,
-        slideIndex: slide.slideIndex ?? null,
-        slideCount: slide.slideCount ?? null,
-      });
+    for (const group of entry.otherSlides) {
+      for (const slide of group.slides ?? []) {
+        const lower = String(slide.text ?? "").toLowerCase();
+        const unified = unifyApostrophes(lower);
+        const hasApostrophe = HAS_APOSTROPHE.test(unified);
+        if (!slideMatches(unified, hasApostrophe ? foldApostrophes(unified) : unified, hasApostrophe, unifiedQ, queryHasApostrophe)) continue;
+        // The same line in the same group twice is one finding.
+        const key = `${group.groupId}:${lower}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        results.push({
+          presentationId,
+          presentationName: entry.name,
+          snippet: slide.text,
+          groupId: group.groupId ?? null,
+          groupName: group.groupName ?? null,
+          groupOffset: slide.offset ?? 0,
+          arrangementName: group.arrangementName ?? null,
+          slideIndex: group.start != null ? group.start + (slide.offset ?? 0) : null,
+          slideCount: group.slideCount ?? null,
+        });
+      }
     }
   }
   return results;

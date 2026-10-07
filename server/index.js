@@ -4202,6 +4202,13 @@ function serviceStartMs(now = Date.now()) {
   return performance.armed && Number.isFinite(performance.since) ? performance.since : null;
 }
 
+/** When the last service ended, once every one of today's has; null while any is still going or none is known. */
+function serviceEndMs(now = Date.now()) {
+  const services = serviceState(now).services;
+  const ends = services.map((s) => s.endedAt);
+  return services.length && ends.every(Number.isFinite) ? Math.max(...ends) : null;
+}
+
 // Learned in the background too, so a song edited before anyone opens the screen
 // is learned as it was and not as it became. Cheap: it only reads the index.
 setInterval(() => {
@@ -4213,7 +4220,7 @@ app.get("/api/service/changed-songs", async (_req, res) => {
   await ensureServiceDay();
   const { changes } = await refreshKnownGood();
   const start = serviceStartMs();
-  res.json({ ...splitByService(changes, start), total: changes.length, serviceStart: Number.isFinite(start) ? new Date(start).toISOString() : null });
+  res.json({ ...splitByService(changes, start, serviceEndMs()), total: changes.length, serviceStart: Number.isFinite(start) ? new Date(start).toISOString() : null });
 });
 
 // Dismiss: keep the song as it is now and take it off the list. One song, or
