@@ -115,18 +115,27 @@ export default {
   client: { file: "your-feature.js", init: "initYourFeature" },
   route: "/your-feature",
   component: null,
-  enabledByDefault: false,
+  // An on/off switch on Settings > Features. Off hides the menu entry and
+  // every route under apiPrefixes answers 404 "switched off".
+  feature: {
+    default: false,
+    label: "Your Feature",
+    description: "One sentence on what it does, shown beside the switch.",
+    apiPrefixes: ["/api/your-feature"],
+  },
 };
 ```
 
-That's the whole integration: the menu entry, its position and the screen all come from this file. `client.file` must be a plain file name in `public/`.
+That's the whole integration: the menu entry, its position, the screen and the on/off switch all come from this file. `client.file` must be a plain file name in `public/`. Search and Spell Check are the core and have no `feature` (they declare `enabledByDefault: true` instead); everything else should be switchable, and off by default unless most churches would want it on the day they install.
+
+A part of an existing screen can be switched on its own with `features: [{ id, label, description, default, apiPrefixes }]` in that screen's module.js, the way `modules/live/` makes Now's Messages, Macros and Looks separate switches. Settings shows each as "on <screen>". A module with neither `feature` nor `enabledByDefault: true` never shows in the menu.
 
 This is the right shape for something genuinely new, not a provider or a backend or a splitter, but a whole new thing Refrain doesn't do yet. Self contained folder, no core files touched.
 
 Two shipped modules are worth reading as templates, both added exactly the way a contribution would be, with nothing in core special cased for them:
 
 - `modules/image-crop/` (with `server/image-crop.js` and `public/image-crop.js`) is a watched folder image cropper. It owns its own saved config, its own screen, and its own `/api/image-crop/*` routes. Read it when your feature has real setup state.
-- `modules/qr-code/` (with `server/qr-code.js` and `public/qr-code.js`) is a fully local QR generator. It's the simplest possible module: no saved config, one stateless route, always available. Read it when your feature is a pure tool.
+- `modules/qr-code/` (with `server/qr-code.js` and `public/qr-code.js`) is a fully local QR generator. It's the simplest possible module: no saved config, one stateless route, on by default. Read it when your feature is a pure tool.
 
 ## What we won't make a plugin, and why
 

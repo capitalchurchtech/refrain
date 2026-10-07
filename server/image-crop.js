@@ -203,9 +203,19 @@ export async function stopWatcher() {
  * unusable config (overlapping folders, unmakeable paths) so the caller
  * can surface a clear error rather than silently not watching.
  */
-export async function startWatcher(config) {
+// One start at a time: two overlapping starts (a double press) would each
+// make a watcher, and the first would be left running where stop can't reach.
+let starting = Promise.resolve();
+export function startWatcher(config) {
+  const run = starting.then(() => startWatcherNow(config));
+  starting = run.catch(() => {});
+  return run;
+}
+
+async function startWatcherNow(config) {
   await stopWatcher();
-  if (!config?.enabled || !config.inputFolder || !config.outputFolder || !config.presets?.length) return;
+  // Off is `null`: the caller passes settings only while Image Crop is on.
+  if (!config?.inputFolder || !config.outputFolder || !config.presets?.length) return;
 
   if (foldersOverlap(config.inputFolder, config.outputFolder)) {
     throw new Error("Input and output folders must not be the same folder or nested inside one another — outputs would be re-cropped in a loop.");

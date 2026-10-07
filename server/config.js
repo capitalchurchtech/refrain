@@ -63,12 +63,27 @@ export function saveConfig(config) {
 }
 
 /**
+ * Whether a switchable feature is on (Settings › Features; server/features.js).
+ * What the church chose in `features`, else the default its module declares.
+ * The defaults are registered once at boot from the modules, so these status
+ * checks stay synchronous and name no module themselves.
+ */
+let registeredFeatureDefaults = {};
+export function registerFeatureDefaults(defaults) {
+  registeredFeatureDefaults = { ...(defaults ?? {}) };
+}
+export function featureOn(config, id) {
+  const chosen = config?.features?.[id];
+  return typeof chosen === "boolean" ? chosen : registeredFeatureDefaults[id] ?? false;
+}
+
+/**
  * @returns {"off" | "misconfigured" | "active"}
  */
 export function getArrangementModuleStatus(config) {
-  if (!config.arrangementModule?.enabled) return "off";
+  if (!featureOn(config, "arrangement")) return "off";
 
-  const backend = config.arrangementModule.storageBackend;
+  const backend = config.arrangementModule?.storageBackend;
   if (backend === "firestore") {
     if (!process.env.FIRESTORE_PROJECT_ID) return "misconfigured";
     if (config.role === "logger" && !process.env.FIRESTORE_SERVICE_ACCOUNT_KEY_PATH) {
@@ -98,8 +113,8 @@ export function getArrangementModuleStatus(config) {
  * defaults on first enable.
  */
 export function getImageCropModuleStatus(config) {
-  const mod = config.imageCropModule;
-  if (!mod?.enabled) return "off";
+  const mod = config.imageCropModule ?? {};
+  if (!featureOn(config, "image-crop")) return "off";
   if (!mod.inputFolder || !mod.outputFolder || !mod.presets?.length) return "misconfigured";
   return "active";
 }
@@ -208,8 +223,8 @@ export function getNetworkModuleStatus(config, mainPort = 9999) {
  * @returns {"off" | "misconfigured" | "active"}
  */
 export function getServiceModuleStatus(config) {
-  const mod = config.serviceModule;
-  if (!mod?.enabled) return "off";
+  const mod = config.serviceModule ?? {};
+  if (!featureOn(config, "service")) return "off";
   return scheduleProblems(mod.schedule).length ? "misconfigured" : "active";
 }
 
@@ -235,7 +250,7 @@ export function getEnvRequirements(config) {
     });
   }
   const arrangement = config.arrangementModule ?? {};
-  if (!arrangement.enabled) return reqs;
+  if (!featureOn(config, "arrangement")) return reqs;
 
   if (arrangement.storageBackend === "firestore") {
     reqs.push({

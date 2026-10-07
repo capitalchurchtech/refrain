@@ -4,13 +4,14 @@ import { createRemoteApp, pushRecent, flagFromRecent, serviceProgress, rateLimit
 
 const slide = (n, extra = {}) => ({ presentationId: `P${n}`, presentationName: `Hymn ${n}`, slideIndex: n, text: `Line ${n}`, ...extra });
 
-function start({ pin = null, recent = [], secret = { value: "s1" } } = {}) {
+function start({ pin = null, recent = [], secret = { value: "s1" }, features } = {}) {
   const saved = [];
   const app = createRemoteApp({
     getState: () => ({ liveState: { connected: true, live: true }, recent, progress: { live: true, item: { name: "Hymn 1" } } }),
     saveFlag: async (f) => (saved.push(f), { shared: true }),
     flagTypes: () => [{ label: "Typo or spelling" }],
     auth: { expectedPin: () => pin, secret: () => secret.value, hint: () => "On the Flags screen in the booth.", daily: () => true },
+    ...(features ? { features: () => features } : {}),
   });
   return new Promise((resolve) => {
     const server = app.listen(0, "127.0.0.1", () => resolve({ server, base: `http://127.0.0.1:${server.address().port}`, saved }));
@@ -59,6 +60,25 @@ test("only the phone routes exist: nothing that could change the screens is reac
       assert.equal(res.status, 404, `${method} ${path} must not exist here`);
     }
     assert.equal((await fetch(`${base}/api/state`)).status, 200);
+  } finally {
+    server.close();
+  }
+});
+
+test("a feature switched off at the booth is off on the phone too: its tab is hidden and its routes refuse", async () => {
+  const { server, base, saved } = await start({ recent: pushRecent([], slide(1)), features: { flags: false, messages: true } });
+  try {
+    const state = await (await fetch(`${base}/api/state`)).json();
+    assert.deepEqual(state.features, { flags: false, messages: true });
+    const flag = await fetch(`${base}/api/flag`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "Typo or spelling" }) });
+    assert.equal(flag.status, 404);
+    assert.equal((await flag.json()).off, true);
+    assert.equal((await fetch(`${base}/api/flag-slides`)).status, 404);
+    for (const path of ["/api/flag/", "/API/FLAG", "/Api/Flag-Slides/"]) {
+      const r = await fetch(base + path, { method: path.includes("Slides") ? "GET" : "POST", headers: { "Content-Type": "application/json" }, body: path.includes("Slides") ? undefined : "{}" });
+      assert.equal(r.status, 404, `${path} meets the switch too`);
+    }
+    assert.equal(saved.length, 0, "nothing was flagged");
   } finally {
     server.close();
   }

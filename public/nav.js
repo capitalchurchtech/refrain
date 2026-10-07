@@ -944,7 +944,7 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
   // Reflect the image-crop watcher's live state in the nav. Polled (not
   // pushed) — cheap on localhost, and the watcher can start/stop from
   // its own screen or at boot, so the nav needs to notice either way.
-  if (pageOf("image-crop") || navItemsEl.querySelector('[data-id="image-crop"]')) {
+  if (!document.documentElement.classList.contains("feature-off-image-crop") && (pageOf("image-crop") || navItemsEl.querySelector('[data-id="image-crop"]'))) {
     pollImageCropDot();
     setInterval(pollImageCropDot, 8000);
   }

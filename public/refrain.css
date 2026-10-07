@@ -4594,3 +4594,21 @@ body[data-index-bar] #main-content {
     justify-content: flex-end;
   }
 }
+
+/* ============================================================
+   SWITCHED-OFF FEATURES (owner, 2026-10-06; server/features.js)
+
+   A feature switched off on Settings › Features loses its menu tab (the
+   server leaves it out) and its sections; these are the places it reaches
+   into other screens. main.js sets `feature-off-<id>` on <html>. Static
+   rules, so the JIT note in CLAUDE.md doesn't bite.
+   ============================================================ */
+html.feature-off-slide-flags #search-flag,
+html.feature-off-slide-flags #live-flag-summary {
+  display: none;
+}
+
+/* Settings › Features rows: a rule between rows, none above the first. */
+.rf-feature-row:first-of-type {
+  border-top-width: 0;
+}

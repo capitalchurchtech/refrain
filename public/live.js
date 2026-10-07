@@ -427,24 +427,28 @@ export function initLive() {
     paintClearOffline(lastKnownConnected());
 
     try {
-      const { looks, macros, messages, messageRecent: recent, currentLook } = await fetch("/api/live/controls").then((r) => r.json());
+      const { looks, macros, messages, messageRecent: recent, currentLook, features = {} } = await fetch("/api/live/controls").then((r) => r.json());
       messageRecent = recent ?? {};
+      // Switched off on Settings › Features: the section isn't shown at all.
+      // Looks and Macros hide by themselves with nothing to show; the stage
+      // card is part of Messages.
+      document.getElementById("live-stage-wrap")?.classList.toggle("hidden", features.messages === false);
       renderMessages(messages ?? []);
       renderButtons("live-looks", "live-looks-wrap", looks, "look");
       lookCount = looks?.length ?? 0;
       paintCurrentLook(currentLook);
       // A Look changes on a Look press, and often on a macro press too.
       document.getElementById("live-looks")?.addEventListener("click", (e) => e.target.closest("[data-look]") && setTimeout(refreshCurrentLook, 400));
-      document.getElementById("live-macros")?.addEventListener("click", (e) => !editingMacros && e.target.closest("[data-macro]") && setTimeout(refreshCurrentLook, 600));
+      if (features.looks !== false) document.getElementById("live-macros")?.addEventListener("click", (e) => !editingMacros && e.target.closest("[data-macro]") && setTimeout(refreshCurrentLook, 600));
       macroList = macros ?? [];
       paintMacros();
       document.getElementById("live-macros-edit")?.addEventListener("click", () => {
         editingMacros = !editingMacros;
         paintMacros();
       });
-      if (!looks.length && !macros.length) {
-        setStatus("No Looks or Macros found.");
-      }
+      // Said only of what's switched on, and only when none of it came back.
+      const asked = [features.looks !== false && "Looks", features.macros !== false && "Macros"].filter(Boolean);
+      if (asked.length && !(looks?.length ?? 0) && !(macros?.length ?? 0)) setStatus(`No ${asked.join(" or ")} found.`);
     } catch {
       setStatus("Couldn't load Looks and Macros from ProPresenter. Clear still works.");
     }
@@ -716,8 +720,19 @@ export function initLive() {
         paintStage();
       }
     });
+    // Messages switched off (main.js marks <html>): no card, no request.
+    if (document.documentElement.classList.contains("feature-off-messages")) {
+      document.getElementById("live-stage-wrap")?.classList.add("hidden");
+      return;
+    }
     try {
-      const data = await fetch("/api/live/stage-message?fresh=1").then((r) => r.json());
+      const res = await fetch("/api/live/stage-message?fresh=1");
+      const data = await res.json();
+      // Messages switched off (Settings › Features): no card, and no checking.
+      if (data.off) {
+        document.getElementById("live-stage-wrap")?.classList.add("hidden");
+        return;
+      }
       stagePresets = data.presets ?? [];
       stageCurrent = data.current ?? "";
     } catch {

@@ -127,7 +127,7 @@ Design choices worth knowing:
 - **Smart crop, not face detection, for now.** It uses smartcrop's saliency heuristic, which needs no model download and handles the church mix (portraits, graphics, text heavy slides) rather than only photos of people. Face detection is a reasonable later add on top, not a requirement.
 - **Sequential, not concurrent.** Dropping a folder of hundreds of images fires hundreds of near instant events. Running a full crop pipeline per event at once would spike memory enough to crash a modest booth machine. Files go through a queue one at a time, which is plenty fast and keeps memory flat.
 - **Input and output folders can't overlap.** If the output landed in (or above) the watched input folder, each output would retrigger the watcher and get cropped again forever. This is checked when you save and again before the watcher starts.
-- **Always navigable, self contained.** Unlike the arrangement module it needs no credentials and no cross machine story, so it isn't gated behind config. Its nav entry is always present because that's where you turn it on. It seeds its own folders and default presets on first enable, so there's nothing to type before it works.
+- **Self contained, off by default.** Unlike the arrangement module it needs no credentials and no cross machine story. It's a switch on Settings › Features (off to start): on shows its screen and starts the watcher, off stops both. It seeds its own default folders and presets when switched on.
 - **Naming.** Outputs keep the original name plus a short tag: `photo_yt.jpg`, `photo_in_sq.jpg`, `photo_hd.jpg`. Each preset carries a short abbreviation, and a custom preset with none falls back to a filename safe, lowercase form of its name. Colliding tags are disambiguated by dimensions. The tag is sanitized server side so a hand edited value can't reach a filename raw.
 - **Dimension caps.** Preset width and height are capped so a fat fingered value can't try to allocate a giant image and crash the process.
 
@@ -143,7 +143,7 @@ When a logo is used, error correction is forced to the highest level so the cove
 
 Why local matters here specifically: many free online QR generators encode a redirect through their own domain instead of your content, which leaves them able to expire, throttle, track, or start charging for a code you already printed. A code made here holds your content directly.
 
-It's the simplest module: no saved config, no enable toggle, always available. Content length, output size, margin, colors, and logo size are all capped server side. Depends only on `qrcode` (encoding only), and reuses the already present `sharp` for logos.
+It's the simplest module: no saved config, and on unless switched off in Settings › Features. Content length, output size, margin, colors, and logo size are all capped server side. Depends only on `qrcode` (encoding only), and reuses the already present `sharp` for logos.
 
 ## Privacy as a hard constraint
 

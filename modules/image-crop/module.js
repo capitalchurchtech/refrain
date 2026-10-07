@@ -4,11 +4,8 @@
  * server/image-crop.js for the actual watch/crop logic and
  * docs/refrain-architecture.md Section 19 for the design notes.
  *
- * enabledByDefault is true in the *nav* sense — the screen is always
- * reachable, because that's where you turn the watcher on/off. The
- * watcher itself is off until the user enables it there
- * (config.imageCropModule.enabled), so an always-visible nav entry
- * doesn't mean any background work is happening.
+ * Off by default. Switching it on (Settings > Features) shows the screen
+ * and starts the folder watcher; switching it off stops both.
  */
 export default {
   id: "image-crop",
@@ -18,5 +15,7 @@ export default {
   client: { file: "image-crop.js", init: "initImageCrop" },
   route: "/image-crop",
   component: null, // TODO: ImageCropScreen component
-  enabledByDefault: true,
+  // Switchable on Settings > Features (server/features.js); off hides its
+  // screen and its routes answer "switched off".
+  feature: { default: false, label: "Image Crop", description: "Crops images dropped in a folder to slide sizes.", apiPrefixes: ["/api/image-crop"] },
 };

@@ -18,7 +18,8 @@ class FakeProvider {
 
 const arrangement = (role) => ({
   role,
-  arrangementModule: { enabled: true, storageBackend: "local-folder", provider: "fake-crm" },
+  features: { arrangement: true },
+  arrangementModule: { storageBackend: "local-folder", provider: "fake-crm" },
 });
 
 test("a provider's declared credentials decide misconfigured, on the roles it names", () => {

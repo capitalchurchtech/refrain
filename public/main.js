@@ -75,6 +75,12 @@ async function startApp(prefs = {}) {
     .then((r) => (r.ok ? r.json() : null))
     .catch(() => null);
   const modules = Array.isArray(listed?.modules) ? listed.modules : [];
+  // Features switched off on Settings › Features: a class per feature, so the
+  // places they reach into other screens (Search's Flag key, Now's flag line)
+  // hide by static CSS (refrain.css, "SWITCHED-OFF FEATURES").
+  for (const f of Array.isArray(listed?.features) ? listed.features : []) {
+    if (/^[a-z0-9-]+$/.test(f.id)) document.documentElement.classList.toggle(`feature-off-${f.id}`, f.on === false);
+  }
   if (!modules.some((m) => m.id === "search")) modules.push(SEARCH_ITEM);
   const main = document.getElementById("main-content");
   const withScreens = modules.filter((m) => m.client && m.id !== "search");

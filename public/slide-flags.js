@@ -438,7 +438,11 @@ export function initSlideFlags() {
  * Flags screen, where capture and review both live. Flagging used to be a
  * grid here, below every live control; see handoff §39b.
  */
+/** Flags switched off on Settings › Features (main.js marks <html>): nothing to ask for. */
+const flagsOff = () => document.documentElement.classList.contains("feature-off-slide-flags");
+
 export async function mountLiveFlagSummary(summaryHost) {
+  if (flagsOff()) return;
   let flags = [];
   try {
     const res = await fetch("/api/slide-flags");
@@ -477,7 +481,7 @@ export function refreshLiveSummaryOnNewFlags(summaryHostId) {
   liveSummaryWired = true;
   window.addEventListener(FLAG_EVENT, async () => {
     const host = document.getElementById(summaryHostId);
-    if (!host) return;
+    if (!host || flagsOff()) return;
     try {
       const data = await fetch("/api/slide-flags").then((r) => r.json());
       renderLiveSummary(host, data.flags);

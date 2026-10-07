@@ -17,5 +17,7 @@ export default {
   client: { file: "scripture.js", init: "initScripture" },
   route: "/scripture",
   component: null,
-  enabledByDefault: true,
+  // Switchable on Settings > Features (server/features.js); off hides its
+  // screen and its routes answer "switched off".
+  feature: { default: false, label: "Scripture", description: "Splits a pasted passage into slides.", apiPrefixes: ["/api/scripture"] },
 };

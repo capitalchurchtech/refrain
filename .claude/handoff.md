@@ -2827,6 +2827,68 @@ repeated chorus kept); not yet seen with a real edit in ProPresenter.
 (a new background on that slide only) keeps its old picture until the set is
 20 hours old.
 
+## 48. Features on and off: search and spell check first (owner 2026-10-06; built on branch feature-switches)
+
+**Ask (owner):** "The killer features of refrain are search and spell/date
+check, everything else is secondary. Please put other features like looks,
+macros, messages, flags, tracking as modular on/off able features. Put flags,
+service, and messages on by default. QRs on by default, image cropping off by
+default. When features are enabled show the tabs otherwise hide them."
+Answers: tracking is Arrangement tracking (off); Lyrics and Scripture off;
+stage messages go with Messages; safe slides, quick slides and Clear always
+on; existing installs take the new defaults.
+
+**Built:** a module declares `feature: { default, label, description,
+apiPrefixes }` in its module.js; Now's parts are `features: [...]` in
+modules/live/module.js (messages, macros, looks). `server/features.js` reads
+them; `featureOn(config, id)` in config.js is `config.features[id]` when it is
+a boolean, else the declared default. One middleware in index.js answers 404
+`{ off: true }` for any route under a switched-off feature's prefixes; the
+phone listener does the same for its Flag and Alert routes and hides those
+tabs. Settings › Features has a card with On/Off per feature
+(`POST /api/features`, through `updateConfig`); the page reloads so the menu
+and tabs follow. Search and Spell Check have no `feature` and cannot be
+switched. The old `arrangementModule.enabled`, `imageCropModule.enabled` and
+`serviceModule.enabled` are no longer read (owner: new defaults apply), so an
+install that had Arrangement or Image Crop on will find them off until
+switched back on.
+
+**Checked** on the dev copy (this Mac's ProPresenter, not answering at the
+time): defaults show Now/Flags/Day and Spell Check/QR Codes; Flags off hides
+its tab and Now's flag line; Image Crop on shows its tab with its switch
+ticked (a bug found here and fixed: the screen read the old flag); Messages
+off hides Now's stage messages with no polling of the refused route; gated
+routes 404, bad input 400. Phone page checked on a throwaway listener: Flags
+off shows Alerts only; both off says so. Not checked with Looks or Macros
+against a running ProPresenter.
+
+**Two code reviews (high), all fixes in the same change.** Round one: the
+watcher still read the old flag (switching Image Crop on watched nothing);
+staged arrangement uploads now retry when the feature is switched on, and
+boot logs any left waiting while it's off; Service day switched on at
+runtime starts its timer and retries; switched off, it releases a lock-in
+first (else performance mode stayed on with its Release refused); gates are
+case-blind and trailing-slash-blind on both listeners; `/api/service/send-log`
+moved to `/api/service-feed/send-log` (it belongs to the feed, not Service
+day); the duplicate checkboxes (Image Crop's "Watch the input folder",
+Arrangement's "Enable") removed, Settings › Features is the one switch;
+`/api/config` no longer writes `features` from a stale snapshot; phone panels
+come back when a feature does; status checks tolerate a missing module
+section. Round two: `/api/features` does nothing for a repeat press, rolls
+the watcher back if the save fails, refuses to switch Service day off if the
+lock-in can't be released, keeps today's day in memory when switched back on;
+`startWatcher` runs one start at a time; Image Crop with unusable folders
+switches on not watching, with a warning, so its screen is reachable to fix
+them; a phone keeps flags queued offline while Flags is off; Settings hides
+the QR, Arrangement and Day summary folds of switched-off features; Now, the
+rail and the flag line don't request switched-off routes.
+**Left as is:** `requireServiceModule` is now unreachable behind the gate
+(kept as a second guard); the side effects of a switch are keyed by id in
+`/api/features` rather than a hook declared in module.js (worth doing when a
+fourth feature needs one); the project CLAUDE.md still names "the search and
+lyrics screens" as core while Lyrics is now a switch, off by default (owner's
+call; the doc wording is the owner's to change).
+
 ## Status log
 
 `YYYY-MM-DD · <item> · done | partial | blocked · <one line>`
@@ -3490,3 +3552,5 @@ repeated chorus kept); not yet seen with a real edit in ProPresenter.
 - 2026-10-04 — (uncommitted, on main) **Protect ProPresenter, on by default** (owner: "ensure all surfaces that can harm ProPresenter are disabled and tucked away. The main station's ProPresenter got damaged last night"; then: "It was Claude Code checking, not Refrain"). Audit first: Refrain writes no ProPresenter file (Share Library, the only writer, is blocked at all four entry points; Image Crop writes inside data/; the only shell commands are ps, lsof, launchctl list, open, and git/npm for Refrain's own update). Its heavy load on ProPresenter is bulk document reads. `protectProPresenter` (on unless false): `startRebuild` refuses (the one door every index run uses), the file watcher, the hourly catch-up and the hour-before-service refresh don't start, and Spell Check scans, the pre-service checks' scan, the FS/T report's unknowns, the phones' slide counts, Update pictures and pre-render are refused, each saying why. Settings › Search hides the index keys behind it and has an Advanced fold, closed, with the switch (`POST /api/protect`); Spell Check disables its key with the reason. Search keeps the saved index; single reads tied to a press (Go Live's anchor check, Keep as safe slide) are unchanged. Checked on the dev copy: rebuild, reindex, scan and update answer 409 with the reason; Save and rebuild says it's waiting; the watcher stops; search answers; the switch off brings the keys and watcher back, on hides them again.
 - 2026-10-04 — (same) Code review (high) of 6524b97: 10 findings, all fixed. Error catching moved to Express's Layer (`installAsyncErrorCatching`), so every handler in both listeners, routers and app.all included, answers on a throw, and a falsy rejection is an error, not a 404; 500s are logged in full and answered generically (no paths to the screen); the phone app's faults are logged 500s, not silent 400s (test asserts both). One theme list, `public/themes.js`, read by nav.js and the server, which also checks the theme it serves; nav.js says when a display setting didn't save. `cleanStageText` takes text only, for every caller (test). Search refuses a parameter sent twice (400). The two stress-test log entries now say they were committed. 619 pass.
 - 2026-10-04 — Installed 675ab10 on this Mac (owner asked): Protect ProPresenter on, file watcher stopped, rebuild refused (409), search answers from the saved index (744 presentations), pictures off, ProPresenter connected. Still v0.29.0. Not on the main station or the booth.
+- 2026-10-06 — Section 48 built on branch feature-switches (uncommitted): features on and off, Settings › Features, gated routes and tabs, phone tabs. 623 tests pass, lint clean. Code review next, then push on the owner's say.
+- 2026-10-06 — Section 48: two code reviews (high) run and fixed, see the section. 623 tests pass, lint clean; switches, gates, watcher, lock-in release and phone tabs re-checked on the dev copy. Dev settings restored.

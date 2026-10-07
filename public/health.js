@@ -348,6 +348,28 @@ export function initHealth() {
     wireKillSwitch();
     wireDaySummarySettings(render);
 
+    // A feature switched: the page reloads, so the menu, the tabs and every
+    // screen are drawn again with it on or off.
+    document.querySelectorAll("[data-feature]").forEach((key) =>
+      key.addEventListener("click", async () => {
+        if (key.getAttribute("aria-checked") === "true") return;
+        const status = document.getElementById("features-status");
+        try {
+          const res = await fetch("/api/features", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: key.dataset.feature, on: key.dataset.on === "true" }) });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error ?? res.statusText);
+          if (status) status.textContent = "Saved. Updating the menu...";
+          // On but not working yet (Image Crop's folders): say so long enough to read.
+          if (data.warning) {
+            showFailure(data.warning);
+            setTimeout(() => location.reload(), 6000);
+          } else location.reload();
+        } catch (err) {
+          showFailure(`Couldn't change that feature: ${err.message}`);
+        }
+      })
+    );
+
     document.querySelectorAll("[data-protect]").forEach((key) =>
       key.addEventListener("click", async () => {
         const on = key.dataset.protect === "true";
@@ -413,7 +435,7 @@ export function initHealth() {
         const status = document.getElementById("feed-status");
         btn.disabled = true;
         try {
-          const res = await fetch("/api/service/send-log", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+          const res = await fetch("/api/service-feed/send-log", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
           const data = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(data.error ?? res.statusText);
           status.textContent = data.sent ? `Sent ${data.sent} day${data.sent === 1 ? "" : "s"} of log.` : "Nothing new to send. The server already has every log.";
@@ -938,7 +960,6 @@ export function initHealth() {
         qrDefaultSize: document.getElementById("config-qr-default-size").value,
       }),
       arrangement: () => ({
-        arrangementEnabled: document.getElementById("config-arrangement-enabled").checked,
         arrangementProvider: document.getElementById("config-arrangement-provider").value,
         arrangementStorageBackend: document.getElementById("config-arrangement-storage").value,
         arrangementLocalFolderPath: document.getElementById("config-storage-path").value,
@@ -2030,6 +2051,12 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
    * show a file in Finder so a person can look and decide.
    */
   const net = health.networkModule;
+  // Features (owner, 2026-10-06): Search and Spell Check are what Refrain is
+  // for and are always on; everything else is a switch, declared by its own
+  // module (server/features.js). Off hides its tab or section entirely.
+  const features = health.features ?? [];
+  const featureOn = (id) => features.find((f) => f.id === id)?.on !== false;
+
   // Always here, off or on, because Health is where people look for setup.
   // The Phone panel (rail) does the work; this says the state and opens it.
   const phoneStatus = !net || net.status === "off"
@@ -2356,7 +2383,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
             </div>
           </div>
         </details>
-        <details class="collapse collapse-arrow bg-base-200 rounded" >
+        <details class="collapse collapse-arrow bg-base-200 rounded" ${featureOn("qr-code") ? "" : "hidden"}>
           <summary class="collapse-title min-h-0 py-2">
             <span class="flex items-center gap-2 text-sm font-medium">
               <i data-lucide="qr-code" class="w-4 h-4 opacity-70 shrink-0"></i> QR codes
@@ -2397,7 +2424,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
             </div>
           </div>
         </details>
-        <details class="collapse collapse-arrow bg-base-200 rounded" >
+        <details class="collapse collapse-arrow bg-base-200 rounded" ${featureOn("arrangement") ? "" : "hidden"}>
           <summary class="collapse-title min-h-0 py-2">
             <span class="flex items-center gap-2 text-sm font-medium">
               <i data-lucide="git-compare" class="w-4 h-4 opacity-70 shrink-0"></i> Arrangement tracking
@@ -2405,11 +2432,6 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
             </span>
           </summary>
           <div class="collapse-content flex flex-col gap-3">
-          <label class="label cursor-pointer justify-start gap-2 w-fit">
-            <input type="checkbox" id="config-arrangement-enabled" class="checkbox checkbox-sm" ${arrangementModule.enabled ? "checked" : ""} />
-            <span class="label-text">Enable arrangement drift tracking ${infoIcon("Compares each song's planned arrangement with what actually played.")}</span>
-          </label>
-
           <div class="flex flex-wrap gap-3">
             <label class="form-control w-full max-w-xs">
               <label class="label py-1" for="config-arrangement-provider">
@@ -2457,7 +2479,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
             </div>
           </div>
         </details>
-        ${renderDaySummarySection(health)}
+        ${featureOn("service") ? renderDaySummarySection(health) : ""}
         ${renderEnvSection(envRequirements, envEntryList)}
       </div>
   `;
@@ -2531,6 +2553,27 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
       </div>
     </div>
   `;
+
+  const featureRow = (f) => `
+        <div class="rf-feature-row flex items-start justify-between gap-3 flex-wrap py-2 border-t border-base-300">
+          <div class="min-w-0 rf-measure">
+            <div class="text-sm font-medium">${escapeHtml(f.label)}${f.parentLabel ? ` <span class="text-xs opacity-60 font-normal">on ${escapeHtml(f.parentLabel)}</span>` : ""}</div>
+            <div class="text-xs opacity-70">${escapeHtml(f.description)}</div>
+          </div>
+          <div class="rf-tabs shrink-0" role="radiogroup" aria-label="${escapeHtml(f.label)}" style="margin-bottom:0">
+            <button type="button" role="radio" class="rf-tab" data-feature="${escapeHtml(f.id)}" data-on="true" aria-checked="${f.on}"><span>On</span></button>
+            <button type="button" role="radio" class="rf-tab" data-feature="${escapeHtml(f.id)}" data-on="false" aria-checked="${!f.on}"><span>Off</span></button>
+          </div>
+        </div>`;
+  const featuresCard = `
+    <div class="card bg-base-200">
+      <div class="card-body p-3 gap-1">
+        <h2 class="card-title text-base">Features</h2>
+        <p class="text-sm opacity-70 rf-measure">Always on: Search, Spell Check with date checks, and Now's safe slides, quick slides and Clear.</p>
+        <div class="flex flex-col">${features.map(featureRow).join("")}</div>
+        <div id="features-status" class="text-sm" role="status"></div>
+      </div>
+    </div>`;
 
   // Protect ProPresenter (owner, 2026-10-04, after the main station's
   // ProPresenter was damaged overnight). Tucked at the end of Search, closed:
@@ -2631,7 +2674,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
         // 2026-10-04: its messages were far below the libraries list).
         health.index?.rebuild?.inProgress ? panel("search", indexCard, libraryCard, protectCard) : panel("search", libraryCard, indexCard, protectCard)
       }
-      ${panel("features", configCard, arrangementCard)}
+      ${panel("features", featuresCard, configCard, featureOn("arrangement") ? arrangementCard : "")}
       ${panel("phones", phoneCard, picturesCard)}
       ${panel("customize", displayCard, welcomeCard, autostartCard)}
       ${panel("telemetry", telemetryCard)}

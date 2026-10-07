@@ -12,5 +12,7 @@ export default {
   client: { file: "arrangement.js", init: "initArrangement" },
   route: "/arrangement",
   component: null, // TODO: ArrangementScreen component
-  enabledByDefault: false,
+  // Switchable on Settings > Features (server/features.js); off hides its
+  // screen and its routes answer "switched off".
+  feature: { default: false, label: "Arrangement tracking", description: "Compares the arrangements used with the planning system's plan.", apiPrefixes: ["/api/arrangement"] },
 };

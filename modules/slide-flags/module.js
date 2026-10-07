@@ -3,8 +3,8 @@
  * #1 and #2). Capture lives on Search and the Live screen; this is the review
  * screen. See server/slide-flags.js and public/slide-flags.js.
  *
- * enabledByDefault: it needs nothing configured -- flags are kept on this
- * machine unless a shared folder is set -- so there is nothing to turn on.
+ * On by default: it needs nothing configured -- flags are kept on this
+ * machine unless a shared folder is set.
  */
 export default {
   id: "slide-flags",
@@ -14,5 +14,7 @@ export default {
   client: { file: "slide-flags.js", init: "initSlideFlags" },
   route: "/slide-flags",
   component: null,
-  enabledByDefault: true,
+  // Switchable on Settings > Features (server/features.js); off hides its
+  // screen and its routes answer "switched off".
+  feature: { default: true, label: "Flags", description: "Flag a slide that needs fixing, from the booth or a phone, and see what was flagged today.", apiPrefixes: ["/api/slide-flags"] },
 };

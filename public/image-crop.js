@@ -35,14 +35,11 @@ export function initImageCrop() {
           in frame.
         </p>
 
-        <label class="rf-check w-fit">
-          <input type="checkbox" id="crop-enabled" class="checkbox checkbox-xs" ${cfg.enabled ? "checked" : ""} />
-          Watch the input folder
-        </label>
-
         <!-- E2, the hero: the folders and the presets are what the Installer
              came here to set, and Save is their commit. -->
-        <div id="crop-config-fields" class="card bg-base-200 rf-hero ${cfg.enabled ? "" : "opacity-50 pointer-events-none"}">
+        <!-- Watching is the Image Crop feature itself (Settings › Features):
+             this screen only shows while it's on. -->
+        <div id="crop-config-fields" class="card bg-base-200 rf-hero">
           <div class="card-body p-3 gap-4">
             <div class="flex flex-col gap-3">
               <div class="rf-field">
@@ -105,7 +102,7 @@ export function initImageCrop() {
                </div>`
             : `<div class="flex items-center gap-2 text-sm opacity-60">
                  <span class="rf-led"></span>
-                 Not watching. Tick <strong class="font-medium">Watch the input folder</strong> above and Save to start.
+                 Not watching. Set both folders and at least one preset, then Save.
                </div>`
         }
 
@@ -119,11 +116,6 @@ export function initImageCrop() {
     `;
 
     renderPresetRows();
-
-    document.getElementById("crop-enabled").addEventListener("change", (e) => {
-      document.getElementById("crop-config-fields").classList.toggle("opacity-50", !e.target.checked);
-      document.getElementById("crop-config-fields").classList.toggle("pointer-events-none", !e.target.checked);
-    });
 
     document.getElementById("crop-add-preset-btn").addEventListener("click", () => {
       workingPresets.push({ name: "", width: 1080, height: 1080 });
@@ -258,7 +250,6 @@ export function initImageCrop() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          enabled: document.getElementById("crop-enabled").checked,
           inputFolder: document.getElementById("crop-input-folder").value,
           outputFolder: document.getElementById("crop-output-folder").value,
           presets: workingPresets.filter((p) => p.name.trim() && p.width > 0 && p.height > 0),

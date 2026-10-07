@@ -266,11 +266,14 @@ $("send").addEventListener("click", async () => {
 async function refresh() {
   try {
     state = await api("/api/state");
+    paintTabs(state.features);
     paintProgress(state.progress);
     paintSlides();
     if (!$("types").childElementCount) paintTypes();
     ready();
-    flush();
+    // Flags switched off at the booth: queued flags wait on the phone for it
+    // to come back on, rather than being refused and dropped.
+    if (state.features?.flags !== false) flush();
     paintControl();
   } catch (err) {
     if (err.status !== 401) $("progress").textContent = "Can't reach the booth. Retrying.";
@@ -292,6 +295,26 @@ async function loadImage(img) {
 
 // The banner confirms too: it's the biggest target on the screen.
 $("confirm").addEventListener("click", () => armed?.el.click());
+
+// --- which tabs: what the booth has switched on (Settings › Features) -----
+// Flag needs Flags; Alert needs Messages. A tab that's off isn't shown; if
+// the shown tab goes, the other is shown; with neither, the page says so.
+function paintTabs(f) {
+  const on = { flag: f?.flags !== false, alert: f?.messages !== false };
+  const tabs = [...document.querySelectorAll(".tab")];
+  tabs.forEach((t) => (t.hidden = !on[t.dataset.tab]));
+  const shown = tabs.find((t) => t.getAttribute("aria-selected") === "true");
+  if (shown && !on[shown.dataset.tab]) {
+    const other = tabs.find((t) => on[t.dataset.tab]);
+    if (other) other.click();
+  }
+  // Every refresh says which panel shows, so one switched back on at the
+  // booth reappears without a reload.
+  const selected = tabs.find((t) => t.getAttribute("aria-selected") === "true")?.dataset.tab;
+  for (const name of ["flag", "alert"]) $(`tab-${name}`).hidden = !(on[name] && name === selected);
+  document.querySelector(".tabs").hidden = !(on.flag && on.alert);
+  $("nothing-here").hidden = on.flag || on.alert;
+}
 
 // --- tabs ---------------------------------------------------------------------
 document.querySelectorAll(".tab").forEach((t) =>

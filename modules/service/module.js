@@ -3,9 +3,8 @@
  * lock-in for live events (handoff section 37, phase 1; issue #6). See
  * server/service-days.js and public/service.js.
  *
- * Off by default: a church that only wants search never sees it. Turned on
- * with `serviceModule.enabled` in config.json, and it needs nothing else --
- * service times and a shared folder are both optional.
+ * On by default (owner, 2026-10-06), switched on Settings > Features. It
+ * needs nothing else -- service times and a shared folder are both optional.
  */
 export default {
   id: "service",
@@ -15,5 +14,7 @@ export default {
   client: { file: "service.js", init: "initService" },
   route: "/service",
   component: null,
-  enabledByDefault: false,
+  // Switchable on Settings > Features (server/features.js); off hides its
+  // screen and its routes answer "switched off".
+  feature: { default: true, label: "Service day", description: "The day's timeline of what went live, the pre-service checks, the checklist and End the day.", apiPrefixes: ["/api/service/"] },
 };

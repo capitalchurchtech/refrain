@@ -488,7 +488,7 @@ export function initService() {
       btn.disabled = true;
       btn.textContent = "Sending...";
       try {
-        const data = await post("/api/service/send-log");
+        const data = await post("/api/service-feed/send-log");
         paint(data);
         if (!data.sent) showFailure("Nothing new to send. The server already has every log.");
       } catch (err) {

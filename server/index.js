@@ -35,8 +35,7 @@ import {
   deliveryBackendFor,
   cleanFolderSetting,
   ensureMachineId,
-  readConfigFileRaw,
-} from "./config.js";
+  readConfigFileRaw, featureOn, registerFeatureDefaults } from "./config.js";
 import { ProPresenterClient, onProPresenterCall } from "./propresenter-client.js";
 import { classifyCall, createCallStats, createAskedCounter, parseProPresenterPs, propresenterLoadNotice, formatServiceLine } from "./service-log.js";
 import { scanForProPresenter } from "./propresenter-scan.js";
@@ -174,6 +173,7 @@ import { restartCommand, isConfirmedKill, runByLoginItem } from "./panic.js";
 import { autoEndSettings, autoEndPlan, autoEndNote, withAutoNote } from "./auto-end.js";
 import { installAsyncErrorCatching, routeErrorHandler } from "./async-routes.js";
 import { THEMES, DEFAULT_THEME } from "../public/themes.js";
+import { moduleFeatures, featureDefaults, featureForPath } from "./features.js";
 
 const { version } = JSON.parse(readFileSync("./package.json", "utf-8"));
 
@@ -241,6 +241,9 @@ let config = loadConfig();
 // Before anything asks for module status: the arrangement checks read each
 // provider's declared requiredEnv instead of naming a vendor.
 registerProviders(await discoverProviders());
+// Switchable features, each declared by its own module (server/features.js).
+const FEATURES = moduleFeatures(await discoverModules());
+registerFeatureDefaults(featureDefaults(FEATURES));
 registerDeliveryBackends(await discoverDeliveryBackends());
 let client = new ProPresenterClient(config.propresenter);
 
@@ -277,6 +280,15 @@ app.post("/api/panic", express.json(), (req, res) => {
 app.use(express.static("public"));
 app.use(express.json());
 
+// A switched-off feature's routes answer "switched off" (Settings › Features).
+// One gate for all of them, from the prefixes each module declares, so a
+// feature that's off can't be reached by a page left open from before.
+app.use((req, res, next) => {
+  const f = featureForPath(FEATURES, req.path);
+  if (f && !featureOn(config, f.id)) return res.status(404).json({ error: `${f.label} is switched off. Turn it on in Settings › Features.`, feature: f.id, off: true });
+  next();
+});
+
 // TODO: mount module *routes* discovered via plugin-loader.js, per
 // docs/refrain-architecture.md Section 17.11, once a module has real
 // server-side endpoints of its own (arrangement, lyrics-assist).
@@ -285,14 +297,130 @@ app.use(express.json());
 
 /** Whether a module should appear in the nav at all. */
 function navEnabledFor(m) {
-  if (m.id === "arrangement") return getArrangementModuleStatus(config) !== "off";
-  if (m.id === "service") return getServiceModuleStatus(config) !== "off";
+  // A switchable feature shows when it's on (Settings › Features); a core
+  // module (no `feature` in its module.js) shows as it declares.
+  if (m.feature) return featureOn(config, m.id);
   return m.enabledByDefault;
 }
+
+/** Every switchable feature with its state, for Settings › Features and the screens. */
+const featureStates = () => FEATURES.map((f) => ({ id: f.id, label: f.label, description: f.description, default: f.default, parent: f.parent, parentLabel: f.parentLabel, on: featureOn(config, f.id) }));
+
+/**
+ * Section 8.4: a write that failed (backend unreachable) is staged locally
+ * rather than lost. Retried at start and whenever Arrangement tracking is
+ * switched on, so a staged upload is never stranded until the next restart.
+ */
+async function retryArrangementUploads() {
+  if (config.role !== "logger" || getArrangementModuleStatus(config) !== "active") return;
+  try {
+    const storage = await getStorageBackend();
+    const { attempted, succeeded } = await retryPendingUploads(storage);
+    if (attempted > 0) console.log(`Retried ${attempted} pending arrangement upload(s) — ${succeeded} succeeded.`);
+  } catch (err) {
+    console.error("Pending-upload retry failed:", err.message);
+  }
+}
+
+/**
+ * Service days: load today (or yesterday, if a lock-in is still running from
+ * it), put performance mode back if a lock-in survived a restart, copy any
+ * events that were waiting for the shared folder, and start the minute timer
+ * (which checks the switch itself). At start, and when Service day is
+ * switched on.
+ */
+let serviceTimer = null;
+async function startServiceDays({ restart = true } = {}) {
+  if (!serviceModuleOn()) return;
+  try {
+    // Switched on while running, the day in memory stays (events still being
+    // written would be lost by a reload), and no lock-in is put back: one
+    // was released when Service day went off.
+    if (!restart) await ensureServiceDay();
+    else await loadServiceDay();
+    const { lockin } = serviceState();
+    if (restart && lockin && !(performance.armed && performance.source === "manual")) {
+      setPerformance(armManually(performance, Date.now()));
+      console.log(`Still locked in for "${lockin.name}" after the restart. Performance mode back on by hand.`);
+    }
+    const { folder } = serviceOptions();
+    retryPendingEvents({ folder }).catch(() => {});
+    serviceTimer ??= setInterval(() => {
+      resolveScheduledPlaylists().catch(() => {});
+      preServiceReindex().catch(() => {});
+    }, 60_000);
+    serviceTimer.unref?.();
+    const summaryFolder = config.serviceModule?.summaryFolder;
+    if (typeof summaryFolder === "string" && summaryFolder.trim()) {
+      retryPending([""], { folder: summaryFolder.trim(), pendingDir: summaryPendingDir() }).catch(() => {});
+    }
+  } catch (err) {
+    console.error("Service days could not start:", err.message);
+  }
+}
+
+/** What the Image Crop watcher runs on: its settings when the feature is on and set up, else nothing. */
+const imageCropWatch = (c) => (getImageCropModuleStatus(c) === "active" ? c.imageCropModule : null);
+
+/** The settings that make a feature usable the moment it's switched on. */
+function readyFeature(c, id) {
+  if (id !== "image-crop") return c;
+  const m = { ...c.imageCropModule };
+  m.inputFolder ??= DEFAULT_IMAGE_CROP_INPUT;
+  m.outputFolder ??= DEFAULT_IMAGE_CROP_OUTPUT;
+  if (!m.presets?.length) m.presets = DEFAULT_IMAGE_CROP_PRESETS;
+  return { ...c, imageCropModule: m };
+}
+
+/** Switches one feature on or off (Settings › Features). */
+app.post("/api/features", async (req, res) => {
+  const { id, on } = req.body ?? {};
+  const f = FEATURES.find((x) => x.id === id);
+  if (!f) return res.status(400).json({ error: "No such feature." });
+  if (typeof on !== "boolean") return res.status(400).json({ error: "on must be true or false" });
+  // Already so (a second tab, a repeat press): nothing to start or stop.
+  if (featureOn(config, id) === on) return res.json({ ok: true, features: featureStates() });
+  const change = (c) => (on ? readyFeature({ ...c, features: { ...c.features, [id]: true } }, id) : { ...c, features: { ...c.features, [id]: false } });
+  // Image Crop starts on the settings it will be saved with. A folder it
+  // can't use still switches it on, not watching, so the screen where the
+  // folders are fixed is reachable; the answer says why.
+  let warning = null;
+  if (id === "image-crop") {
+    try {
+      await startImageCropWatcher(imageCropWatch(change(config)));
+    } catch (err) {
+      warning = `On, but not watching yet: ${err.message} Fix the folders on the Image Crop screen.`;
+    }
+  }
+  // A lock-in ends with Service day, or performance mode would stay on with
+  // its Release button switched off. If it can't be released, Service day
+  // stays on.
+  if (id === "service" && !on) {
+    try {
+      await releaseLockin(" (Service day switched off)");
+    } catch (err) {
+      return res.status(500).json({ error: `The lock-in couldn't be released, so Service day stays on: ${err.message}` });
+    }
+  }
+  try {
+    await updateConfig(change);
+  } catch (err) {
+    // The watcher goes back to what's saved.
+    if (id === "image-crop") await startImageCropWatcher(imageCropWatch(config)).catch(() => {});
+    const released = id === "service" && !on ? " The lock-in, if there was one, was already released." : "";
+    return res.status(500).json({ error: `Couldn't save it: ${err.message}${released}` });
+  }
+  // What runs on its own starts when its feature does.
+  if (on && id === "service") await startServiceDays({ restart: false });
+  if (on && id === "arrangement") await retryArrangementUploads();
+  console.log(`${f.label} switched ${on ? "on" : "off"} from Settings.`);
+  res.json({ ok: true, features: featureStates(), ...(warning ? { warning } : {}) });
+});
 
 app.get("/api/modules", async (_req, res) => {
   const modules = await discoverModules();
   res.json({
+    features: featureStates(),
     modules: modules.map((m) => ({
       id: m.id,
       navLabel: m.navLabel,
@@ -304,17 +432,8 @@ app.get("/api/modules", async (_req, res) => {
       nav: moduleNav(m.nav),
       client: moduleClient(m.client),
       settingsTab: moduleSettingsTab(m.settingsTab),
-      // "enabled" here means "show in the nav," not "the feature is running."
-      // The arrangement module is gated (hidden until configured, per its
-      // three-state status) because it needs real setup — credentials, a
-      // storage backend, a role. Image-crop needs none of that: it's a
-      // self-contained local utility with its own on/off toggle on its own
-      // screen, so it's always navigable (you flip it on from inside),
-      // matching how Search/Lyrics are always present.
-      //
-      // Library Sync is gated the same way as arrangement: it only makes sense
-      // with a second machine or account, so a single-machine church never
-      // sees it until they deliberately switch it on in config.json.
+      // "enabled" here means "show in the nav": a switchable feature shows
+      // while it's on (Settings › Features), a core module always.
       enabled: navEnabledFor(m),
     })),
   });
@@ -630,10 +749,6 @@ app.post("/api/config", async (req, res) => {
       newConfig.slideSplitter = body.slideSplitter;
     }
 
-    if (body.arrangementEnabled !== undefined) {
-      newConfig.arrangementModule.enabled = Boolean(body.arrangementEnabled);
-    }
-
     if (body.arrangementProvider !== undefined) {
       const providers = await discoverProviders();
       if (!providers.some((P) => P.providerId === body.arrangementProvider)) {
@@ -740,7 +855,9 @@ app.post("/api/config", async (req, res) => {
     // Only the sections this form changed are written over the settings as
     // they are at its turn, so a change saved meanwhile elsewhere stays.
     const before = config;
-    const touched = Object.keys(newConfig).filter((k) => JSON.stringify(newConfig[k]) !== JSON.stringify(before[k]));
+    // Not features: those are switched one at a time on Settings › Features,
+    // and a switch flipped meanwhile must stay flipped.
+    const touched = Object.keys(newConfig).filter((k) => k !== "features" && JSON.stringify(newConfig[k]) !== JSON.stringify(before[k]));
     try {
       await updateConfig((c) => ({ ...c, ...Object.fromEntries(touched.map((k) => [k, newConfig[k]])) }));
     } catch (err) {
@@ -1488,6 +1605,9 @@ function startRemoteListener() {
     // Pictures already on disk only: a phone never makes ProPresenter draw.
     thumb: storedSlideThumb,
     pictures: () => picturesOn() && config.networkModule?.phonePictures === true,
+    // What a phone may do, from Settings › Features: flag (Flags) and send
+    // alerts (Messages: stage messages and the pager).
+    features: () => ({ flags: featureOn(config, "slide-flags"), messages: featureOn(config, "messages") }),
     stage: async () => ({ presets: stagePresets(), current: await readStage() }),
     // Messages a phone can fill in: those with a text field (a pager code).
     messages: async () => {
@@ -2786,7 +2906,7 @@ async function preServiceReindex(now = Date.now()) {
 
 function requireServiceModule(res) {
   if (serviceModuleOn()) return true;
-  res.status(409).json({ error: "The Service module is off. Turn it on in config.json (serviceModule.enabled)." });
+  res.status(409).json({ error: "Service day is switched off. Turn it on in Settings › Features." });
   return false;
 }
 
@@ -2865,17 +2985,23 @@ app.post("/api/service/lockin", async (req, res) => {
   res.json({ ok: true, ...servicePayload() });
 });
 
-app.post("/api/service/lockin/release", async (_req, res) => {
-  if (!requireServiceModule(res)) return;
+/** Ends a lock-in and the performance mode it put on. False when nothing was locked in. */
+async function releaseLockin(why = "") {
   await ensureServiceDay();
   const { lockin } = serviceState();
-  if (!lockin) return res.status(409).json({ error: "Nothing is locked in." });
+  if (!lockin) return false;
   const now = Date.now();
   recordServiceEvents([buildEvent("lockin-released", { serviceId: lockin.serviceId }, { now })]);
   if (lockin.armedPerformance && performance.armed && performance.source === "manual") {
     setPerformance(disarmManually(performance, now), now);
   }
-  console.log(`Released lock-in "${lockin.name}".`);
+  console.log(`Released lock-in "${lockin.name}"${why}.`);
+  return true;
+}
+
+app.post("/api/service/lockin/release", async (_req, res) => {
+  if (!requireServiceModule(res)) return;
+  if (!(await releaseLockin())) return res.status(409).json({ error: "Nothing is locked in." });
   res.json({ ok: true, ...servicePayload() });
 });
 
@@ -3053,7 +3179,7 @@ app.post("/api/service/send-summary", async (_req, res) => {
 });
 
 /** Send log (Service screen): hands this machine's diagnostics to the announcement server. */
-app.post("/api/service/send-log", async (_req, res) => {
+app.post("/api/service-feed/send-log", async (_req, res) => {
   const out = await serviceFeed.sendLogs();
   // Also pressed from Settings > Telemetry, so it must not need the Service screen.
   res.status(out.ok ? 200 : 409).json({ ...out, ...(serviceModuleOn() ? servicePayload() : {}) });
@@ -3563,13 +3689,15 @@ const CLEAR_LAYERS = ["slide", "media", "props", "messages", "announcements", "v
 // empty lists (not an error) if ProPresenter is unreachable, so the Clear
 // buttons still render and work.
 app.get("/api/live/controls", async (_req, res) => {
+  // Only what's switched on is asked of ProPresenter (Settings › Features).
+  const on = { looks: featureOn(config, "looks"), macros: featureOn(config, "macros"), messages: featureOn(config, "messages") };
   const [looks, macros, messages, currentLook] = await Promise.all([
-    client.getLooks().catch(() => []),
-    client.getMacros().catch(() => []),
-    client.getMessages().catch(() => []),
-    client.getCurrentLook().catch(() => null),
+    on.looks ? client.getLooks().catch(() => []) : [],
+    on.macros ? client.getMacros().catch(() => []) : [],
+    on.messages ? client.getMessages().catch(() => []) : [],
+    on.looks ? client.getCurrentLook().catch(() => null) : null,
   ]);
-  res.json({ looks, currentLook, macros: markHidden(macros, config.liveModule?.hiddenMacros), messages: markHidden(messages, config.liveModule?.hiddenMessages), messageRecent: config.liveModule?.messageRecent ?? {} });
+  res.json({ features: on, looks, currentLook, macros: markHidden(macros, config.liveModule?.hiddenMacros), messages: markHidden(messages, config.liveModule?.hiddenMessages), messageRecent: config.liveModule?.messageRecent ?? {} });
 });
 
 /** Just the current Look, for Live to refresh after a Look or a macro. */
@@ -5333,10 +5461,9 @@ app.get("/api/image-crop/status", (_req, res) => {
 
 app.post("/api/image-crop/config", async (req, res) => {
   try {
-    const { enabled, inputFolder, outputFolder, presets } = req.body ?? {};
+    // On and off is the Image Crop feature (Settings › Features), not this form.
+    const { inputFolder, outputFolder, presets } = req.body ?? {};
     const newConfig = { ...config, imageCropModule: { ...config.imageCropModule } };
-
-    if (enabled !== undefined) newConfig.imageCropModule.enabled = Boolean(enabled);
     if (inputFolder !== undefined) {
       if (typeof inputFolder !== "string") return res.status(400).json({ error: "inputFolder must be a string" });
       newConfig.imageCropModule.inputFolder = inputFolder.trim() || null;
@@ -5381,23 +5508,18 @@ app.post("/api/image-crop/config", async (req, res) => {
     // First time this module is turned on with no folders configured yet,
     // default to a zero-setup location inside the app's own data folder —
     // "drop a file in, it works" shouldn't require picking a path first.
-    if (newConfig.imageCropModule.enabled) {
-      newConfig.imageCropModule.inputFolder ??= DEFAULT_IMAGE_CROP_INPUT;
-      newConfig.imageCropModule.outputFolder ??= DEFAULT_IMAGE_CROP_OUTPUT;
-      if (!newConfig.imageCropModule.presets?.length) {
-        newConfig.imageCropModule.presets = DEFAULT_IMAGE_CROP_PRESETS;
-      }
-      if (foldersOverlap(newConfig.imageCropModule.inputFolder, newConfig.imageCropModule.outputFolder)) {
-        return res.status(400).json({
-          error: "Input and output folders can't be the same folder or nested inside one another — cropped outputs would be re-cropped in an endless loop.",
-        });
-      }
+    // The route is only reachable while Image Crop is on (the feature gate).
+    newConfig.imageCropModule = readyFeature(newConfig, "image-crop").imageCropModule;
+    if (foldersOverlap(newConfig.imageCropModule.inputFolder, newConfig.imageCropModule.outputFolder)) {
+      return res.status(400).json({
+        error: "Input and output folders can't be the same folder or nested inside one another — cropped outputs would be re-cropped in an endless loop.",
+      });
     }
 
     // Start the watcher against the *candidate* config before persisting,
     // so a bad path (permission denied, etc.) surfaces as a 400 the user
     // sees instead of leaving a broken enabled=true saved to disk.
-    await startImageCropWatcher(getImageCropModuleStatus(newConfig) === "active" ? newConfig.imageCropModule : null);
+    await startImageCropWatcher(imageCropWatch(newConfig));
     // In turn with every other change; only imageCropModule is taken from
     // the form, so a change made meanwhile elsewhere isn't undone.
     await updateConfig((c) => ({ ...c, imageCropModule: newConfig.imageCropModule }));
@@ -5773,7 +5895,7 @@ app.get("/api/health", async (_req, res) => {
     },
     arrangementModule: {
       status: getArrangementModuleStatus(config),
-      enabled: Boolean(config.arrangementModule?.enabled),
+      enabled: featureOn(config, "arrangement"),
       storageBackend: config.arrangementModule?.storageBackend ?? null,
       storageBackendDisplayName: await getStorageBackendDisplayName(),
       localFolderPath: config.arrangementModule?.localFolderPath ?? null,
@@ -5806,6 +5928,7 @@ app.get("/api/health", async (_req, res) => {
     networkModule: { ...getNetworkModuleStatus(config, port), urls: getNetworkModuleStatus(config, port).status === "active" ? networkUrls() : [], pinMode: remotePinMode() },
     reportModule: getReportModuleStatus(config),
     protectProPresenter: protectOn(),
+    features: featureStates(),
     serviceFeedModule: {
       ...getServiceFeedModuleStatus(config),
       ...serviceFeed.state(),
@@ -6015,43 +6138,14 @@ const server = app.listen(port, "127.0.0.1", async () => {
   // staged locally rather than lost — retry it now that the app's back
   // up, instead of leaving it stuck until the next comparison happens
   // to touch that exact song again.
-  if (config.role === "logger" && getArrangementModuleStatus(config) === "active") {
-    try {
-      const storage = await getStorageBackend();
-      const { attempted, succeeded } = await retryPendingUploads(storage);
-      if (attempted > 0) {
-        console.log(`Retried ${attempted} pending arrangement upload(s) — ${succeeded} succeeded.`);
-      }
-    } catch (err) {
-      console.error("Pending-upload retry failed:", err.message);
-    }
+  await retryArrangementUploads();
+  if (config.role === "logger" && getArrangementModuleStatus(config) === "off") {
+    // Staged writes stay on disk while it's off; switching it on sends them.
+    const waiting = await getPendingUploadCount().catch(() => 0);
+    if (waiting > 0) console.log(`${waiting} arrangement upload(s) are waiting. Switch Arrangement tracking on in Settings › Features to send them.`);
   }
 
-  // Service days: load today (or yesterday, if a lock-in is still running
-  // from it), put performance mode back if a lock-in survived the restart,
-  // and copy any events that were waiting for the shared folder.
-  if (serviceModuleOn()) {
-    try {
-      await loadServiceDay();
-      const { lockin } = serviceState();
-      if (lockin && !(performance.armed && performance.source === "manual")) {
-        setPerformance(armManually(performance, Date.now()));
-        console.log(`Still locked in for "${lockin.name}" after the restart. Performance mode back on by hand.`);
-      }
-      const { folder } = serviceOptions();
-      retryPendingEvents({ folder }).catch(() => {});
-      setInterval(() => {
-        resolveScheduledPlaylists().catch(() => {});
-        preServiceReindex().catch(() => {});
-      }, 60_000).unref?.();
-      const summaryFolder = config.serviceModule?.summaryFolder;
-      if (typeof summaryFolder === "string" && summaryFolder.trim()) {
-        retryPending([""], { folder: summaryFolder.trim(), pendingDir: summaryPendingDir() }).catch(() => {});
-      }
-    } catch (err) {
-      console.error("Service days could not start:", err.message);
-    }
-  }
+  await startServiceDays();
 
   // The service feed names this console by a stable id it makes once. Written
   // atomically like every config change; a failure just means no feed yet.
@@ -6085,7 +6179,7 @@ const server = app.listen(port, "127.0.0.1", async () => {
 
   if (getImageCropModuleStatus(config) === "active") {
     try {
-      await startImageCropWatcher(config.imageCropModule);
+      await startImageCropWatcher(imageCropWatch(config));
       console.log(`Watching ${config.imageCropModule.inputFolder} for images to crop.`);
     } catch (err) {
       console.error("Failed to start image-crop watcher:", err.message);

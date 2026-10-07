@@ -181,6 +181,7 @@ export function createRemoteApp({
   thumb = async () => null,
   pictures = () => false,
   stage = async () => ({ presets: [], current: "" }),
+  features = () => ({ flags: true, messages: true }),
   messages = async () => [],
   currentSlides = () => null,
   noteActivity = () => {},
@@ -256,9 +257,26 @@ export function createRemoteApp({
   app.get("/", (_req, res) => res.type("html").send(readFileSync(page, "utf-8")));
   app.get("/remote.js", (_req, res) => res.type("application/javascript").send(readFileSync(script, "utf-8")));
 
+  // A phone's two jobs follow Settings › Features at the booth: flagging
+  // (Flags) and alerts (Messages). One that's off answers "switched off".
+  // Matched as Express routes them: any case, with or without a trailing slash.
+  const phoneFeature = (raw) => {
+    const path = String(raw).toLowerCase().replace(/\/+$/, "");
+    // Slide pictures on a phone are only for choosing a slide to flag.
+    if (path === "/api/flag" || path === "/api/flag-slides" || path.startsWith("/api/preview/image/")) return "flags";
+    if (path === "/api/stage" || path === "/api/messages" || path.startsWith("/api/control/")) return "messages";
+    return null;
+  };
+  app.use((req, res, next) => {
+    const f = phoneFeature(req.path);
+    if (f && !features()[f]) return res.status(404).json({ error: f === "flags" ? "Flagging is switched off at the booth." : "Alerts are switched off at the booth.", off: true });
+    next();
+  });
+
   app.get("/api/state", (req, res) => {
     const { liveState, recent, progress } = getState();
     res.json({
+      features: features(),
       connected: Boolean(liveState?.connected),
       live: Boolean(liveState?.live),
       pinRequired: pinOn(),
