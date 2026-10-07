@@ -1335,9 +1335,21 @@ async function pictureFingerprint(pid) {
  */
 const picturesOn = () => config.slidePictures?.show === true;
 
+/**
+ * Quick slides keep their pictures while pictures are off (owner,
+ * 2026-10-07: "allow Refrain to collect images of any saved quick slide").
+ * At most eight safe slides, each drawn once and kept on disk, so a volunteer
+ * can tell the logo from the blank at a glance. On unless
+ * `slidePictures.quickSlides` is false (Settings › Phones › Slide pictures).
+ */
+const quickSlidePicturesOn = () => config.slidePictures?.quickSlides !== false;
+const isSafeSlide = (pid, idx) => safeSlides(config.liveModule?.safeSlides).some((x) => x.presentationId === pid && x.slideIndex === idx);
+/** Whether a picture of this slide may be shown or drawn at all. */
+const pictureAllowed = (pid, idx) => picturesOn() || (quickSlidePicturesOn() && isSafeSlide(pid, idx));
+
 const thumbCache = createThumbCache(
   async (pid, idx, fp) => {
-    if (!picturesOn()) return null;
+    if (!pictureAllowed(pid, idx)) return null;
     const img = await client.getSlideThumbnail(pid, idx);
     if (img && fp) thumbStore.put(pid, idx, fp, img).catch(() => {});
     return img;
@@ -1346,6 +1358,28 @@ const thumbCache = createThumbCache(
   // a stored one is a disk read, and shouldn't queue behind renders.
   { stored: (pid, idx, fp) => thumbStore.get(pid, idx, fp).catch(() => null) }
 );
+/**
+ * Draws any saved quick slide that has no picture on disk yet, one at a time:
+ * when one is saved, and when quick-slide pictures are switched on. Never
+ * during a service (performance mode), when nothing new is drawn; the menu
+ * shows the name until there's a picture.
+ */
+let collectingQuickSlides = false;
+async function collectQuickSlidePictures() {
+  if (collectingQuickSlides || !quickSlidePicturesOn()) return;
+  collectingQuickSlides = true;
+  try {
+    for (const s of safeSlides(config.liveModule?.safeSlides)) {
+      if (performance.armed || !pictureAllowed(s.presentationId, s.slideIndex)) break;
+      const fp = await pictureFingerprint(s.presentationId).catch(() => null);
+      if (!fp || (await storedSlideThumb(s.presentationId, s.slideIndex))) continue;
+      await thumbCache(s.presentationId, s.slideIndex, fp).catch(() => null);
+    }
+  } finally {
+    collectingQuickSlides = false;
+  }
+}
+
 /** A picture already rendered and kept on disk, or null. Never asks ProPresenter. */
 async function storedSlideThumb(pid, idx) {
   const fp = await pictureFingerprint(pid);
@@ -3918,13 +3952,13 @@ app.get("/api/preview", (_req, res) => {
 });
 
 app.get("/api/preview/image/:pid/:idx", async (req, res) => {
-  if (!picturesOn()) return res.status(404).json({ error: "Slide pictures are off." });
-  const p = currentPreview();
   const idx = Number(req.params.idx);
+  if (!pictureAllowed(req.params.pid, idx)) return res.status(404).json({ error: "Slide pictures are off." });
+  const p = currentPreview();
   const nowOrNext = [p.current, p.next].some((t) => t && t.presentationId === req.params.pid && t.slideIndex === idx);
   // The church's own safe slides too (at most eight, same as the phone's
   // route), for the menu's quick slides. Rendered once and kept on disk.
-  const aSafeSlide = safeSlides(config.liveModule?.safeSlides).some((x) => x.presentationId === req.params.pid && x.slideIndex === idx);
+  const aSafeSlide = isSafeSlide(req.params.pid, idx);
   // And slides Spell Check flagged, so they can be found by eye in the editor.
   // Each new picture costs ProPresenter memory until it restarts, so these are
   // never drawn during a service.
@@ -3960,7 +3994,7 @@ app.post("/api/network/forget-phones", async (_req, res) => {
 });
 
 app.get("/api/live/safe-slides", (_req, res) => {
-  res.json({ safeSlides: safeSlides(config.liveModule?.safeSlides), pictures: picturesOn() });
+  res.json({ safeSlides: safeSlides(config.liveModule?.safeSlides), pictures: picturesOn() || quickSlidePicturesOn() });
 });
 
 /** Saves a slide from Search as a safe slide. Reads nothing from ProPresenter. */
@@ -3983,6 +4017,7 @@ app.post("/api/live/safe-slides", async (req, res) => {
     return { ...m, safeSlides: r.list };
   });
   if (!saved) return;
+  collectQuickSlidePictures().catch(() => {});
   res.json({ ok: true, added, safeSlides: saved.safeSlides });
 });
 
@@ -4024,6 +4059,7 @@ app.post("/api/live/safe-slides/current", async (_req, res) => {
     return { ...m, safeSlides: r.list };
   });
   if (!saved) return;
+  collectQuickSlidePictures().catch(() => {});
   res.json({ ok: true, added, safeSlides: saved.safeSlides });
 });
 
@@ -4951,16 +4987,19 @@ async function saveAllowlist(change, res) {
  * check; nothing is rendered by pressing it.
  */
 app.post("/api/slide-pictures", async (req, res) => {
-  const { prerender, show } = req.body ?? {};
-  if (prerender !== undefined && typeof prerender !== "boolean") return res.status(400).json({ error: "prerender must be true or false" });
-  if (show !== undefined && typeof show !== "boolean") return res.status(400).json({ error: "show must be true or false" });
-  if (prerender === undefined && show === undefined) return res.status(400).json({ error: "Send show and/or prerender." });
+  const { prerender, show, quickSlides } = req.body ?? {};
+  for (const [name, v] of Object.entries({ prerender, show, quickSlides })) {
+    if (v !== undefined && typeof v !== "boolean") return res.status(400).json({ error: `${name} must be true or false` });
+  }
+  if (prerender === undefined && show === undefined && quickSlides === undefined) return res.status(400).json({ error: "Send show, prerender and/or quickSlides." });
+  const change = Object.fromEntries(Object.entries({ prerender, show, quickSlides }).filter(([, v]) => v !== undefined));
   try {
-    await updateConfig((c) => ({ ...c, slidePictures: { playlists: [], ...c.slidePictures, ...(prerender !== undefined ? { prerender } : {}), ...(show !== undefined ? { show } : {}) } }));
+    await updateConfig((c) => ({ ...c, slidePictures: { playlists: [], ...c.slidePictures, ...change } }));
   } catch (err) {
     return res.status(500).json({ error: `Couldn't save it: ${err.message}` });
   }
-  res.json({ ok: true, prerender: config.slidePictures.prerender === true, show: picturesOn() });
+  if (quickSlides === true) collectQuickSlidePictures();
+  res.json({ ok: true, prerender: config.slidePictures.prerender === true, show: picturesOn(), quickSlides: quickSlidePicturesOn() });
 });
 
 /**
@@ -6058,7 +6097,7 @@ app.get("/api/health", async (_req, res) => {
   // is the thing to watch on a long service day, and only this machine sees it.
   propresenter.process = propresenterSamples.at(-1) ?? null;
   propresenter.load = propresenterLoad;
-  propresenter.slidePictures = { ...slidePicturesStatus, show: picturesOn(), prerender: config.slidePictures?.prerender === true, onThisMac: client.isLocalHost };
+  propresenter.slidePictures = { ...slidePicturesStatus, show: picturesOn(), quickSlides: quickSlidePicturesOn(), prerender: config.slidePictures?.prerender === true, onThisMac: client.isLocalHost };
   res.json({
     version,
     role: config.role ?? null,
