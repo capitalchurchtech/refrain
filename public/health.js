@@ -400,6 +400,20 @@ export function initHealth() {
       })
     );
 
+    document.querySelectorAll("[data-quick-pictures]").forEach((key) =>
+      key.addEventListener("click", async () => {
+        try {
+          const res = await fetch("/api/slide-pictures", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ quickSlides: key.dataset.quickPictures === "true" }) });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error ?? res.statusText);
+          document.dispatchEvent(new CustomEvent("refrain:safe-slides-changed"));
+          render();
+        } catch (err) {
+          showFailure(`Couldn't change quick slide pictures: ${err.message}`);
+        }
+      })
+    );
+
     document.querySelectorAll("[data-prerender]").forEach((key) =>
       key.addEventListener("click", async () => {
         const prerender = key.dataset.prerender === "true";
@@ -2092,8 +2106,16 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
         <p class="text-xs opacity-70 rf-measure">${
           pictures.show === true
             ? "Now, Next, the menu's quick slides and Spell Check show slide pictures."
-            : "Off: Refrain asks ProPresenter for no pictures. Now, Next and the menu show each slide's words."
+            : pictures.quickSlides !== false
+              ? "Off: Now and Next show each slide's words. Only the menu's quick slides have pictures (below)."
+              : "Off: Refrain asks ProPresenter for no pictures. Now, Next and the menu show each slide's words."
         }</p>
+        <div class="rf-subhead mt-2">Quick slides</div>
+        <p class="text-sm rf-measure">Pictures of your saved quick slides, even with pictures off, so the logo and the blank are told apart at a glance. Each is drawn once, when it's saved, and kept. Nothing new is drawn during a service.</p>
+        <div class="rf-tabs" role="radiogroup" aria-label="Quick slide pictures" style="margin-bottom:0">
+          <button type="button" role="radio" class="rf-tab" data-quick-pictures="true" aria-checked="${pictures.quickSlides !== false}"><span>Pictures</span></button>
+          <button type="button" role="radio" class="rf-tab" data-quick-pictures="false" aria-checked="${pictures.quickSlides === false}"><span>Names</span></button>
+        </div>
         <div class="rf-subhead mt-2">Draw ahead of time</div>
         <p class="text-sm rf-measure">Phones and the Now screen only show pictures drawn before the service. Turn this on to draw today's service playlists while nothing is on the screens.</p>
         <p class="text-xs opacity-70 rf-measure">ProPresenter holds on to memory for each picture it draws until it restarts, so restart ProPresenter after the pictures are drawn and before the service. The pictures are kept.</p>

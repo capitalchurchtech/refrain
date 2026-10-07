@@ -4025,6 +4025,15 @@ html.blackroom .rf-tab[aria-checked="true"] {
   gap: 4px;
   min-height: 16px;
 }
+/* The legends' own size. They also carry `.nav-label` (so they hide with
+   every label when the rail narrows), and `[data-theme="dark"] .nav-label`
+   at 0,2,0 outranked `.rf-status-legend`'s 8px, setting them at 10px: three
+   labelled lamps then filled the 144px row edge to edge (owner, 2026-10-07:
+   "smaller text so it's not so cramped"). 1,1,0 wins in every theme. */
+#status-cluster .rf-status-legend {
+  font-size: 8px;
+  letter-spacing: 0.1em;
+}
 /* In the row the dot doesn't need the 16px icon column it keeps in a
    narrow rail (it lines up with nothing here), and three labelled lamps
    only fit a 144px rail without it. */
