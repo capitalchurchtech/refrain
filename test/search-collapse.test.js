@@ -71,3 +71,12 @@ test("search results carry the anchor and arrangement the UI needs", () => {
   assert.equal(r.repeatCount, 1);
   assert.equal(r.slideIndex, 12);
 });
+
+test("a result carries how many slides its arrangement has, and a null group name for an older index", () => {
+  const [hit] = search({ query: "only unique line" });
+  assert.ok(hit, "the fixture line is found");
+  // "#12 / N": N is the arrangement's own slide count, not the match count.
+  assert.ok(Number.isInteger(hit.slideCount) && hit.slideCount >= 4);
+  // The fixture predates group names; the screen must be handed null, not undefined.
+  assert.equal(hit.groupName, null);
+});

@@ -1,4 +1,3 @@
-import { mountLiveReadout, paintGoing, clearGoing } from "./live-readout.js";
 import { mountFlagButton } from "./slide-flags.js";
 import { showFailure } from "./notice.js";
 import { crumb } from "./breadcrumbs.js";
@@ -43,14 +42,8 @@ export function initSearch({ prefs = {} } = {}) {
   const resultsEl = document.getElementById("results");
   const statusEl = document.getElementById("index-status");
   const pendingEl = document.getElementById("search-pending");
-  mountLiveReadout(document.getElementById("search-readout"));
+  const queryRing = document.getElementById("query-ring");
   mountFlagButton(document.getElementById("search-flag"));
-  const dateFilterToggle = document.getElementById("date-filter-toggle");
-  const dateFilterPanel = document.getElementById("date-filter-panel");
-  const dateFieldSelect = document.getElementById("date-field");
-  const dateFromInput = document.getElementById("date-from");
-  const dateToInput = document.getElementById("date-to");
-  const dateFilterClear = document.getElementById("date-filter-clear");
   const queryClear = document.getElementById("query-clear");
   const libraryFilterWrap = document.getElementById("library-filter-wrap");
   const libraryFilterToggle = document.getElementById("library-filter-toggle");
@@ -69,24 +62,17 @@ export function initSearch({ prefs = {} } = {}) {
   let latestSearchToken = 0;
   let allLibraryFolders = [];
 
-  // Slide "modified"/"created" dates can never be in the future — avoid
-  // a confusing "0 results" from a mis-picked date.
-  const today = new Date().toISOString().slice(0, 10);
-  dateFromInput.max = today;
-  dateToInput.max = today;
-
   /**
    * Search's own choices, kept on this Mac (owner, 2026-10-04: "so reloading
-   * doesn't wipe them"): the libraries and the date filter's field. Saved a
-   * moment after the last change, so a run of presses is one write. The date
-   * range is never kept: a forgotten range would quietly hide songs on a
-   * later Sunday.
+   * doesn't wipe them"): which libraries are switched off. Saved a moment
+   * after the last change, so a run of presses is one write. The date filter
+   * left this screen on 2026-10-07 (the owner wants songs of any age); the
+   * server still accepts a date range, but nothing here sends one.
    */
   // From the preferences main.js already read at start, so there's no
   // second request and no moment where a late answer overwrites a choice
   // the operator has just made.
   const savedOff = new Set(Array.isArray(prefs.searchLibrariesOff) ? prefs.searchLibrariesOff : []);
-  if (prefs.searchDateField === "created" || prefs.searchDateField === "modified") dateFieldSelect.value = prefs.searchDateField;
   let prefsTimer = null;
   let pendingPrefs = {};
   const sendPrefs = (keepalive = false) => {
@@ -105,14 +91,13 @@ export function initSearch({ prefs = {} } = {}) {
       });
   };
   const saveSearchPrefs = (prefsChange) => {
-    // Merged, so a library press right after a date-field change keeps both.
+    // Merged, so two quick changes are one write.
     pendingPrefs = { ...pendingPrefs, ...prefsChange };
     clearTimeout(prefsTimer);
     prefsTimer = setTimeout(() => sendPrefs(), 400);
   };
   // A change made just before a reload is the case this exists for.
   window.addEventListener("pagehide", () => sendPrefs(true));
-  dateFieldSelect.addEventListener("change", () => saveSearchPrefs({ searchDateField: dateFieldSelect.value }));
 
   async function initLibraryFilter() {
     const { folders } = await fetch("/api/search/folders").then((r) => r.json());
@@ -264,17 +249,12 @@ export function initSearch({ prefs = {} } = {}) {
     // gone.
     const indexRes = await fetch("/api/index/status").then((r) => r.json());
 
+    // One short line. The count and the date are the two things that tell an
+    // operator whether to trust a miss; how long the last refresh took was
+    // furniture on a 260px screen.
     statusEl.innerHTML = indexRes.builtAt
-      ? `
-        <span class="inline-flex items-center gap-1" title="${indexRes.presentationCount} presentations"><i data-lucide="database" class="w-3.5 h-3.5"></i><span class="rf-value">${indexRes.presentationCount}</span></span>
-        <span class="inline-flex items-center gap-1 ml-3" title="Last refreshed"><i data-lucide="clock" class="w-3.5 h-3.5"></i>${new Date(indexRes.builtAt).toLocaleString(undefined, { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
-        ${
-          indexRes.buildDurationMs == null
-            ? ""
-            : `<span class="inline-flex items-center gap-1 ml-3" title="Last refresh took"><i data-lucide="timer" class="w-3.5 h-3.5"></i>${formatDuration(indexRes.buildDurationMs)}</span>`
-        }
-      `
-      : `<span class="inline-flex items-center gap-1"><i data-lucide="database" class="w-3.5 h-3.5"></i>Library not read yet</span>`;
+      ? `<span title="${indexRes.presentationCount} presentations"><span class="rf-value">${indexRes.presentationCount}</span> songs</span><span class="rf-search-strip-sep" aria-hidden="true">&middot;</span><span title="Last refreshed">${new Date(indexRes.builtAt).toLocaleString(undefined, { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>`
+      : `<span>Library not read yet</span>`;
 
     // The silent failure: a four-day-old index renders identically to a fresh
     // one -- same colour, same weight, no signal -- while search quietly misses
@@ -296,20 +276,11 @@ export function initSearch({ prefs = {} } = {}) {
 
   async function runSearch(query) {
     const token = ++latestSearchToken;
-    const hasDateFilter = Boolean(dateFromInput.value || dateToInput.value);
-    // A date range with no text is a valid "what did we use in this
-    // timeframe" browse mode — only bail out when there's truly nothing
-    // to search on.
-    if (!query && !hasDateFilter) {
+    if (!query.trim()) {
       showEmptyHint();
       return;
     }
     const params = new URLSearchParams({ q: query });
-    if (hasDateFilter) {
-      params.set("dateField", dateFieldSelect.value);
-      if (dateFromInput.value) params.set("dateFrom", dateFromInput.value);
-      if (dateToInput.value) params.set("dateTo", dateToInput.value);
-    }
     const folders = selectedFolders();
     if (folders) params.set("folders", folders.join(","));
 
@@ -318,13 +289,13 @@ export function initSearch({ prefs = {} } = {}) {
       // A 500 returns an HTML error page, and parsing that as JSON throws
       // somewhere less obvious than here.
       if (!res.ok) throw new Error(`the server answered ${res.status}`);
-      const { results, corrected } = await res.json();
+      const { results, corrected, searched } = await res.json();
       // Superseded by a newer keystroke: that search owns the screen now,
       // including the "Searching" line, so leave both alone.
       if (token !== latestSearchToken) return;
       // Close matches: the server only sends these when nothing matched as
       // typed. Highlight what was actually found, and say so in one line.
-      renderResults(results, hasDateFilter, corrected ?? query, corrected);
+      renderResults(results, corrected ?? query, corrected, searched ?? []);
     } catch (err) {
       if (token !== latestSearchToken) return;
       // Without this the acknowledgement was permanent: "Searching" stayed on
@@ -405,12 +376,139 @@ export function initSearch({ prefs = {} } = {}) {
     if (pendingEl) pendingEl.textContent = "";
   }
 
-  function renderResults(results, showModifiedDate, query, corrected = null) {
-    clearPending();
-    if (results.length === 0) {
-      resultsEl.innerHTML = `<div class="opacity-60 text-center py-8">No matches</div>`;
+  // ---- Deep Search ------------------------------------------------------
+  //
+  // The index reads one arrangement per song (the preferred one, else the one
+  // ProPresenter has selected), so a slide that only another arrangement plays
+  // is invisible to a normal search. An empty result is the moment that matters,
+  // so that is where the one button appears, and the ring's glow moves from the
+  // field to it: the light points at what to press next.
+  function searchedNames(searched) {
+    if (!searched.length) return "the arrangement each song plays";
+    return searched.length === 1 ? searched[0] : `${searched.slice(0, -1).join(", ")} or ${searched.at(-1)}`;
+  }
+
+  function renderNoResults(query, searched) {
+    queryRing?.classList.add("quiet");
+    resultsEl.innerHTML = `
+      <div class="rf-nores">
+        <p class="rf-nores-head">Nothing says &ldquo;${escapeHtml(query.trim())}&rdquo; in ${escapeHtml(searchedNames(searched))}.</p>
+        <button type="button" id="deep-btn" class="rf-deep hot"><span class="in"><i data-lucide="layers"></i><span id="deep-label">Deep Search Arrangements</span></span></button>
+        <p class="rf-hint">Search reads one arrangement of each song. Other arrangements can hold slides it skips.</p>
+      </div>`;
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  async function runDeepSearch(query) {
+    const btn = document.getElementById("deep-btn");
+    const label = document.getElementById("deep-label");
+    if (!btn || btn.classList.contains("busy")) return;
+    // Acknowledged now, before the request, like every other press.
+    btn.classList.add("busy");
+    btn.classList.remove("hot");
+    btn.setAttribute("aria-busy", "true");
+    label.textContent = "Searching every arrangement...";
+    crumb("deepsearch", {});
+    try {
+      const params = new URLSearchParams({ q: query });
+      const folders = selectedFolders();
+      if (folders) params.set("folders", folders.join(","));
+      const res = await fetch(`/api/search/deep?${params}`);
+      if (!res.ok) throw new Error(`the server answered ${res.status}`);
+      const data = await res.json();
+      // The box changed while this was out: that search owns the screen.
+      if (queryInput.value.trim() !== query.trim()) return;
+      renderDeepResults(data, query);
+    } catch (err) {
+      btn.classList.remove("busy");
+      btn.classList.add("hot");
+      btn.removeAttribute("aria-busy");
+      label.textContent = "Deep Search Arrangements";
+      showFailure(`Deep search didn't run: ${err.message}. Press it again.`);
+    }
+  }
+
+  function renderDeepResults({ results, covered, total }, query) {
+    const groups = new Map();
+    for (const r of results) {
+      if (!groups.has(r.presentationId)) groups.set(r.presentationId, { name: r.presentationName, slides: [] });
+      groups.get(r.presentationId).slides.push(r);
+    }
+    const partial = total > 0 && covered < total
+      ? `<p class="rf-hint">Deep search could read ${covered} of ${total} songs. The rest are read after the next full refresh of the library.</p>`
+      : "";
+    const head = `<div class="rf-search-strip"><button type="button" id="deep-exit" class="btn btn-chip">Deep search &times;</button></div>`;
+    if (!results.length) {
+      resultsEl.innerHTML = `${head}<div class="rf-nores"><p class="rf-nores-head">${covered === 0 && total > 0 ? "Deep search can't read your songs yet." : `Nothing says &ldquo;${escapeHtml(query.trim())}&rdquo; in any arrangement.`}</p><p class="rf-hint">${covered === 0 && total > 0 ? "It needs one full refresh of the library, in Settings. Then press it again." : "Check the spelling, or try fewer words."}</p>${partial}</div>`;
       return;
     }
+    resultsEl.innerHTML = `${head}
+      <div class="rf-hint px-1">${results.length} slide${results.length === 1 ? "" : "s"}, none in the arrangement Refrain reads.</div>
+      ${[...groups.values()]
+        .map(
+          (song) => `
+      <div class="card bg-base-200 shadow-sm"><div class="card-body p-3 gap-2">
+        <div class="font-semibold break-words">${escapeHtml(song.name)}</div>
+        <div class="flex flex-col gap-3 border-t border-base-300 pt-3">
+          ${song.slides
+            .map((r) => {
+              const g = r.groupName ? escapeHtml(r.groupName) : "this group";
+              const place = r.slideIndex != null && r.slideCount ? `<small>#${r.slideIndex + 1}<u> / ${r.slideCount}</u></small>` : "";
+              return `
+          <div class="rf-slide-row">
+            <div class="rf-slide-meta">
+              <span class="rf-chit rf-chit-deep">${escapeHtml(r.groupName ?? "Slide")}${place}</span>
+              <span class="rf-slide-note">${r.arrangementName ? escapeHtml(r.arrangementName) : "In no arrangement"}</span>
+            </div>
+            <div class="text-sm rf-measure">${highlightMatch(r.snippet, query)}</div>
+            <div class="rf-hint">Drag ${g.toUpperCase()} into arrangement to see slide</div>
+            <button class="btn btn-outline show-in-editor-btn rf-show-deep" data-presentation-id="${escapeHtml(r.presentationId)}" title="Opens in ProPresenter's editor. Nothing goes to the screens.">Show<span>then drag ${g.toUpperCase()} into arrangement</span></button>
+          </div>`;
+            })
+            .join("")}
+        </div>
+      </div></div>`
+        )
+        .join("")}
+      ${partial}`;
+  }
+
+  resultsEl.addEventListener("click", (e) => {
+    if (e.target.closest("#deep-btn")) runDeepSearch(queryInput.value);
+    else if (e.target.closest("#deep-exit")) runSearch(queryInput.value);
+  });
+
+  /**
+   * The slide's place in its song: the group's name first ("Verse 1"), then
+   * "#6 / 35" with the total dimmed. The name is missing from an index built
+   * before it was kept, so the chit is the number alone then, never "undefined".
+   */
+  function slideChit(r) {
+    const total = r.slideCount ? `<u> / ${r.slideCount}</u>` : "";
+    const num = `<small>#${r.slideIndex + 1}${total}</small>`;
+    return `<span class="rf-chit">${r.groupName ? `<span class="rf-chit-name">${escapeHtml(r.groupName)}</span>` : ""}${num}</span>`;
+  }
+
+  // What is on the screens, from the rail's poll, so a result row can say
+  // "this one is live" without a readout above the search box.
+  let lastLiveState = null;
+  function markLiveRows(state) {
+    lastLiveState = state;
+    const slide = state?.live ? state.slide : null;
+    resultsEl.querySelectorAll(".search-slide-row").forEach((row) => {
+      const on = Boolean(slide) && row.dataset.presentationId === String(slide.presentationId) && Number(row.dataset.slideIndex) === slide.slideIndex;
+      row.classList.toggle("rf-is-live", on);
+    });
+  }
+  window.addEventListener("refrain:live-state", (e) => markLiveRows(e.detail));
+
+  function renderResults(results, query, corrected = null, searched = []) {
+    clearPending();
+    if (results.length === 0) {
+      renderNoResults(query, searched);
+      return;
+    }
+    queryRing?.classList.remove("quiet");
     const correctedNotice = corrected
       ? `<div class="rf-hint px-1 pb-2">No exact match. Showing <strong>${escapeHtml(corrected)}</strong>.</div>`
       : "";
@@ -429,60 +527,35 @@ export function initSearch({ prefs = {} } = {}) {
         (song) => `
       <div class="card bg-base-200 shadow-sm">
         <div class="card-body p-3 gap-2">
-          <div class="flex items-start justify-between gap-4">
-            <div>
-              <div class="font-semibold flex items-center gap-2">
-                ${escapeHtml(song.presentationName)}
-                ${song.arrangementName ? `<span class="badge badge-ghost badge-sm shrink-0" title="Slide numbers from the &quot;${escapeHtml(song.arrangementName)}&quot; arrangement">${escapeHtml(song.arrangementName)}</span>` : ""}
-              </div>
-              <div class="text-sm opacity-70">
-                ${song.slides.length} matching slide${song.slides.length === 1 ? "" : "s"}${song.appearsIn.length ? ` &middot; in ${song.appearsIn.length} playlist${song.appearsIn.length === 1 ? "" : "s"}` : ""}
-              </div>
-            </div>
-            <!-- Show only. "Go Live (Slide 1)" used to sit here, and it was a
-                 blind action: you searched for a word, matched a presentation,
-                 and the header offered to fire slide 1 -- a slide you have not
-                 looked at, and by definition not the one you matched. If you
-                 wanted slide 1 you would be browsing, not searching.
-
-                 A live action is only legitimate once the operator can see what
-                 they are firing, which is true in the slide rows below and was
-                 never true here. Dropping to one button also gives the title
-                 back the width that was wrapping it onto four lines. -->
-            <div class="shrink-0">
-              <button class="btn btn-outline btn-xs show-in-editor-btn" data-presentation-id="${song.presentationId}">
-                Show in editor
-              </button>
-            </div>
+          <div class="flex items-baseline justify-between gap-3">
+            <div class="font-semibold min-w-0 break-words">${escapeHtml(song.presentationName)}</div>
+            ${song.arrangementName ? `<span class="badge badge-ghost badge-sm shrink-0" title="Slide numbers from the &quot;${escapeHtml(song.arrangementName)}&quot; arrangement">${escapeHtml(song.arrangementName)}</span>` : ""}
           </div>
-          <div class="flex flex-col gap-2 border-t border-base-300 pt-2">
+          <div class="text-xs opacity-70">
+            ${song.slides.length} matching slide${song.slides.length === 1 ? "" : "s"}${song.appearsIn.length ? ` &middot; in ${song.appearsIn.length} playlist${song.appearsIn.length === 1 ? "" : "s"}` : ""}
+          </div>
+          <div class="flex flex-col gap-3 border-t border-base-300 pt-3">
             ${song.slides
               .map(
                 (r) => `
-              <div class="flex items-start justify-between gap-3 search-slide-row" tabindex="-1">
-                <div>
-                  <div class="text-xs opacity-70">
-                    Slide ${r.slideIndex + 1}${r.repeatCount > 1 ? ` &middot; sung ${r.repeatCount}&times;` : ""}${showModifiedDate && r.modifiedDate ? ` &middot; modified ${new Date(r.modifiedDate).toLocaleDateString()}` : ""}
-                  </div>
-                  <div class="text-sm rf-measure">${highlightMatch(r.snippet, query)}</div>
+              <div class="rf-slide-row search-slide-row" tabindex="-1" data-presentation-id="${escapeHtml(r.presentationId)}" data-slide-index="${r.slideIndex}">
+                <div class="rf-slide-meta">
+                  ${slideChit(r)}
+                  ${r.repeatCount > 1 ? `<span class="rf-slide-note">sung ${r.repeatCount}&times;</span>` : ""}
                 </div>
-                <!-- Go Live stays primary here and only here: the slide's text
-                     is rendered alongside it, so this is the informed action.
-                     Show sits apart from it rather than butted against it --
-                     guarding by separation rather than by a confirm dialog,
-                     because a confirmation the operator has to read is the
-                     thing that makes them press twice. -->
-                <div class="flex items-center gap-3 shrink-0">
-                  <!-- Names the slide, because ProPresenter's API can open a
-                       presentation in the editor but not select a slide in it
-                       (handoff section 38): the number is how the operator
-                       finds it once the editor is up. -->
-                  <button class="btn btn-chip show-in-editor-btn" data-presentation-id="${r.presentationId}" title="Opens in ProPresenter's editor. Nothing goes to the screens.">
-                    Show slide ${r.slideIndex + 1}
-                  </button>
-                  <button class="btn btn-brand btn-xs go-live-btn" data-presentation-id="${r.presentationId}" data-slide-index="${r.slideIndex}" data-group-id="${escapeHtml(r.groupId ?? "")}" data-group-offset="${r.groupOffset ?? ""}" data-slide-text="${escapeHtml(r.snippet ?? "")}" data-presentation-name="${escapeHtml(r.presentationName ?? "")}" data-arrangement-name="${escapeHtml(r.arrangementName ?? "")}">
-                    Go Live
-                  </button>
+                <div class="text-sm rf-measure">${highlightMatch(r.snippet, query)}</div>
+                <!-- Go Live stays primary and sits first: the slide's text is
+                     rendered right above it, so it is the informed action.
+                     Show sits apart from it, ten pixels and a whole button
+                     away -- guarding by separation rather than by a confirm
+                     dialog, because a confirmation the operator has to read is
+                     the thing that makes them press twice. Show opens the
+                     presentation in ProPresenter's editor; its API cannot
+                     select a slide there (handoff section 38), so the number
+                     in the chit is how the operator finds it. -->
+                <div class="rf-slide-acts">
+                  <button class="btn btn-brand go-live-btn" data-presentation-id="${r.presentationId}" data-slide-index="${r.slideIndex}" data-group-id="${escapeHtml(r.groupId ?? "")}" data-group-offset="${r.groupOffset ?? ""}" data-slide-text="${escapeHtml(r.snippet ?? "")}" data-presentation-name="${escapeHtml(r.presentationName ?? "")}" data-arrangement-name="${escapeHtml(r.arrangementName ?? "")}">Go Live</button>
+                  <button class="btn btn-outline show-in-editor-btn" data-presentation-id="${r.presentationId}" title="Opens in ProPresenter's editor. Nothing goes to the screens.">Show</button>
                 </div>
               </div>
             `
@@ -494,6 +567,7 @@ export function initSearch({ prefs = {} } = {}) {
     `
       )
       .join("");
+    markLiveRows(lastLiveState);
 
     // Arm the top match. Exactly one Go Live carries the lit collar at rest,
     // and the collar moves to whatever the operator hovers or tabs to from
@@ -583,27 +657,13 @@ export function initSearch({ prefs = {} } = {}) {
     return parts.join("");
   }
 
-  function formatDuration(ms) {
-    if (!ms || ms < 0) return "under a second";
-    const totalSeconds = Math.round(ms / 1000);
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    if (minutes === 0) return `${seconds}s`;
-    return `${minutes}m ${seconds}s`;
-  }
-
   // Acknowledgement has to land inside 50ms, and a fetch round trip does not
-  // qualify. The readout paints from the button's own data on mousedown, then
-  // the next poll corrects it against what ProPresenter actually did.
+  // qualify. The button itself says so on mousedown, before the request is
+  // sent; the row lights as live when the next poll confirms it.
   resultsEl.addEventListener("mousedown", (e) => {
     const btn = e.target.closest(".go-live-btn");
-    if (!btn) return;
-    paintGoing({
-      presentationName: btn.dataset.presentationName || null,
-      arrangementName: btn.dataset.arrangementName || null,
-      slideIndex: btn.dataset.slideIndex === "" ? null : Number(btn.dataset.slideIndex),
-      text: btn.dataset.slideText || "",
-    });
+    if (!btn || btn.disabled) return;
+    btn.textContent = "Going...";
   });
 
   resultsEl.addEventListener("click", async (e) => {
@@ -627,7 +687,6 @@ export function initSearch({ prefs = {} } = {}) {
         });
         if (!res.ok) {
           const { error } = await res.json();
-          clearGoing();
           // Cold zone: what happened, then the next action. The operator can
           // press again with this still on screen -- that is the whole point of
           // it not being an alert.
@@ -637,6 +696,7 @@ export function initSearch({ prefs = {} } = {}) {
         }
       } finally {
         liveBtn.disabled = false;
+        liveBtn.textContent = "Go Live";
       }
       crumb("golive", { presentation: liveBtn.dataset.presentationId, slide: Number(liveBtn.dataset.slideIndex) });
       return;
@@ -683,16 +743,26 @@ export function initSearch({ prefs = {} } = {}) {
    */
   const SEARCH_DEBOUNCE_MS = 90;
 
+  // The ring around the field travels while keys are going in and settles about
+  // a second after the last one. Nothing animates at rest.
+  let ringTimer = null;
+  function wakeRing() {
+    queryRing?.classList.add("typing");
+    clearTimeout(ringTimer);
+    ringTimer = setTimeout(() => queryRing?.classList.remove("typing"), 900);
+  }
+  queryInput.addEventListener("blur", () => {
+    clearTimeout(ringTimer);
+    queryRing?.classList.remove("typing");
+  });
+
   queryInput.addEventListener("input", () => {
     clearTimeout(debounceTimer);
     syncClearButton();
     syncLibraryPanel();
     acknowledgeInput(queryInput.value);
+    wakeRing();
     debounceTimer = setTimeout(() => runSearch(queryInput.value), SEARCH_DEBOUNCE_MS);
-  });
-
-  dateFilterToggle.addEventListener("click", () => {
-    dateFilterPanel.classList.toggle("hidden");
   });
 
   libraryFilterToggle.addEventListener("click", () => {
@@ -700,22 +770,16 @@ export function initSearch({ prefs = {} } = {}) {
     syncLibraryPanel();
   });
 
-  [dateFieldSelect, dateFromInput, dateToInput].forEach((el) => {
-    el.addEventListener("change", () => runSearch(queryInput.value));
-  });
-
   /**
    * Clearing the search, from the button in the field or from Alt+X.
    *
    * One function for both, so the two routes cannot drift into clearing
-   * different things -- the date range is the part that would quietly be left
-   * behind, and a stale filter on an empty box is invisible.
+   * different things.
    */
   function clearSearch() {
     clearTimeout(debounceTimer);
     queryInput.value = "";
-    dateFromInput.value = "";
-    dateToInput.value = "";
+    queryRing?.classList.remove("quiet");
     syncClearButton();
     libraryPanelOpened = false;
     syncLibraryPanel();
@@ -875,12 +939,6 @@ export function initSearch({ prefs = {} } = {}) {
     clearSearch();
   });
 
-  dateFilterClear.addEventListener("click", () => {
-    dateFromInput.value = "";
-    dateToInput.value = "";
-    runSearch(queryInput.value);
-  });
-
   refreshStatus();
   initLibraryFilter();
   syncClearButton();
@@ -890,6 +948,7 @@ export function initSearch({ prefs = {} } = {}) {
   // the empty screen teaches what to do instead of sitting blank.
   function showEmptyHint() {
     clearPending();
+    queryRing?.classList.remove("quiet");
     resultsEl.innerHTML = `
       <div class="opacity-60 text-center py-10 flex flex-col items-center gap-2">
         <i data-lucide="search" class="w-8 h-8 opacity-40"></i>

@@ -924,8 +924,7 @@ html.blackroom #nav-rail #nav-pin-toggle:hover {
 #nav-rail #theme-toggle:active,
 #nav-rail #nav-side-toggle:active,
 #nav-rail #nav-phone-toggle:active,
-#nav-rail #nav-pin-toggle:active,
-#nav-rail #brand-row:active {
+#nav-rail #nav-pin-toggle:active {
   transform: none;
 }
 [data-theme="dark"] #nav-rail .nav-item:active,
@@ -981,7 +980,6 @@ html.blackroom #nav-rail .nav-item.btn-active {
   box-shadow:
     inset 0 2px 6px rgba(0, 0, 0, 0.8),
     inset 0 -1px 0 rgba(255, 240, 235, 0.07),
-    inset 3px 0 0 var(--rf-plum),
     0 0 6px rgba(169, 111, 232, 0.3);
   transform: none;
 }
@@ -1029,7 +1027,6 @@ html.blackroom #nav-rail .nav-item.btn-active[data-id="search"] {
   box-shadow:
     inset 0 2px 6px rgba(0, 0, 0, 0.8),
     inset 0 -1px 0 rgba(255, 240, 235, 0.07),
-    inset 3px 0 0 var(--rf-plum),
     0 0 0 1px var(--rf-plum-lit),
     0 0 9px rgba(169, 111, 232, 0.6),
     0 0 18px rgba(132, 70, 201, 0.3);
@@ -2062,8 +2059,7 @@ html.blackroom .go-live-btn {
   #nav-items .nav-item,
   #nav-help-toggle,
   #theme-toggle,
-  #nav-pin-toggle,
-  #brand-row {
+  #nav-pin-toggle {
     min-height: 2.75rem;
   }
 }
@@ -2170,25 +2166,6 @@ html.blackroom .rf-wordmark {
   background: var(--rf-plum);
 }
 
-/* Rail, pinned. */
-#brand-row .rf-wordmark {
-  font-size: 22px;
-}
-
-/**
- * Rail, collapsed. REFRAIN at this stretch needs about 110px and the rail is
- * 64px, and shrinking it to 11px would just be a 900-weight smudge. So a
- * single R in the identical treatment: still type, still the same object as
- * the expanded state rather than a different mark.
- */
-#brand-mark .rf-wordmark {
-  font-size: 20px;
-}
-#brand-mark .rf-wordmark-stripe {
-  width: 18px;
-  height: 3px;
-  margin-top: 3px;
-}
 
 /* First run is the one place with room for the full display size. */
 #setup-brand-logo .rf-wordmark {
@@ -2634,32 +2611,6 @@ html.blackroom .rf-preset + .rf-preset {
   overflow-wrap: anywhere;
 }
 
-/* OFFLINE over Live's Clear bank, shown whenever the LINK lamp is dark.
-   Cold, not amber: the brief keeps saturated warm for what is live and the
-   fault colour for Health, and an outage is a state to report, not an alarm.
-   The word is set like the readout's NO LINK so the two read as one system.
-   `:not(.hidden)` so Tailwind's .hidden still wins when it is toggled on. */
-.rf-offline-banner:not(.hidden) {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 12px;
-  margin-bottom: 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--rf-hairline);
-  border-radius: 2px;
-  background-color: var(--rf-surface);
-  color: var(--rf-text);
-  font-size: 13px;
-}
-.rf-offline-word {
-  font-family: var(--rf-mono);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-}
-
 /* ============================================================
    30. THE COLLAPSED RAIL CENTRES ITS GLYPHS
 
@@ -2692,7 +2643,6 @@ html.blackroom .rf-preset + .rf-preset {
    theme-scoped: a centred icon is centred in every theme.
    ============================================================ */
 #nav-rail.collapsed .nav-item,
-#nav-rail.collapsed #brand-row,
 #nav-rail.collapsed #nav-help-toggle,
 #nav-rail.collapsed #theme-toggle,
 #nav-rail.collapsed #nav-side-toggle,
@@ -2707,7 +2657,7 @@ html.blackroom .rf-preset + .rf-preset {
 /* ============================================================
    31. THE STATUS CLUSTER
 
-   Three lamps at the foot of the rail: LINK, LIVE, PERF. It replaces a
+   Four lamps under the wordmark: LINK, LIVE, PERF, FEED, drawn as small icons (section rules below). It replaces a
    single LINKED row whose geometry was already correct -- every glyph
    centred on the rail axis in both states -- but which read badly for
    three other reasons.
@@ -2745,60 +2695,61 @@ html.blackroom .rf-status-break {
   box-shadow: 0 1px 0 rgba(255, 240, 235, 0.06);
 }
 
+/* The lamps are small icons now (owner, 2026-10-07), not LED dots. They report
+   and never respond: plum when fine, so they sit quietly in the corner of the
+   eye, and amber only when something is wrong. The one exception is the live
+   lamp, which is a red dot while anything is on the screens. */
 #status-cluster {
-  display: flex;
-  flex-direction: column;
-  padding: 6px 0;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  justify-items: center;
+  align-items: center;
+  gap: 2px 0;
+  padding: 6px 4px;
 }
-/* One object with three indicators, rather than three short rows. */
 [data-theme="dark"] #status-cluster,
 html.blackroom #status-cluster {
   background-color: var(--rf-ground);
   box-shadow: var(--rf-junction-recessed);
 }
 
-.rf-status-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 12px;
-  min-height: 22px;
-  /* Reports, never responds. No hover, no press, no cursor change -- the
-     whole reason for lifting these out of the key bank. */
-  pointer-events: none;
+.rf-lamp {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  color: #9A8FA6;
 }
-
-/* The lamps take the icon column rather than their own width: `.rf-led` alone
-   is a 7px dot, which centres at 15.5px against a nav icon column centred at
-   20. The 16px construction lives on `.rf-led-col` in Section 36, since
-   Arrangement's list needed the same thing; the markup in status-cluster.js
-   carries both classes. */
-
-.rf-status-legend {
-  font-family: var(--rf-mono);
-  font-size: 8px;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
+.rf-lamp svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
-[data-theme="dark"] .rf-status-legend,
-html.blackroom .rf-status-legend {
-  color: var(--rf-muted);
+/* The live lamp is a filled dot, not a line drawing. */
+.rf-lamp svg .rf-lamp-fill { fill: currentColor; stroke: none; }
+.rf-lamp[data-state="on"] { color: var(--rf-plum); }
+.rf-lamp[data-state="fault"] { color: var(--rf-fault); }
+.rf-lamp[data-state="live"] { color: var(--rf-go); }
+[data-theme="dark"] .rf-lamp,
+html.blackroom .rf-lamp { color: #4A4256; }
+[data-theme="dark"] .rf-lamp[data-state="on"],
+html.blackroom .rf-lamp[data-state="on"] {
+  color: var(--rf-plum-lit);
+  filter: drop-shadow(0 0 3px rgba(169, 111, 232, 0.55));
 }
-/* The legend brightens with its lamp, so a lit row reads as one thing
-   rather than a bright dot beside grey text. */
-[data-theme="dark"] .rf-status-row[data-on="true"] .rf-status-legend,
-html.blackroom .rf-status-row[data-on="true"] .rf-status-legend {
-  color: var(--rf-text);
+[data-theme="dark"] .rf-lamp[data-state="fault"],
+html.blackroom .rf-lamp[data-state="fault"] {
+  color: var(--rf-fault);
+  filter: drop-shadow(0 0 4px rgba(201, 146, 46, 0.8));
 }
-
-/* Collapsed: lamps only, centred on the rail axis. The legends go with
-   every other label, and the lamp keeps its 16px column so the axis
-   survives -- see the collapsed-rail centring rule. */
-#nav-rail.collapsed #status-cluster .rf-status-row {
-  justify-content: center;
-  padding-left: 0;
-  padding-right: 0;
-  gap: 0;
+[data-theme="dark"] .rf-lamp[data-state="live"],
+html.blackroom .rf-lamp[data-state="live"] {
+  color: var(--rf-go);
+  filter: drop-shadow(0 0 5px rgba(255, 74, 36, 0.95));
 }
 
 /* ============================================================
@@ -2880,13 +2831,6 @@ html.blackroom .rf-return-entry:hover {
    instead, the same acknowledgement the chips use. */
 .rf-return-entry:active {
   transform: none;
-}
-
-/* The standalone handle, for when there is no bar above it. Left-aligned
-   rather than full width: it is a tab you pull, and a full-width control
-   would read as a banner claiming something is happening. */
-#return-history-tab {
-  width: fit-content;
 }
 
 /* A macro's own icon, from ProPresenter's `image_type`. Drawn in the tile's
@@ -3108,7 +3052,6 @@ html.blackroom .rf-notice-close {
    rather than a partial-opacity hairline, so they carry it.
    ============================================================ */
 #nav-rail .nav-item,
-#nav-rail #brand-row,
 #nav-rail #nav-help-toggle,
 #nav-rail #theme-toggle,
 #nav-rail #nav-side-toggle,
@@ -3598,7 +3541,6 @@ html.blackroom .rf-record-row:hover {
    rather than guessed: `#nav-brand` and `.nav-secondary` do not exist, and a
    selector that matches nothing fails silently and leaves the rail full of
    content it is too narrow to show. */
-#nav-rail.sliver #brand-row,
 #nav-rail.sliver #nav-items,
 #nav-rail.sliver #status-cluster,
 #nav-rail.sliver .rf-status-break,
@@ -3641,8 +3583,6 @@ html.blackroom .rf-record-row:hover {
   width: 3.5rem;
   overflow-x: visible;
 }
-#nav-rail.sliver.peek #brand-row,
-#nav-rail.sliver:focus-within #brand-row,
 #nav-rail.sliver.peek #nav-items,
 #nav-rail.sliver:focus-within #nav-items,
 #nav-rail.sliver.peek #status-cluster,
@@ -3702,7 +3642,8 @@ html.blackroom .rf-record-row:hover {
   padding: 0;
   cursor: pointer;
   color: var(--rf-muted);
-  opacity: 0.7;
+  /* Dim at rest (owner, 2026-10-07): it is there when you want it. */
+  opacity: 0.45;
   transition: opacity 140ms cubic-bezier(0, 0, 0.2, 1), color 140ms cubic-bezier(0, 0, 0.2, 1);
 }
 
@@ -3772,7 +3713,6 @@ html.rail-right.blackroom #nav-rail .nav-item.btn-active {
   box-shadow:
     inset 0 2px 6px rgba(0, 0, 0, 0.8),
     inset 0 -1px 0 rgba(255, 240, 235, 0.07),
-    inset -3px 0 0 var(--rf-plum),
     0 0 6px rgba(169, 111, 232, 0.3);
 }
 html.rail-right[data-theme="dark"] #nav-rail .nav-item.btn-active[data-id="search"],
@@ -3780,7 +3720,6 @@ html.rail-right.blackroom #nav-rail .nav-item.btn-active[data-id="search"] {
   box-shadow:
     inset 0 2px 6px rgba(0, 0, 0, 0.8),
     inset 0 -1px 0 rgba(255, 240, 235, 0.07),
-    inset -3px 0 0 var(--rf-plum),
     0 0 0 1px var(--rf-plum-lit),
     0 0 9px rgba(169, 111, 232, 0.6),
     0 0 18px rgba(132, 70, 201, 0.3);
@@ -4015,23 +3954,10 @@ html.blackroom .rf-tab[aria-checked="true"] {
 #status-cluster {
   margin: 0 0 8px;
 }
+/* Expanded: all four lamps in one row. */
 #nav-rail.w-36 #status-cluster {
-  flex-direction: row;
-  justify-content: space-between;
+  grid-template-columns: repeat(4, 1fr);
   padding: 6px 8px;
-}
-#nav-rail.w-36 #status-cluster .rf-status-row {
-  padding: 0;
-  gap: 4px;
-  min-height: 16px;
-}
-/* In the row the dot doesn't need the 16px icon column it keeps in a
-   narrow rail (it lines up with nothing here), and three labelled lamps
-   only fit a 144px rail without it. */
-#nav-rail.w-36 #status-cluster .rf-led-col {
-  width: auto;
-  min-width: 0;
-  margin: 0;
 }
 #nav-rail.w-36 #rail-foot {
   flex-direction: row;
@@ -4247,16 +4173,11 @@ html.blackroom #nav-rail.w-36 #rail-foot > .btn:hover {
 /* ============================================================
    STAGE MESSAGE ON NOW (handoff section 44)
 
-   The preset that's on stage stays latched: the plum underline the tab
-   keys use, so "this one is up" reads the same everywhere. Set by
-   aria-pressed from live.js, an attribute, so no JIT class to miss.
-   Message fields show capitals as you type; the server upper-cases what's
+   The preset that's on stage stays latched (`.rf-stage-row[aria-pressed]` in
+   NOW AT 340), set by aria-pressed from live.js, an attribute, so no JIT class
+   to miss. Message fields show capitals as you type; the server upper-cases what's
    posted (owner, 2026-10-03: pager codes).
    ============================================================ */
-#live-stage .live-stage-key[aria-pressed="true"] {
-  border-color: var(--rf-plum-lit);
-  box-shadow: inset 0 -2px 0 var(--rf-plum);
-}
 .live-message-token {
   text-transform: uppercase;
 }
@@ -4585,14 +4506,596 @@ body[data-index-bar] #main-content {
   white-space: normal;
   overflow-wrap: anywhere;
 }
-@media (max-width: 560px) {
-  #results .search-slide-row {
-    flex-wrap: wrap;
-  }
-  #results .search-slide-row > .shrink-0 {
-    width: 100%;
-    justify-content: flex-end;
-  }
+/* ============================================================
+   SEARCH AT 340 (owner, 2026-10-07; handoff section 49)
+
+   The field first, a one-line strip under it, and a result row that gives the
+   slide's words the whole column with the two actions underneath. At 340px the
+   old row left the text 55px of 236 and wrapped a 62-character line onto ten
+   lines.
+
+   The ring is three states set from script by search.js: rest (a quiet line),
+   focus (a steady plum ring) and `.typing` (the band travels). Every rule here
+   is static CSS, because a class applied from script has no Tailwind rule until
+   the in-browser JIT notices it (CLAUDE.md).
+   ============================================================ */
+.rf-sf {
+  position: relative;
+  isolation: isolate;
+  border-radius: 5px;
+  padding: 1.5px;
+  background: var(--rf-hairline);
+}
+.rf-sf::before,
+.rf-sf::after {
+  content: "";
+  position: absolute;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 250ms ease-out;
+  background: linear-gradient(60deg, #5B2FA0, #A96FE8, #E6D7FF, #7A44C4, #A96FE8, #5B2FA0);
+  background-size: 300% 300%;
+  background-position: 0 50%;
+}
+.rf-sf::after { inset: 0; z-index: -1; }
+.rf-sf::before { inset: -2px; z-index: -2; filter: blur(9px); }
+.rf-sf:focus-within::after { opacity: 1; }
+.rf-sf:focus-within::before { opacity: 0.25; }
+.rf-sf.typing::after,
+.rf-sf.typing::before {
+  animation: rf-sweep 1.8s ease-in-out infinite alternate;
+}
+.rf-sf.typing::after { opacity: 1; }
+.rf-sf.typing::before { opacity: 0.65; }
+@keyframes rf-sweep { to { background-position: 100% 50%; } }
+/* The input draws its own border; the ring is the border here. Specificity
+   (0,3,0) beats DaisyUI's `.input-bordered` (0,2,0) without !important. */
+.rf-sf .rf-field-clearable > .input.input-bordered {
+  border-color: transparent;
+  border-radius: 4px;
+  box-shadow: none;
+  outline: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rf-sf.typing::after,
+  .rf-sf.typing::before { animation: none; }
+}
+
+/* The strip under the field: index freshness, what is narrowing it, Flag. */
+.rf-search-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+}
+.rf-search-strip-status {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  font-family: var(--rf-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--rf-muted);
+}
+.rf-search-strip-sep { opacity: 0.6; }
+/* The strip's two chips sit on the strip's own gap, not the chip row's. */
+.rf-search-strip #library-filter-wrap { margin-right: 0; }
+
+/* A slide in a result: group chit, words, actions. */
+.rf-slide-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-radius: 3px;
+}
+.rf-slide-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rf-slide-note { font-family: var(--rf-mono); font-size: 10px; letter-spacing: 0.06em; color: var(--rf-dim); }
+.rf-chit {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px;
+  border-radius: 3px;
+  font-family: var(--rf-mono);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: #2A2140;
+  color: #E4DAF5;
+  border: 1px solid #3F3260;
+}
+.rf-chit small { font-size: 10px; font-weight: 500; letter-spacing: 0.04em; text-transform: none; color: #C4B8D9; }
+.rf-chit small u { text-decoration: none; color: #7B6F8C; }
+/* Light theme: the chit is printed ink on pale paper. */
+[data-theme="light"] .rf-chit { background: #EFE8F8; color: #3A2766; border-color: #D5C8EA; }
+[data-theme="light"] .rf-chit small { color: #5B4A80; }
+[data-theme="light"] .rf-chit small u { color: #8C7BB0; }
+/* The slide that is on the screens now: a red dot in its chit, never a pulse. */
+.rf-slide-row.rf-is-live .rf-chit::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--rf-go);
+}
+[data-theme="dark"] .rf-slide-row.rf-is-live .rf-chit::before,
+html.blackroom .rf-slide-row.rf-is-live .rf-chit::before { box-shadow: 0 0 6px rgba(255, 74, 36, 0.9); }
+
+/* No results: the field's ring settles and the glow moves to Deep Search, the
+   next thing to press. */
+.rf-sf.quiet:not(.typing):focus-within::after { opacity: 0.35; }
+.rf-sf.quiet:not(.typing):focus-within::before { opacity: 0; }
+.rf-nores { display: flex; flex-direction: column; gap: 12px; padding-top: 4px; }
+.rf-nores-head { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.35; }
+
+/* The Deep Search button: a plum cap inside a gradient ring. At rest it is
+   still. `.hot` (set while it is the next action) lets the ring travel and the
+   glow lift; hover and focus brighten the cap; while it searches, a light
+   sweep runs across the cap. The brief's no-shimmer rule is bent here on
+   purpose, and only while this is the one thing worth pressing. */
+.rf-deep {
+  all: unset;
+  box-sizing: border-box;
+  position: relative;
+  isolation: isolate;
+  display: block;
+  width: 100%;
+  height: 48px;
+  padding: 1.5px;
+  border-radius: 5px;
+  background: #3A2766;
+  color: #fff;
+  cursor: pointer;
+  transition: transform 50ms ease-out;
+}
+.rf-deep::before,
+.rf-deep::after {
+  content: "";
+  position: absolute;
+  border-radius: inherit;
+  opacity: 0.55;
+  transition: opacity 140ms ease-out;
+  background: linear-gradient(60deg, #5B2FA0, #A96FE8, #E6D7FF, #7A44C4, #A96FE8, #5B2FA0);
+  background-size: 300% 300%;
+  background-position: 0 50%;
+}
+.rf-deep::after { inset: 0; z-index: -1; }
+.rf-deep::before { inset: -2px; z-index: -2; filter: blur(9px); opacity: 0.25; }
+.rf-deep.hot::after,
+.rf-deep:hover::after,
+.rf-deep:focus-visible::after,
+.rf-deep.busy::after { opacity: 1; animation: rf-sweep 1.8s ease-in-out infinite alternate; }
+.rf-deep.hot::before,
+.rf-deep:hover::before,
+.rf-deep:focus-visible::before,
+.rf-deep.busy::before { opacity: 0.6; animation: rf-sweep 1.8s ease-in-out infinite alternate; }
+.rf-deep:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.rf-deep:active { transform: translateY(1px); }
+.rf-deep .in {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #7A44C4, #5B2FA0);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  font-size: 13px;
+  font-weight: 600;
+  transition: filter 140ms ease-out;
+}
+.rf-deep:hover .in,
+.rf-deep:focus-visible .in { filter: brightness(1.25); }
+.rf-deep:active .in { box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.45); }
+.rf-deep .in svg { width: 16px; height: 16px; }
+.rf-deep .in::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -50%;
+  width: 40%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  transform: skewX(-18deg);
+  display: none;
+}
+.rf-deep.busy .in::after { display: block; animation: rf-sheen 1.1s linear infinite; }
+@keyframes rf-sheen { from { left: -50%; } to { left: 120%; } }
+@media (prefers-reduced-motion: reduce) {
+  .rf-deep.hot::after, .rf-deep.hot::before,
+  .rf-deep:hover::after, .rf-deep:hover::before,
+  .rf-deep.busy::after, .rf-deep.busy::before,
+  .rf-deep.busy .in::after { animation: none; }
+}
+
+/* A deep-search chit: the group is the headline, so it stands out against the
+   dark panel, unlike the quieter chit on a normal result. */
+.rf-chit.rf-chit-deep { background: #F3EAFE; color: #1A0F2E; border-color: #F3EAFE; font-weight: 700; letter-spacing: 0.12em; }
+.rf-chit.rf-chit-deep small { color: #4B3575; }
+.rf-chit.rf-chit-deep small u { color: #8C7BB0; }
+.rf-show-deep {
+  flex-direction: column;
+  gap: 3px;
+  height: auto;
+  min-height: 52px;
+  padding-block: 7px;
+}
+.rf-show-deep span { font-size: 11px; font-weight: 500; opacity: 0.7; }
+
+/* Go Live left, Show right, equal width, 44px tall. Ten pixels apart so a
+   mis-aim lands on nothing. The height is stated against the tier heights
+   (`[data-theme] .btn`, 1,2,0) with equal specificity and later position. */
+.rf-slide-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+#results .rf-slide-acts .btn,
+[data-theme="dark"] #results .rf-slide-acts .btn,
+html.blackroom #results .rf-slide-acts .btn {
+  height: 44px;
+  min-height: 44px;
+  width: 100%;
+  padding-inline: 8px;
+  font-size: 13px;
+}
+
+/* Spell Check's counts as filters (owner, 2026-10-07). The pressed one is
+   underlined; one with nothing to show is dimmed. Static rules, because the
+   filter is a data attribute set from script. */
+.rf-count-filters { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--rf-hairline); border: 1px solid var(--rf-hairline); border-radius: 5px; overflow: hidden; }
+.rf-count-filter {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 9px 4px;
+  border: 0;
+  background: var(--rf-raised);
+  color: var(--rf-text);
+  cursor: pointer;
+  min-height: 44px;
+}
+.rf-count-filter b { font-family: var(--rf-mono); font-size: 18px; font-weight: 500; line-height: 1; }
+.rf-count-filter span { font-family: var(--rf-mono); font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--rf-muted); }
+.rf-count-filter[aria-selected="true"] { background: var(--rf-machined); box-shadow: inset 0 -2px 0 var(--rf-plum-lit); }
+.rf-count-filter:disabled { opacity: 0.45; cursor: default; }
+.rf-count-filter:focus-visible { outline: 2px solid var(--rf-plum-lit); outline-offset: -2px; }
+#spellcheck-results[data-filter="words"] .spellcheck-slide:not([data-kinds~="words"]),
+#spellcheck-results[data-filter="dates"] .spellcheck-slide:not([data-kinds~="dates"]),
+#spellcheck-results[data-filter="media"] .spellcheck-slide:not([data-kinds~="media"]) { display: none; }
+#spellcheck-results[data-filter="words"] .rf-sc-pres:not(:has(.spellcheck-slide[data-kinds~="words"])),
+#spellcheck-results[data-filter="dates"] .rf-sc-pres:not(:has(.spellcheck-slide[data-kinds~="dates"])),
+#spellcheck-results[data-filter="media"] .rf-sc-pres:not(:has(.spellcheck-slide[data-kinds~="media"])) { display: none; }
+#spellcheck-results[data-filter="words"] .spellcheck-date,
+#spellcheck-results[data-filter="words"] .spellcheck-media,
+#spellcheck-results[data-filter="dates"] .spellcheck-word,
+#spellcheck-results[data-filter="dates"] .spellcheck-media,
+#spellcheck-results[data-filter="media"] .spellcheck-word,
+#spellcheck-results[data-filter="media"] .spellcheck-date { display: none; }
+
+/* ============================================================
+   HISTORY FLYOUT (owner, 2026-10-07; public/history-flyout.js)
+
+   Opens beside the rail, on whichever side it is. Back and Forward step a
+   cursor over the places that have been on the screens; every press opens the
+   place in the editor and never on the screens. `[hidden]` is restated because
+   `display: flex` here would otherwise win over the reset.
+   ============================================================ */
+.rf-hf {
+  position: fixed;
+  z-index: 40;
+  width: min(300px, calc(100vw - 4.5rem));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  overflow-y: auto;
+  border: 1px solid var(--rf-plum);
+  border-radius: 6px;
+  background: var(--rf-raised);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+}
+.rf-hf[hidden] { display: none; }
+.rf-hf-head { font-family: var(--rf-mono); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--rf-phosphor); }
+.rf-hf-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+#history-flyout .rf-hf-nav .btn { height: 40px; min-height: 40px; font-size: 13px; }
+.rf-hf-target { margin: 0; }
+.rf-hf-target b { color: var(--rf-text); font-weight: 600; }
+.rf-hf-list { display: flex; flex-direction: column; gap: 1px; border: 1px solid var(--rf-hairline); border-radius: 4px; overflow: hidden; background: var(--rf-hairline); }
+.rf-hf-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 0;
+  background: var(--rf-surface);
+  color: var(--rf-text);
+  text-align: left;
+  cursor: pointer;
+  min-height: 44px;
+}
+.rf-hf-row:hover,
+.rf-hf-row:focus-visible { background: var(--rf-machined); }
+.rf-hf-row:focus-visible { outline: 2px solid var(--rf-plum-lit); outline-offset: -2px; }
+.rf-hf-row.current { box-shadow: inset 3px 0 0 var(--rf-plum-lit); }
+.rf-hf-name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rf-hf-meta { display: flex; align-items: center; gap: 8px; font-family: var(--rf-mono); font-size: 10px; letter-spacing: 0.06em; color: var(--rf-muted); }
+.rf-hf-slide { color: var(--rf-dim); }
+/* "Show" takes the place of the time on hover, so the row says what a press does. */
+.rf-hf-go { display: none; margin-left: auto; color: var(--rf-phosphor); letter-spacing: 0.1em; text-transform: uppercase; }
+.rf-hf-row:hover .rf-hf-go,
+.rf-hf-row:focus-visible .rf-hf-go { display: inline; }
+.rf-hf-row:hover .rf-hf-ago,
+.rf-hf-row:focus-visible .rf-hf-ago { display: none; }
+
+/* ============================================================
+   THE RAIL, LOUDER (owner, 2026-10-07: "break convention")
+
+   The edge of the key you are on is one element that glides between keys; the
+   latched key's icon and a hovered key's icon glow; icon-only keys name
+   themselves beside the rail. This breaks the brief's rule that a latched key
+   does not glow and a hover does not emit (creative-direction.md, updated in
+   the same change). Glow is dark-theme material; light theme keeps the edge
+   and loses the glow. Static rules throughout: nav.js only sets the edge's
+   position, never a class a Tailwind scanner would have to find.
+   ============================================================ */
+/* `#nav-rail > #nav-edge` (2,0,0), because `[data-theme="dark"] #nav-rail > *`
+   (1,1,0) gives every child of the rail `position: relative` and a bare
+   `#nav-edge` read correctly and lost, leaving the edge in the flow. */
+#nav-rail > #nav-edge {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 3px;
+  height: 0;
+  opacity: 0;
+  background: var(--rf-plum);
+  pointer-events: none;
+  z-index: 3;
+}
+#nav-edge.ready { transition: transform 140ms ease-out, height 140ms ease-out, opacity 140ms ease-out; }
+/* The outer edge, on the side of the screen: stronger than the rule above. */
+html.rail-right #nav-rail > #nav-edge { left: auto; right: 0; }
+[data-theme="dark"] #nav-edge,
+html.blackroom #nav-edge {
+  background: var(--rf-plum-lit);
+  box-shadow: 12px 0 18px -2px rgba(169, 111, 232, 0.95);
+}
+html.rail-right[data-theme="dark"] #nav-edge,
+html.rail-right.blackroom #nav-edge { box-shadow: -12px 0 18px -2px rgba(169, 111, 232, 0.95); }
+[data-theme="dark"] #nav-rail .nav-item.btn-active svg,
+html.blackroom #nav-rail .nav-item.btn-active svg { filter: drop-shadow(0 0 5px rgba(169, 111, 232, 0.9)); }
+[data-theme="dark"] #nav-rail .nav-item:hover svg,
+[data-theme="dark"] #nav-rail .nav-item:focus-visible svg,
+[data-theme="dark"] #nav-rail #rail-foot .btn:hover svg,
+html.blackroom #nav-rail .nav-item:hover svg,
+html.blackroom #nav-rail .nav-item:focus-visible svg,
+html.blackroom #nav-rail #rail-foot .btn:hover svg {
+  color: #fff;
+  filter: drop-shadow(0 0 6px rgba(169, 111, 232, 0.95));
+}
+#rail-tip {
+  position: fixed;
+  z-index: 60;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--rf-hairline);
+  border-radius: 3px;
+  background: var(--rf-machined);
+  color: var(--rf-text);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+}
+#rail-tip[hidden] { display: none; }
+#rail-tip kbd { font-family: var(--rf-mono); font-size: 10px; font-weight: 500; color: var(--rf-muted); border: 1px solid var(--rf-hairline); border-radius: 2px; padding: 2px 4px; }
+@media (prefers-reduced-motion: reduce) { #nav-edge.ready { transition: none; } }
+
+/* ============================================================
+   STAFF REQUESTS (owner, 2026-10-07; server/staff-requests.js)
+
+   A request waiting for approval is the one thing on Now that someone else is
+   waiting on, so it is the loudest: a ring that moves for its first four
+   seconds (`.arrive`) and then holds still, a bar that drains over eight
+   minutes, and one lit action. A dot on the Service key says so from every
+   screen. Both stop under reduced motion; neither is on the path to live.
+   ============================================================ */
+.rf-req {
+  position: relative;
+  isolation: isolate;
+  border-radius: 7px;
+  padding: 1.5px;
+  background: #3A2766;
+  animation: rf-req-in 140ms ease-out;
+}
+.rf-req::before,
+.rf-req::after {
+  content: "";
+  position: absolute;
+  border-radius: inherit;
+  background: linear-gradient(60deg, #5B2FA0, #A96FE8, #E6D7FF, #7A44C4, #A96FE8, #5B2FA0);
+  background-size: 300% 300%;
+  background-position: 0 50%;
+}
+.rf-req::after { inset: 0; z-index: -1; }
+.rf-req::before { inset: -2px; z-index: -2; filter: blur(10px); opacity: 0.45; }
+.rf-req.arrive::after,
+.rf-req.arrive::before { animation: rf-sweep 1.4s ease-in-out infinite alternate; }
+.rf-req.arrive::before { opacity: 0.8; }
+.rf-req + .rf-req { margin-top: 12px; }
+.rf-req-in { position: relative; display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 6px; background: #1B1428; }
+.rf-req-top { display: flex; justify-content: space-between; gap: 8px; font-family: var(--rf-mono); font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--rf-dim); }
+.rf-req-from { color: var(--rf-phosphor); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rf-req-text { margin: 0; font-size: 16px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; color: #F4EFF3; }
+.rf-req-life { height: 3px; border-radius: 2px; background: #2A2140; overflow: hidden; }
+.rf-req-life i { display: block; height: 100%; width: 100%; background: var(--rf-plum-lit); }
+.rf-req-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+#view-live .rf-req-acts .btn { height: 44px; min-height: 44px; }
+@keyframes rf-req-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .rf-req { animation: none; }
+  .rf-req.arrive::after, .rf-req.arrive::before { animation: none; }
+}
+/* The Service key's dot while a request waits, hidden once you are on it (the
+   card is then in front of you). Steady, never a pulse. */
+#nav-rail .nav-item.has-request:not(.btn-active)::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--rf-phosphor);
+  box-shadow: 0 0 6px 1px rgba(169, 111, 232, 0.9);
+}
+html.rail-right #nav-rail .nav-item.has-request:not(.btn-active)::after { right: auto; left: 8px; }
+
+/* Changed songs (owner, 2026-10-07; server/known-good.js): Before and After as
+   rows of group chips with the difference lit. A song saved during the service
+   has an amber edge (look hard); one from before it is quieter. */
+.rf-seq { display: flex; flex-wrap: wrap; gap: 3px; }
+.rf-seq span {
+  padding: 4px 5px;
+  border: 1px solid var(--rf-hairline);
+  border-radius: 3px;
+  font-family: var(--rf-mono);
+  font-size: 10px;
+  line-height: 1;
+  color: var(--rf-muted);
+}
+.rf-seq span.new { background: #3A2A10; border-color: var(--rf-fault); color: #FFD08A; }
+.rf-seq span.gone { border-style: dashed; text-decoration: line-through; color: var(--rf-dim); }
+.rf-changed-during { border-left: 3px solid var(--rf-fault); }
+.rf-changed-before { opacity: 0.75; }
+#view-service .rf-changed .rf-slide-acts .btn { height: 44px; min-height: 44px; width: 100%; font-size: 13px; }
+
+/* The Settings readout card says why it is empty while the readout steps aside
+   for a lost link. */
+#settings-readout:not(.hidden) + .rf-readout-none { display: none; }
+
+/* ============================================================
+   NOW AT 340 (owner, 2026-10-07; handoff section 49)
+
+   Order of need: the message poster (a pager code is a few characters, so one
+   row), then the stage message as one-line rows with a Clear that never moves,
+   then everything that can wait, and the church's safe slides last as the
+   slides themselves. Heights are stated against `#view-live` (an id) so the
+   tier heights, which are theme-scoped, cannot quietly win.
+   ============================================================ */
+.rf-poster { display: flex; flex-direction: column; }
+.rf-poster-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: end;
+}
+.rf-poster-fields { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.rf-poster-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.rf-poster-label {
+  font-family: var(--rf-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--rf-dim);
+}
+#view-live .rf-poster-field .input {
+  height: 44px;
+  min-height: 44px;
+  width: 100%;
+  font-family: var(--rf-mono);
+  font-size: 18px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+#view-live .rf-poster-btn { height: 44px; min-height: 44px; padding-inline: 14px; }
+
+#view-live .rf-stage-clear { width: 100%; height: 44px; min-height: 44px; margin: 8px 0 4px; }
+#view-live .rf-stage-clear:disabled { opacity: 0.4; }
+#view-live .rf-stage-clear.ready { border-color: var(--rf-plum-lit); color: var(--rf-phosphor); opacity: 1; }
+.rf-stage-list { display: flex; flex-direction: column; gap: 6px; }
+#view-live .rf-stage-row {
+  width: 100%;
+  height: 44px;
+  min-height: 44px;
+  justify-content: flex-start;
+  padding-inline: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  overflow: hidden;
+}
+.rf-stage-text { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The message that is up stays pressed in, with a plum edge. */
+#view-live .rf-stage-row[aria-pressed="true"] {
+  background: #120E1A;
+  border-color: var(--rf-plum);
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.6), inset 3px 0 0 var(--rf-plum-lit);
+}
+#view-live .rf-stage-edit { margin-top: 6px; border-style: dashed; color: var(--rf-muted); font-weight: 500; }
+.rf-stage-custom { display: flex; gap: 8px; margin-top: 8px; }
+#view-live .rf-stage-custom .btn,
+#view-live .rf-stage-custom .input { height: 44px; min-height: 44px; }
+
+.rf-safe-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.rf-safe-grid .col-span-full,
+.rf-safe-none { grid-column: 1 / -1; }
+.rf-safe-key {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+  transition: transform 50ms ease-out;
+}
+.rf-safe-key:active { transform: translateY(1px); }
+.rf-safe-key:focus-visible { outline: 2px solid var(--rf-plum-lit); outline-offset: 2px; }
+.rf-safe-pic {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 1px solid var(--rf-hairline);
+  border-radius: 3px;
+  background: #06050A;
+}
+.rf-safe-key:hover .rf-safe-pic { border-color: var(--rf-plum-lit); }
+.rf-safe-pic img { width: 100%; height: 100%; object-fit: cover; }
+.rf-safe-words {
+  padding: 6px;
+  font-size: 10px;
+  line-height: 1.25;
+  text-align: center;
+  color: #F4EFF3;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.rf-safe-label {
+  font-family: var(--rf-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--rf-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ============================================================

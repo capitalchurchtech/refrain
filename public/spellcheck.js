@@ -7,6 +7,32 @@
 
 import { takeOpenWith } from "./open-with.js";
 import { showFailure } from "./notice.js";
+/**
+ * Of today's services, the one whose playlist to check first: the one starting
+ * nearest to now (a service with no time counts as far away) among those whose
+ * playlist is in the list ProPresenter gave. Null if none qualifies. Pure, for
+ * tests.
+ */
+export function nearestServicePlaylist(services, playlists, now = Date.now()) {
+  const known = new Set((playlists ?? []).map((p) => p.id));
+  let best = null;
+  for (const s of services ?? []) {
+    if (!s?.playlist?.id || !known.has(s.playlist.id)) continue;
+    const d = s.startsAt ? Math.abs(new Date(s.startsAt).getTime() - now) : Infinity;
+    if (!best || d < best.d) best = { s, d };
+  }
+  return best?.s ?? null;
+}
+
+/**
+ * Which count filter applies: the one asked for, unless nothing of that kind is
+ * left (the last typo ignored), when it falls back to All rather than leaving an
+ * empty list under a filter nobody can see why. Pure, for tests.
+ */
+export function resolveFilter(active, counts) {
+  return counts[active] ? active : "all";
+}
+
 export function initSpellcheck() {
   // Which flagged slide the "next" control is on, so working through a scan is
   // a rhythm rather than a hunt. -1 means "not started"; it resets per scan.
@@ -17,15 +43,14 @@ export function initSpellcheck() {
   async function render() {
     container.innerHTML = `
       <div class="flex flex-col gap-4 max-w-3xl">
-        <h2 class="rf-page-sub">Spell Check</h2>
+        <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="spell-check" class="w-5 h-5"></i> Spell Check</h1>
 
-        <!-- E2, the hero: the scan is the whole screen. The three-sentence lede
-             it replaced explained how the check decides what to flag, which is
-             architecture the operator discovers by pressing the button, and it
-             pushed the one control below the fold. -->
+        <!-- E2, the hero: the scan is the whole screen. Its own key now, so the
+             page is named once, here, and the card does not repeat it. The
+             playlist is chosen for you when today's service has one (it is
+             always in the list, one press away from another). -->
         <div class="card bg-base-200 rf-hero">
           <div class="card-body p-3 gap-3">
-            <h2 class="card-title text-base">Check a playlist</h2>
             <div class="rf-field">
               <label for="spellcheck-playlist">Playlist</label>
               <select id="spellcheck-playlist" class="select select-bordered"><option value="">Loading...</option></select>
@@ -57,6 +82,7 @@ export function initSpellcheck() {
         </details>
 
         <div id="spellcheck-status" class="text-sm opacity-70"></div>
+        <div id="spellcheck-filters" class="hidden"></div>
         <div id="spellcheck-next-host" class="flex items-center gap-3"></div>
         <div id="spellcheck-results" class="flex flex-col gap-3"></div>
       </div>
@@ -71,6 +97,7 @@ export function initSpellcheck() {
     const one = takeOpenWith("spellcheck");
     if (one) runScan(one, scanBtn);
 
+    let loadedPlaylists = null;
     try {
       const res = await fetch("/api/spellcheck/playlists");
       const { playlists, protected: protectedReason } = await res.json().catch(() => ({}));
@@ -94,6 +121,7 @@ export function initSpellcheck() {
         select.innerHTML = `<option value="">No playlists found</option>`;
       } else {
         select.innerHTML = `<option value="">Choose one...</option>` + playlists.map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`).join("");
+        loadedPlaylists = playlists;
       }
     } catch (err) {
       select.innerHTML = `<option value="">Couldn't load playlists</option>`;
@@ -119,9 +147,41 @@ export function initSpellcheck() {
       scanBtn.disabled = !select.value || scanBtn.dataset.protected === "1";
       scanBtn.title = scanBtn.disabled ? "Choose a playlist first" : "";
       const reason = document.getElementById("spellcheck-scan-reason");
-      if (reason) reason.classList.toggle("hidden", !scanBtn.disabled);
+      if (reason) {
+        reason.textContent = "Choose a playlist first.";
+        reason.classList.toggle("hidden", !scanBtn.disabled);
+      }
     });
     scanBtn.addEventListener("click", () => runScan(select.value, scanBtn));
+    // After the change listener above exists, so choosing one enables the button.
+    if (loadedPlaylists && !one) await chooseTodaysPlaylist(select, scanBtn, loadedPlaylists);
+  }
+
+  /**
+   * Picks today's service playlist, so the first press is "Check spelling" and
+   * not "choose a playlist". Only from what Service day already knows (nothing
+   * is read from ProPresenter): of today's services that have a playlist, the
+   * one starting nearest to now, and only if it is in the list. When Service
+   * day is off, or has no playlist today, the box stays on "Choose one...".
+   */
+  async function chooseTodaysPlaylist(select, scanBtn, playlists) {
+    try {
+      const res = await fetch("/api/service/day");
+      if (!res.ok) return;
+      const { services = [] } = await res.json();
+      const nearest = nearestServicePlaylist(services, playlists);
+      if (!nearest) return;
+      select.value = nearest.playlist.id;
+      if (select.value !== nearest.playlist.id) return;
+      select.dispatchEvent(new Event("change"));
+      const note = document.getElementById("spellcheck-scan-reason");
+      if (note) {
+        note.classList.remove("hidden");
+        note.textContent = `Today's service: ${nearest.name}.`;
+      }
+    } catch {
+      // A convenience; the list is still right there.
+    }
   }
 
   /** A playlist id, or `{ presentationId, name }` for one song. */
@@ -131,6 +191,7 @@ export function initSpellcheck() {
     const statusEl = document.getElementById("spellcheck-status");
     const resultsEl = document.getElementById("spellcheck-results");
     scanBtn.disabled = true;
+    activeFilter = "all";
     statusEl.textContent = one ? `Checking ${target.name ?? "this presentation"}...` : "Checking slides...";
     resultsEl.innerHTML = "";
     try {
@@ -162,6 +223,7 @@ export function initSpellcheck() {
     const total = wordCount + dateCount + mediaCount;
 
     renderNextControl(total);
+    renderFilters({ words: wordCount, dates: dateCount, media: mediaCount, total });
     const found = [
       wordCount ? `${wordCount} word${wordCount === 1 ? "" : "s"}` : "",
       dateCount ? `${dateCount} past date${dateCount === 1 ? "" : "s"}` : "",
@@ -177,10 +239,11 @@ export function initSpellcheck() {
       : `No likely typos, past dates or missing media found${data.truncated ? ` in the first ${data.scannedCount} items` : ""}. `;
     statusEl.textContent += unreadable;
 
+    resultsEl.dataset.filter = activeFilter;
     resultsEl.innerHTML = data.presentations
       .map(
         (p) => `
-      <div class="card bg-base-200">
+      <div class="card bg-base-200 rf-sc-pres">
         <div class="card-body p-3 gap-2">
           <div class="flex items-center justify-between gap-2">
             <div class="font-medium">${escapeHtml(p.presentationName ?? "Untitled")}</div>
@@ -191,7 +254,7 @@ export function initSpellcheck() {
           ${p.slides
             .map(
               (s) => `
-            <div class="text-sm bg-base-100 rounded p-2 spellcheck-slide rf-sc-slide" data-presentation-id="${escapeHtml(p.presentationId)}" data-slide-index="${s.slideIndex}">
+            <div class="text-sm bg-base-100 rounded p-2 spellcheck-slide rf-sc-slide" data-presentation-id="${escapeHtml(p.presentationId)}" data-slide-index="${s.slideIndex}" data-kinds="${[s.words?.length && "words", s.pastDates?.length && "dates", s.missingMedia?.length && "media"].filter(Boolean).join(" ")}">
               <!-- The slide as it looks, to find it by eye in the editor. -->
               <div class="rf-sc-pic${Number.isInteger(s.pictureIndex) ? "" : " rf-sc-nopic"}">
                 ${Number.isInteger(s.pictureIndex) ? `<img src="/api/preview/image/${encodeURIComponent(p.presentationId)}/${s.pictureIndex}?v=${encodeURIComponent(p.pictureVersion ?? "")}" alt="" loading="lazy" />` : ""}
@@ -264,6 +327,40 @@ export function initSpellcheck() {
    * would promise a precision the API cannot deliver. What it can do is open
    * the right presentation and put the right card under the operator's eye.
    */
+  /**
+   * The counts are the filters (owner, 2026-10-07): All, Spelling, Old date and
+   * Media, each with how many there are, and pressing one shows only those
+   * cards. A kind with none is dimmed and cannot be pressed. If the kind being
+   * looked at has just run out (the last typo ignored), it falls back to All
+   * rather than leaving an empty list under a filter nobody can see why.
+   */
+  let activeFilter = "all";
+  function renderFilters({ words, dates, media, total }) {
+    const host = document.getElementById("spellcheck-filters");
+    if (!host) return;
+    const counts = { all: total, words, dates, media };
+    activeFilter = resolveFilter(activeFilter, counts);
+    host.classList.toggle("hidden", !total);
+    const names = { all: "All", words: "Spelling", dates: "Old date", media: "Media" };
+    host.innerHTML = `<div class="rf-count-filters" role="tablist" aria-label="Show findings">${Object.keys(names)
+      .map(
+        (k) =>
+          `<button type="button" role="tab" class="rf-count-filter" data-filter="${k}" aria-selected="${k === activeFilter}"${counts[k] ? "" : ` disabled title="Nothing to show: none found"`}><b>${counts[k]}</b><span>${names[k]}</span></button>`
+      )
+      .join("")}</div>`;
+    host.querySelectorAll("[data-filter]").forEach((b) =>
+      b.addEventListener("click", () => {
+        activeFilter = b.dataset.filter;
+        cursor = -1;
+        const progress = document.getElementById("spellcheck-next-progress");
+        if (progress) progress.textContent = "";
+        const resultsEl = document.getElementById("spellcheck-results");
+        if (resultsEl) resultsEl.dataset.filter = activeFilter;
+        host.querySelectorAll("[data-filter]").forEach((x) => x.setAttribute("aria-selected", String(x === b)));
+      })
+    );
+  }
+
   function renderNextControl(total) {
     const host = document.getElementById("spellcheck-next-host");
     if (!host) return;
@@ -276,7 +373,8 @@ export function initSpellcheck() {
   }
 
   async function goToNextFlagged() {
-    const cards = [...document.querySelectorAll("#spellcheck-results .spellcheck-slide")];
+    // Only the cards the filter is showing.
+    const cards = [...document.querySelectorAll("#spellcheck-results .spellcheck-slide")].filter((c) => c.offsetParent !== null);
     if (!cards.length) return;
     cursor = (cursor + 1) % cards.length;
     const card = cards[cursor];

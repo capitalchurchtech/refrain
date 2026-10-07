@@ -1,5 +1,5 @@
 /**
- * The status cluster at the foot of the rail.
+ * The status cluster under the wordmark: four small icon lamps, plum when fine.
  *
  * Replaces the lone LINKED row, which read badly for three reasons that had
  * nothing to do with its geometry — that was already correct, every glyph
@@ -27,6 +27,8 @@
  *   LINK  the quality floor names it: disconnected must be unmistakable
  *   LIVE  nothing else reports what is on the screens away from Search
  *   PERF  it arms and releases on its own, so it genuinely moves
+ *   FEED  whether the status feed to the church's own announcement server is
+ *         getting through; off, idle between send windows, or amber on failure
  *
  * Index freshness deliberately has no lamp. It is real but it is not binary and
  * it changes rarely; it gets the text line on Search instead. A lamp holding
@@ -38,44 +40,69 @@
 
 const POLL_MS = 4000;
 
+// Line drawings on a 24px grid, drawn here rather than looked up: the lamps are
+// part of the rail and must not depend on the icon library having loaded.
+const ICON = {
+  link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+  live: '<circle class="rf-lamp-fill" cx="12" cy="12" r="7"/>',
+  perf: '<path d="M12 3 5 6v5c0 5 3 8 7 10 4-2 7-5 7-10V6z"/>',
+  feed: '<path d="M2 9a15 15 0 0 1 20 0M5.5 12.5a10 10 0 0 1 13 0M9 16a5 5 0 0 1 6 0M12 19.5h.01"/>',
+};
+
+/**
+ * What each lamp reads, as one of four states:
+ *   on     fine, and doing its job (plum, quiet)
+ *   off    nothing to report (dim)
+ *   fault  needs a person (amber)
+ *   live   something is on the screens (red)
+ *
+ * Plum on purpose (owner, 2026-10-07): a lamp that is fine should disappear
+ * from the operator's attention. Only a fault or live changes colour.
+ */
 const LAMPS = [
   {
     id: "link",
     legend: "Link",
-    // Lit means present, and absence is the fault here — so this one is lit
-    // when things are fine, unlike the two below.
-    read: (s) => Boolean(s?.connected),
-    // What the lamp watches, then what it reads now (owner, 2026-09-30: hover
-    // should explain what it is, not only its state).
+    read: (s) => (s?.connected ? "on" : "fault"),
     about: "Link: whether Refrain can reach ProPresenter.",
-    title: (on) => (on ? "Now: connected." : "Now: lost ProPresenter. Retrying."),
+    title: (st) => (st === "on" ? "Now: connected." : "Now: lost ProPresenter. Retrying."),
   },
   {
     id: "live",
     legend: "Live",
-    read: (s) => Boolean(s?.live),
+    read: (s) => (s?.live ? "live" : "off"),
     about: "Live: whether anything is on the screens right now.",
-    title: (on) => (on ? "Now: something is on the screens." : "Now: nothing on the screens."),
+    title: (st) => (st === "live" ? "Now: something is on the screens." : "Now: nothing on the screens."),
   },
   {
     id: "perf",
     legend: "Perf",
-    read: (s) => Boolean(s?.performanceMode?.armed),
+    read: (s) => (s?.performanceMode?.armed ? "on" : "off"),
     about: "Performance mode: Refrain holds still during a service, with no indexing or background work. It turns on by itself.",
-    title: (on) => (on ? "Now: on, holding still." : "Now: off."),
+    title: (st) => (st === "on" ? "Now: on, holding still." : "Now: off."),
+  },
+  {
+    id: "feed",
+    legend: "Feed",
+    // The status feed to the church's own announcement server (Settings >
+    // Telemetry). Off unless the church turned it on; amber when it is on but
+    // cannot reach the server or is not set up; dim between send windows.
+    read: (s) => (s?.feed === "ok" ? "on" : s?.feed === "fault" ? "fault" : "off"),
+    about: "Feed: whether Refrain is reporting to your announcement server (Settings > Telemetry). Nothing goes anywhere else.",
+    title: (st, s) =>
+      st === "on"
+        ? "Now: reporting."
+        : st === "fault"
+          ? "Now: not getting through. See Settings > Telemetry."
+          : s?.feed === "idle"
+            ? "Now: waiting for the send window."
+            : "Now: switched off.",
   },
 ];
 
-/**
- * The link as the lamps last saw it, for screens that need to say more than a
- * lamp can (Live's OFFLINE banner over Clear). One poll feeds both, so the
- * banner and the LINK lamp can never disagree. Null until the first check.
- */
-let lastConnected = null;
-export function lastKnownConnected() {
-  return lastConnected;
-}
-export const LINK_EVENT = "refrain:link";
+// Every poll, with the whole live state, so a screen can mark what is on the
+// screens without polling a second time.
+export const LIVE_STATE_EVENT = "refrain:live-state";
 
 export function initStatusCluster() {
   const host = document.getElementById("status-cluster");
@@ -83,36 +110,31 @@ export function initStatusCluster() {
 
   host.innerHTML = LAMPS.map(
     (l) => `
-    <div class="rf-status-row" data-lamp="${l.id}" data-on="false" role="img" title="${l.about}" aria-label="${l.about}">
-      <span class="rf-led rf-led-col" data-lamp-led></span>
-      <span class="nav-label rf-status-legend whitespace-nowrap hidden">${l.legend}</span>
-    </div>`
+    <span class="rf-lamp" data-lamp="${l.id}" data-state="off" role="img" title="${l.about}" aria-label="${l.about}">
+      <svg viewBox="0 0 24 24" aria-hidden="true">${ICON[l.id]}</svg>
+    </span>`
   ).join("");
 
   const rows = new Map([...host.querySelectorAll("[data-lamp]")].map((el) => [el.dataset.lamp, el]));
   let lastKey = null;
 
   function paint(state) {
-    const connected = Boolean(state?.connected);
-    if (connected !== lastConnected) {
-      lastConnected = connected;
-      window.dispatchEvent(new CustomEvent(LINK_EVENT, { detail: { connected } }));
-    }
+    window.dispatchEvent(new CustomEvent(LIVE_STATE_EVENT, { detail: state }));
     // Only touch the DOM when something actually changed, so a poll every four
     // seconds is not rewriting the rail continuously.
-    const key = LAMPS.map((l) => (l.read(state) ? "1" : "0")).join("");
+    const states = LAMPS.map((l) => l.read(state));
+    const key = `${states.join(",")}|${state?.feed ?? ""}`;
     if (key === lastKey) return;
     lastKey = key;
 
-    for (const lamp of LAMPS) {
+    LAMPS.forEach((lamp, i) => {
       const row = rows.get(lamp.id);
-      if (!row) continue;
-      const on = lamp.read(state);
-      row.dataset.on = String(on);
-      row.title = `${lamp.about}\n${lamp.title(on)}`;
-      row.setAttribute("aria-label", `${lamp.about} ${lamp.title(on)}`);
-      row.querySelector("[data-lamp-led]").classList.toggle("lit", on);
-    }
+      if (!row) return;
+      const st = states[i];
+      row.dataset.state = st;
+      row.title = `${lamp.about}\n${lamp.title(st, state)}`;
+      row.setAttribute("aria-label", `${lamp.about} ${lamp.title(st, state)}`);
+    });
   }
 
   async function check() {
@@ -122,7 +144,7 @@ export function initStatusCluster() {
       // Cannot reach our own server: report the link as down rather than
       // leaving a stale "linked" on screen, which is the one lie this control
       // exists to prevent.
-      paint({ connected: false, live: false, performanceMode: { armed: false } });
+      paint({ connected: false, live: false, performanceMode: { armed: false }, feed: "off" });
     }
   }
 

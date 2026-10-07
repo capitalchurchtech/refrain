@@ -21,6 +21,7 @@ export default {
   // "switched off", and ProPresenter isn't asked for what they'd show.
   features: [
     { id: "messages", label: "Messages", default: true, description: "The pager and other ProPresenter messages, and stage messages, on Now and on phones.", apiPrefixes: ["/api/live/message", "/api/live/stage-message"] },
+    { id: "requests", label: "Staff requests", default: false, description: "Messages other staff send from the announcement app, shown on Now for someone here to approve before anything reaches the screens. Uses the address and key from Settings > Telemetry.", apiPrefixes: ["/api/live/requests"] },
     { id: "macros", label: "Macros", default: false, description: "ProPresenter's macros as keys on Now.", apiPrefixes: ["/api/live/macro"] },
     { id: "looks", label: "Looks", default: false, description: "ProPresenter's Looks as keys on Now.", apiPrefixes: ["/api/live/look", "/api/live/current-look"] },
   ],

@@ -2889,6 +2889,49 @@ fourth feature needs one); the project CLAUDE.md still names "the search and
 lyrics screens" as core while Lyrics is now a switch, off by default (owner's
 call; the doc wording is the owner's to change).
 
+## 49. BUILD — The narrow dock: Search, Spell Check, Service, History (owner approved 2026-10-07)
+
+**Brief (owner):** "It's critical that the app best exist in widths under 350px."
+Search and Spell Check are the product; everything else is a switch. The design
+is the 340px mock the owner reviewed over several rounds (Artifact "Refrain at
+340"). At 340px the chrome costs 56px of rail plus 24px of padding, leaving 260px.
+
+**Decisions on record (do not re-litigate):**
+- Go Live is the left button, Show the right. Show is one name everywhere.
+- Slide numbers read `#6 / 35`, the total dimmed. A group chit ("Verse 1")
+  leads each slide: lower contrast than the deep-search chit, same 3px corners.
+- The Edited date filter leaves the Search screen (the server parameter stays).
+  Libraries stays as one chip. Flag becomes an icon in the strip.
+- Empty search offers **Deep Search Arrangements**; its glow moves there from the
+  field. Deep results are Show only (never Go Live): a flat slide number only
+  means something inside one arrangement.
+- Service: the on-screen readout leaves the page for Settings › Status. Stage
+  messages are single-line rows, 80 characters, truncated with an ellipsis; a
+  full-width Clear stage message sits above them; the last row is Edit messages.
+  The childcare code is one row (5 digits, Post, Clear message). Clear means the
+  messages layer only. Safe slides are the last item, four slide pictures.
+- Rail on the right by default. Four small lamps: link, live (red dot), performance
+  mode, status feed (wifi); all plum except live. Settings is a hamburger key.
+  History is its own key with a flyout (Back, Forward, Go back here).
+- Staff requests (announce app posts, console approves) expire after 8 minutes.
+  Off by default. The announce side is outside this repo.
+- Rail keys: hover name, travelling edge, glow. This **breaks** creative-direction.md
+  ("latched key must not glow"); the brief is updated in the same change.
+
+**Build order (each phase ends with tests, lint, `node --check`, and a check at 340px):**
+1. Shell: rail right by default, lamp icons, Settings hamburger.
+2. Search at 340: field first with ring and dim clear, readout and Flag leave the top, Libraries chip, result row (chit, `#n / total`, Go Live left).
+3. Deep search: the index keeps every arrangement's groups (schema bump); deep route; UI.
+4. Service: stage messages, childcare code row, safe slide pictures, readout to Settings › Status.
+5. Spell Check: own key, default playlist, counts as filters.
+6. History flyout with Forward.
+7. Rail polish: hover names, travelling edge, glow, counters.
+8. Staff requests, Refrain side (needs the announce endpoint).
+9. Changed songs (known good copies, before/after, time of change).
+
+**Not built here:** the rail width stays 56px (48px means renaming w-14/ml-14 in
+eight places, see CLAUDE.md); the announce app's form and endpoint.
+
 ## Status log
 
 `YYYY-MM-DD · <item> · done | partial | blocked · <one line>`
@@ -3554,3 +3597,12 @@ call; the doc wording is the owner's to change).
 - 2026-10-04 — Installed 675ab10 on this Mac (owner asked): Protect ProPresenter on, file watcher stopped, rebuild refused (409), search answers from the saved index (744 presentations), pictures off, ProPresenter connected. Still v0.29.0. Not on the main station or the booth.
 - 2026-10-06 — Section 48 built on branch feature-switches (uncommitted): features on and off, Settings › Features, gated routes and tabs, phone tabs. 623 tests pass, lint clean. Code review next, then push on the owner's say.
 - 2026-10-06 — Section 48: two code reviews (high) run and fixed, see the section. 623 tests pass, lint clean; switches, gates, watcher, lock-in release and phone tabs re-checked on the dev copy. Dev settings restored.
+- 2026-10-07 · Section 49 phase 1 (shell) · done · rail defaults to the right unless the owner chose left; the status cluster is four small icon lamps (link, live dot, performance, feed) plum when fine, amber on a fault, red when live; the FEED lamp reads the existing service feed (Settings > Telemetry) through `feedLamp()` (tested); Settings is a hamburger. Checked at 340px against a throwaway config. Suite 626 pass, lint clean.
+- 2026-10-07 · Section 49 phase 2 (Search at 340) · done · field first with the typing ring; readout and the date filter leave Search; one strip (index, Libraries, Flag); each result leads with a group chit "VERSE 1 #6 / 35", words get the full 236px (was 55), Go Live left and Show right at 44px. Results now carry `groupName` and `slideCount` (an older index has no group name, so the chit is the number alone). Measured in the browser; Go Live's mousedown acknowledgement and failure path checked with no ProPresenter. The clear icon already existed (shown once there is text); made dimmer. Date filter UI removed, server parameter kept, no Settings control built.
+- 2026-10-07 · Section 49 phase 3 (Deep Search) · done · `otherArrangementSlides()` (arrangements.js, tested) lists the slides the indexed arrangement skips, each placed in the first arrangement that plays its group; stored on each index entry as `otherSlides` from the read the index already makes (no new ProPresenter calls) and carried across incremental runs; `GET /api/search/deep`; an empty result offers Deep Search Arrangements and the ring's glow moves to it; deep results are Show only and name the group to drag in. No schema bump: an index from before this has no `otherSlides`, and the screen says "could read 1 of 2 songs" until a full refresh. Checked in the browser against a synthetic index. Suite 631 pass.
+- 2026-10-07 · Section 49 phase 4 (Service › Now, Settings) · done, with notes · Now is rebuilt in the order of need: the message poster as one row (field, Post, Clear), the stage message as single-line 80-character rows with an ellipsis, a full-width Clear stage message that never moves, and Edit messages as the last row; On screen now (the Now/Next pair and its Next key) and Performance mode are one-line folds; the Clear fold is gone (the menu's quick slides keep Clear all); the church's safe slides are last, the first four as pictures or, with pictures off, their words (up to eight are still kept, so nothing saved is dropped). The lit readout moved to Settings › Status. Settings has four top tabs (Status, Search, Features, More) with Phones, Customize, Telemetry and Audit as a second row under More; every old `#settings/<tab>` link still lands. The poster does not insist on five digits (the Kids pager code is letters). The Service page keeps its Now / Flags / Day tab row.
+- 2026-10-07 · Section 49 phase 5 (Spell Check) · done · its own menu key beside Search; today's service playlist chosen for you from what Service day already knows (nothing read from ProPresenter); the counts (All, Spelling, Old date, Media) are the filters; "Spell check this" on Flags and Day rows still opens it with the song chosen. The rail's wordmark is gone. Suite 631 pass, lint clean. Checked at 340px with the scan mocked (ProPresenter is not running here).
+- 2026-10-07 · Section 49 phase 6 (History) · done, differently from the mock · a History key at the head of the rail's lower group opens a flyout (hover, or press to hold it open) beside the rail on either side: Back and Forward over the 30 places the server keeps, a row per place with how long ago, and "Show" on hover. **Every press opens the place in ProPresenter's editor, never the screens**, because the server's Return is focus-only (`/api/return`, `/api/focus`); the mock's "Go back here" put a slide live, which this app deliberately never does from history. Back and Forward move a cursor in the browser and never fire anything; the cursor returns to the newest place when a new one arrives. The old standalone history chip is gone (the Return bar and its pulldown stay for a fresh jump). `historyView`/`agoText` tested; checked at 340px with the history mocked.
+- 2026-10-07 · Section 49 phase 7 (rail polish) · done · the latched key's edge is one element that glides between keys (140ms), with a glow; the latched and hovered icons glow (dark themes); icon-only keys name themselves beside the rail with their number key. **Breaks the brief on purpose**, so creative-direction.md carries an amendment (the rail may glow, hover may emit, three controls may travel while someone works with them). A real cascade bug found and fixed on the way: `[data-theme="dark"] #nav-rail > *` gives every child of the rail `position: relative`, which silently beat the edge's own rule (now `#nav-rail > #nav-edge`). Counters on the rail keys were not built (Spell Check's counts are on its own screen; the Service dot is phase 8).
+- 2026-10-07 · Section 49 phase 8 (staff requests, Refrain side) · done, untested against the real announcement app · `server/staff-requests.js` (pure engine, 14 tests): polls `GET <console address>/requests` every 5s with the feed's key, 8-minute lifetime from `createdAt`, one handling per id (remembered in `data/staff-requests/handled.json`), at most 5 waiting, approve refused on a repeat or if expired, a failed ProPresenter post leaves it waiting, results re-told until heard, request text never logged. Off by default (Settings › Features › Staff requests); routes `/api/live/requests` (+ `/:id/approve`, `/:id/decline`) answer "switched off" when off. Now shows a card per request (words, sender, time left, Post it / Decline) with a ring that moves for 4 seconds; the Service key gets a steady dot from any screen. Posts through the first ProPresenter message that has a Text field (or `liveModule.requestMessageId`). Checked end to end against a fake announcement server on a local port (arrival, card, dot, countdown, the failure message with no ProPresenter). **Not verified:** a real post into ProPresenter, and any real announcement app: the contract is in docs/service-feed.md for that side to build.
+- 2026-10-07 · Section 49 phase 9 (Changed songs) · done · `server/known-good.js` (pure, 8 tests): each song's group order in the arrangement the index reads is learned the first time it is seen (also in the background every minute, so an edit is not baked in before anyone looks) and moves only when a person presses Dismiss; a song whose indexed arrangement changed is re-learned, a rename is not a change. `GET /api/service/changed-songs` splits changes into During the service (saved at or after the first service start, or performance mode's start) and Before it (quieter, with Dismiss all), newest save first; `POST .../dismiss` takes one song or the whole "before" group; saved atomically in `data/known-good.json` (titles and group names only). Day tab shows each as Before/After chips with the difference marked, "Saved 10:12 am, 14 min into the service", Show in Editor and Dismiss. Checked in the browser against a seeded file: the split, the chips, Dismiss persisting. **Limits, stated on the screen and in the README:** only the indexed arrangement is compared (other arrangements are not), the time is the file's last save, and it cannot put anything back.

@@ -18,9 +18,9 @@ import { showFailure } from "./notice.js";
  * pull away. Two shapes, because there are two situations:
  *
  *   - Just jumped: the bar, as before, with a pulldown handle beside Return.
- *   - Jumped a while ago and already came back: no bar, just the handle,
- *     so the history is reachable without an alert claiming something is
- *     happening now.
+ *   - Jumped a while ago and already came back: no bar. The whole history is on
+ *     the rail's History key, so nothing here claims something is happening
+ *     now.
  *
  * It polls on a light interval, to catch a jump made from another device or
  * screen, and refreshes immediately when this page triggers a Go Live via
@@ -35,8 +35,6 @@ export function initReturnBar() {
   const btn = document.getElementById("return-bar-btn");
   const toggle = document.getElementById("return-history-toggle");
   const toggleCount = document.getElementById("return-history-count");
-  const tab = document.getElementById("return-history-tab");
-  const tabCount = document.getElementById("return-history-tab-count");
   const panel = document.getElementById("return-history-panel");
   if (!bar || !label || !btn || !panel) return;
 
@@ -51,7 +49,6 @@ export function initReturnBar() {
     open = next;
     panel.classList.toggle("hidden", !open);
     toggle.setAttribute("aria-expanded", String(open));
-    tab.setAttribute("aria-expanded", String(open));
   }
 
   /**
@@ -68,10 +65,8 @@ export function initReturnBar() {
   /**
    * Renders a list of places into the panel.
    *
-   * Takes the list rather than deriving it, because the two openers want
-   * different sets: the bar's handle excludes the head (it is already on the
-   * bar, and offering the same jump twice is a bug), while the standalone tab
-   * has no bar and so shows everything.
+   * Takes the list rather than deriving it: the bar's handle excludes the head
+   * (it is already on the bar, and offering the same jump twice is a bug).
    */
   function renderPanel(entries) {
     panel.innerHTML = entries
@@ -105,16 +100,15 @@ export function initReturnBar() {
       const name = pin.name ? `“${escapeHtml(pin.name)}”` : "the previous slide";
       label.innerHTML = `Jumped from ${name} (slide ${pin.slideIndex + 1}). <span class="opacity-70">Return opens it in the editor.</span>`;
       bar.classList.remove("hidden");
-      tab.classList.add("hidden");
       toggle.classList.toggle("hidden", rest.length === 0);
       toggleCount.textContent = rest.length ? String(rest.length) : "";
     } else {
-      // Already come back, or never jumped. No alert, but earlier places stay
-      // reachable behind the handle.
+      // Already come back, or never jumped. No alert: earlier places are one
+      // hover away on the rail's History key (public/history-flyout.js).
       bar.classList.add("hidden");
       toggle.classList.add("hidden");
-      tab.classList.toggle("hidden", rest.length === 0);
-      tabCount.textContent = rest.length ? String(rest.length) : "";
+      // The handle is gone, so a panel left open would have no way to close.
+      if (open) setOpen(false);
     }
 
     // A panel showing nothing is worse than no panel.
@@ -183,7 +177,6 @@ export function initReturnBar() {
     setOpen(!open);
   }
   toggle.addEventListener("click", openPanel);
-  tab.addEventListener("click", openPanel);
 
   // Let Go Live handlers ask for an immediate refresh instead of waiting on
   // the poll, so the bar appears the moment they jump.

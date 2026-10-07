@@ -107,6 +107,39 @@ address. `413` too large (Refrain skips files over 10 MB rather than truncate).
 `408`, `429` and `5xx` are treated as "try later". Any other `4xx` is treated as
 a setup problem: Refrain says so on Health and backs off for five minutes.
 
+## Staff requests, version 1 (the other direction)
+
+Settings > Features > **Staff requests** (off by default) lets staff send a
+message from the announcement app that someone at this console approves before
+anything reaches the screens. It uses the address, key and console id above, so
+Telemetry has to be set up first (its on/off switch can stay off).
+
+Refrain asks; nothing connects in to the console. Every five seconds it calls,
+with the same `Authorization: Bearer <key>` and `X-Console-Id` headers:
+
+- `GET <console address>/requests` answers `{ "requests": [{ "id", "text", "from"?, "createdAt"? }] }`.
+  `id` is the announcement server's own, up to 64 letters, digits, `_` or `-`.
+  `text` is one line, 80 characters at most. `from` is shown on the card (a
+  department; 40 characters). `createdAt` is an ISO time.
+- `POST <console address>/requests/<id>/result` with `{ "status": "shown" | "declined" | "expired" }`,
+  once the request has been answered. Refrain tells it again on the next poll if
+  that call did not get through.
+
+What Refrain guarantees: a request is only ever a card on **Now**; "Post it"
+puts the text into the first ProPresenter message that has a Text field (or the
+one named in `liveModule.requestMessageId`), "Decline" posts nothing. A request is good for eight
+minutes from `createdAt` (a time in the future counts as now); an older one is
+never shown and is reported `expired`. Each `id` is handled once, remembered on
+disk, so a restart or a repeat poll never shows it twice. At most five wait at a
+time; any more stay on the server until there is room. The text is never
+written to a log or sent anywhere but the result call above, which carries no
+text.
+
+What the announcement app needs: a form for staff to send one (a code or a short
+line), a list of pending requests per console, the two endpoints above, and a
+state for each request (waiting, shown, declined, expired) so the sender can see
+what happened. Keep the server's own expiry at eight minutes or less.
+
 ## Handoff prompt: Announce side (`cc-announce`)
 
 Paste into a session opened in the `cc-announce` repo. Read its `AGENTS.md`

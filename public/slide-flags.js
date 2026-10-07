@@ -7,7 +7,7 @@ import { showFailure } from "./notice.js";
  *
  * Three surfaces, one module:
  *
- * - **"Flag this slide"**, a chip under the Search readout. The fast path:
+ * - **"Flag this slide"**, a chip on Search's strip, under the field. The fast path:
  *   untyped, one press. A Tier 3 chip on purpose -- it sits in the operator's
  *   eyeline on the path to live and changes nothing on the screens, so it must
  *   never read as Go Live or a Clear.
@@ -70,7 +70,7 @@ export function mountFlagButton(host) {
   host.innerHTML = `
     <div class="flex items-center gap-2 flex-wrap">
       <button type="button" class="btn btn-chip slide-flag-btn" title="Mark this slide to fix later. Nothing on the screens changes.">
-        <i data-lucide="flag" class="w-3 h-3"></i> <span class="slide-flag-label">Flag this slide</span>
+        <i data-lucide="flag" class="w-3 h-3"></i> <span class="slide-flag-label">Flag</span>
       </button>
       <span class="slide-flag-status text-xs opacity-60" aria-live="polite"></span>
     </div>`;
@@ -90,13 +90,13 @@ export function mountFlagButton(host) {
       label.textContent = "Flagged";
       status.textContent = describeFlagSave(data);
     } catch (err) {
-      label.textContent = "Flag this slide";
+      label.textContent = "Flag";
       status.textContent = "";
       showFailure(err.message);
     } finally {
       btn.disabled = false;
       resetTimer = setTimeout(() => {
-        label.textContent = "Flag this slide";
+        label.textContent = "Flag";
       }, 2000);
     }
   });

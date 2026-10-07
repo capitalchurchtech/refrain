@@ -547,6 +547,31 @@ legend are the same silkscreen ink, printed in one pass; when an icon
 out-shouts its own legend the hierarchy is inverted and everything reads as
 noisy.
 
+### Amendment, 2026-10-07: the rail may glow (owner: "break convention")
+
+Everything above this heading about a latched key not glowing, and about
+presence coming only from the accent edge, ink and a soft bleed, is **changed
+for the nav rail**:
+
+- The latched key's edge is one element (`#nav-edge`) that glides to the key you
+  are on in 140ms, ease-out, with a real glow behind it, and the latched key's
+  icon carries a plum glow. This spends an emitter. It is permitted because it
+  reports where you are, nothing else.
+- A hovered or focused rail key's icon lights (white with a plum glow). Hover
+  emits, for the rail only.
+- Icon-only keys name themselves beside the rail on hover or focus, with the
+  number key that jumps there. The name is the one new thing a nervous volunteer
+  needs from this change.
+- The four lamps under the top of the rail are icons, plum when fine and amber
+  on a fault; only the live lamp is red (a dot, with a glow). Plum lamps are
+  meant to be forgotten.
+
+Light theme keeps the travelling edge and loses the glow.
+
+**Still true:** warm saturated colour is for live, nothing pulses or breathes at
+rest, and nothing animates on the path to live (a press must be acknowledged
+inside 50ms, and none of this is on that path).
+
 ### Group breaks
 
 Where a panel divides into groups, the break is a machined score line — a dark
@@ -627,6 +652,14 @@ active voice, no em dashes.
   answers instantly and never trusts a beautiful one that hesitates.
 - Nothing animates on the path to live. Confirmation is instantaneous or the
   operator presses twice.
+- **Amended 2026-10-07:** three things may travel or light while someone is
+  working with them, and settle when they stop. The search field's ring moves
+  while keys go in (about a second after the last). The Deep Search button's ring
+  moves while it is the next thing to press (a search found nothing) and a sweep
+  runs across it while it searches. The card for a staff request waiting to be
+  approved has a ring that moves for its first four seconds, then holds still.
+  None of them is on the path to live, and all of them stop under
+  `prefers-reduced-motion`.
 - Emitters do not pulse, breathe or shimmer. A pulsing light in a live tool
   means something is wrong; do not spend that signal on decoration.
 - `prefers-reduced-motion` respected, with instant state change as the fallback

@@ -107,6 +107,7 @@ export function sameBuildOptions(a, b) {
 export const CARRIED_FIELDS = [
   "slides",
   "groupSequence",
+  "otherSlides",
   "arrangementName",
   "arrangementId",
   "arrangementSource",

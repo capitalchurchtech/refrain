@@ -92,6 +92,17 @@ test("flattenGroups numbers slides across groups and repeats a repeated group", 
   );
 });
 
+test("flattenGroups carries each slide's group name, for the result's chit", () => {
+  const flat = flatOf(doc(), ["FS"]);
+  assert.deepEqual(
+    flat.map((s) => s.groupName),
+    ["(FS) Intro", "Verse 1", "Verse 1", "Chorus 1", "Chorus 1", "Chorus 1", "Chorus 1", "Ending"]
+  );
+  // An unnamed group is null, never the string "undefined".
+  const unnamed = flattenGroups([{ uuid: "g", slides: [{ text: "x" }] }]);
+  assert.equal(unnamed[0].groupName, null);
+});
+
 test("the same flat index is a different slide under a different arrangement", () => {
   // This is the bug being fixed: a bare index is not a durable reference.
   assert.equal(flatOf(doc(), ["FS"])[3].text, "chorus a");

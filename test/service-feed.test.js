@@ -8,6 +8,7 @@ import {
   imageKeyOf,
   cleanServiceFeedSettings,
   createServiceFeed,
+  feedLamp,
   inWindow,
   isConfigFailure,
   logsToSend,
@@ -311,4 +312,15 @@ test("a picture over the size cap is not sent", async () => {
 test("settings carry the picture choice, off unless asked", () => {
   assert.equal(cleanServiceFeedSettings({ enabled: true }).value.includeSlideImage, false);
   assert.equal(cleanServiceFeedSettings({ enabled: true, includeSlideImage: true }).value.includeSlideImage, true);
+});
+
+test("feedLamp: off, fault, idle and ok, and a failure is never reported as fine", () => {
+  const sunday10 = new Date(2026, 9, 11, 10, 0); // Sun 11 Oct 2026, 10:00 local
+  const monday10 = new Date(2026, 9, 12, 10, 0);
+  const mod = { enabled: true };
+  assert.equal(feedLamp({ moduleStatus: "off", lastError: null, mod, now: sunday10 }), "off");
+  assert.equal(feedLamp({ moduleStatus: "misconfigured", lastError: null, mod, now: sunday10 }), "fault");
+  assert.equal(feedLamp({ moduleStatus: "active", lastError: "The announcement server answered 500.", mod, now: sunday10 }), "fault");
+  assert.equal(feedLamp({ moduleStatus: "active", lastError: null, mod, now: sunday10 }), "ok");
+  assert.equal(feedLamp({ moduleStatus: "active", lastError: null, mod, now: monday10 }), "idle");
 });

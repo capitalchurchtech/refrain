@@ -161,6 +161,20 @@ export function buildStatus({ live, mod, consoleId, appVersion, seq, now }) {
   };
 }
 
+/**
+ * What the rail's FEED lamp reads. "off": not switched on. "fault": on but not
+ * set up, or the announcement server is refusing or unreachable. "idle": on and
+ * fine, between send windows. "ok": on, inside a window, last send worked.
+ * `moduleStatus` is getServiceFeedModuleStatus(config).status; `lastError` is
+ * the feed's own state. Pure, so a lamp that must not lie is checked in a test.
+ */
+export function feedLamp({ moduleStatus, lastError, mod, now }) {
+  if (moduleStatus === "off") return "off";
+  if (moduleStatus !== "active") return "fault";
+  if (lastError) return "fault";
+  return inWindow(mod, now) ? "ok" : "idle";
+}
+
 /** What changed matters, what ticked does not: a fingerprint without timestamps. */
 export function statusFingerprint(status) {
   const rest = { ...status, seq: null, sentAt: null };

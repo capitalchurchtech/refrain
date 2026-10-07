@@ -2,8 +2,9 @@ import { COPY_FAILED, noProPresenterFound } from "./strings.js";
 import { showFailure } from "./notice.js";
 import { wireTabKeys, fitTabs } from "./tabs.js";
 import { display } from "./nav.js";
-import { SETTINGS_TABS, settingsTabFromHash } from "./settings-tabs.js";
+import { SETTINGS_TABS, SETTINGS_TOP, SETTINGS_MORE, settingsTopTab, settingsTabFromHash } from "./settings-tabs.js";
 import { createMeter, updateMeter, meterCount } from "./led-meter.js";
+import { mountLiveReadout, unmountLiveReadout } from "./live-readout.js";
 const ARRANGEMENT_STATUS_LABEL = {
   off: null, // hidden entirely per Section 4.1
   misconfigured: "Misconfigured",
@@ -45,6 +46,7 @@ export function initHealth() {
   // whole screen whenever a setting is saved, and a five-second scan the
   // operator just asked for should not vanish because they saved something.
   let lastOrphanScan = null;
+  let statusReadout = null;
 
   let versionCheck = null;
   async function fetchVersionCheck() {
@@ -55,8 +57,18 @@ export function initHealth() {
     return versionCheck;
   }
 
+  // The last panel opened under More, so pressing More again comes back to it.
+  let lastMore = SETTINGS_MORE[0];
   function showSettingsTab(tab) {
+    if (SETTINGS_MORE.includes(tab)) lastMore = tab;
     container.querySelectorAll("[data-settings-panel]").forEach((p) => p.classList.toggle("hidden", p.dataset.settingsPanel !== tab));
+    // The top row marks the group a panel belongs to; the second row, inside
+    // More, marks the panel itself.
+    container.querySelectorAll("[data-settings-top]").forEach((b) => {
+      const on = b.dataset.settingsTop === settingsTopTab(tab);
+      b.setAttribute("aria-selected", String(on));
+      b.tabIndex = on ? 0 : -1;
+    });
     container.querySelectorAll("[data-settings-tab]").forEach((b) => {
       b.setAttribute("aria-selected", String(b.dataset.settingsTab === tab));
       b.tabIndex = b.dataset.settingsTab === tab ? 0 : -1;
@@ -71,9 +83,17 @@ export function initHealth() {
   function wireSettingsTabs() {
     const row = document.getElementById("settings-tabs");
     if (!row) return;
-    row.querySelectorAll("[data-settings-tab]").forEach((b) => b.addEventListener("click", () => selectSettingsTab(b.dataset.settingsTab)));
-    wireTabKeys(row, (b) => selectSettingsTab(b.dataset.settingsTab));
+    // The top row's More opens the last panel used under it.
+    const topTarget = (b) => (b.dataset.settingsTop === "more" ? lastMore : b.dataset.settingsTop);
+    row.querySelectorAll("[data-settings-top]").forEach((b) => b.addEventListener("click", () => selectSettingsTab(topTarget(b))));
+    wireTabKeys(row, (b) => selectSettingsTab(topTarget(b)));
     fitTabs(row);
+    // The second row, one copy inside each More panel.
+    container.querySelectorAll("[data-settings-subrow]").forEach((sub) => {
+      sub.querySelectorAll("[data-settings-tab]").forEach((b) => b.addEventListener("click", () => selectSettingsTab(b.dataset.settingsTab)));
+      wireTabKeys(sub, (b) => selectSettingsTab(b.dataset.settingsTab));
+      fitTabs(sub);
+    });
   }
   // Someone following a #settings/phones link while Settings is already open.
   window.addEventListener("hashchange", () => {
@@ -120,7 +140,7 @@ export function initHealth() {
       : null;
     container.innerHTML = `
       <div class="flex flex-col gap-4 max-w-3xl">
-        <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="settings" class="w-5 h-5"></i> Settings</h1>
+        <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="menu" class="w-5 h-5"></i> Settings</h1>
         <div id="health-unfinished-day"></div>
         ${renderHealth(health, configOptions, versionInfo, renderLibraryCard(libraryFolders, arrangementFolders), duplicateNames.groups ?? [], envData.entries ?? [])}
       </div>`;
@@ -129,6 +149,10 @@ export function initHealth() {
 
     showSettingsTab(settingsTabFromHash(location.hash));
     wireSettingsTabs();
+    // Settings is redrawn on every save, so let go of the old readout first.
+    if (statusReadout) unmountLiveReadout(statusReadout);
+    statusReadout = document.getElementById("settings-readout");
+    mountLiveReadout(statusReadout);
     wireDisplayCard();
     if (window.lucide) window.lucide.createIcons();
     showUnfinishedDay();
@@ -2518,6 +2542,17 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
   // Status is scanned, not read: three tiles answer "is it working" at a glance,
   // and the detail that used to fill three full cards now hangs off them.
   const modules = summarizeModules(health);
+  // What is on the screens, for when something looks wrong (owner, 2026-10-07:
+  // it left the Search and Now pages, where it sat in the way). The same lit
+  // face, polled by the same one poll.
+  const readoutCard = `
+    <div class="card bg-base-200">
+      <div class="card-body p-3 gap-2">
+        <h2 class="card-title text-base">On the screens now</h2>
+        <div id="settings-readout" class="rf-readout" data-mode="standby"></div>
+        <p class="rf-readout-none text-sm opacity-70">Nothing to show: ProPresenter isn't answering.</p>
+      </div>
+    </div>`;
   const statusStrip = `
     <div id="health-status-strip" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
       <div class="bg-base-200 rounded p-3 flex flex-col gap-1">
@@ -2661,14 +2696,19 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
   // is rendered, so every card's wiring below finds its elements; the tabs
   // only show one group at a time.
   // Each tab opens with its own name, one step below the page title.
+  // The second row under More: Phones, Customize, Telemetry, Audit.
+  const subRow = () =>
+    `<div data-settings-subrow class="rf-tabs" role="tablist" aria-label="More settings" style="margin-bottom:0">${SETTINGS_TABS.filter(([t]) => SETTINGS_MORE.includes(t))
+      .map(([id, label, icon]) => `<button type="button" role="tab" aria-controls="settings-panel-${id}" class="rf-tab" data-settings-tab="${id}" aria-selected="false" tabindex="-1"><i data-lucide="${icon}" class="w-4 h-4 shrink-0"></i><span>${label}</span></button>`)
+      .join("")}</div>`;
   const panel = (id, ...cards) =>
-    `<div data-settings-panel="${id}" id="settings-panel-${id}" role="tabpanel" aria-labelledby="settings-tab-${id}" class="flex flex-col gap-4"><h2 class="rf-page-sub">${SETTINGS_TABS.find(([t]) => t === id)[1]}</h2>${cards.join("")}</div>`;
+    `<div data-settings-panel="${id}" id="settings-panel-${id}" role="tabpanel" aria-label="${SETTINGS_TABS.find(([t]) => t === id)[1]}" class="flex flex-col gap-4">${SETTINGS_MORE.includes(id) ? subRow() : ""}<h2 class="rf-page-sub">${SETTINGS_TABS.find(([t]) => t === id)[1]}</h2>${cards.join("")}</div>`;
   return `
     <div class="flex flex-col gap-4">
       <div id="settings-tabs" class="rf-tabs" role="tablist" aria-label="Settings" style="margin-bottom:0">
-        ${SETTINGS_TABS.map(([id, label, icon], i) => `<button type="button" role="tab" id="settings-tab-${id}" aria-controls="settings-panel-${id}" class="rf-tab" data-settings-tab="${id}" aria-selected="false" tabindex="-1"><i data-lucide="${icon}" class="w-4 h-4 shrink-0"></i><span>${label}</span><kbd class="kbd kbd-xs tab-key" aria-hidden="true">${i + 1}</kbd></button>`).join("")}
+        ${SETTINGS_TOP.map(([id, label, icon], i) => `<button type="button" role="tab" id="settings-top-${id}" class="rf-tab" data-settings-top="${id}" aria-selected="false" tabindex="-1"><i data-lucide="${icon}" class="w-4 h-4 shrink-0"></i><span>${label}</span><kbd class="kbd kbd-xs tab-key" aria-hidden="true">${i + 1}</kbd></button>`).join("")}
       </div>
-      ${panel("status", statusStrip, killCard, propresenterCard, updatesCard)}
+      ${panel("status", statusStrip, readoutCard, killCard, propresenterCard, updatesCard)}
       ${
         // While a run is going, the index card comes first (owner,
         // 2026-10-04: its messages were far below the libraries list).

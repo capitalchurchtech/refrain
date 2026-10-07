@@ -58,7 +58,7 @@ export function applyTheme(theme) {
  * second copy. Filled in by initNav.
  */
 export const display = {
-  get: () => ({ theme: null, navSide: "left", navMode: "full" }),
+  get: () => ({ theme: null, navSide: "right", navMode: "full" }),
   setTheme: async () => {},
   setSide: async () => {},
   setWidth: async () => {},
@@ -76,9 +76,6 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
   const themeToggle = document.getElementById("theme-toggle");
   const themeIcon = document.getElementById("theme-icon");
   const themeLabel = document.getElementById("theme-label");
-  const brandRow = document.getElementById("brand-row");
-  const brandMark = document.getElementById("brand-mark");
-  const brandLogo = document.getElementById("brand-logo");
 
   // main.js has already fetched the modules to load their screens; asking
   // again would be a second list that could disagree with the first.
@@ -90,7 +87,7 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
   // Core screens that aren't pluggable feature modules, always present.
   // Settings (the screen that was Health, and still `health` inside): its
   // cards are on tabs, see health.js.
-  const coreItems = [{ id: "health", navLabel: "Settings", icon: "settings", nav: { group: "desk", order: 100 } }];
+  const coreItems = [{ id: "health", navLabel: "Settings", icon: "menu", nav: { group: "desk", order: 100 } }];
   // A module can be "enabled" per its own metadata/config while still
   // having no real screen built yet (e.g. lyrics-assist's component is
   // still null) — only show nav entries the frontend can actually render.
@@ -118,8 +115,8 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
     ...coreItems,
   ];
   // Rows elsewhere (Flags, Day) offer "Spell check this" and the like only
-  // for Prep tools that are switched on.
-  setAvailableTools(tabsOf("prep").map((t) => t.id));
+  // for tools that are switched on.
+  setAvailableTools(moduleItems.map((m) => m.id));
   /**
    * Which screen a fragment means. A page's own name is its first tab: always
    * the first, never the last one used, so the same press lands in the same
@@ -204,7 +201,9 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
   let navMode =
     prefs.navMode ?? (prefs.navPinned == null ? "full" : prefs.navPinned ? "full" : "icons");
   if (!["full", "icons", "sliver"].includes(navMode)) navMode = "full";
-  let navSide = prefs.navSide === "right" ? "right" : "left";
+  // Right unless the owner chose left: the rail sits under the hand that is
+  // already on the mouse beside ProPresenter (owner, 2026-10-07).
+  let navSide = prefs.navSide === "left" ? "left" : "right";
   document.documentElement.classList.toggle("rail-right", navSide === "right");
   /**
    * The sliver does not survive a reload; it comes back as icons.
@@ -253,6 +252,7 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
         class="nav-item btn btn-ghost btn-sm justify-start gap-3 px-2 relative ${item.id === railIdFor(activeId) ? "btn-active" : ""}"
         data-id="${item.id}"
         title="${item.navLabel}"
+        data-name="${item.navLabel}"
       >
         <i data-lucide="${item.icon}" class="shrink-0 w-4 h-4"></i>
         <span class="nav-label whitespace-nowrap ${effectiveNavMode() === "full" ? "" : "hidden"}">${item.navLabel}</span>
@@ -272,6 +272,8 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
     applyImageCropDot(); // re-apply after every rebuild (innerHTML reset wipes it)
     applyUpdateDot();
     if (window.lucide) window.lucide.createIcons();
+    applyRequestDot();
+    moveEdge();
   }
 
   /**
@@ -538,6 +540,86 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
     applyPinnedState();
   });
 
+  /**
+   * The latched key's edge glides to its new place (140ms, ease-out) instead of
+   * switching on where you land. It reads the active key's position from the
+   * layout each time, so a change of menu width or a window resize only has to
+   * call this again. The first placement has no glide: `ready` turns the
+   * transition on a frame later.
+   */
+  const edge = document.getElementById("nav-edge");
+  function moveEdge() {
+    if (!edge) return;
+    const active = navItemsEl.querySelector(".nav-item.btn-active");
+    if (!active || !active.offsetParent) {
+      edge.style.opacity = "0";
+      return;
+    }
+    const r = rail.getBoundingClientRect();
+    const a = active.getBoundingClientRect();
+    edge.style.height = `${a.height}px`;
+    edge.style.transform = `translateY(${a.top - r.top + rail.scrollTop}px)`;
+    edge.style.opacity = "1";
+    // A timer, not requestAnimationFrame: that does not fire in a hidden pane.
+    setTimeout(() => edge.classList.add("ready"), 50);
+  }
+  // A staff request waiting (public/live.js): a steady dot on the Service key,
+  // from every screen. Reapplied after each rebuild of the keys.
+  let requestsWaiting = 0;
+  function applyRequestDot() {
+    navItemsEl.querySelectorAll(".nav-item").forEach((b) => b.classList.toggle("has-request", requestsWaiting > 0 && b.dataset.id === "service"));
+  }
+  window.addEventListener("refrain:live-state", (e) => {
+    const n = Number(e.detail?.requests) || 0;
+    if (n === requestsWaiting) return;
+    requestsWaiting = n;
+    applyRequestDot();
+  });
+  window.addEventListener("resize", moveEdge);
+  rail.addEventListener("scroll", moveEdge, { passive: true });
+
+  /**
+   * Names for icon-only keys, beside the rail, with the key that jumps there.
+   * Read from the key's own title and its number badge, so nothing is listed
+   * twice. Only while the rail shows icons: expanded, the label is already there.
+   */
+  const tip = document.getElementById("rail-tip");
+  function showTip(el) {
+    // The History key opens its own flyout in the same place; a name over it is noise.
+    if (!tip || el.id === "history-key" || rail.classList.contains("w-36") || rail.classList.contains("sliver")) return;
+    const name = el.dataset.name || el.getAttribute("aria-label") || el.title;
+    if (!name) return;
+    const key = el.querySelector(".nav-key")?.textContent;
+    tip.innerHTML = `${escapeText(name)}${key ? ` <kbd>${escapeText(key)}</kbd>` : ""}`;
+    tip.hidden = false;
+    const r = rail.getBoundingClientRect();
+    const k = el.getBoundingClientRect();
+    const onRight = document.documentElement.classList.contains("rail-right");
+    tip.style.top = `${k.top + k.height / 2}px`;
+    if (onRight) {
+      tip.style.right = `${window.innerWidth - r.left + 8}px`;
+      tip.style.left = "auto";
+    } else {
+      tip.style.left = `${r.right + 8}px`;
+      tip.style.right = "auto";
+    }
+  }
+  const hideTip = () => {
+    if (tip) tip.hidden = true;
+  };
+  rail.addEventListener("mouseover", (e) => {
+    const el = e.target.closest(".nav-item, #rail-foot .btn");
+    if (el) showTip(el);
+  });
+  rail.addEventListener("mouseout", (e) => {
+    if (e.target.closest(".nav-item, #rail-foot .btn")) hideTip();
+  });
+  rail.addEventListener("focusin", (e) => {
+    const el = e.target.closest(".nav-item, #rail-foot .btn");
+    if (el) showTip(el);
+  });
+  rail.addEventListener("focusout", hideTip);
+
   function applyPinnedState() {
     const mode = effectiveNavMode();
     const isFull = mode === "full";
@@ -559,11 +641,6 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
     mainContent.classList.toggle("ml-36", isFull);
     mainContent.classList.toggle("ml-5", isSliver);
     document.querySelectorAll(".nav-label").forEach((el) => el.classList.toggle("hidden", !pinned));
-    // Collapsed: just the mark. Expanded: swap in the full wordmark
-    // logo, same as expanding replaces every other icon-only nav item
-    // with an icon+label.
-    brandMark.classList.toggle("hidden", pinned);
-    brandLogo.classList.toggle("hidden", !pinned);
     // "Collapse" points toward the rail's own edge, which flips with it.
     const toward = navSide === "right" ? ["chevrons-right", "chevrons-left"] : ["chevrons-left", "chevrons-right"];
     setIcon(pinIcon, isFull ? toward[0] : toward[1]);
@@ -573,6 +650,8 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
         ? "Hide the menu"
         : "Show the full menu";
     pinToggle.setAttribute("aria-label", pinToggle.title);
+    // Group legends appear and go with the menu width, which moves every key.
+    moveEdge();
   }
 
   /**
@@ -623,8 +702,6 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
     themeLabel.textContent = `Theme: ${THEME_LABEL[currentTheme]}`;
     setIcon(themeIcon, THEME_ICON[currentTheme] ?? "sun-moon");
   }
-
-  brandRow.addEventListener("click", () => setActive("search"));
 
   // Left or right. Mirrored by one class on <html>; refrain.css section 36
   // flips everything that assumed the left edge.

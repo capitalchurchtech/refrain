@@ -6,7 +6,7 @@
 import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { normalizeText } from "./propresenter-client.js";
-import { resolveArrangement, flattenGroups } from "./arrangements.js";
+import { resolveArrangement, flattenGroups, otherArrangementSlides } from "./arrangements.js";
 import {
   readFingerprint,
   readFingerprintUnchangedSince,
@@ -557,6 +557,9 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
     const resolved = resolveArrangement(doc, preferredArrangements);
     presentations[id].slides = flattenGroups(resolved.groups);
     presentations[id].groupSequence = resolved.groups.map((g) => g.name ?? "Untitled");
+    // What the chosen arrangement skips, for Deep Search. Built from this same
+    // read, so it costs ProPresenter nothing.
+    presentations[id].otherSlides = otherArrangementSlides(doc, resolved);
     presentations[id].arrangementName = resolved.arrangementName;
     presentations[id].arrangementId = resolved.arrangementId;
     presentations[id].arrangementSource = resolved.source;
@@ -1036,6 +1039,18 @@ export function foldApostrophes(text) {
 }
 
 /**
+ * Whether one slide matches a query, shared by search and Deep Search so the two
+ * cannot drift. Ordered cheapest-first: a plain hit settles it, and a line with
+ * no apostrophe can never become a hit by folding. The forgiveness runs one way
+ * only: a query that carries an apostrophe is matched literally.
+ */
+function slideMatches(unified, folded, hasApostrophe, unifiedQ, queryHasApostrophe) {
+  if (unified.includes(unifiedQ)) return true;
+  if (!hasApostrophe || queryHasApostrophe) return false;
+  return folded.includes(unifiedQ);
+}
+
+/**
  * Case-insensitive substring search across all slide text, optionally
  * narrowed by a created/modified date range (Section 5.1). `dateField`
  * picks which timestamp to filter on — both are real filesystem dates
@@ -1092,10 +1107,7 @@ export function search({ query, playlistId, dateField, dateFrom, dateTo, folders
       // Ordered cheapest-first. A plain hit settles it; a line carrying no
       // mark at all can never become one by folding, so most slides are
       // decided by the one `includes` this loop always did.
-      if (!unified.includes(unifiedQ)) {
-        if (!hasApostrophe || queryHasApostrophe) continue;
-        if (!folded.includes(unifiedQ)) continue;
-      }
+      if (!slideMatches(unified, folded, hasApostrophe, unifiedQ, queryHasApostrophe)) continue;
       const key = lower;
       const already = seen.get(key);
       if (already) {
@@ -1103,6 +1115,7 @@ export function search({ query, playlistId, dateField, dateFrom, dateTo, folders
         if (slide.index < already.slideIndex) {
           already.slideIndex = slide.index;
           already.groupId = slide.groupId ?? null;
+          already.groupName = slide.groupName ?? null;
           already.groupOffset = slide.groupOffset ?? null;
         }
         continue;
@@ -1113,7 +1126,10 @@ export function search({ query, playlistId, dateField, dateFrom, dateTo, folders
         slideIndex: slide.index,
         snippet: slide.text,
         groupId: slide.groupId ?? null,
+        groupName: slide.groupName ?? null,
         groupOffset: slide.groupOffset ?? null,
+        // How many slides the arrangement has, for "#6 / 35".
+        slideCount: slides.length,
         arrangementName: entry.arrangementName ?? null,
         repeatCount: 1,
         appearsIn: entry.appearsIn,
@@ -1126,3 +1142,58 @@ export function search({ query, playlistId, dateField, dateFrom, dateTo, folders
   }
   return results;
 }
+
+/**
+ * Deep Search: the same text match as `search`, over the slides the indexed
+ * arrangement does NOT play (a Tag, a Bridge nobody put in FS). Every hit is
+ * Show-only on the screen: a slide's number only means something inside one
+ * arrangement, and Refrain cannot change which one ProPresenter plays, so
+ * firing it could put a different slide on the screens.
+ *
+ * An entry indexed before this existed has no `otherSlides`; it is skipped and
+ * counted by `otherSlidesCoverage`, so the screen can say how much it covered.
+ *
+ * @param {{ query: string, folders?: string[] }} opts
+ */
+export function searchOtherArrangements({ query, folders }) {
+  const q = normalizeText(query).toLowerCase();
+  if (!q) return [];
+  const unifiedQ = unifyApostrophes(q);
+  const queryHasApostrophe = HAS_APOSTROPHE.test(unifiedQ);
+  const folderSet = folders && folders.length > 0 ? new Set(folders) : null;
+  const results = [];
+  for (const [presentationId, entry] of Object.entries(currentIndex.presentations)) {
+    if (!Array.isArray(entry.otherSlides)) continue;
+    if (folderSet && !folderSet.has(entry.folder)) continue;
+    const seen = new Set();
+    for (const slide of entry.otherSlides) {
+      const lower = String(slide.text ?? "").toLowerCase();
+      const unified = unifyApostrophes(lower);
+      const hasApostrophe = HAS_APOSTROPHE.test(unified);
+      if (!slideMatches(unified, hasApostrophe ? foldApostrophes(unified) : unified, hasApostrophe, unifiedQ, queryHasApostrophe)) continue;
+      // The same line in the same group twice is one finding.
+      const key = `${slide.groupId}:${lower}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      results.push({
+        presentationId,
+        presentationName: entry.name,
+        snippet: slide.text,
+        groupId: slide.groupId ?? null,
+        groupName: slide.groupName ?? null,
+        groupOffset: slide.groupOffset ?? 0,
+        arrangementName: slide.arrangementName ?? null,
+        slideIndex: slide.slideIndex ?? null,
+        slideCount: slide.slideCount ?? null,
+      });
+    }
+  }
+  return results;
+}
+
+/** How many songs Deep Search can read, of how many are indexed. */
+export function otherSlidesCoverage() {
+  const entries = Object.values(currentIndex.presentations ?? {});
+  return { covered: entries.filter((e) => Array.isArray(e.otherSlides)).length, total: entries.length };
+}
+

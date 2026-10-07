@@ -135,6 +135,9 @@ export function flattenGroups(groups) {
         index,
         text: normalizeText(slide.text),
         groupId: group.uuid ?? null,
+        // The group's own name ("Verse 1"), so a result can lead with it.
+        // Absent from an index built before this existed; screens must cope.
+        groupName: group.name ?? null,
         groupOffset,
       });
       index += 1;
@@ -142,6 +145,58 @@ export function flattenGroups(groups) {
     }
   }
   return slides;
+}
+
+/**
+ * The slides a song has that the indexed arrangement does not play: groups no
+ * step of the chosen arrangement uses (a Tag, a second Bridge), each with the
+ * first arrangement that does include its group and where it sits in that one.
+ * This is what Deep Search reads. It needs no extra call to ProPresenter: it is
+ * built from the same document the index already read.
+ *
+ * `slideIndex` and `slideCount` are null for a group that no arrangement uses
+ * at all; such a slide can be found but not placed.
+ *
+ * @param {object} presentationDoc the document read from ProPresenter
+ * @param {{groups: object[]}} resolved what resolveArrangement chose
+ * @returns {{groupId: string|null, groupName: string|null, groupOffset: number, text: string,
+ *   arrangementName: string|null, slideIndex: number|null, slideCount: number|null}[]}
+ */
+export function otherArrangementSlides(presentationDoc, resolved) {
+  const presentation = presentationDoc?.presentation ?? {};
+  const rawGroups = presentation.groups ?? [];
+  const groupsByUuid = new Map(rawGroups.map((g) => [g.uuid, g]));
+  const played = new Set((resolved?.groups ?? []).map((g) => g.uuid));
+  // Each arrangement laid out once: where its first use of every group starts.
+  const layouts = (presentation.arrangements ?? []).map((a) => {
+    const groups = (a.groups ?? []).map((uuid) => groupsByUuid.get(uuid)).filter(Boolean);
+    const starts = new Map();
+    let at = 0;
+    for (const g of groups) {
+      if (!starts.has(g.uuid)) starts.set(g.uuid, at);
+      at += (g.slides ?? []).length;
+    }
+    return { name: a.id?.name ?? null, starts, total: at };
+  });
+  const out = [];
+  for (const group of rawGroups) {
+    if (played.has(group.uuid)) continue;
+    const home = layouts.find((l) => l.starts.has(group.uuid)) ?? null;
+    (group.slides ?? []).forEach((slide, offset) => {
+      const text = normalizeText(slide.text);
+      if (!text) return;
+      out.push({
+        groupId: group.uuid ?? null,
+        groupName: group.name ?? null,
+        groupOffset: offset,
+        text,
+        arrangementName: home?.name ?? null,
+        slideIndex: home ? home.starts.get(group.uuid) + offset : null,
+        slideCount: home ? home.total : null,
+      });
+    });
+  }
+  return out;
 }
 
 /** Of several candidates, the one whose flat index sits closest to `near`. */

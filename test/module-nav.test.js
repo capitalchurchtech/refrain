@@ -14,9 +14,10 @@ test("every module says where it sits in the menu and which script is its screen
     assert.ok(existsSync(`public/${client.file}`), `${m.id}'s screen script exists`);
   }
   const service = modules.filter((m) => m.nav.group === "service").map((m) => m.id).sort();
-  assert.deepEqual(service, ["live", "search", "service", "slide-flags"], "the four screens used during a service");
+  assert.deepEqual(service, ["live", "search", "service", "slide-flags", "spellcheck"], "the screens used during a service, Search and Spell Check each with a key of their own");
   const onServicePage = modules.filter((m) => moduleNav(m.nav).page === "service").map((m) => m.id).sort();
   assert.deepEqual(onServicePage, ["live", "service", "slide-flags"], "Now, Day and Flags are tabs of the one Service page (section 41)");
+  assert.equal(moduleNav(modules.find((m) => m.id === "spellcheck").nav).page, null, "Spell Check is a menu key of its own (section 49)");
 });
 
 test("a module's metadata can't point the page at a script elsewhere", () => {

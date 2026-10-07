@@ -348,18 +348,13 @@
   <!-- Main app shell — nav rail + content, once setup is complete (Section 13) -->
   <div id="view-app" class="hidden flex min-h-screen">
     <aside id="nav-rail" class="fixed top-0 left-0 z-20 h-screen overflow-y-auto bg-base-200 flex flex-col items-stretch py-3 transition-all duration-150 w-14">
-      <button id="brand-row" class="flex items-center px-2 mb-4 overflow-hidden h-9 btn btn-ghost btn-sm justify-start" title="Go to Search" aria-label="Go to Search">
-        <span id="brand-mark" class="shrink-0 inline-block leading-none">
-          <span class="rf-wordmark">R</span>
-          <span class="rf-wordmark-stripe"></span>
-        </span>
-        <span id="brand-logo" class="shrink-0 hidden inline-block leading-none">
-          <span class="rf-wordmark">Refrain</span>
-          <span class="rf-wordmark-stripe"></span>
-        </span>
-      </button>
-
-      <!-- The status cluster, under the wordmark: the first place the eye
+      <!-- The edge that marks the screen you are on. One element that glides to
+           the latched key (public/nav.js moveEdge), not a shadow on each key,
+           so it can travel. Outside #nav-items because that is rebuilt on every
+           press, which would reset it and cancel the glide. -->
+      <span id="nav-edge" aria-hidden="true"></span>
+      <!-- The status cluster, at the top of the rail now that the wordmark is gone
+           (owner, 2026-10-07): the first place the eye
            lands (owner, 2026-09-30, menu option B). Recessed, because recessed
            means information comes out, the one place in the rail that reports
            rather than responds. A row when the menu shows labels, a column of
@@ -379,6 +374,13 @@
              blocks with a gap (owner, 2026-09-30). Names are in the tooltip
              and aria-label. Stacked when the menu is narrow. -->
         <div id="rail-foot" class="flex flex-col">
+          <!-- History: every place that has been on the screens, with Back and
+               Forward (owner, 2026-10-07). A key of its own, not a screen:
+               hover or press opens a flyout beside the rail. Opens things in
+               the editor only. -->
+          <button id="history-key" class="btn btn-ghost btn-sm justify-start gap-3 px-2" title="History: places that have been on the screens" aria-label="History" aria-haspopup="true" aria-expanded="false" aria-controls="history-flyout">
+            <span class="shrink-0"><i data-lucide="history"></i></span>
+          </button>
           <button id="nav-help-toggle" class="btn btn-ghost btn-sm justify-start gap-3 px-2" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">
             <span class="shrink-0"><i data-lucide="keyboard"></i></span>
           </button>
@@ -434,15 +436,6 @@
           </span>
         </div>
 
-        <!-- When nothing was jumped away from just now but earlier places are
-             still reachable, the bar is gone and only this tab remains. It is a
-             handle, not an alert: it reports no state and demands nothing. -->
-        <button id="return-history-tab" class="hidden btn btn-chip" aria-expanded="false"
-                aria-controls="return-history-panel">
-          <i data-lucide="history" class="w-3 h-3"></i>
-          <span id="return-history-tab-count"></span>
-        </button>
-
         <div id="return-history-panel" class="hidden" role="group" aria-label="Places you jumped from"></div>
       </div>
 
@@ -479,28 +472,16 @@
         </div>
 
         <h1 class="text-lg font-semibold flex items-center gap-2 mb-4"><i data-lucide="search" class="w-5 h-5"></i> Search</h1>
-        <div class="flex items-center justify-between mb-4">
-          <div id="index-status" class="text-sm opacity-70"></div>
-          <!-- Written synchronously on every keystroke, so input is
-               acknowledged inside a frame rather than after the search. -->
-          <div id="search-pending" class="rf-silkscreen"></div>
-          <div id="index-staleness" class="hidden text-sm flex items-center"></div>
-        </div>
 
-        <!-- What is on the screens. Recessed, because it reports rather than
-             being pressed. Sits above the search field so it is in the
-             operator's eyeline on the path to live. -->
-        <div id="search-readout" class="rf-readout mb-2" data-mode="standby"></div>
-        <!-- Flag this slide (issue #1): directly under the readout, because that
-             is what it flags -- whatever the readout says is on the screens.
-             A chip, so it never reads as a control that changes them. -->
-        <div id="search-flag" class="mb-4"></div>
-
-        <!-- The clear sits inside the field rather than beside it: it acts on
-             the field, so putting it in the row would read as a third control
-             competing with the filter chips below. It is hidden while the box
-             is empty, so the resting state is the plain field it always was. -->
-        <div class="flex gap-2 mb-3">
+        <!-- The field is the first thing on the screen (owner, 2026-10-07).
+             What is on the screens is the Live lamp's job and Settings >
+             Status's readout now, so nothing sits between the operator and the
+             box. The ring is the typing animation; its states are set from
+             search.js and its rules live in refrain.css, never as Tailwind
+             classes, because a class applied from script has no rule until the
+             in-browser Tailwind notices it. The clear sits inside the field
+             because it acts on the field. -->
+        <div id="query-ring" class="rf-sf mb-2">
           <div class="rf-field-clearable w-full">
             <input id="query" type="text" name="refrain-search" placeholder="Search any slide..." aria-label="Search all slides" class="input input-bordered w-full" autocomplete="off" spellcheck="false" autofocus />
             <button id="query-clear" class="rf-field-clear" type="button" hidden title="Clear search (Alt+X)" aria-label="Clear search">
@@ -509,28 +490,20 @@
           </div>
         </div>
 
-        <div class="rf-chip-row mb-4" id="search-filter-chips">
-          <button id="date-filter-toggle" class="btn btn-chip">
-            <i data-lucide="calendar"></i> Date filter
-          </button>
-          <div id="date-filter-panel" class="hidden flex flex-wrap items-center gap-2">
-            <select id="date-field" class="select select-bordered select-xs" aria-label="Which date to filter on">
-              <option value="modified">Last modified</option>
-              <option value="created">Created</option>
-            </select>
-            <span class="text-xs opacity-60">from</span>
-            <input id="date-from" type="date" class="input input-bordered input-xs" aria-label="From date" />
-            <span class="text-xs opacity-60">to</span>
-            <input id="date-to" type="date" class="input input-bordered input-xs" aria-label="To date" />
-            <button id="date-filter-clear" class="btn btn-chip">Clear</button>
+        <!-- One line: how fresh the index is, what is narrowing it, and the
+             Flag chip. Written synchronously on every keystroke, so input is
+             acknowledged inside a frame rather than after the search. -->
+        <div class="rf-search-strip mb-3">
+          <div id="index-status" class="rf-search-strip-status"></div>
+          <div id="search-pending" class="rf-silkscreen"></div>
+          <div class="rf-chip-row hidden" id="library-filter-wrap">
+            <button id="library-filter-toggle" class="btn btn-chip" aria-expanded="false" aria-controls="library-filter-panel">
+              <i data-lucide="library"></i> <span id="library-filter-label">Libraries</span>
+            </button>
           </div>
+          <div id="search-flag"></div>
         </div>
-
-        <div class="rf-chip-row mb-4 hidden" id="library-filter-wrap" data-chip-row-follows="search-filter-chips">
-          <button id="library-filter-toggle" class="btn btn-chip" aria-expanded="false" aria-controls="library-filter-panel">
-            <i data-lucide="library"></i> <span id="library-filter-label">Libraries</span>
-          </button>
-        </div>
+        <div id="index-staleness" class="hidden text-sm flex items-center mb-3"></div>
 
         <!-- Which libraries to search (owner, 2026-10-03: "always show when the
              search box is empty, nicer than sporadic"). Open while the box is
@@ -553,6 +526,12 @@
            their own. -->
     </main>
   </div>
+
+  <!-- The name of a rail key, shown beside the rail when the keys are icons only. -->
+  <div id="rail-tip" role="tooltip" hidden></div>
+
+  <!-- The History flyout, placed beside the rail by public/history-flyout.js. -->
+  <div id="history-flyout" class="rf-hf" role="dialog" aria-label="History" hidden></div>
 
   <!-- Keyboard shortcuts help, opened by the "?" key or the Shortcuts nav button -->
   <!-- The Phone panel: how to start a phone session, and which phones may

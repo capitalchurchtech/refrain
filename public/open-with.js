@@ -14,16 +14,17 @@
 let pending = null;
 let available = new Set();
 
-/** Set by the menu: which of these tools are switched on (they're Prep tabs). */
+/** Set by the menu: which of these tools are switched on. */
 export function setAvailableTools(ids) {
   available = new Set(ids);
 }
 
-/** Opens a Prep tool with one presentation chosen. */
+/** Opens a tool with one presentation chosen. */
 export function openWith(tool, { presentationId, name }) {
   if (!available.has(tool) || !presentationId) return;
   pending = { tool, presentationId, name: name ?? null };
-  location.hash = `prep/${tool}`;
+  // Spell Check has its own key; the rest are Prep tabs.
+  location.hash = tool === "spellcheck" ? "spellcheck" : `prep/${tool}`;
 }
 
 /** The presentation a tool was opened with, once; null otherwise. */

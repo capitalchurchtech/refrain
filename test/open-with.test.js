@@ -14,8 +14,12 @@ test("a row offers only the tools that are on, and opening one hands the song ov
   openWith("arrangement", { presentationId: "P1" });
   assert.equal(globalThis.location.hash, "#slide-flags", "a tool that's off doesn't open");
   openWith("spellcheck", { presentationId: "P1", name: "Oceans" });
-  assert.equal(globalThis.location.hash, "prep/spellcheck");
+  assert.equal(globalThis.location.hash, "spellcheck", "Spell Check has its own key now");
   assert.equal(takeOpenWith("arrangement"), null, "another tool doesn't get it");
   assert.deepEqual(takeOpenWith("spellcheck"), { tool: "spellcheck", presentationId: "P1", name: "Oceans" });
   assert.equal(takeOpenWith("spellcheck"), null, "only once: a later visit is an ordinary one");
+
+  setAvailableTools(["spellcheck", "arrangement"]);
+  openWith("arrangement", { presentationId: "P2" });
+  assert.equal(globalThis.location.hash, "prep/arrangement", "the others are still Prep tabs");
 });

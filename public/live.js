@@ -1,17 +1,18 @@
 import { mountLiveFlagSummary, refreshLiveSummaryOnNewFlags } from "./slide-flags.js";
-import { lastKnownConnected, LINK_EVENT } from "./status-cluster.js";
-import { mountLiveReadout, unmountLiveReadout } from "./live-readout.js";
 import { initQuickSlides } from "./quick-slides.js";
 
 /**
  * Live page — big, obvious controls for the operator during a service.
  *
- * Clear buttons get things off the screen fast (they always work, being
- * standard ProPresenter layers). Below them, one large button per Look and
- * per Macro the church has in ProPresenter, fetched live, so their own
- * "Logo", "Black", "Motion", etc. show up by name with nothing hardcoded.
- * Everything is deliberately oversized and high-contrast: this screen is
- * meant to be usable at a glance from the back of a dark room.
+ * In the order of need: a staff request waiting for approval, the message
+ * poster (a pager code, with a Clear that takes only that message off), the
+ * stage messages, then the folds that can wait (what is on screen, performance
+ * mode, Macros, Looks), and the church's safe slides last. There is no
+ * whole-screen Clear here; ProPresenter's own keys are beside this window.
+ * One large button per Look and per Macro the church has in ProPresenter is
+ * fetched live, so their own names show up with nothing hardcoded. Everything
+ * is deliberately oversized and high-contrast: this screen is meant to be
+ * usable at a glance from the back of a dark room.
  */
 /**
  * What the macro bank shows. Normally only the ones not hidden; while
@@ -117,7 +118,7 @@ export function initLive() {
        * possible place for it.
        */
       dot.className = `rf-led${on ? " lit" : ""}`;
-      state.textContent = on ? "Holding still. Nothing runs on its own." : "Background work allowed.";
+      state.textContent = on ? "Holding still" : "Background work allowed";
       why.textContent = data?.description ?? "";
       toggle.textContent = on ? "Turn off" : "Turn on";
       // Tier 2 machined in both states: the toggle is an ordinary control, and
@@ -180,7 +181,6 @@ export function initLive() {
     perfTimer = setInterval(load, 30_000);
   }
 
-  let readoutEl = null;
   let previewTimer = null;
   let previewKey = "";
 
@@ -190,6 +190,9 @@ export function initLive() {
     const tick = async () => {
       const host = document.getElementById("live-preview");
       if (!host || container.classList.contains("hidden")) return clearInterval(previewTimer);
+      // Behind a closed fold nobody sees it, and with pictures on it would
+      // still download them: ask only while it is open.
+      if (!document.getElementById("live-onscreen-wrap")?.open) return;
       try {
         const p = await fetch("/api/preview").then((r) => r.json());
         // The slide itself, not only its picture: with pictures off there's
@@ -199,6 +202,7 @@ export function initLive() {
         previewKey = key;
         host.innerHTML = livePreviewHtml(p);
         host.classList.toggle("hidden", !p.current && !p.lastPhoneAction);
+        document.getElementById("live-preview-none")?.classList.toggle("hidden", Boolean(p.current || p.lastPhoneAction));
         host.querySelector(".live-keep-safe")?.addEventListener("click", async (e) => {
           const btn = e.currentTarget;
           const answer = await fire(btn, "/api/live/safe-slides/current", {}, "Keep as safe slide");
@@ -217,10 +221,15 @@ export function initLive() {
           if (ok) refreshSoon();
         });
       } catch {
-        // Leave the last preview up; the readout above says if the link is down.
+        // Leave the last preview up; the Link lamp says if the link is down.
       }
     };
     tick();
+    // Opening the fold shows the current slide at once, not up to 3s later.
+    document.getElementById("live-onscreen-wrap")?.addEventListener("toggle", () => {
+      previewKey = "";
+      tick();
+    });
     previewTimer = setInterval(tick, 3000);
     // After a press: every 0.4s for a few seconds, then back to every 3s.
     refreshSoon = () => {
@@ -232,86 +241,121 @@ export function initLive() {
     };
   }
   let refreshSoon = () => {};
+
+  /**
+   * Staff requests (server/staff-requests.js): messages from the announcement
+   * app that wait here for someone to approve. One card each, with the words, who
+   * sent it, a bar and a count of the time left (eight minutes), and two
+   * answers. The ring moves for the first four seconds after a card first
+   * appears and then holds still; nothing here posts without a press.
+   */
+  let requestsTimer = null;
+  let requestsTick = null;
+  const seenRequests = new Map(); // id -> when this window first saw it
+  function wireRequests() {
+    const host = document.getElementById("live-requests");
+    clearInterval(requestsTimer);
+    clearInterval(requestsTick);
+    if (!host || document.documentElement.classList.contains("feature-off-requests")) return;
+    let list = [];
+    let skew = 0; // the server's clock minus this one's
+    let problem = null;
+
+    const left = (r) => Math.max(0, r.expiresAt - (Date.now() + skew));
+    const clock = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}`;
+
+    function paint() {
+      const live = list.filter((r) => left(r) > 0);
+      const key = `${problem ?? ""}#${live.map((r) => r.id).join("|")}`;
+      if (host.dataset.key !== key) {
+        host.dataset.key = key;
+        host.innerHTML = (problem ? `<p class="rf-hint" role="status">${escapeHtml(problem)}</p>` : "") + live
+          .map((r) => {
+            if (!seenRequests.has(r.id)) seenRequests.set(r.id, Date.now());
+            const fresh = Date.now() - seenRequests.get(r.id) < 4000;
+            return `<div class="rf-req${fresh ? " arrive" : ""}" data-id="${escapeHtml(r.id)}" role="group" aria-label="Request from ${escapeHtml(r.from)}"><div class="rf-req-in">
+              <div class="rf-req-top"><span class="rf-req-from">Request &middot; ${escapeHtml(r.from)}</span><span class="rf-req-left" data-left></span></div>
+              <p class="rf-req-text">${escapeHtml(r.text)}</p>
+              <div class="rf-req-life"><i data-bar></i></div>
+              <div class="rf-req-acts"><button type="button" class="btn btn-brand" data-answer="approve">Post it</button><button type="button" class="btn btn-outline" data-answer="decline">Decline</button></div>
+            </div></div>`;
+          })
+          .join("");
+        // The ring settles four seconds after the card first showed.
+        setTimeout(() => host.querySelectorAll(".rf-req.arrive").forEach((c) => c.classList.remove("arrive")), 4000);
+      }
+      host.querySelectorAll(".rf-req").forEach((card) => {
+        const r = live.find((x) => x.id === card.dataset.id);
+        if (!r) return;
+        card.querySelector("[data-left]").textContent = clock(left(r));
+        card.querySelector("[data-bar]").style.width = `${(left(r) / (r.expiresAt - r.createdAt)) * 100}%`;
+      });
+    }
+
+    async function load() {
+      try {
+        const res = await fetch("/api/live/requests");
+        if (!res.ok) {
+          list = [];
+          return paint();
+        }
+        const data = await res.json();
+        skew = (data.now ?? Date.now()) - Date.now();
+        list = data.requests ?? [];
+        // Said where the cards would be, so a request that cannot arrive is not
+        // mistaken for one nobody sent.
+        problem = data.problem ?? (data.lastError ? `Staff requests aren't getting through: ${data.lastError}` : null);
+        paint();
+      } catch {
+        // Keep what is shown; the next poll tries again.
+      }
+    }
+
+    host.addEventListener("click", async (e) => {
+      const btn = e.target.closest("[data-answer]");
+      const card = btn?.closest(".rf-req");
+      if (!btn || !card) return;
+      const id = card.dataset.id;
+      const approve = btn.dataset.answer === "approve";
+      card.querySelectorAll("button").forEach((b) => (b.disabled = true));
+      // Acknowledged in this frame, before the request is sent.
+      btn.textContent = approve ? "Posting..." : "Declining...";
+      try {
+        const res = await fetch(`/api/live/requests/${encodeURIComponent(id)}/${approve ? "approve" : "decline"}`, { method: "POST" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error ?? res.statusText);
+        list = list.filter((r) => r.id !== id);
+        setStatus(approve ? "On screen: the request." : "Declined. The announcement app was told.");
+      } catch (err) {
+        // Still waiting, so the buttons come back (the server kept it).
+        card.querySelectorAll("button").forEach((b) => (b.disabled = false));
+        btn.textContent = approve ? "Post it" : "Decline";
+        setStatus(`${approve ? "That didn't post" : "That wasn't declined"}: ${err.message}`);
+      }
+      host.dataset.key = "";
+      paint();
+      load();
+    });
+
+    load();
+    requestsTimer = setInterval(() => (document.hidden || container.classList.contains("hidden") ? null : load()), 3000);
+    requestsTick = setInterval(() => (container.classList.contains("hidden") ? null : paint()), 1000);
+  }
+
   async function render() {
-    // Live is rebuilt on each visit; let go of the old readout element so the
-    // shared poll doesn't keep painting a detached copy.
-    if (readoutEl) unmountLiveReadout(readoutEl);
     container.innerHTML = `
-      <div class="flex flex-col gap-6">
-        <div>
-          <h2 class="rf-page-sub">Now</h2>
-        </div>
-
-        <!-- What's on the screens now, the same readout as Search's (one poll
-             feeds both). Every press below used to be checked by looking at
-             ProPresenter; this is where the answer shows instead. -->
-        <div id="live-readout" class="rf-readout" data-mode="standby"></div>
-        <!-- The current slide and the next one, as pictures (owner request).
-             Checked every few seconds while Live is showing; a picture only
-             loads when the slide changes. -->
-        <div id="live-preview" class="hidden live-preview"></div>
-
-        <div id="perf-mode-wrap">
-          <h2 class="rf-subhead">Performance mode</h2>
-          <div id="perf-mode-card" class="card bg-base-200">
-            <div class="card-body p-3 gap-2">
-              <div class="flex flex-wrap items-center justify-between gap-3">
-                <div class="flex items-center gap-2">
-                  <span id="perf-mode-dot" class="rf-led"></span>
-                  <span id="perf-mode-state" class="font-medium">Checking</span>
-                </div>
-                <span class="flex gap-2">
-                  <button id="live-lockin-btn" class="btn btn-sm btn-outline hidden" title="Hold still until released. For events with no set time.">Lock in</button>
-                  <button id="perf-mode-toggle" class="btn btn-sm btn-outline">Turn on</button>
-                </span>
-              </div>
-              <div id="perf-mode-why" class="text-sm opacity-70"></div>
-              <!-- One line, and it has to be true in the state you are reading it
-                   in. This paragraph used to describe the ON behaviour always, so
-                   reading it while off told the operator the opposite of the truth.
-                   The link-checking sentence is gone too: implementation detail on
-                   the live path, and it contradicted "nothing runs on its own" one
-                   sentence later. -->
-              <div class="text-xs opacity-60 rf-measure">
-                Turns on by itself after a couple of minutes live.
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Safe slides (handoff §39a): the church's own known-good slides to
-             cut to in a hurry. First on the page, because a known picture is
-             usually a better answer to "something's wrong" than an empty
-             screen. -->
-        <div id="live-safe-wrap">
-          <div class="flex items-center justify-between gap-2">
-            <h2 class="rf-subhead">Safe slides</h2>
-            <button id="live-safe-edit" type="button" class="btn btn-chip hidden" aria-pressed="false">Edit</button>
-          </div>
-          <div id="live-safe" class="grid grid-cols-2 sm:grid-cols-4 gap-3"></div>
-        </div>
-
-        <!-- Stage message (handoff section 44): a note only the people on
-             stage see, in the Stage Message box of the stage layouts. One
-             press, because the audience never sees it; it stays up until
-             Take down. -->
-        <div id="live-stage-wrap">
-          <div class="flex items-center justify-between gap-2">
-            <h2 class="rf-subhead">Stage message</h2>
-            <button id="live-stage-edit" type="button" class="btn btn-chip" aria-pressed="false">Edit</button>
-          </div>
-          <p id="live-stage-now" class="text-sm opacity-70 mb-2"></p>
-          <div id="live-stage" class="grid grid-cols-1 sm:grid-cols-3 gap-3"></div>
-          <div class="flex flex-wrap gap-2 mt-3">
-            <input id="live-stage-text" class="input input-bordered flex-1 min-w-0" maxlength="80" placeholder="Say something else" aria-label="Stage message to show" />
-            <button id="live-stage-show" type="button" class="btn btn-outline">Show</button>
-            <button id="live-stage-clear" type="button" class="btn btn-outline">Take down</button>
-          </div>
-        </div>
+      <div class="flex flex-col gap-4">
+        <!-- The order is the order of need (owner, 2026-10-07): a staff request
+             waiting, the message poster (the childcare code), the stage
+             message, then everything that can wait. What is on the screens is
+             the Live lamp's job and Settings > Status's readout now, not the
+             top of this page. Clear is only the poster's Clear: ProPresenter's
+             own clear keys are right beside this window. -->
+        <div id="live-requests"></div>
 
         <div id="live-message-wrap" class="hidden">
           <div class="flex items-center justify-between gap-2">
-            <h2 class="rf-subhead">Messages</h2>
+            <h2 class="rf-subhead">Message to the screens</h2>
             <span class="flex items-center gap-2">
               <span id="live-messages-hidden-note" class="text-xs opacity-60"></span>
               <button id="live-messages-edit" type="button" class="btn btn-chip" aria-pressed="false">Edit</button>
@@ -322,22 +366,21 @@ export function initLive() {
                while editing. -->
           <p id="live-messages-editing" class="hidden text-sm mb-2">Choose which messages show here and on phones. Hidden ones stay in ProPresenter.</p>
           <div id="live-messages-edit-list" class="hidden flex flex-col gap-2 mb-3"></div>
-          <div id="live-message-poster" class="card bg-base-200 hidden">
-            <div class="card-body p-3 gap-3">
-              <select id="live-message-select" class="select select-bordered select-sm hidden"></select>
-              <div id="live-message-fields" class="flex flex-col gap-2"></div>
-              <div class="flex gap-2">
-                <button id="live-message-post" class="btn btn-outline h-16 flex-1 text-base"><span class="flex items-center gap-2"><i data-lucide="send" class="w-5 h-5"></i> Post to screen</span></button>
-                <button id="live-message-clear" class="btn btn-outline h-16"><span class="flex items-center gap-2"><i data-lucide="x" class="w-5 h-5"></i> Clear</span></button>
-              </div>
+          <!-- The code, Post and Clear in one row. A pager code is a few
+               characters, so this does not need half the screen. -->
+          <div id="live-message-poster" class="rf-poster hidden">
+            <select id="live-message-select" class="select select-bordered select-sm hidden" aria-label="Which message"></select>
+            <div class="rf-poster-row">
+              <div id="live-message-fields" class="rf-poster-fields"></div>
+              <button id="live-message-post" class="btn btn-brand rf-poster-btn" title="Put this message on the screens">Post</button>
+              <button id="live-message-clear" class="btn btn-outline rf-poster-btn" title="Takes this message off the screens. Nothing else is cleared.">Clear</button>
             </div>
+            <div id="live-message-recents" class="flex flex-wrap gap-1 mt-2"></div>
           </div>
           <!-- Messages with no fill-in field (countdowns): Show and Take down,
                with what each says and whether it's up. Folded, closed, under
-               the pager (owner, 2026-10-04: the pager and the stage message
-               are the ones used; the rest stay one press away). Its heading
-               says when one of them is on screen, so a running countdown
-               isn't hidden by the fold. -->
+               the pager (owner, 2026-10-04). Its heading says when one of them
+               is on screen, so a running countdown isn't hidden by the fold. -->
           <details id="live-message-plain-wrap" class="collapse collapse-arrow bg-base-200 rounded rf-now-fold hidden mt-3">
             <summary class="collapse-title min-h-0 py-2">
               <span class="flex items-center gap-2 text-sm font-medium"><i data-lucide="timer" class="w-4 h-4 opacity-70 shrink-0"></i> Other messages <span id="live-message-plain-count" class="text-xs opacity-60 font-normal"></span></span>
@@ -345,6 +388,56 @@ export function initLive() {
             <div class="collapse-content"><div id="live-message-plain" class="flex flex-col gap-2"></div></div>
           </details>
         </div>
+
+        <!-- Stage message (handoff section 44): a note only the people on
+             stage see. One press, because the audience never sees it; it
+             stays up until it is cleared, and the clear is always in the same
+             place above the list. -->
+        <div id="live-stage-wrap">
+          <h2 class="rf-subhead">Stage message</h2>
+          <button id="live-stage-clear" type="button" class="btn btn-outline rf-stage-clear" disabled title="Nothing is on stage">Clear stage message</button>
+          <p id="live-stage-now" class="rf-hint mb-2"></p>
+          <div id="live-stage" class="rf-stage-list"></div>
+          <button id="live-stage-edit" type="button" class="btn btn-outline rf-stage-row rf-stage-edit" aria-pressed="false">Edit messages</button>
+          <div class="rf-stage-custom">
+            <input id="live-stage-text" class="input input-bordered flex-1 min-w-0" maxlength="80" placeholder="Say something else" aria-label="Stage message to show" />
+            <button id="live-stage-show" type="button" class="btn btn-outline">Show</button>
+          </div>
+        </div>
+
+        <!-- The slide on the screens and the next one, folded: what is on
+             screen is the Live lamp's to say, and this is for the Next key and
+             for keeping a slide as a safe slide. -->
+        <details id="live-onscreen-wrap" class="collapse collapse-arrow bg-base-200 rounded rf-now-fold">
+          <summary class="collapse-title min-h-0 py-2">
+            <span class="flex items-center gap-2 text-sm font-medium"><i data-lucide="monitor" class="w-4 h-4 opacity-70 shrink-0"></i> On screen now</span>
+          </summary>
+          <div class="collapse-content">
+            <!-- Checked every few seconds while Now is showing; a picture only
+                 loads when the slide changes. -->
+            <div id="live-preview" class="hidden live-preview"></div>
+            <p id="live-preview-none" class="text-sm opacity-70">Nothing is on the screens.</p>
+          </div>
+        </details>
+
+        <!-- Performance mode: a one-line fold that says its state without
+             opening. It arms itself, so nobody needs it daily; the lock-in for
+             an event with no set time is inside. -->
+        <details id="live-perf-wrap" class="collapse collapse-arrow bg-base-200 rounded rf-now-fold">
+          <summary class="collapse-title min-h-0 py-2">
+            <span class="flex items-center gap-2 text-sm font-medium"><span id="perf-mode-dot" class="rf-led"></span><span id="perf-mode-state">Checking</span></span>
+          </summary>
+          <div class="collapse-content flex flex-col gap-2">
+            <div id="perf-mode-why" class="text-sm opacity-70"></div>
+            <span class="flex gap-2">
+              <button id="live-lockin-btn" class="btn btn-sm btn-outline hidden" title="Hold still until released. For events with no set time.">Lock in</button>
+              <button id="perf-mode-toggle" class="btn btn-sm btn-outline">Turn on</button>
+            </span>
+            <!-- One line, and it has to be true in the state you are reading it
+                 in. -->
+            <div class="text-xs opacity-60 rf-measure">Turns on by itself after a couple of minutes live.</div>
+          </div>
+        </details>
 
         <!-- Folded like the rest below (owner, 2026-10-04), in the Settings
              fold style. Each fold remembers whether it was left open, on this
@@ -365,34 +458,8 @@ export function initLive() {
           </div>
         </details>
 
-        <!-- Folded, beside Looks (owner, 2026-10-03): Refrain runs beside
-             ProPresenter, whose own clear keys are right there, so these are
-             the spare set, not the first thing on the screen. Clear all is
-             also in the menu's quick slides, two presses, on every screen. -->
-        <details id="live-clear-wrap" class="collapse collapse-arrow bg-base-200 rounded rf-now-fold">
-          <summary class="collapse-title min-h-0 py-2">
-            <span class="flex items-center gap-2 text-sm font-medium"><i data-lucide="x-octagon" class="w-4 h-4 opacity-70 shrink-0"></i> Clear</span>
-          </summary>
-          <div class="collapse-content">
-          <!-- Across the top of the bank whenever the LINK lamp is dark. The
-               keys stay live on purpose: a clear is the one thing an operator
-               may still need, and it may land the moment the link comes back.
-               The banner is there so nobody presses one believing it will. -->
-          <div id="live-clear-offline" class="hidden rf-offline-banner" role="status">
-            <span class="rf-offline-word">Offline</span>
-            <span>ProPresenter isn't answering. A clear may not reach the screens.</span>
-          </div>
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <button class="btn btn-outline h-20 text-base" data-clear="all" data-arm="true"><span class="flex flex-col items-center gap-1"><i data-lucide="x-octagon" class="w-6 h-6"></i> Clear all</span></button>
-            <button class="btn btn-outline h-20 text-base" data-clear="slide"><span class="flex flex-col items-center gap-1"><i data-lucide="type" class="w-6 h-6"></i> Slide</span></button>
-            <button class="btn btn-outline h-20 text-base" data-clear="media"><span class="flex flex-col items-center gap-1"><i data-lucide="image" class="w-6 h-6"></i> Media</span></button>
-            <button class="btn btn-outline h-20 text-base" data-clear="messages"><span class="flex flex-col items-center gap-1"><i data-lucide="message-square" class="w-6 h-6"></i> Messages</span></button>
-          </div>
-          </div>
-        </details>
-
-        <!-- Last: Looks change rarely here, and a macro usually switches the
-             Look as part of what it does. -->
+        <!-- Last of the folds: Looks change rarely here, and a macro usually
+             switches the Look as part of what it does. -->
         <details id="live-looks-wrap" class="collapse collapse-arrow bg-base-200 rounded rf-now-fold hidden">
           <summary class="collapse-title min-h-0 py-2">
             <span class="flex items-center gap-2 text-sm font-medium"><i data-lucide="layers" class="w-4 h-4 opacity-70 shrink-0"></i> Looks <span id="live-looks-count" class="text-xs opacity-60 font-normal"></span></span>
@@ -401,21 +468,30 @@ export function initLive() {
         </details>
 
         <!-- Flagging lives on the Flags screen, which has no live controls
-             (handoff §39b): reaching it from here meant scrolling a thumb past
-             every Clear, Look and Macro. One line keeps the count and the way. -->
+             (handoff §39b). One line keeps the count and the way. -->
         <div id="live-flag-summary"></div>
 
         <div id="live-status" class="text-sm opacity-70"></div>
+
+        <!-- Last (owner, 2026-10-07): the church's own safe slides as the
+             slides themselves, the first four, the same four as the menu's
+             quick slides. A picture when slide pictures are on, the slide's
+             words when they are off. -->
+        <div id="live-safe-wrap">
+          <div class="flex items-center justify-between gap-2">
+            <h2 class="rf-subhead">Safe slides</h2>
+            <button id="live-safe-edit" type="button" class="btn btn-chip hidden" aria-pressed="false">Edit</button>
+          </div>
+          <div id="live-safe" class="rf-safe-grid"></div>
+        </div>
       </div>
     `;
     if (window.lucide) window.lucide.createIcons();
-    readoutEl = document.getElementById("live-readout");
-    mountLiveReadout(readoutEl);
     startPreview();
+    wireRequests();
     mountLiveFlagSummary(document.getElementById("live-flag-summary"));
     refreshLiveSummaryOnNewFlags("live-flag-summary");
 
-    wireClearButtons();
     rememberFolds();
     loadSafeSlides();
     wireStageMessage();
@@ -424,7 +500,6 @@ export function initLive() {
       paintSafeSlides();
     });
     wirePerformanceMode();
-    paintClearOffline(lastKnownConnected());
 
     try {
       const { looks, macros, messages, messageRecent: recent, currentLook, features = {} } = await fetch("/api/live/controls").then((r) => r.json());
@@ -487,25 +562,23 @@ export function initLive() {
 
     function renderFields() {
       const m = selected();
-      fields.innerHTML = m.tokens
-        .filter((t) => t.kind === "text")
-        .map((t) => {
-          // Recent values fill the field; they never post. Posting stays the
-          // one deliberate press, so a mis-tap on an old code costs nothing.
-          const recent = messageRecent[m.id]?.[t.name] ?? [];
-          const chips = recent.length
-            ? `<div class="flex flex-wrap gap-1 mt-1">${recent
-                .map((v) => `<button type="button" class="btn btn-chip live-message-recent" data-token="${escapeHtml(t.name)}" data-value="${escapeHtml(v)}">${escapeHtml(v)}</button>`)
-                .join("")}</div>`
-            : "";
-          return `
-        <label class="form-control">
-          <div class="label py-0"><span class="label-text text-xs opacity-70">${escapeHtml(t.name)}</span></div>
-          <input class="input input-bordered live-message-token" data-token="${escapeHtml(t.name)}" placeholder="Type the message..." />
-        </label>${chips}`;
-        })
+      const tokens = m.tokens.filter((t) => t.kind === "text");
+      const recents = document.getElementById("live-message-recents");
+      fields.innerHTML = tokens
+        .map(
+          (t) => `
+        <label class="rf-poster-field">
+          <span class="rf-poster-label">${escapeHtml(t.name)}</span>
+          <input class="input input-bordered live-message-token" data-token="${escapeHtml(t.name)}" placeholder="Type the ${escapeHtml(t.name.toLowerCase())}" autocomplete="off" />
+        </label>`
+        )
         .join("");
-      fields.querySelectorAll(".live-message-recent").forEach((chip) =>
+      // Recent values fill the field; they never post. Posting stays the one
+      // deliberate press, so a mis-tap on an old code costs nothing.
+      recents.innerHTML = tokens
+        .flatMap((t) => (messageRecent[m.id]?.[t.name] ?? []).map((v) => `<button type="button" class="btn btn-chip live-message-recent" data-token="${escapeHtml(t.name)}" data-value="${escapeHtml(v)}">${escapeHtml(v)}</button>`))
+        .join("");
+      recents.querySelectorAll(".live-message-recent").forEach((chip) =>
         chip.addEventListener("click", () => {
           const input = [...fields.querySelectorAll(".live-message-token")].find((i) => i.dataset.token === chip.dataset.token);
           if (input) {
@@ -762,10 +835,16 @@ export function initLive() {
     const grid = document.getElementById("live-stage");
     if (!grid) return;
     const edit = document.getElementById("live-stage-edit");
-    edit.textContent = editingStage ? "Done" : "Edit";
+    edit.textContent = editingStage ? "Done" : "Edit messages";
     edit.setAttribute("aria-pressed", String(editingStage));
     document.getElementById("live-stage-show").textContent = editingStage ? "Add" : "Show";
-    document.getElementById("live-stage-clear").classList.toggle("hidden", editingStage);
+    // Always in the same place above the list; dimmed when nothing is up and
+    // lit when something is, so the operator never has to read to know.
+    const clearBtn = document.getElementById("live-stage-clear");
+    clearBtn.classList.toggle("hidden", editingStage);
+    clearBtn.disabled = !stageCurrent;
+    clearBtn.classList.toggle("ready", Boolean(stageCurrent));
+    clearBtn.title = stageCurrent ? "Takes the message off the stage screens" : "Nothing is on stage";
     document.getElementById("live-stage-text").placeholder = editingStage ? "A new message to keep" : "Say something else";
     document.getElementById("live-stage-now").textContent = stageCurrent ? `On stage now: "${stageCurrent}"` : "Nothing on stage.";
     if (editingStage) {
@@ -796,9 +875,11 @@ export function initLive() {
     }
     grid.innerHTML = stagePresets.length
       ? stagePresets
-          .map((m) => `<button type="button" class="btn btn-outline h-16 text-base live-stage-key" data-stage="${escapeHtml(m.id)}" aria-pressed="${m.text === stageCurrent}"><span class="truncate">${escapeHtml(m.text)}</span></button>`)
+          // One line each, the whole width. A long one ends in an ellipsis and
+          // the full words are in the title; 80 characters is the limit.
+          .map((m) => `<button type="button" class="btn btn-outline rf-stage-row live-stage-key" data-stage="${escapeHtml(m.id)}" aria-pressed="${m.text === stageCurrent}" title="${escapeHtml(m.text)}"><span class="rf-stage-text">${escapeHtml(m.text)}</span></button>`)
           .join("")
-      : `<p class="text-sm opacity-70 col-span-full">No saved messages. Press Edit to add some.</p>`;
+      : `<p class="text-sm opacity-70">No saved messages. Press Edit messages to add some.</p>`;
     grid.querySelectorAll(".live-stage-key").forEach((btn) =>
       btn.addEventListener("click", async () => {
         const answer = await fire(btn, "/api/live/stage-message", { presetId: btn.dataset.stage }, "Stage message");
@@ -833,11 +914,18 @@ export function initLive() {
   }
 
   let safeList = [];
+  let safePictures = false;
   let editingSafe = false;
+  // The page shows the first four, the same four as the menu's quick slides.
+  // More can be kept (up to eight, so nothing already saved is dropped); Edit
+  // lists them all.
+  const SAFE_SHOWN = 4;
 
   async function loadSafeSlides() {
     try {
-      safeList = (await fetch("/api/live/safe-slides").then((r) => r.json())).safeSlides ?? [];
+      const data = await fetch("/api/live/safe-slides").then((r) => r.json());
+      safeList = data.safeSlides ?? [];
+      safePictures = Boolean(data.pictures);
     } catch {
       safeList = [];
     }
@@ -860,7 +948,7 @@ export function initLive() {
     edit.setAttribute("aria-pressed", String(editingSafe));
     if (!safeList.length) {
       editingSafe = false;
-      grid.innerHTML = `<p class="text-sm opacity-70 col-span-full">None yet. When a slide worth keeping is up (the logo, a blank), press <strong>Keep as safe slide</strong> under the Now picture.</p>`;
+      grid.innerHTML = `<p class="text-sm opacity-70 rf-safe-none">None yet. When a slide worth keeping is up (the logo, a blank), open <strong>On screen now</strong> and press <strong>Keep as safe slide</strong>.</p>`;
     } else if (editingSafe) {
       grid.innerHTML = safeList
         .map(
@@ -874,10 +962,18 @@ export function initLive() {
         )
         .join("");
     } else {
+      // The slide itself: its picture when pictures are on, its words when
+      // they are off (they are off by default for now), so what each key does
+      // is on the key.
       grid.innerHTML = safeList
-        .map(
-          (sl) => `<button type="button" class="btn btn-outline h-16 text-base live-safe-key" data-safe="${escapeHtml(sl.id)}" title="${escapeHtml(sl.presentationName ?? "")}, slide ${sl.slideIndex + 1}"><span class="flex items-center gap-2 min-w-0"><i data-lucide="shield-check" class="w-5 h-5 shrink-0"></i><span class="truncate">${escapeHtml(sl.label)}</span></span></button>`
-        )
+        .slice(0, SAFE_SHOWN)
+        .map((sl) => {
+          const pic =
+            safePictures && sl.presentationId != null
+              ? `<img src="/api/preview/image/${encodeURIComponent(sl.presentationId)}/${sl.slideIndex}" alt="" loading="lazy" />`
+              : `<span class="rf-safe-words">${escapeHtml((sl.slideText ?? "").trim() || sl.label)}</span>`;
+          return `<button type="button" class="rf-safe-key live-safe-key" data-safe="${escapeHtml(sl.id)}" title="${escapeHtml(sl.presentationName ?? "")}, slide ${sl.slideIndex + 1}"><span class="rf-safe-pic">${pic}</span><span class="rf-safe-label">${escapeHtml(sl.label)}</span></button>`;
+        })
         .join("");
     }
     if (window.lucide) window.lucide.createIcons();
@@ -1015,41 +1111,6 @@ export function initLive() {
     );
   }
 
-  // Clear All takes everything off every screen, so it arms on the first
-  // press and fires on a second within ARM_MS. The armed label says so in
-  // words, because a nervous volunteer should not have to guess why nothing
-  // happened. At rest it is an outline key like its neighbours; only armed
-  // does it take the brand collar, so the loudest key on Live is the one
-  // waiting on you. (.btn-brand has a static rule in refrain.css, so the
-  // JIT note in CLAUDE.md does not bite.) The single-layer clears stay one
-  // press.
-  const ARM_MS = 3000;
-  function wireClearButtons() {
-    container.querySelectorAll("[data-clear]").forEach((btn) => {
-      const label = btn.textContent.trim();
-      const idleHtml = btn.innerHTML;
-      let disarmTimer = null;
-      const disarm = () => {
-        clearTimeout(disarmTimer);
-        disarmTimer = null;
-        btn.classList.replace("btn-brand", "btn-outline");
-        btn.innerHTML = idleHtml;
-        if (window.lucide) window.lucide.createIcons();
-      };
-      btn.addEventListener("click", () => {
-        if (btn.dataset.arm === "true" && !disarmTimer) {
-          btn.classList.replace("btn-outline", "btn-brand");
-          btn.innerHTML = `<span class="flex flex-col items-center gap-1"><i data-lucide="x-octagon" class="w-6 h-6"></i> Press again to clear</span>`;
-          if (window.lucide) window.lucide.createIcons();
-          disarmTimer = setTimeout(disarm, ARM_MS);
-          return;
-        }
-        if (disarmTimer) disarm();
-        fire(btn, "/api/live/clear", { layer: btn.dataset.clear }, label);
-      });
-    });
-  }
-
   // Fire a control, briefly disabling its button and surfacing any failure.
   // Kept quiet on success: a live operator wants no dialog to dismiss.
   async function fire(btn, url, body, label) {
@@ -1075,12 +1136,6 @@ export function initLive() {
       btn.disabled = false;
     }
   }
-
-  // Null means no check has come back yet: say nothing rather than guess.
-  function paintClearOffline(connected) {
-    document.getElementById("live-clear-offline")?.classList.toggle("hidden", connected !== false);
-  }
-  window.addEventListener(LINK_EVENT, (e) => paintClearOffline(e.detail.connected));
 
   function setStatus(msg) {
     const el = document.getElementById("live-status");

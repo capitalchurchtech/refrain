@@ -9,7 +9,9 @@ export default {
   id: "spellcheck",
   navLabel: "Spell Check",
   icon: "spell-check",
-  nav: { group: "prep", order: 4.5 },
+  // Its own key beside Search (owner, 2026-10-07): Search and Spell Check are the
+  // two things the app is for, so neither sits under another page.
+  nav: { group: "service", order: 0.5 },
   client: { file: "spellcheck.js", init: "initSpellcheck" },
   route: "/spellcheck",
   component: null,

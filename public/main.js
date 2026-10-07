@@ -7,6 +7,7 @@ import { initUpdateNudge } from "./update-nudge.js";
 import { initHealth } from "./health.js";
 import { initPhonePanel } from "./phone-panel.js";
 import { initReturnBar } from "./return-bar.js";
+import { initHistoryFlyout } from "./history-flyout.js";
 import { initStatusCluster } from "./status-cluster.js";
 import { initIndexProgress } from "./index-progress.js";
 import { installGlobalErrorBoundary, safeRender } from "./error-boundary.js";
@@ -32,7 +33,7 @@ async function boot() {
   const prefs = await fetch("/api/preferences").then((r) => r.json()).catch(() => ({ theme: "blackroom" }));
   applyTheme(prefs.theme ?? "blackroom");
   // Same reason as the theme: set the rail's side before anything renders.
-  document.documentElement.classList.toggle("rail-right", prefs.navSide === "right");
+  document.documentElement.classList.toggle("rail-right", prefs.navSide !== "left");
 
   const { needsSetup } = await fetch("/api/setup/status").then((r) => r.json());
 
@@ -60,6 +61,7 @@ async function startApp(prefs = {}) {
   const health = initHealth();
   const renderers = { health: health.render };
   initReturnBar();
+  initHistoryFlyout();
   initPhonePanel();
   initStatusCluster();
   initIndexProgress();

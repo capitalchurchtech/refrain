@@ -351,6 +351,56 @@ function rememberChecklist(open) {
   }
 }
 
+/**
+ * When a changed song was last saved, for its card: "Saved 10:12 am", with how
+ * far into the service that was when there is one ("14 min into the service"),
+ * and the weekday when it was not today. Pure, for tests. `now` and `startIso`
+ * are the clock and the service's start.
+ */
+export function savedText(modifiedIso, startIso = null, now = Date.now()) {
+  if (!modifiedIso) return "Saved at an unknown time";
+  const t = new Date(modifiedIso);
+  if (Number.isNaN(t.getTime())) return "Saved at an unknown time";
+  const sameDay = new Date(now).toDateString() === t.toDateString();
+  const clock = t.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const when = sameDay ? clock : `${t.toLocaleDateString([], { weekday: "short" })} ${clock}`;
+  const start = startIso ? new Date(startIso).getTime() : NaN;
+  const into = Number.isFinite(start) && t.getTime() >= start ? Math.round((t.getTime() - start) / 60_000) : null;
+  return `Saved ${when}${into != null ? `, ${into} min into the service` : ""}`;
+}
+
+/**
+ * The Changed songs section: songs whose arrangement differs from the last
+ * order someone accepted, split into those saved during the service (the ones
+ * to look at) and those saved before it (likely meant). Each shows Before and
+ * After as chips with the difference lit, and two answers. Pure, for tests.
+ */
+export function changedSongsHtml(data, now = Date.now()) {
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  const chips = (list) => `<div class="rf-seq">${list.map((c) => `<span class="${c.state === "same" ? "" : c.state}">${esc(c.name)}</span>`).join("")}</div>`;
+  const card = (c, tone) => `
+    <div class="card bg-base-200 rf-changed rf-changed-${tone}" data-id="${esc(c.presentationId)}">
+      <div class="card-body p-3 gap-2">
+        <div class="flex items-baseline justify-between gap-3"><div class="font-semibold min-w-0 break-words">${esc(c.name)}</div><span class="rf-slide-note shrink-0">${esc(c.arrangement ?? "")}</span></div>
+        <div class="rf-hint">${esc(savedText(c.modifiedDate, data.serviceStart, now))}</div>
+        <div class="rf-silkscreen">Before</div>${chips(c.before)}
+        <div class="rf-silkscreen">After</div>${chips(c.after)}
+        <div class="rf-slide-acts">
+          <button type="button" class="btn btn-outline" data-changed="open" data-id="${esc(c.presentationId)}" title="Opens in ProPresenter's editor. Nothing goes to the screens.">Show in Editor</button>
+          <button type="button" class="btn btn-outline" data-changed="dismiss" data-id="${esc(c.presentationId)}" title="Keep it as it is now and take it off this list.">Dismiss</button>
+        </div>
+      </div>
+    </div>`;
+  const section = (title, cards, tone, extra = "") =>
+    cards.length ? `<div class="flex items-center justify-between gap-2"><h3 class="rf-silkscreen">${title} &middot; ${cards.length}</h3>${extra}</div>${cards.map((c) => card(c, tone)).join("")}` : "";
+  const parts = [
+    section("During the service", data.during ?? [], "during"),
+    section("Before the service", data.before ?? [], "before", `<button type="button" class="btn btn-chip" data-changed="dismiss-before" title="Keep these as they are now. They were saved before the service started.">Dismiss all</button>`),
+    section("Changed since", data.since ?? [], "during"),
+  ].join("");
+  return parts || `<p class="text-sm opacity-70">No arrangement has changed since you last looked.</p>`;
+}
+
 export function initService() {
   const container = document.getElementById("view-service");
   let timer = null;
@@ -392,7 +442,49 @@ export function initService() {
     wire();
   }
 
+  /** The Changed songs section. Redrawn only when the list changes. */
+  let changedKey = "";
+  let changedAt = 0;
+  async function loadChanged() {
+    changedAt = Date.now();
+    const host = document.getElementById("service-changed");
+    if (!host) return;
+    try {
+      const res = await fetch("/api/service/changed-songs");
+      if (!res.ok) return;
+      const data = await res.json();
+      const key = JSON.stringify([data.serviceStart, ...["during", "before", "since"].map((k) => (data[k] ?? []).map((c) => `${c.presentationId}:${c.modifiedDate}`))]);
+      if (key === changedKey) return;
+      changedKey = key;
+      host.innerHTML = changedSongsHtml(data);
+    } catch {
+      // Keep what is shown; the next check tries again.
+    }
+  }
+
+  async function answerChanged(btn) {
+    const kind = btn.dataset.changed;
+    btn.disabled = true;
+    try {
+      if (kind === "open") {
+        const res = await fetch("/api/focus", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ presentationId: btn.dataset.id }) });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? res.statusText);
+      } else {
+        await post("/api/service/changed-songs/dismiss", kind === "dismiss-before" ? { group: "before" } : { presentationId: btn.dataset.id });
+        changedKey = "";
+        await loadChanged();
+      }
+    } catch (err) {
+      showFailure(kind === "open" ? `Couldn't open that in ProPresenter: ${err.message}. Nothing on the screens changed.` : `Couldn't dismiss that: ${err.message}`);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
   async function load() {
+    // The list moves only when the index is refreshed or a song is dismissed,
+    // so it is read about every half minute, not on every poll.
+    if (Date.now() - changedAt > 30_000) loadChanged();
     try {
       const res = await fetch("/api/service/day");
       const data = await res.json().catch(() => ({}));
@@ -588,6 +680,13 @@ export function initService() {
 
         <div id="service-due" class="flex flex-col gap-2"></div>
 
+        <!-- What was changed in ProPresenter since someone last accepted it
+             (owner, 2026-10-07): the songs to put back after a live event. -->
+        <div>
+          <h2 class="rf-subhead">Changed songs</h2>
+          <div id="service-changed" class="flex flex-col gap-3"></div>
+        </div>
+
         <div>
           <h2 class="rf-subhead">Live event</h2>
           <div class="card bg-base-200"><div id="service-lockin" class="card-body p-3 gap-2"></div></div>
@@ -655,6 +754,10 @@ export function initService() {
       }
     });
     wirePictures();
+    document.getElementById("service-changed")?.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-changed]");
+      if (btn) answerChanged(btn);
+    });
     const fold = document.getElementById("service-checklist-fold");
     fold.open = checklistOpen();
     fold.addEventListener("toggle", () => rememberChecklist(fold.open));

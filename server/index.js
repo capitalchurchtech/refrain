@@ -71,6 +71,8 @@ import {
   lastCrawlAbort,
   findDuplicateNames,
   suggestQuery,
+  searchOtherArrangements,
+  otherSlidesCoverage,
 } from "./search-index.js";
 import { startLibraryWatch, fullRebuildSuggestion,
   indexStaleness,
@@ -122,7 +124,9 @@ import { createRemoteApp, pushRecent, serviceProgress, pinFailureGuard } from ".
 import { dailyPin, newSecret, endOfDay } from "./remote-auth.js";
 import { randomUUID } from "node:crypto";
 import { writeAtomic } from "./append-store.js";
-import { createServiceFeed, cleanServiceFeedSettings, applyServiceFeedSettings, effectiveWindows } from "./service-feed.js";
+import { createServiceFeed, cleanServiceFeedSettings, applyServiceFeedSettings, effectiveWindows, feedLamp } from "./service-feed.js";
+import { createStaffRequests } from "./staff-requests.js";
+import { compareToKnownGood, splitByService, recordOf } from "./known-good.js";
 import {
   DEFAULT_DAYS_FOLDER,
   DEFAULT_LEAD_MINUTES,
@@ -558,7 +562,7 @@ app.get("/api/preferences", (_req, res) => {
     // Null when never chosen, so the frontend can fall back to navPinned for
     // an install that predates the third state.
     navMode: config.navMode ?? null,
-    navSide: config.navSide === "right" ? "right" : "left",
+    navSide: config.navSide === "left" ? "left" : "right",
     welcomeDismissed: Boolean(config.welcomeDismissed),
     // Search's own choices (owner, 2026-10-04: "so reloading doesn't wipe
     // them"): the libraries switched off (so a library added later is
@@ -1920,6 +1924,43 @@ const serviceFeed = createServiceFeed({
 });
 setInterval(() => serviceFeed.tickStatus().catch(() => {}), 2_000).unref();
 
+// Staff requests (owner, 2026-10-07): messages from the church's announcement
+// app that someone at this console approves before they reach the screens.
+// Off until switched on in Settings > Features; see server/staff-requests.js.
+const STAFF_REQUESTS_STATE = "./data/staff-requests";
+const staffRequests = createStaffRequests({
+  getModule: () => config.serviceFeedModule,
+  isOn: () => featureOn(config, "requests"),
+  loadHandled: async () => JSON.parse(await readFile(path.join(STAFF_REQUESTS_STATE, "handled.json"), "utf-8").catch(() => "[]")),
+  saveHandled: (list) => writeAtomic(STAFF_REQUESTS_STATE, "handled.json", list),
+  // Through the same poster the operator uses, into the message with a text
+  // field (the one named in liveModule.requestMessageId, else the first not put
+  // away). The recents are not touched: a request is not something typed here.
+  post: async (text) => {
+    // Messages switched off closes every route that puts a message on the
+    // screens; an approved request is one too.
+    if (!featureOn(config, "messages")) throw new Error("Messages are switched off in Settings \u203a Features, so nothing was posted. The request is still waiting.");
+    const hidden = new Set(hiddenIds(config.liveModule?.hiddenMessages));
+    let messages;
+    try {
+      messages = await client.getMessages();
+    } catch {
+      throw new Error("ProPresenter isn't answering, so nothing was posted. The request is still waiting.");
+    }
+    const candidates = messages.filter((m) => !hidden.has(m.id) && m.tokens?.some((t) => t.kind === "text"));
+    const wanted = config.liveModule?.requestMessageId;
+    const target = candidates.find((m) => m.id === wanted) ?? candidates[0];
+    if (!target) throw new Error("There is no ProPresenter message with a text field to put this in. Add a Text token to your pager message, as for the pager.");
+    const token = target.tokens.find((t) => t.kind === "text");
+    try {
+      await client.triggerMessage(target.id, [{ name: token.name, text: messageFieldValue(text) }]);
+    } catch {
+      throw new Error("ProPresenter didn't take the message, so nothing was posted. The request is still waiting.");
+    }
+  },
+});
+setInterval(() => staffRequests.tick().catch(() => {}), staffRequests.POLL_MS).unref();
+
 onProPresenterCall(({ path: p, method, ms, ok, timedOut }) => {
   const kind = classifyCall(p, method);
   callStats.record({ kind, ms, ok, timedOut });
@@ -2090,7 +2131,19 @@ function liveStatePayload() {
     liveSince: liveState.liveSince ? new Date(liveState.liveSince).toISOString() : null,
     checkedAt: liveState.checkedAt ? new Date(liveState.checkedAt).toISOString() : null,
     performanceMode: { armed: performance.armed, source: performance.source },
+    feed: serviceFeedLamp(),
+    // How many staff requests are waiting, for the rail's dot on every screen.
+    requests: staffRequests.list().length,
   };
+}
+
+function serviceFeedLamp() {
+  return feedLamp({
+    moduleStatus: getServiceFeedModuleStatus(config).status,
+    lastError: serviceFeed.state().lastError,
+    mod: config.serviceFeedModule,
+    now: new Date(),
+  });
 }
 
 /** True when Refrain should not be doing anything of its own accord. */
@@ -3364,7 +3417,19 @@ app.get("/api/search", (req, res) => {
       }
     }
   }
-  res.json({ results, corrected });
+  // Which arrangements the index reads, so an empty result can say "in FS or T"
+  // and offer Deep Search for the rest.
+  res.json({ results, corrected, searched: preferredArrangements() });
+});
+
+// Deep Search: the slides a song has outside the arrangement the index reads.
+// Only ever asked for by a person pressing the button on an empty result.
+app.get("/api/search/deep", (req, res) => {
+  const v = req.query.q;
+  if (typeof v !== "string") return res.status(400).json({ error: "Send q once, as text." });
+  const folders = Array.isArray(req.query.folders) ? req.query.folders.filter((f) => typeof f === "string") : typeof req.query.folders === "string" ? req.query.folders : undefined;
+  const folderList = Array.isArray(folders) ? folders : folders ? folders.split(",") : undefined;
+  res.json({ results: searchOtherArrangements({ query: v, folders: folderList }), ...otherSlidesCoverage() });
 });
 
 app.get("/api/search/folders", (_req, res) => {
@@ -4080,6 +4145,127 @@ app.post("/api/live/message-clear", async (req, res) => {
   } catch (err) {
     res.status(502).json({ error: err.message });
   }
+});
+
+// --- Changed songs (owner, 2026-10-07; server/known-good.js) --------------------
+// Which songs' arrangements differ from the last order a person accepted, and
+// when ProPresenter last saved each. Compares the search index with a small file
+// of song titles and group orders; asks ProPresenter for nothing.
+const KNOWN_GOOD_DIR = "./data";
+const KNOWN_GOOD_FILE = "known-good.json";
+let knownGood = null; // { songs: { [presentationId]: { name, arrangement, sequence } } }
+let knownGoodWrite = Promise.resolve();
+
+let knownGoodLoading = null;
+/** Read once, however many callers arrive before it finishes, so none replaces another's changes. */
+function loadKnownGood() {
+  if (knownGood) return Promise.resolve(knownGood);
+  knownGoodLoading ??= readFile(path.join(KNOWN_GOOD_DIR, KNOWN_GOOD_FILE), "utf-8")
+    .then((text) => {
+      const raw = JSON.parse(text);
+      return { songs: raw && typeof raw.songs === "object" && raw.songs ? raw.songs : {} };
+    })
+    .catch(() => ({ songs: {} }))
+    .then((loaded) => (knownGood = loaded));
+  return knownGoodLoading;
+}
+
+/**
+ * Saved one write at a time, atomically, so two changes cannot interleave a
+ * half file. The returned promise rejects when the write fails, so a person
+ * pressing Dismiss is told; the queue itself carries on after a failure.
+ */
+function saveKnownGood() {
+  const snapshot = { savedAt: new Date().toISOString(), songs: { ...knownGood.songs } };
+  const run = knownGoodWrite.then(() => writeAtomic(KNOWN_GOOD_DIR, KNOWN_GOOD_FILE, snapshot));
+  knownGoodWrite = run.catch((err) => console.error(`Couldn't save the known good arrangements (${err.message}).`));
+  return run;
+}
+
+/** Learns what is new, and says what changed. */
+async function refreshKnownGood() {
+  const kg = await loadKnownGood();
+  const { learn, changes } = compareToKnownGood(kg.songs, getIndex().presentations);
+  if (Object.keys(learn).length) {
+    Object.assign(kg.songs, learn);
+    // Learned in memory either way; a failed save is logged and tried again the
+    // next minute, since nothing a person pressed depends on it.
+    await saveKnownGood().catch(() => {});
+  }
+  return { changes };
+}
+
+/** When the first service of the day starts, or performance mode began; null when neither is known. */
+function serviceStartMs(now = Date.now()) {
+  const starts = serviceState(now).services.map((s) => s.startsAt).filter(Number.isFinite);
+  if (starts.length) return Math.min(...starts);
+  return performance.armed && Number.isFinite(performance.since) ? performance.since : null;
+}
+
+// Learned in the background too, so a song edited before anyone opens the screen
+// is learned as it was and not as it became. Cheap: it only reads the index.
+setInterval(() => {
+  if (serviceModuleOn()) refreshKnownGood().catch(() => {});
+}, 60_000).unref();
+
+app.get("/api/service/changed-songs", async (_req, res) => {
+  if (!requireServiceModule(res)) return;
+  await ensureServiceDay();
+  const { changes } = await refreshKnownGood();
+  const start = serviceStartMs();
+  res.json({ ...splitByService(changes, start), total: changes.length, serviceStart: Number.isFinite(start) ? new Date(start).toISOString() : null });
+});
+
+// Dismiss: keep the song as it is now and take it off the list. One song, or
+// every change from before the service in one press.
+app.post("/api/service/changed-songs/dismiss", async (req, res) => {
+  if (!requireServiceModule(res)) return;
+  const { presentationId, group } = req.body ?? {};
+  if (typeof presentationId !== "string" && group !== "before") return res.status(400).json({ error: "Say which song, or group \"before\"." });
+  await ensureServiceDay();
+  const kg = await loadKnownGood();
+  const { changes } = await refreshKnownGood();
+  const start = serviceStartMs();
+  const targets = group === "before" ? splitByService(changes, start).before : changes.filter((c) => c.presentationId === presentationId);
+  const index = getIndex().presentations;
+  const before = {};
+  for (const c of targets) {
+    const now = recordOf(index[c.presentationId]);
+    if (!now) continue;
+    before[c.presentationId] = kg.songs[c.presentationId];
+    kg.songs[c.presentationId] = now;
+  }
+  if (targets.length) {
+    try {
+      await saveKnownGood();
+    } catch (err) {
+      // Not kept, so not dismissed: put the old order back and say so, or the
+      // change would come back after a restart with nothing said.
+      for (const [id, was] of Object.entries(before)) kg.songs[id] = was;
+      return res.status(500).json({ error: `Couldn't save that, so nothing was dismissed (${err.message}).` });
+    }
+  }
+  res.json({ ok: true, dismissed: targets.length });
+});
+
+// --- Staff requests ------------------------------------------------------------
+// What is waiting for an approval, and the two answers. Behind the Staff
+// requests switch (the gate in features.js answers 404 "switched off").
+app.get("/api/live/requests", (_req, res) => {
+  noteClientActivity();
+  res.json({ requests: staffRequests.list(), ...staffRequests.state(), now: Date.now() });
+});
+
+app.post("/api/live/requests/:id/approve", async (req, res) => {
+  const r = await staffRequests.approve(String(req.params.id));
+  if (!r.ok) return res.status(r.status).json({ error: r.error });
+  res.json({ ok: true });
+});
+
+app.post("/api/live/requests/:id/decline", async (req, res) => {
+  const r = await staffRequests.decline(String(req.params.id));
+  if (!r.ok) return res.status(r.status).json({ error: r.error });
+  res.json({ ok: true });
 });
 
 // --- Stage message (handoff section 44) --------------------------------------

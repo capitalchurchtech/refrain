@@ -23,9 +23,9 @@ test("extractSlides indexes groups in document order when no arrangement is acti
     },
   };
   assert.deepEqual(extractSlides(doc), [
-    { index: 0, text: "one", groupId: "g1", groupOffset: 0 },
-    { index: 1, text: "two", groupId: "g1", groupOffset: 1 },
-    { index: 2, text: "three", groupId: "g2", groupOffset: 0 },
+    { index: 0, text: "one", groupId: "g1", groupName: null, groupOffset: 0 },
+    { index: 1, text: "two", groupId: "g1", groupName: null, groupOffset: 1 },
+    { index: 2, text: "three", groupId: "g2", groupName: null, groupOffset: 0 },
   ]);
 });
 
@@ -43,8 +43,8 @@ test("extractSlides follows the active arrangement's group order", () => {
   // Arrangement plays g2 then g1, and the flat index must follow that order
   // (this is the index Go Live triggers on).
   assert.deepEqual(extractSlides(doc), [
-    { index: 0, text: "chorus", groupId: "g2", groupOffset: 0 },
-    { index: 1, text: "verse", groupId: "g1", groupOffset: 0 },
+    { index: 0, text: "chorus", groupId: "g2", groupName: null, groupOffset: 0 },
+    { index: 1, text: "verse", groupId: "g1", groupName: null, groupOffset: 0 },
   ]);
 });
 
@@ -55,7 +55,7 @@ test("extractSlides normalizes slide text and tolerates missing slides", () => {
       groups: [{ uuid: "g1", slides: [{ text: "multi\nline  text" }] }, { uuid: "g2" }],
     },
   };
-  assert.deepEqual(extractSlides(doc), [{ index: 0, text: "multi line text", groupId: "g1", groupOffset: 0 }]);
+  assert.deepEqual(extractSlides(doc), [{ index: 0, text: "multi line text", groupId: "g1", groupName: null, groupOffset: 0 }]);
 });
 
 test("extractSlides returns nothing for an empty document", () => {
