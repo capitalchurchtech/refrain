@@ -5027,7 +5027,6 @@ html:is([data-theme="dark"], .blackroom) #results#results .rf-slide-acts .btn:ac
 #search-flag#search-flag .slide-flag-btn { box-sizing: border-box; width: 28px; height: 28px; min-height: 28px; padding: 0; justify-content: center; }
 #results .rf-card-slides > .rf-slide-row { border-radius: 0; }
 #search-flag > div { display: contents; }
-#search-flag .slide-flag-status:empty { display: none; }
 #search-flag#search-flag .slide-flag-btn svg { width: 12px; height: 12px; }
 #search-flag#search-flag .slide-flag-btn { gap: 0; }
 .rf-search-strip-status { display: block; }
@@ -5104,3 +5103,34 @@ html:is([data-theme="dark"], .blackroom) .rf-sf { background: #3A3150; }
 .btn-chip .rf-icon { width: 12px; height: 12px; stroke-width: 1.8; }
 .rf-deep .rf-icon { width: 16px; height: 16px; stroke-width: 2; }
 #search-flag#search-flag .slide-flag-btn .rf-icon { width: 12px; height: 12px; }
+
+/* The Settings key's dot while the index needs a refresh: the staff-request
+   dot's twin, gone once you are on Settings (the notice is then in front of
+   you). Settings > More and its System row carry the same dot (`.rf-tab-dot`). */
+#nav-rail .nav-item.has-notice:not(.btn-active)::after {
+  content: "";
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--rf-phosphor);
+  box-shadow: 0 0 6px 1px rgba(169, 111, 232, 0.9);
+}
+html.rail-right #nav-rail .nav-item.has-notice:not(.btn-active)::after { right: 9px; left: auto; }
+.rf-tab-dot::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  vertical-align: 2px;
+  border-radius: 50%;
+  background: var(--rf-phosphor);
+  box-shadow: 0 0 5px 1px rgba(169, 111, 232, 0.8);
+}
+.rf-index-notice { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px; border: 1px solid var(--rf-hairline); border-left: 3px solid var(--rf-plum); border-radius: 5px; background: var(--rf-raised); font-size: 13px; }
+.rf-index-notice span { flex: 1 1 12rem; min-width: 0; }
+#search-flag-status { margin: -4px 0 10px; font-size: 12px; line-height: 1.4; color: var(--rf-muted); }
+#search-flag-status.hidden { display: none; }

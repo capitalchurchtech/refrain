@@ -116,7 +116,22 @@ export function initSpellcheck() {
         const reason = document.getElementById("spellcheck-scan-reason");
         if (reason) {
           reason.classList.remove("hidden");
-          reason.innerHTML = `Protect ProPresenter is on, so Refrain won't read your songs to check them. <a href="#settings/search" class="link">Turn it off in Settings › Search › Advanced</a>, then come back.`;
+          reason.innerHTML = `Protect ProPresenter is on, so Refrain won't read your songs to check them. A check reads every song in the playlist, so run it when nothing is live. <button type="button" id="spellcheck-unprotect" class="btn btn-chip mt-2">Turn protection off</button>`;
+          reason.querySelector("#spellcheck-unprotect").addEventListener("click", async (e) => {
+            const press = e.currentTarget;
+            press.disabled = true;
+            try {
+              const res = await fetch("/api/protect", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: false }) });
+              if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? res.statusText);
+              const btn = document.getElementById("spellcheck-scan-btn");
+              delete btn.dataset.protected;
+              // Back to the ordinary rule: enabled once a playlist is chosen.
+              document.getElementById("spellcheck-playlist").dispatchEvent(new Event("change"));
+            } catch (err) {
+              press.disabled = false;
+              document.getElementById("spellcheck-status").textContent = `Protection stayed on: ${err.message}. You can also turn it off in Settings › Search › Advanced.`;
+            }
+          });
         }
       }
       // A 502 is ProPresenter not answering, not an empty library. Saying

@@ -371,7 +371,7 @@ export function initLive() {
           (t) => `
         <label class="rf-poster-field">
           <span class="rf-poster-label">${escapeHtml(t.name)}</span>
-          <input class="input input-bordered live-message-token" data-token="${escapeHtml(t.name)}" placeholder="Type the ${escapeHtml(t.name.toLowerCase())}" autocomplete="off" />
+          <input class="input input-bordered live-message-token" data-token="${escapeHtml(t.name)}" autocomplete="off" aria-label="${escapeHtml(t.name)}" />
         </label>`
         )
         .join("");

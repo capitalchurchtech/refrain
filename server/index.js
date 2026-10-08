@@ -2167,6 +2167,9 @@ function liveStatePayload() {
     feed: serviceFeedLamp(),
     // How many staff requests are waiting, for the rail's dot on every screen.
     requests: staffRequests.list().length,
+    // The index needs a refresh (old, or built without the slide anchors): a
+    // dot on Settings, where the notice and its Refresh now live.
+    indexNotice: Boolean(deferredStaleness() ?? lockinStaleness() ?? indexStaleness(getIndex()?.builtAt ?? null) ?? indexAccuracyNotice(getIndex())),
   };
 }
 

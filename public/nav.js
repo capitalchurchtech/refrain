@@ -224,6 +224,7 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
     applyUpdateDot();
     if (window.lucide) window.lucide.createIcons();
     applyRequestDot();
+    applyNoticeDot();
     moveEdge();
   }
 
@@ -507,8 +508,19 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
   function applyRequestDot() {
     navItemsEl.querySelectorAll(".nav-item").forEach((b) => b.classList.toggle("has-request", requestsWaiting > 0 && b.dataset.id === "service"));
   }
+  // The index needs a refresh: the same kind of dot on the Settings key, where
+  // the notice and its Refresh live (Settings > More > System).
+  let indexNoticeUp = false;
+  function applyNoticeDot() {
+    navItemsEl.querySelectorAll(".nav-item").forEach((b) => b.classList.toggle("has-notice", indexNoticeUp && b.dataset.id === "health"));
+  }
   window.addEventListener("refrain:live-state", (e) => {
     const n = Number(e.detail?.requests) || 0;
+    const notice = Boolean(e.detail?.indexNotice);
+    if (notice !== indexNoticeUp) {
+      indexNoticeUp = notice;
+      applyNoticeDot();
+    }
     if (n === requestsWaiting) return;
     requestsWaiting = n;
     applyRequestDot();

@@ -51,7 +51,7 @@ export function initSearch({ prefs = {} } = {}) {
   const statusEl = document.getElementById("index-status");
   const pendingEl = document.getElementById("search-pending");
   const queryRing = document.getElementById("query-ring");
-  mountFlagButton(document.getElementById("search-flag"));
+  mountFlagButton(document.getElementById("search-flag"), document.getElementById("search-flag-status"));
   const queryClear = document.getElementById("query-clear");
   const libraryFilterWrap = document.getElementById("library-filter-wrap");
   const libraryFilterToggle = document.getElementById("library-filter-toggle");
@@ -160,11 +160,11 @@ export function initSearch({ prefs = {} } = {}) {
     saveSearchPrefs({ searchLibrariesOff: off });
   }
 
-  /** The chip says when the search is narrowed, so a filter is never invisible. */
+  /** The chip carries a dot when the search is narrowed, so a filter is never invisible. */
   function syncLibraryLabel() {
     const on = libraryFilterKeys.querySelectorAll('[aria-checked="true"]').length;
     const all = allLibraryFolders.length;
-    libraryFilterLabel.textContent = on < all ? `Libraries · ${on} of ${all}` : "Libraries";
+    libraryFilterLabel.classList.toggle("rf-tab-dot", on < all);
     libraryFilterAll.classList.toggle("hidden", on === all);
   }
 
@@ -186,70 +186,6 @@ export function initSearch({ prefs = {} } = {}) {
     // All checked (the default) means "no filter" — only send a subset
     // when the user has actually narrowed it down.
     return checked.length < allLibraryFolders.length ? checked : null;
-  }
-
-  /**
-   * Shows the index's age when it is old enough to matter, with the one press
-   * that fixes it.
-   *
-   * Nothing is rendered below the threshold -- an all-clear the operator did
-   * not ask for is noise on the screen they use under pressure.
-   */
-  /**
-   * One line for "this index cannot be fully trusted", whichever reason applies.
-   *
-   * Accuracy outranks age. A week-old index misses songs edited since, which is
-   * annoying; a stale-schema one is missing the slide anchors Go Live uses to
-   * correct for an arrangement change, which means the slide that fires may not
-   * be the slide that was clicked. If both are true the operator gets told about
-   * the one that can put the wrong words on the screen.
-   *
-   * Both have the same remedy, so they share the Refresh button rather than
-   * stacking two notices with two buttons over the search field.
-   */
-  function renderStaleness(staleness, accuracy = null) {
-    const el = document.getElementById("index-staleness");
-    if (!el) return;
-    const notice = accuracy ?? staleness;
-    if (!notice) {
-      el.classList.add("hidden");
-      el.innerHTML = "";
-      return;
-    }
-    el.classList.remove("hidden");
-    // A notice that says `held` is one the server already knows Refresh would
-    // refuse -- performance mode is on, or something is live. Printing the
-    // button anyway would spend a press to show a sentence we have in hand,
-    // on the screen and for the operator least willing to press something
-    // whose outcome they can't predict. So say the reason instead of offering
-    // the remedy, in the route's own words.
-    if (notice.held) {
-      el.innerHTML = `<span class="rf-nominal">${escapeHtml(notice.message)}</span>`;
-      return;
-    }
-    el.innerHTML = `
-      <span class="rf-nominal">${escapeHtml(notice.message)}</span>
-      <button id="index-refresh-btn" class="btn btn-chip ml-2">Refresh</button>`;
-    el.querySelector("#index-refresh-btn").addEventListener("click", async (e) => {
-      const btn = e.currentTarget;
-      btn.disabled = true;
-      btn.textContent = "Refreshing";
-      crumb("reindex", { from: "stale" });
-      try {
-        document.dispatchEvent(new CustomEvent("refrain:index-requested"));
-        const res = await fetch("/api/index/reindex-changed", { method: "POST" });
-        if (!res.ok) {
-          const { error } = await res.json().catch(() => ({}));
-          // A 409 is Refrain declining for a reason it states (performance
-          // mode, ProPresenter still loading); Health can't do better.
-          showFailure(res.status === 409 && error ? error : `Refresh didn't run: ${error ?? "no answer"}. Try Settings.`);
-          return;
-        }
-        await refreshStatus();
-      } finally {
-        btn.disabled = false;
-      }
-    });
   }
 
   async function refreshStatus() {
@@ -275,7 +211,6 @@ export function initSearch({ prefs = {} } = {}) {
     // sits dark for weeks and lights once is not reporting, and the emitter
     // budget is spent. And it carries its own remedy, because telling an
     // operator something is wrong without the fix is half an answer.
-    renderStaleness(indexRes.staleness, indexRes.accuracy);
     if (window.lucide) window.lucide.createIcons();
 
     // No banner for a lost link: the LINK lamp in the menu says it on every
@@ -765,13 +700,13 @@ export function initSearch({ prefs = {} } = {}) {
    */
   const SEARCH_DEBOUNCE_MS = 90;
 
-  // The ring around the field travels the whole time there is a query in it and
-  // the field is focused (as in the design's Search panel, where it never
-  // settles while results are showing). It holds still when the field is empty,
-  // loses focus, or finds nothing: then the glow moves to Deep Search, the next
-  // thing to press. Nothing animates at rest.
+  // The ring around the field travels the whole time the field is focused, from
+  // the click that puts the cursor in it (as in the design's Search panel,
+  // where it never settles). It holds still on losing focus, or on a miss: then
+  // the glow moves to Deep Search, the next thing to press. Nothing animates at
+  // rest.
   function syncRing() {
-    const on = document.activeElement === queryInput && queryInput.value.trim() !== "" && !queryRing?.classList.contains("quiet");
+    const on = document.activeElement === queryInput && !queryRing?.classList.contains("quiet");
     queryRing?.classList.toggle("typing", on);
   }
   queryInput.addEventListener("focus", syncRing);
