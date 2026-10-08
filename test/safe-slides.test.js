@@ -24,7 +24,7 @@ test("a full list says so rather than dropping the slide", () => {
   for (let i = 0; i < MAX_SAFE_SLIDES; i++) list = addSafeSlide(list, slide(i), { id: `id${i}` }).list;
   const r = addSafeSlide(list, slide(99), { id: "x" });
   assert.equal(r.list.length, MAX_SAFE_SLIDES);
-  assert.match(r.error, /already 8 safe slides/);
+  assert.match(r.error, /already 4 safe slides/);
 });
 
 test("bad input is refused, and rename, remove and reorder work", () => {
@@ -39,4 +39,11 @@ test("bad input is refused, and rename, remove and reorder work", () => {
   assert.deepEqual(moveSafeSlide(list, "0", -1).map((s) => s.id), ["0", "2", "1"], "the first can't move earlier");
   assert.deepEqual(removeSafeSlide(list, "2").map((s) => s.id), ["0", "1"]);
   assert.deepEqual(safeSlides([{ junk: true }, null]), []);
+});
+
+test("a list saved when eight were allowed is still read whole, and cannot grow", () => {
+  const legacy = Array.from({ length: 6 }, (_, i) => ({ id: `s${i}`, presentationId: `P${i}`, slideIndex: 0, label: `Slide ${i}` }));
+  assert.equal(safeSlides(legacy).length, 6, "nothing is trimmed behind anyone's back");
+  assert.match(addSafeSlide(legacy, slide(99), { id: "x" }).error, /already 4/);
+  assert.equal(removeSafeSlide(legacy, "s0").length, 5, "but they can be removed");
 });

@@ -18,7 +18,9 @@ const clean = (s) => String(s ?? "").trim();
 
 /**
  * The switchable features the modules declare, in menu order.
- * Each: { id, label, description, default, apiPrefixes, parent, parentLabel }.
+ * Each: { id, label, summary, description, default, apiPrefixes, parent, parentLabel }.
+ * `summary` is the one short line on the Settings row; `description` is the
+ * longer sentence kept as its tooltip.
  */
 export function moduleFeatures(modules) {
   const out = [];
@@ -29,6 +31,7 @@ export function moduleFeatures(modules) {
       out.push({
         id: m.id,
         label: clean(m.feature.label) || clean(m.navLabel) || m.id,
+        summary: clean(m.feature.summary),
         description: clean(m.feature.description),
         default: m.feature.default === true,
         apiPrefixes: (m.feature.apiPrefixes ?? []).filter((p) => typeof p === "string" && p.startsWith("/api/")),
@@ -41,6 +44,7 @@ export function moduleFeatures(modules) {
       out.push({
         id: f.id,
         label: clean(f.label) || f.id,
+        summary: clean(f.summary),
         description: clean(f.description),
         default: f.default === true,
         apiPrefixes: (f.apiPrefixes ?? []).filter((p) => typeof p === "string" && p.startsWith("/api/")),

@@ -14,5 +14,5 @@ export default {
   component: null, // TODO: ArrangementScreen component
   // Switchable on Settings > Features (server/features.js); off hides its
   // screen and its routes answer "switched off".
-  feature: { default: false, label: "Arrangement tracking", description: "Compares the arrangements used with the planning system's plan.", apiPrefixes: ["/api/arrangement"] },
+  feature: { default: false, label: "Arrangement tracking", summary: "Compare with the plan", description: "Compares the arrangements used with the planning system's plan.", apiPrefixes: ["/api/arrangement"] },
 };

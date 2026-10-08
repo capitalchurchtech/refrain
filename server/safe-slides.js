@@ -12,7 +12,11 @@
 
 import { randomBytes } from "node:crypto";
 
-export const MAX_SAFE_SLIDES = 8;
+// Four may be kept (owner, 2026-10-07: "we probably won't use them"). A list
+// saved before that can hold up to eight; those are still read, shown and
+// editable, never trimmed behind anyone's back, but no more can be added.
+export const MAX_SAFE_SLIDES = 4;
+const READ_LIMIT = 8;
 const LABEL_MAX = 40;
 
 const clean = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
@@ -39,7 +43,7 @@ function valid(s) {
 
 /** The stored list, well-formed entries only. */
 export function safeSlides(list) {
-  return (Array.isArray(list) ? list : []).filter(valid).slice(0, MAX_SAFE_SLIDES);
+  return (Array.isArray(list) ? list : []).filter(valid).slice(0, READ_LIMIT);
 }
 
 /**
@@ -63,7 +67,7 @@ export function addSafeSlide(list, input, { id = randomBytes(4).toString("hex") 
     (s) => s.presentationId === entry.presentationId && (entry.groupId ? s.groupId === entry.groupId && s.groupOffset === entry.groupOffset : s.slideIndex === entry.slideIndex)
   );
   if (same) return { list: current, added: same, error: null };
-  if (current.length >= MAX_SAFE_SLIDES) return { list: current, added: null, error: `There are already ${MAX_SAFE_SLIDES} safe slides. Remove one on Live first.` };
+  if (current.length >= MAX_SAFE_SLIDES) return { list: current, added: null, error: `There are already ${MAX_SAFE_SLIDES} safe slides. Remove one first.` };
   return { list: [...current, entry], added: entry, error: null };
 }
 

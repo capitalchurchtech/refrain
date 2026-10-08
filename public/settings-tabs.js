@@ -12,6 +12,9 @@ export const SETTINGS_TABS = [
   ["telemetry", "Telemetry", "radio-tower"],
   // Last: the least used (owner, 2026-09-30).
   ["audit", "Audit", "clipboard-check"],
+  // Stop Refrain, the ProPresenter connection and Updates (owner, 2026-10-07:
+  // under More, not on Status).
+  ["system", "System", "cpu"],
 ];
 
 /**
@@ -19,7 +22,7 @@ export const SETTINGS_TABS = [
  * column). The last, More, holds the rest as a second row, so every old link
  * (`#settings/phones`) still lands on its own panel.
  */
-export const SETTINGS_MORE = ["phones", "customize", "telemetry", "audit"];
+export const SETTINGS_MORE = ["phones", "customize", "telemetry", "audit", "system"];
 export const SETTINGS_TOP = [
   ["status", "Status", "activity"],
   ["search", "Search", "search"],

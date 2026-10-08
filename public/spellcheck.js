@@ -258,46 +258,50 @@ export function initSpellcheck() {
               <!-- The slide as it looks, to find it by eye in the editor. -->
               <div class="rf-sc-pic${Number.isInteger(s.pictureIndex) ? "" : " rf-sc-nopic"}">
                 ${Number.isInteger(s.pictureIndex) ? `<img src="/api/preview/image/${encodeURIComponent(p.presentationId)}/${s.pictureIndex}?v=${encodeURIComponent(p.pictureVersion ?? "")}" alt="" loading="lazy" />` : ""}
-                <span class="rf-sc-num">Slide ${s.slideIndex + 1}</span>
+                <span class="rf-sc-num">#${s.slideIndex + 1}</span>
               </div>
-              <div class="min-w-0">
-              ${
-                // A video or image slide has no words, so the text that names
-                // every other result would be blank here. Say which slide.
-                s.text?.trim()
-                  ? `<div class="whitespace-pre-line">${highlight(s.text, s.words.map((w) => w.word))}</div>`
-                  : `<div class="opacity-60">Slide ${s.slideIndex + 1}, no text on it</div>`
-              }
-              <div class="flex flex-wrap items-center gap-2 mt-2">
-                ${s.words
-                  .map(
-                    (w) => `
-                  <span class="rf-tile rf-flagged gap-1 inline-flex items-center spellcheck-word" data-word="${escapeHtml(w.word)}" title="${w.suggestions.length ? "Suggestions: " + escapeHtml(w.suggestions.join(", ")) : "No suggestions"}">
-                    ${escapeHtml(w.word)}${w.suggestions.length ? ` → ${escapeHtml(w.suggestions[0])}` : ""}
-                    <button class="spellcheck-ignore-btn ml-1 underline decoration-dotted" data-word="${escapeHtml(w.word)}" title="Stop flagging this word. Undo it under Ignored words.">ignore</button>
-                  </span>`
-                  )
-                  .join("")}
-                ${(s.pastDates ?? [])
-                  .map(
-                    (d) => `
-                  <span class="rf-tile rf-flagged gap-1 inline-flex items-center spellcheck-date" title="This date has passed. Update or remove it.">
-                    Date passed: ${escapeHtml(d.text)} <span class="opacity-70">(was ${escapeHtml(formatPastDate(d.date))})</span>
-                  </span>`
-                  )
-                  .join("")}
-                ${(s.missingMedia ?? [])
-                  .map(
-                    (m) => `
-                  <span class="rf-tile rf-flagged gap-1 inline-flex items-center spellcheck-media" title="${escapeHtml(m.path)}">
-                    Missing media: ${escapeHtml(m.fileName)}${m.otherMac ? ` <span class="opacity-70">(saved on another Mac, never copied here)</span>` : ""}
-                  </span>`
-                  )
-                  .join("")}
-                <span class="flex-1"></span>
-                <button class="btn btn-brand btn-xs spellcheck-live-btn" data-presentation-id="${escapeHtml(p.presentationId)}" data-slide-index="${s.slideIndex}" data-group-id="${escapeHtml(s.groupId ?? "")}" data-group-offset="${s.groupOffset ?? ""}" data-slide-text="${escapeHtml(s.text ?? "")}">Go Live</button>
-                <button class="btn btn-outline btn-xs spellcheck-editor-btn" data-presentation-id="${escapeHtml(p.presentationId)}" title="Opens the presentation. Find the slide by its picture or number.">Show slide ${s.slideIndex + 1} in Editor</button>
-              </div>
+              <div class="min-w-0 flex flex-col gap-2">
+                ${
+                  // A video or image slide has no words, so the text that names
+                  // every other result would be blank here. Say which slide.
+                  s.text?.trim()
+                    ? `<div class="whitespace-pre-line">${highlight(s.text, s.words.map((w) => w.word))}</div>`
+                    : `<div class="opacity-60">#${s.slideIndex + 1}, no text on it</div>`
+                }
+                <!-- One line per finding: what kind, what it is, and for a word
+                     the one thing to do about it. Nothing here goes live: a
+                     found item is Shown, never fired. -->
+                <ul class="rf-sc-issues">
+                  ${s.words
+                    .map(
+                      (w) => `
+                  <li class="spellcheck-word" data-word="${escapeHtml(w.word)}" title="${w.suggestions.length ? "Suggestions: " + escapeHtml(w.suggestions.join(", ")) : "No suggestions"}">
+                    <span class="rf-sc-kind">Spelling</span>
+                    <span class="rf-sc-found">${escapeHtml(w.word)}${w.suggestions.length ? ` &rarr; <em>${escapeHtml(w.suggestions[0])}</em>` : ""}</span>
+                    <button type="button" class="spellcheck-ignore-btn btn btn-chip" data-word="${escapeHtml(w.word)}" title="Stop flagging this word. Undo it under Ignored words.">Ignore word</button>
+                  </li>`
+                    )
+                    .join("")}
+                  ${(s.pastDates ?? [])
+                    .map(
+                      (d) => `
+                  <li class="spellcheck-date" title="This date has passed. Update or remove it.">
+                    <span class="rf-sc-kind">Old date</span>
+                    <span class="rf-sc-found">${escapeHtml(d.text)} <small>(was ${escapeHtml(formatPastDate(d.date))})</small></span>
+                  </li>`
+                    )
+                    .join("")}
+                  ${(s.missingMedia ?? [])
+                    .map(
+                      (m) => `
+                  <li class="spellcheck-media" title="${escapeHtml(m.path)}">
+                    <span class="rf-sc-kind">Missing media</span>
+                    <span class="rf-sc-found">${escapeHtml(m.fileName)}${m.otherMac ? ` <small>(saved on another Mac, never copied here)</small>` : ""}</span>
+                  </li>`
+                    )
+                    .join("")}
+                </ul>
+                <button type="button" class="btn btn-outline spellcheck-editor-btn" data-presentation-id="${escapeHtml(p.presentationId)}" title="Opens the presentation in ProPresenter's editor. Find slide #${s.slideIndex + 1} by its picture. Nothing goes to the screens.">Fix in ProPresenter</button>
               </div>
             </div>`
             )
@@ -418,33 +422,6 @@ export function initSpellcheck() {
     });
 
     resultsEl.querySelectorAll(".spellcheck-again-btn").forEach((btn) => btn.addEventListener("click", () => checkAgain(btn)));
-
-    resultsEl.querySelectorAll(".spellcheck-live-btn").forEach((btn) =>
-      btn.addEventListener("click", async () => {
-        btn.disabled = true;
-        try {
-          const res = await fetch("/api/trigger", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            // Same anchor as Search sends: the operator may have switched
-            // arrangement between the scan and this click.
-            body: JSON.stringify({
-              presentationId: btn.dataset.presentationId,
-              slideIndex: Number(btn.dataset.slideIndex),
-              groupId: btn.dataset.groupId || null,
-              groupOffset: btn.dataset.groupOffset === "" ? null : Number(btn.dataset.groupOffset),
-              slideText: btn.dataset.slideText || "",
-            }),
-          });
-          if (!res.ok) {
-            const { error } = await res.json().catch(() => ({}));
-            showFailure(`Didn't go live: ${error ?? "ProPresenter didn't answer"}. Press Go Live again.`);
-          } else window.refreshReturnBar?.();
-        } finally {
-          btn.disabled = false;
-        }
-      })
-    );
 
     resultsEl.querySelectorAll(".spellcheck-editor-btn").forEach((btn) =>
       btn.addEventListener("click", async () => {

@@ -17,5 +17,5 @@ export default {
   component: null, // TODO: ImageCropScreen component
   // Switchable on Settings > Features (server/features.js); off hides its
   // screen and its routes answer "switched off".
-  feature: { default: false, label: "Image Crop", description: "Crops images dropped in a folder to slide sizes.", apiPrefixes: ["/api/image-crop"] },
+  feature: { default: false, label: "Image Crop", summary: "Crop dropped images to size", description: "Crops images dropped in a folder to slide sizes.", apiPrefixes: ["/api/image-crop"] },
 };

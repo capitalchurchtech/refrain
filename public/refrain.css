@@ -410,7 +410,6 @@ html.blackroom .btn {
   }
 }
 
-
 /* ============================================================
    7. HEAT IS FOR LIVE
 
@@ -692,9 +691,7 @@ html.blackroom .rf-tile:active {
 
 /* Every Go Live is a Tier 2 machined key by default. */
 [data-theme="dark"] .go-live-btn,
-html.blackroom .go-live-btn,
-[data-theme="dark"] .spellcheck-live-btn,
-html.blackroom .spellcheck-live-btn {
+html.blackroom .go-live-btn {
   background-image: linear-gradient(180deg, #322A3B 0%, #241E2D 100%);
   box-shadow: var(--rf-junction-raised);
   color: var(--rf-text);
@@ -724,11 +721,7 @@ html.blackroom .go-live-btn.rf-armed,
 [data-theme="dark"] .go-live-btn:hover,
 html.blackroom .go-live-btn:hover,
 [data-theme="dark"] .go-live-btn:focus-visible,
-html.blackroom .go-live-btn:focus-visible,
-[data-theme="dark"] .spellcheck-live-btn:hover,
-html.blackroom .spellcheck-live-btn:hover,
-[data-theme="dark"] .spellcheck-live-btn:focus-visible,
-html.blackroom .spellcheck-live-btn:focus-visible {
+html.blackroom .go-live-btn:focus-visible {
   background-image: linear-gradient(180deg, #443A52 0%, #1E1928 100%);
   color: #EFE2FF;
   box-shadow:
@@ -773,17 +766,15 @@ html.blackroom #results:has(.go-live-btn:focus-visible) .go-live-btn.rf-armed:no
    ============================================================ */
 
 /**
- * Static homes for the four layout utilities that only ever exist as JS
- * strings. DO NOT DELETE THESE AS REDUNDANT.
+ * Static homes for the layout utilities the rail and the content margin use.
+ * DO NOT DELETE THESE AS REDUNDANT.
  *
  * Tailwind here is the browser build in vendor/tailwind-cdn.js, which
- * generates utilities by scanning the DOM at runtime. `w-36` and `ml-36`
- * appear nowhere in any HTML or vendored stylesheet -- only inside a
- * `classList.toggle("w-36", pinned)` call, which the scanner cannot see. So no
- * rule exists until its MutationObserver notices the class landing, and
- * anything reading in the same tick gets the old value. That is what made the
- * pinned width look like a cascade fight: an inline `width: 300px !important`
- * also computed to 64px, which no specificity problem can do.
+ * generates utilities by scanning the DOM at runtime. The rail's width used to
+ * be toggled from script (`classList.toggle("w-36", pinned)`), which the
+ * scanner cannot see: no rule existed until its MutationObserver noticed the
+ * class landing, and anything reading in the same tick got the old value. The
+ * rail is a single fixed width now (owner, 2026-10-07), but the rule stands.
  *
  * The general rule, not just for these four: any Tailwind class applied from
  * JS needs a static home here, or it is a race.
@@ -799,35 +790,13 @@ html.blackroom #results:has(.go-live-btn:focus-visible) .go-live-btn.rf-armed:no
  * Still 80px narrower than the 224px this replaced.
  */
 #nav-rail.w-14 { width: 3.5rem; }
-#nav-rail.w-36 { width: 9rem; }
-#nav-rail.w-5 { width: 1.25rem; }
+
 #main-content.ml-14 { margin-left: 3.5rem; }
-#main-content.ml-36 { margin-left: 9rem; }
-#main-content.ml-5 { margin-left: 1.25rem; }
 
 /* Same class of bug, smaller blast radius: image-crop.js toggles these from JS
    to make the config fields inert while the module is off. Without a static
    rule, a click can land on a field that is meant to be dead. */
 .pointer-events-none { pointer-events: none; }
-
-/* Labels are silkscreen, not navigation text: printed on the panel at
-   the size a legend is printed, so they name the control without
-   competing with it. */
-[data-theme="dark"] .nav-label,
-html.blackroom .nav-label {
-  /* Sans, not mono. Silkscreen is about size and tracking, not monospace:
-     mono is for data -- numbers, timestamps, counts, slide indices -- and
-     SPELL CHECK is a legend. Martian Mono is also a wide face, so uppercase
-     at 0.15em was eating most of a 128px rail. */
-  font-family: var(--rf-sans);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--rf-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 
 /**
  * DaisyUI's .btn sets flex-wrap: wrap, so a legend that did not fit was
@@ -840,12 +809,8 @@ html.blackroom .nav-label {
 #nav-rail #theme-toggle,
 #nav-rail #nav-side-toggle,
 #nav-rail #nav-phone-toggle,
-#nav-rail #nav-pin-toggle,
 #nav-rail #nav-help-toggle {
   flex-wrap: nowrap;
-}
-#nav-rail .nav-label {
-  min-width: 0;
 }
 
 /* Reclaim the wrapping room from the gap rather than the type. */
@@ -853,7 +818,6 @@ html.blackroom .nav-label {
 #nav-rail #theme-toggle,
 #nav-rail #nav-side-toggle,
 #nav-rail #nav-phone-toggle,
-#nav-rail #nav-pin-toggle,
 #nav-rail #nav-help-toggle {
   gap: 0.5rem;
 }
@@ -877,9 +841,7 @@ html.blackroom #nav-rail #nav-help-toggle,
 [data-theme="dark"] #nav-rail #nav-phone-toggle,
 html.blackroom #nav-rail #theme-toggle,
 html.blackroom #nav-rail #nav-side-toggle,
-html.blackroom #nav-rail #nav-phone-toggle,
-[data-theme="dark"] #nav-rail #nav-pin-toggle,
-html.blackroom #nav-rail #nav-pin-toggle {
+html.blackroom #nav-rail #nav-phone-toggle {
   background-color: transparent;
   background-image: linear-gradient(180deg, #2A2333 0%, #1F1A28 100%);
   border: 0;
@@ -895,9 +857,7 @@ html.blackroom #nav-rail #nav-help-toggle:hover,
 [data-theme="dark"] #nav-rail #nav-phone-toggle:hover,
 html.blackroom #nav-rail #theme-toggle:hover,
 html.blackroom #nav-rail #nav-side-toggle:hover,
-html.blackroom #nav-rail #nav-phone-toggle:hover,
-[data-theme="dark"] #nav-rail #nav-pin-toggle:hover,
-html.blackroom #nav-rail #nav-pin-toggle:hover {
+html.blackroom #nav-rail #nav-phone-toggle:hover {
   background-image: linear-gradient(180deg, #332B3D 0%, #251F2F 100%);
 }
 
@@ -923,8 +883,7 @@ html.blackroom #nav-rail #nav-pin-toggle:hover {
 #nav-rail #nav-help-toggle:active,
 #nav-rail #theme-toggle:active,
 #nav-rail #nav-side-toggle:active,
-#nav-rail #nav-phone-toggle:active,
-#nav-rail #nav-pin-toggle:active {
+#nav-rail #nav-phone-toggle:active {
   transform: none;
 }
 [data-theme="dark"] #nav-rail .nav-item:active,
@@ -936,9 +895,7 @@ html.blackroom #nav-rail #nav-help-toggle:active,
 [data-theme="dark"] #nav-rail #nav-phone-toggle:active,
 html.blackroom #nav-rail #theme-toggle:active,
 html.blackroom #nav-rail #nav-side-toggle:active,
-html.blackroom #nav-rail #nav-phone-toggle:active,
-[data-theme="dark"] #nav-rail #nav-pin-toggle:active,
-html.blackroom #nav-rail #nav-pin-toggle:active {
+html.blackroom #nav-rail #nav-phone-toggle:active {
   box-shadow:
     inset 0 1px 0 rgba(255, 240, 235, 0.08),
     inset 0 -1px 0 rgba(0, 0, 0, 0.6);
@@ -985,8 +942,6 @@ html.blackroom #nav-rail .nav-item.btn-active {
 }
 /* Printed ink does not dim because the key travelled. This is the one screen
    the operator is on; it should be the most legible legend in the rail. */
-[data-theme="dark"] #nav-rail .nav-item.btn-active .nav-label,
-html.blackroom #nav-rail .nav-item.btn-active .nav-label,
 [data-theme="dark"] #nav-rail .nav-item.btn-active svg,
 html.blackroom #nav-rail .nav-item.btn-active svg {
   color: var(--rf-text);
@@ -1079,9 +1034,7 @@ html.blackroom #nav-rail #nav-help-toggle svg,
 [data-theme="dark"] #nav-rail #nav-phone-toggle svg,
 html.blackroom #nav-rail #theme-toggle svg,
 html.blackroom #nav-rail #nav-side-toggle svg,
-html.blackroom #nav-rail #nav-phone-toggle svg,
-[data-theme="dark"] #nav-rail #nav-pin-toggle svg,
-html.blackroom #nav-rail #nav-pin-toggle svg {
+html.blackroom #nav-rail #nav-phone-toggle svg {
   color: var(--rf-muted);
 }
 
@@ -1105,33 +1058,6 @@ html.blackroom #nav-rail #nav-pin-toggle svg {
 html.blackroom .rf-group-break {
   border-top: 1px solid var(--rf-shadowline);
   box-shadow: 0 1px 0 rgba(255, 240, 235, 0.06);
-}
-
-/* Collapsed shows the groove only. A collapsed rail is for someone who
-   already knows the layout, and there is no width for a legend anyway. */
-#nav-rail.w-14 .rf-group-label {
-  display: none;
-}
-
-.rf-group-label {
-  padding: 8px 8px 4px;
-  font-family: var(--rf-sans);
-  font-size: 8px;
-  font-weight: 600;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-}
-/* The first legend sits at the top of the list, with nothing above it to
-   clear. */
-#nav-items > .rf-group-label:first-child {
-  padding-top: 0;
-}
-/* Muted, like every other legend. At 8px and 0.15em it is already the quietest
-   thing in the rail; a fainter ink would only make it harder to read without
-   making it calmer. --rf-dim measures 3.87:1 here and fails AA outright. */
-[data-theme="dark"] .rf-group-label,
-html.blackroom .rf-group-label {
-  color: var(--rf-muted);
 }
 
 /**
@@ -1275,7 +1201,6 @@ html.blackroom .badge-info > svg,
 html.blackroom .badge-ghost > svg {
   display: none;
 }
-
 
 /* ============================================================
    13. FAULT
@@ -1593,7 +1518,6 @@ html.blackroom .card > * {
   z-index: 1;
 }
 
-
 /* ============================================================
    17. THE DOCKED-WIDTH NUDGE
 
@@ -1612,7 +1536,6 @@ html.blackroom .card > * {
 html.blackroom #setup-width-nudge {
   color: var(--rf-muted);
 }
-
 
 /* ============================================================
    18. GLOBAL GRAIN
@@ -2000,8 +1923,7 @@ html.blackroom .go-live-btn {
 #nav-rail #nav-help-toggle,
 #nav-rail #theme-toggle,
 #nav-rail #nav-side-toggle,
-#nav-rail #nav-phone-toggle,
-#nav-rail #nav-pin-toggle {
+#nav-rail #nav-phone-toggle {
   min-height: 36px;
   height: auto;
   padding: 8px 12px;
@@ -2041,17 +1963,15 @@ html.blackroom .go-live-btn {
      selectors still mirror the tier rules above rather than being simpler,
      because they have to outrank them on document order. */
   #nav-rail .nav-item,
-  #nav-rail #nav-help-toggle,
-  #nav-rail #theme-toggle,
-  #nav-rail #nav-side-toggle,
-  #nav-rail #nav-phone-toggle,
-  #nav-rail #nav-pin-toggle,
-  .rf-tile,
-  .btn-chip,
-  #nav-items .nav-item,
-  #nav-help-toggle,
-  #theme-toggle,
-  #nav-pin-toggle {
+#nav-rail #nav-help-toggle,
+#nav-rail #theme-toggle,
+#nav-rail #nav-side-toggle,
+#nav-rail #nav-phone-toggle,
+.rf-tile,
+.btn-chip,
+#nav-items .nav-item,
+#nav-help-toggle,
+#theme-toggle {
     min-height: 2.75rem;
   }
 }
@@ -2157,7 +2077,6 @@ html.blackroom .rf-wordmark {
   border-radius: 1px;
   background: var(--rf-plum);
 }
-
 
 /* First run is the one place with room for the full display size. */
 #setup-brand-logo .rf-wordmark {
@@ -2638,8 +2557,7 @@ html.blackroom .rf-preset + .rf-preset {
 #nav-rail.collapsed #nav-help-toggle,
 #nav-rail.collapsed #theme-toggle,
 #nav-rail.collapsed #nav-side-toggle,
-#nav-rail.collapsed #nav-phone-toggle,
-#nav-rail.collapsed #nav-pin-toggle {
+#nav-rail.collapsed #nav-phone-toggle {
   justify-content: center;
   padding-left: 0;
   padding-right: 0;
@@ -3047,8 +2965,7 @@ html.blackroom .rf-notice-close {
 #nav-rail #nav-help-toggle,
 #nav-rail #theme-toggle,
 #nav-rail #nav-side-toggle,
-#nav-rail #nav-phone-toggle,
-#nav-rail #nav-pin-toggle {
+#nav-rail #nav-phone-toggle {
   border-radius: 0;
 }
 
@@ -3523,78 +3440,6 @@ html.blackroom .rf-record-row:hover {
    gate stops touch reaching it, the peek rescues a pointer user who
    lands here by accident.
    ============================================================ */
-#nav-rail.sliver {
-  overflow-x: hidden;
-  padding-left: 0;
-  padding-right: 0;
-}
-
-/* Everything goes except the toggle. Enumerated against the real markup
-   rather than guessed: `#nav-brand` and `.nav-secondary` do not exist, and a
-   selector that matches nothing fails silently and leaves the rail full of
-   content it is too narrow to show. */
-#nav-rail.sliver #nav-items,
-#nav-rail.sliver #status-cluster,
-#nav-rail.sliver .rf-status-break,
-#nav-rail.sliver #nav-help-toggle,
-#nav-rail.sliver #theme-toggle,
-#nav-rail.sliver #nav-side-toggle,
-#nav-rail.sliver #nav-phone-toggle,
-#nav-rail.sliver #rail-quick,
-#nav-rail.sliver .nav-label,
-#nav-rail.sliver .rf-group-label {
-  display: none;
-}
-
-#nav-rail.sliver #nav-pin-toggle {
-  display: flex;
-  justify-content: center;
-  padding: 0;
-  min-height: 44px; /* the touch floor still applies to the one control left */
-}
-
-/**
- * Peek. Widening restores the icon rail, so the way back is always one
- * movement away rather than a thing you have to know about.
- *
- * Hover is deliberately NOT the selector here. The sliver sits against the
- * edge of the screen, which is exactly where a pointer travels on its way to
- * somewhere else, so a bare `:hover` made the rail flash open every time you
- * crossed it. nav.js adds `.peek` after the pointer has dwelt for a moment.
- *
- * `display` cannot be transitioned, so a CSS-only delay would have slid the
- * width open while the contents appeared instantly -- the width being late is
- * worse than it being early. One class moves both together.
- *
- * `:focus-within` stays immediate and stays separate. A keyboard user tabbing
- * into the rail has already committed; making them wait would be hostile, and
- * it is also the accessible route back from a state a pointer user chose.
- */
-#nav-rail.sliver.peek,
-#nav-rail.sliver:focus-within {
-  width: 3.5rem;
-  overflow-x: visible;
-}
-#nav-rail.sliver.peek #nav-items,
-#nav-rail.sliver:focus-within #nav-items,
-#nav-rail.sliver.peek #status-cluster,
-#nav-rail.sliver:focus-within #status-cluster,
-#nav-rail.sliver.peek #nav-help-toggle,
-#nav-rail.sliver:focus-within #nav-help-toggle,
-#nav-rail.sliver.peek #theme-toggle,
-#nav-rail.sliver.peek #nav-side-toggle,
-#nav-rail.sliver.peek #nav-phone-toggle,
-#nav-rail.sliver:focus-within #nav-side-toggle,
-#nav-rail.sliver:focus-within #nav-phone-toggle,
-#nav-rail.sliver:focus-within #theme-toggle {
-  display: flex;
-}
-/* A block, not a flex row like the keys above. :not(.hidden) so a menu with
-   no safe slides stays empty while peeking. */
-#nav-rail.sliver.peek #rail-quick:not(.hidden),
-#nav-rail.sliver:focus-within #rail-quick:not(.hidden) {
-  display: block;
-}
 
 /* ============================================================
    39. CLEAR, INSIDE THE FIELD
@@ -3691,8 +3536,6 @@ html.rail-right #nav-rail {
   right: 0;
 }
 html.rail-right #main-content.ml-14 { margin-left: 0; margin-right: 3.5rem; }
-html.rail-right #main-content.ml-36 { margin-left: 0; margin-right: 9rem; }
-html.rail-right #main-content.ml-5 { margin-left: 0; margin-right: 1.25rem; }
 
 html.rail-right[data-theme="dark"] #nav-rail,
 html.rail-right.blackroom #nav-rail {
@@ -3729,47 +3572,6 @@ html.rail-right #rf-notices {
   height: 100%;
 }
 
-/* Live's Now / Next preview: two pictures side by side, their own aspect
-   ratio, on a dark ground so a transparent slide still reads. Rendered from
-   live.js, so its layout lives here rather than in JS-only utilities. */
-#view-live .live-preview:not(.hidden) {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  align-items: start;
-}
-#view-live .live-preview-pane {
-  margin: 0;
-}
-#view-live .live-preview-pane img,
-#view-live .live-preview-empty {
-  display: block;
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  object-fit: contain;
-  background: #000;
-  border: 1px solid var(--rf-hairline);
-  border-radius: 2px;
-}
-#view-live .live-preview-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--rf-muted);
-  font-size: 12px;
-  text-align: center;
-  padding: 8px;
-}
-/* The slide's words in place of its picture (slide pictures off): its own
-   line breaks, readable, and never taller than the 16:9 box. */
-#view-live .live-preview-empty.live-preview-words {
-  white-space: pre-line;
-  overflow: hidden;
-  color: var(--rf-text);
-  font-size: 13px;
-  line-height: 1.35;
-}
-
 /* A folded section's heading is the control that opens it, so it meets the
    touch floor (the Service screen's checklist). Padding, not display:flex,
    which would drop the disclosure triangle. */
@@ -3778,28 +3580,6 @@ html.rail-right #rf-notices {
   min-height: 44px;
   padding-top: 14px;
   padding-bottom: 14px;
-}
-
-/* The Next preview is also a key: a plain button that looks like its
-   picture, with the same focus ring as everything else. */
-#view-live .live-preview-step {
-  display: block;
-  width: 100%;
-  padding: 0;
-  margin: 0;
-  background: none;
-  border: 0;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-#view-live .live-preview-step:hover img,
-#view-live .live-preview-step:hover .live-preview-empty {
-  border-color: var(--rf-plum-lit);
-}
-#view-live .live-preview-step:disabled {
-  cursor: progress;
 }
 
 /* ============================================================
@@ -3867,7 +3647,6 @@ html.blackroom .rf-tab[aria-selected="true"] {
   outline: 2px solid var(--rf-plum-lit);
   outline-offset: -2px;
 }
-
 
 /* A tab's number, shown while Shift is held (nav.js adds .reveal-tab-keys to
    <html>): Shift+1 picks the first tab. Hidden otherwise, like the menu's
@@ -3938,228 +3717,11 @@ html.blackroom .rf-tab[aria-checked="true"] {
 /* ============================================================
    THE RAIL, ONE COLUMN (owner, 2026-09-30, menu option B)
 
-   Status lights under the wordmark, in a row when the menu shows labels;
-   the footer is a quiet row of three icons instead of three full keys.
-   Both only when the rail is expanded (w-36): narrow, the lights stay a
-   column of dots and the icons stack, which is what fits.
+   Status lamps at the top of the rail, two columns of small icons (the rail
+   is one narrow width now, so there is no wider layout).
    ============================================================ */
 #status-cluster {
   margin: 0 0 8px;
-}
-/* Expanded: all four lamps in one row. */
-#nav-rail.w-36 #status-cluster {
-  grid-template-columns: repeat(4, 1fr);
-  padding: 6px 8px;
-}
-#nav-rail.w-36 #rail-foot {
-  flex-direction: row;
-  gap: 2px;
-  padding-top: 6px;
-  margin-top: 6px;
-}
-[data-theme="dark"] #nav-rail.w-36 #rail-foot,
-html.blackroom #nav-rail.w-36 #rail-foot {
-  border-top: 1px solid var(--rf-hairline);
-}
-/* Quieter than the menu keys: no key material, just the glyph. 2,2,0 so it
-   beats the dark key rules at 2,1,0 (see "A rule that exists can still
-   lose" in CLAUDE.md). */
-#nav-rail.w-36 #rail-foot > .btn {
-  flex: 1;
-  justify-content: center;
-  padding: 0;
-}
-[data-theme="dark"] #nav-rail.w-36 #rail-foot > .btn,
-html.blackroom #nav-rail.w-36 #rail-foot > .btn {
-  background-image: none;
-  box-shadow: none;
-  color: var(--rf-muted);
-}
-[data-theme="dark"] #nav-rail.w-36 #rail-foot > .btn:hover,
-html.blackroom #nav-rail.w-36 #rail-foot > .btn:hover {
-  color: var(--rf-text);
-}
-
-/* ============================================================
-   QUICK SLIDES IN THE MENU (owner, 2026-09-30, menu option 4)
-
-   The first four safe slides and Clear all, from any screen. Two presses
-   each: the first arms (`data-armed`, set from quick-slides.js; an
-   attribute, so there's no JIT class to miss), the second fires. Armed
-   is the only loud state, the plum collar, like Now's Clear all.
-
-   Expanded (w-36): a 2x2 grid of pictures. Narrow: a column of numbered
-   shields, since a 40px picture says nothing.
-   ============================================================ */
-#rail-quick {
-  padding-top: 6px;
-}
-#rail-quick .rf-group-label {
-  padding-left: 2px;
-}
-#nav-rail.w-14 #rail-quick .rf-group-label,
-#nav-rail.sliver #rail-quick .rf-group-label {
-  display: none;
-}
-.rf-quick-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 4px;
-}
-#nav-rail.w-36 .rf-quick-grid {
-  grid-template-columns: 1fr 1fr;
-}
-.rf-quick-key {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
-  min-height: 44px; /* the touch floor */
-  border-radius: 6px;
-  border: 1px solid var(--rf-hairline, rgba(127, 127, 127, 0.3));
-  background: transparent;
-  color: var(--rf-muted, inherit);
-  font-size: 11px;
-  cursor: pointer;
-  overflow: hidden;
-}
-.rf-quick-key:hover {
-  color: var(--rf-text, inherit);
-}
-.rf-quick-key:focus-visible {
-  outline: 2px solid var(--rf-plum-lit);
-  outline-offset: 1px;
-}
-.rf-quick-key:disabled {
-  opacity: 0.5;
-}
-/* Pictures only when there's room for them. */
-.rf-quick-pic {
-  display: none;
-}
-#nav-rail.w-36 .rf-quick-grid .rf-quick-key {
-  padding: 0;
-  min-height: 0;
-  aspect-ratio: 16 / 9;
-  background: #000;
-}
-#nav-rail.w-36 .rf-quick-pic {
-  display: block;
-  position: absolute;
-  inset: 0;
-}
-.rf-quick-pic img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.rf-quick-fallback {
-  display: none;
-}
-.rf-quick-nopic img {
-  display: none;
-}
-.rf-quick-nopic .rf-quick-fallback {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  padding: 2px 4px;
-  font-size: 9px;
-  line-height: 1.15;
-  text-align: center;
-  overflow: hidden;
-  color: var(--rf-muted, inherit);
-}
-.rf-quick-num {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-.rf-quick-num svg {
-  width: 16px;
-  height: 16px;
-}
-.rf-quick-num b {
-  font-size: 11px;
-  font-weight: 600;
-}
-#nav-rail.w-36 .rf-quick-grid .rf-quick-num {
-  display: none;
-}
-.rf-quick-more {
-  display: block;
-  padding: 4px 2px 0;
-  font-size: 10px;
-  text-align: center;
-  color: var(--rf-muted, inherit);
-  text-decoration: none;
-}
-.rf-quick-more:hover {
-  color: var(--rf-text, inherit);
-  text-decoration: underline;
-}
-.rf-quick-clear {
-  margin-top: 4px;
-}
-.rf-quick-clear svg {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-}
-.rf-quick-clear-label {
-  display: none;
-}
-#nav-rail.w-36 .rf-quick-clear-label {
-  display: inline;
-}
-#nav-rail.w-36 .rf-quick-clear {
-  min-height: 36px;
-  justify-content: flex-start;
-  padding: 0 10px;
-}
-/* The touch floor applies to Clear all too where a finger might reach it. */
-@media (hover: none) {
-  #nav-rail.w-36 .rf-quick-clear {
-    min-height: 44px;
-  }
-}
-.rf-quick-again {
-  display: none;
-}
-/* Armed: the plum collar and the word, over the picture or the icon. */
-.rf-quick-key[data-armed="true"] {
-  border-color: var(--rf-plum-lit);
-  box-shadow: 0 0 0 1px var(--rf-plum-lit), 0 0 10px rgba(169, 111, 232, 0.45);
-  color: #EFE2FF;
-}
-.rf-quick-key[data-armed="true"] .rf-quick-again {
-  display: flex;
-  position: absolute;
-  inset: 0;
-  align-items: center;
-  justify-content: center;
-  background: rgba(30, 25, 40, 0.82);
-  color: #EFE2FF;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-}
-.rf-quick-note {
-  min-height: 0;
-  padding: 2px;
-  font-size: 10px;
-  line-height: 1.2;
-  color: var(--rf-muted, inherit);
-}
-.rf-quick-note:empty {
-  display: none;
-}
-/* No width for a sentence in the narrow menu; the key's own tooltip says it. */
-#nav-rail.w-14 .rf-quick-note {
-  display: none;
 }
 
 /* ============================================================
@@ -4259,6 +3821,25 @@ html.blackroom #nav-rail.w-36 #rail-foot > .btn:hover {
 .rf-sc-nopic img {
   display: none;
 }
+/* One line per finding (owner, 2026-10-07; the design's issue cards, kept
+   beside the slide's picture). Amber says "look here"; the word is set like
+   data. */
+.rf-sc-issues { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.rf-sc-issues li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 6px 8px;
+  border-left: 3px solid var(--rf-fault);
+  background: var(--rf-raised);
+  border-radius: 3px;
+}
+.rf-sc-kind { font-family: var(--rf-mono); font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--rf-fault); }
+.rf-sc-found { font-family: var(--rf-mono); font-size: 13px; overflow-wrap: anywhere; }
+.rf-sc-found em { font-style: normal; color: #4FC98F; }
+.rf-sc-found small { font-size: 10px; color: var(--rf-muted); }
+#spellcheck-results .spellcheck-editor-btn { height: 44px; min-height: 44px; width: 100%; }
 
 /* ============================================================
    KILL SWITCH (GitHub issue #15)
@@ -4972,6 +4553,158 @@ html.rail-right #nav-rail .nav-item.has-request:not(.btn-active)::after { right:
 .rf-changed-before { opacity: 0.75; }
 #view-service .rf-changed .rf-slide-acts .btn { height: 44px; min-height: 44px; width: 100%; font-size: 13px; }
 
+/* Settings > Features as rows (owner, 2026-10-07): name, one short line, a
+   switch. Always-on features are rows with the word Always instead. */
+.rf-features { display: flex; flex-direction: column; gap: 8px; }
+.rf-feature-lede { margin: 0; font-size: 12px; color: var(--rf-muted); }
+.rf-features .rf-silkscreen { margin: 4px 0 0; }
+.rf-feature-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 6px 10px;
+  background: var(--rf-raised);
+  border: 1px solid var(--rf-hairline);
+  border-radius: 4px;
+}
+.rf-feature-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.rf-feature-text b { font-size: 13px; font-weight: 600; }
+.rf-feature-text span { font-size: 11px; color: var(--rf-muted); }
+.rf-feature-fixed { flex: none; font-family: var(--rf-mono); font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--rf-dim); }
+.rf-switch {
+  position: relative;
+  flex: none;
+  width: 44px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid #3A3150;
+  border-radius: 13px;
+  background: #2A2338;
+  cursor: pointer;
+  transition: background 110ms ease-out, border-color 110ms ease-out;
+}
+.rf-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--rf-muted);
+  transition: left 110ms ease-out, background 110ms ease-out;
+}
+.rf-switch[aria-checked="true"] { background: var(--rf-plum-deep); border-color: var(--rf-plum); }
+.rf-switch[aria-checked="true"]::after { left: 20px; background: #fff; }
+.rf-switch:focus-visible { outline: 2px solid var(--rf-plum-lit); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .rf-switch, .rf-switch::after { transition: none; } }
+
+/* Settings > Status as a health check (owner, 2026-10-07): an icon, what it is,
+   one plain line, and at most one thing to press. Colour only where it means
+   something: plum is fine and quiet, amber needs a look. */
+.rf-hc-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 6px 10px;
+  background: var(--rf-raised);
+  border: 1px solid var(--rf-hairline);
+  border-radius: 4px;
+}
+.rf-hc-icon { flex: none; width: 20px; height: 20px; display: grid; place-items: center; color: var(--rf-dim); }
+.rf-hc-icon svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.rf-hc-icon[data-tone="ok"], .rf-hc-icon[data-tone="plum"] { color: var(--rf-plum-lit); }
+.rf-hc-icon[data-tone="fault"] { color: var(--rf-fault); }
+.rf-hc-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.rf-hc-text b { font-size: 13px; font-weight: 600; }
+.rf-hc-text span { font-size: 11px; color: var(--rf-muted); overflow-wrap: anywhere; }
+.rf-hc-state { flex: none; font-family: var(--rf-mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--rf-muted); }
+.rf-hc-state[data-tone="ok"] { color: #4FC98F; }
+.rf-hc-state[data-tone="fault"] { color: var(--rf-fault); }
+.rf-hc-btn {
+  flex: none;
+  min-height: 36px;
+  padding: 0 8px;
+  border: 1px solid var(--rf-hairline);
+  border-radius: 3px;
+  background: var(--rf-machined);
+  color: var(--rf-phosphor);
+  font-family: var(--rf-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.rf-hc-btn:disabled { opacity: 0.5; cursor: default; }
+.rf-hc-btn:focus-visible { outline: 2px solid var(--rf-plum-lit); outline-offset: 2px; }
+
+/* Settings' tab rows show their names as text, as in the design; the icon is
+   the fallback `fitTabs` switches to only when the names would wrap
+   (`.rf-tabs-icons`). Each panel keeps its name as a heading for screen
+   readers, since the tab row names it for everyone else. */
+#settings-tabs:not(.rf-tabs-icons) .rf-tab > svg,
+[data-settings-subrow]:not(.rf-tabs-icons) .rf-tab > svg { display: none; }
+#settings-tabs .rf-tab,
+[data-settings-subrow] .rf-tab { padding-inline: 8px; font-size: 10px; letter-spacing: 0.08em; }
+/* When a row has only icons (the names would wrap), the panel's name is shown
+   under it, since the tab itself no longer says it. */
+[data-settings-subrow].rf-tabs-icons + .rf-visually-hidden {
+  position: static;
+  width: auto;
+  height: auto;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
+  font-family: var(--rf-mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--rf-phosphor);
+}
+.rf-visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* A row on Now that leads somewhere (Flags, Service day): the name, where it
+   stands, and a chevron. */
+.rf-navrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 12px;
+  background: var(--rf-raised);
+  border: 1px solid var(--rf-hairline);
+  border-radius: 4px;
+  color: var(--rf-text);
+  text-decoration: none;
+}
+.rf-navrow:hover { background: var(--rf-machined); }
+.rf-navrow:focus-visible { outline: 2px solid var(--rf-plum-lit); outline-offset: 2px; }
+.rf-navrow::after { content: "\203A"; color: var(--rf-dim); font-size: 18px; line-height: 1; }
+.rf-navrow-name { font-size: 13px; font-weight: 600; }
+.rf-navrow-state { margin-left: auto; font-family: var(--rf-mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--rf-muted); }
+html.feature-off-safe-slides #live-safe-wrap { display: none; }
+
+/* The way back from a screen a page's rows lead to (Flags, Day). */
+.rf-back {
+  align-self: flex-start;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--rf-hairline);
+  border-radius: 3px;
+  background: var(--rf-raised);
+  color: var(--rf-phosphor);
+  font-family: var(--rf-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.rf-back:hover { background: var(--rf-machined); }
+.rf-back:focus-visible { outline: 2px solid var(--rf-plum-lit); outline-offset: 2px; }
+
 /* The Settings readout card says why it is empty while the readout steps aside
    for a lost link. */
 #settings-readout:not(.hidden) + .rf-readout-none { display: none; }
@@ -5079,6 +4812,19 @@ html.rail-right #nav-rail .nav-item.has-request:not(.btn-active)::after { right:
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.rf-safe-add {
+  grid-column: 1 / -1;
+  min-height: 44px;
+  border: 1px dashed var(--rf-hairline);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--rf-muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+.rf-safe-add:hover:not(:disabled) { background: var(--rf-raised); color: var(--rf-text); }
+.rf-safe-add:disabled { opacity: 0.4; cursor: default; }
+.rf-safe-add:focus-visible { outline: 2px solid var(--rf-plum-lit); outline-offset: 2px; }
 .rf-safe-label {
   font-family: var(--rf-mono);
   font-size: 9px;

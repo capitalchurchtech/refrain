@@ -456,17 +456,13 @@ export async function mountLiveFlagSummary(summaryHost) {
 
 export function liveSummaryText(flags) {
   const open = (flags ?? []).filter((f) => !f.resolved).length;
-  if (open === 0) return "No open flags.";
-  return `${open} open flag${open === 1 ? "" : "s"}.`;
+  return open === 0 ? "None open" : `${open} to fix`;
 }
 
+/** Now's Flags row: the name, where it stands, and a way in. */
 function renderLiveSummary(host, flags) {
   if (!host) return;
-  host.innerHTML = `
-    <div class="flex items-center gap-2 text-sm">
-      <span class="opacity-70 slide-flag-live-summary">${escapeHtml(liveSummaryText(flags))}</span>
-      <a href="#slide-flags" class="link text-sm">Flag or review</a>
-    </div>`;
+  host.innerHTML = `<a class="rf-navrow" href="#service/slide-flags"><span class="rf-navrow-name">Flags</span><span class="rf-navrow-state slide-flag-live-summary">${escapeHtml(liveSummaryText(flags))}</span></a>`;
 }
 
 /**

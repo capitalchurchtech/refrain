@@ -16,5 +16,5 @@ export default {
   component: null,
   // Switchable on Settings > Features (server/features.js); off hides its
   // screen and its routes answer "switched off".
-  feature: { default: true, label: "Flags", description: "Flag a slide that needs fixing, from the booth or a phone, and see what was flagged today.", apiPrefixes: ["/api/slide-flags"] },
+  feature: { default: true, label: "Flags", summary: "Mark slides to fix", description: "Flag a slide that needs fixing, from the booth or a phone, and see what was flagged today.", apiPrefixes: ["/api/slide-flags"] },
 };
