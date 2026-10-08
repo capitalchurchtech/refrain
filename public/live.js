@@ -209,7 +209,7 @@ export function initLive() {
             <select id="live-message-select" class="select select-bordered select-sm hidden" aria-label="Which message"></select>
             <div class="rf-poster-row">
               <div id="live-message-fields" class="rf-poster-fields"></div>
-              <button id="live-message-post" class="btn btn-brand rf-poster-btn" title="Put this message on the screens">Post</button>
+              <button id="live-message-post" class="btn btn-outline rf-poster-btn" title="Put this message on the screens">Post</button>
               <button id="live-message-clear" class="btn btn-outline rf-poster-btn" title="Takes this message off the screens. Nothing else is cleared.">Clear</button>
             </div>
           </div>
@@ -384,6 +384,13 @@ export function initLive() {
         </label>`
         )
         .join("");
+      // Post is as quiet as Clear until there is something to post (the feature
+      // is used rarely), then it goes plum.
+      const filled = () => {
+        poster.dataset.filled = [...fields.querySelectorAll(".live-message-token")].some((i) => i.value.trim()) ? "1" : "";
+      };
+      fields.querySelectorAll(".live-message-token").forEach((i) => i.addEventListener("input", filled));
+      filled();
     }
 
     select.addEventListener("change", renderFields);
@@ -416,7 +423,9 @@ export function initLive() {
     // and says when one is on screen, since a closed fold would hide that.
     const list = plain ?? [];
     const onScreen = list.filter((m) => m.active).length;
-    document.getElementById("live-message-plain-wrap")?.classList.toggle("hidden", !list.length);
+    // Kept hidden for now (owner, 2026-10-08): the rows still build, so showing
+    // the fold again is this one line.
+    document.getElementById("live-message-plain-wrap")?.classList.toggle("hidden", true);
     const count = document.getElementById("live-message-plain-count");
     if (count) count.textContent = list.length ? `(${list.length})${onScreen ? ` · ${onScreen} on screen` : ""}` : "";
     host.querySelectorAll("[data-message-show]").forEach((btn) =>
