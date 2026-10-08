@@ -432,8 +432,7 @@ async function paintMessages() {
         <div class="msg-name">${esc(m.name)}${m.active ? ` <span class="muted">(on screen)</span>` : ""}</div>
         ${m.fields
           .map(
-            (f) => `<label>${esc(f)}</label><input data-field="${esc(f)}" maxlength="60" autocapitalize="characters" autocomplete="off" value="${esc(typed.get(`${m.id}\u0000${f}`) ?? "")}" />
-            ${(m.recent?.[f] ?? []).length ? `<div class="chips">${m.recent[f].map((v) => `<button type="button" class="chip" data-fill="${esc(f)}" data-value="${esc(v)}">${esc(v)}</button>`).join("")}</div>` : ""}`
+            (f) => `<label>${esc(f)}</label><input data-field="${esc(f)}" maxlength="60" autocapitalize="characters" autocomplete="off" value="${esc(typed.get(`${m.id}\u0000${f}`) ?? "")}" />`
           )
           .join("")}
         <div class="msg-keys">
@@ -445,11 +444,6 @@ async function paintMessages() {
     .join("");
   list.querySelectorAll("[data-msg]").forEach((box) => {
     const id = box.dataset.msg;
-    box.querySelectorAll("[data-fill]").forEach((c) =>
-      c.addEventListener("click", () => {
-        box.querySelector(`input[data-field="${CSS.escape(c.dataset.fill)}"]`).value = c.dataset.value;
-      })
-    );
     box.querySelectorAll("input").forEach((i) => i.addEventListener("input", () => (i.value = i.value.toUpperCase())));
     const values = () => [...box.querySelectorAll("input[data-field]")].map((i) => ({ name: i.dataset.field, text: i.value }));
     box.querySelector("[data-post]").addEventListener("click", (e) => press(e.currentTarget, { kind: "message", messageId: id, values: values() }));

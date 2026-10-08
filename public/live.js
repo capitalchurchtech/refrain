@@ -212,7 +212,6 @@ export function initLive() {
               <button id="live-message-post" class="btn btn-brand rf-poster-btn" title="Put this message on the screens">Post</button>
               <button id="live-message-clear" class="btn btn-outline rf-poster-btn" title="Takes this message off the screens. Nothing else is cleared.">Clear</button>
             </div>
-            <div id="live-message-recents" class="flex flex-wrap gap-1 mt-2"></div>
           </div>
           <!-- Messages with no fill-in field (countdowns): Show and Take down,
                with what each says and whether it's up. Folded, closed, under
@@ -307,8 +306,7 @@ export function initLive() {
       paintSafeSlides();
     });
     try {
-      const { looks, macros, messages, messageRecent: recent, currentLook, features = {} } = await fetch("/api/live/controls").then((r) => r.json());
-      messageRecent = recent ?? {};
+      const { looks, macros, messages, currentLook, features = {} } = await fetch("/api/live/controls").then((r) => r.json());
       // Switched off on Settings › Features: the section isn't shown at all.
       // Looks and Macros hide by themselves with nothing to show; the stage
       // card is part of Messages.
@@ -368,7 +366,6 @@ export function initLive() {
     function renderFields() {
       const m = selected();
       const tokens = m.tokens.filter((t) => t.kind === "text");
-      const recents = document.getElementById("live-message-recents");
       fields.innerHTML = tokens
         .map(
           (t) => `
@@ -378,20 +375,6 @@ export function initLive() {
         </label>`
         )
         .join("");
-      // Recent values fill the field; they never post. Posting stays the one
-      // deliberate press, so a mis-tap on an old code costs nothing.
-      recents.innerHTML = tokens
-        .flatMap((t) => (messageRecent[m.id]?.[t.name] ?? []).map((v) => `<button type="button" class="btn btn-chip live-message-recent" data-token="${escapeHtml(t.name)}" data-value="${escapeHtml(v)}">${escapeHtml(v)}</button>`))
-        .join("");
-      recents.querySelectorAll(".live-message-recent").forEach((chip) =>
-        chip.addEventListener("click", () => {
-          const input = [...fields.querySelectorAll(".live-message-token")].find((i) => i.dataset.token === chip.dataset.token);
-          if (input) {
-            input.value = chip.dataset.value;
-            input.focus();
-          }
-        })
-      );
     }
 
     select.addEventListener("change", renderFields);
@@ -402,9 +385,6 @@ export function initLive() {
       const values = [...fields.querySelectorAll(".live-message-token")].map((inp) => ({ name: inp.dataset.token, text: inp.value }));
       const answer = await fire(postBtn, "/api/live/message", { id: m.id, values }, "Post");
       if (answer) {
-        // The recents the server just saved, for next time. The fields aren't
-        // re-rendered under the operator's hands.
-        if (answer.recent) messageRecent = { ...messageRecent, [m.id]: answer.recent };
         setStatus(`On screen: ${m.name}.`);
       }
     });
@@ -461,7 +441,6 @@ export function initLive() {
     }
   }
 
-  let messageRecent = {};
   let lookCount = 0;
 
   /**

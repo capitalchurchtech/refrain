@@ -104,11 +104,19 @@ export function initSpellcheck() {
       // Protect ProPresenter: a scan reads every song in the playlist from
       // ProPresenter, so it's switched off, and says so before anyone presses.
       if (protectedReason) {
-        document.getElementById("spellcheck-status").textContent = protectedReason;
         const btn = document.getElementById("spellcheck-scan-btn");
         if (btn) {
           btn.disabled = true;
           btn.dataset.protected = "1";
+          btn.title = "Protect ProPresenter is on";
+        }
+        // Said beside the button, in place of "Choose a playlist first": that
+        // line was shown here with a playlist already chosen, which read as a
+        // button that was broken.
+        const reason = document.getElementById("spellcheck-scan-reason");
+        if (reason) {
+          reason.classList.remove("hidden");
+          reason.innerHTML = `Protect ProPresenter is on, so Refrain won't read your songs to check them. <a href="#settings/search" class="link">Turn it off in Settings › Search › Advanced</a>, then come back.`;
         }
       }
       // A 502 is ProPresenter not answering, not an empty library. Saying
@@ -144,7 +152,8 @@ export function initSpellcheck() {
       // The reason shows beside the control, not only in a tooltip: a title on
       // a disabled button is unreachable on a touchscreen, which is half the
       // machines this runs on.
-      scanBtn.disabled = !select.value || scanBtn.dataset.protected === "1";
+      if (scanBtn.dataset.protected === "1") return; // its own reason is already showing
+      scanBtn.disabled = !select.value;
       scanBtn.title = scanBtn.disabled ? "Choose a playlist first" : "";
       const reason = document.getElementById("spellcheck-scan-reason");
       if (reason) {
@@ -175,7 +184,7 @@ export function initSpellcheck() {
       if (select.value !== nearest.playlist.id) return;
       select.dispatchEvent(new Event("change"));
       const note = document.getElementById("spellcheck-scan-reason");
-      if (note) {
+      if (note && scanBtn.dataset.protected !== "1") {
         note.classList.remove("hidden");
         note.textContent = `Today's service: ${nearest.name}.`;
       }
@@ -210,7 +219,8 @@ export function initSpellcheck() {
     } catch (err) {
       statusEl.textContent = `Couldn't check: ${err.message}. Try again.`;
     } finally {
-      scanBtn.disabled = false;
+      // Never re-enable what Protect ProPresenter holds off.
+      scanBtn.disabled = scanBtn.dataset.protected === "1";
     }
   }
 

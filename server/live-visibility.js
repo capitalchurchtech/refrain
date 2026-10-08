@@ -31,25 +31,3 @@ export function setHidden(list, id, hidden) {
   if (!isControlId(id)) return current;
   return hidden ? [...new Set([...current, id])] : current.filter((x) => x !== id);
 }
-
-/**
- * The last few values posted into each message field, newest first, so a
- * pager code used earlier is a tap instead of typing it again (handoff §39e).
- * Kept in config.json per machine: `liveModule.messageRecent`, as
- * `{ [messageId]: { [fieldName]: [values] } }`. Nothing leaves the machine.
- */
-export const RECENT_PER_FIELD = 5;
-
-export function rememberValues(recent, messageId, values) {
-  const out = typeof recent === "object" && recent ? { ...recent } : {};
-  if (!isControlId(messageId)) return out;
-  const fields = { ...(out[messageId] ?? {}) };
-  for (const v of values ?? []) {
-    const name = String(v?.name ?? "").slice(0, 60);
-    const text = String(v?.text ?? "").trim().slice(0, 120);
-    if (!name || !text) continue;
-    fields[name] = [text, ...(fields[name] ?? []).filter((x) => x !== text)].slice(0, RECENT_PER_FIELD);
-  }
-  out[messageId] = fields;
-  return out;
-}

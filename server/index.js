@@ -116,7 +116,7 @@ import { createThumbStore, slideKey as pictureKey } from "./thumb-store.js";
 import { readFingerprint } from "./index-fingerprint.js";
 import { envEntries, applyEnvEdits, saveEnvFile, readText as readEnvText } from "./env-file.js";
 import { crossSiteRefused } from "./request-guard.js";
-import { markHidden, setHidden, isControlId, rememberValues, hiddenIds } from "./live-visibility.js";
+import { markHidden, setHidden, isControlId, hiddenIds } from "./live-visibility.js";
 import { safeSlides, addSafeSlide, removeSafeSlide, renameSafeSlide, moveSafeSlide } from "./safe-slides.js";
 import { stageMessages, addStageMessage, removeStageMessage, editStageMessage, moveStageMessage, cleanStageText, messageFieldValue } from "./stage-messages.js";
 import { layoutThemes, themesInDeck, themeReport } from "./theme-report.js";
@@ -1649,11 +1649,10 @@ function startRemoteListener() {
     stage: async () => ({ presets: stagePresets(), current: await readStage() }),
     // Messages a phone can fill in: those with a text field (a pager code).
     messages: async () => {
-      const recent = config.liveModule?.messageRecent ?? {};
       const hidden = new Set(hiddenIds(config.liveModule?.hiddenMessages));
       return (await client.getMessages())
         .filter((m) => !hidden.has(m.id))
-        .map((m) => ({ id: m.id, name: m.name, active: m.active, fields: m.tokens.filter((t) => t.kind === "text").map((t) => t.name), recent: recent[m.id] ?? {} }))
+        .map((m) => ({ id: m.id, name: m.name, active: m.active, fields: m.tokens.filter((t) => t.kind === "text").map((t) => t.name) }))
         .filter((m) => m.fields.length);
     },
     // An approved phone's confirmed press: an alert, never a slide (owner,
@@ -3796,7 +3795,7 @@ app.get("/api/live/controls", async (_req, res) => {
     on.messages ? client.getMessages().catch(() => []) : [],
     on.looks ? client.getCurrentLook().catch(() => null) : null,
   ]);
-  res.json({ features: on, looks, currentLook, macros: markHidden(macros, config.liveModule?.hiddenMacros), messages: markHidden(messages, config.liveModule?.hiddenMessages), messageRecent: config.liveModule?.messageRecent ?? {} });
+  res.json({ features: on, looks, currentLook, macros: markHidden(macros, config.liveModule?.hiddenMacros), messages: markHidden(messages, config.liveModule?.hiddenMessages) });
 });
 
 /** Just the current Look, for Live to refresh after a Look or a macro. */
@@ -4150,30 +4149,21 @@ app.post("/api/live/macro", async (req, res) => {
 
 /**
  * Posts a ProPresenter message with its fields filled, from Now or a phone.
- * Field values are upper-cased (owner, 2026-10-03: pager codes). Returns the
- * recent values for that message, or null if they couldn't be saved.
+ * Field values are upper-cased (owner, 2026-10-03: pager codes). Nothing is
+ * remembered: a code is random each time (owner, 2026-10-08), and keeping a
+ * list of them would only be a list of codes to tap by mistake.
  */
 async function postMessage(id, values) {
   const filled = (Array.isArray(values) ? values : []).map((v) => ({ name: String(v?.name ?? ""), text: messageFieldValue(v?.text) }));
   await client.triggerMessage(id, filled);
-  // Remembered only after ProPresenter accepted it. The message is already on
-  // the screens, so a failed save of the recents is reported and logged,
-  // never turned into "the post failed".
-  try {
-    const saved = await updateLiveModule((m) => ({ ...m, messageRecent: rememberValues(m.messageRecent, id, filled) }));
-    return saved.messageRecent?.[id] ?? {};
-  } catch (err) {
-    console.error("Couldn't save recent message values:", err.message);
-    return null;
-  }
 }
 
 app.post("/api/live/message", async (req, res) => {
   const { id, values } = req.body ?? {};
   if (!id) return res.status(400).json({ error: "id is required" });
   try {
-    const recent = await postMessage(id, values);
-    res.json({ ok: true, recent, recentSaved: recent !== null });
+    await postMessage(id, values);
+    res.json({ ok: true });
   } catch (err) {
     res.status(502).json({ error: err.message });
   }
@@ -6276,6 +6266,11 @@ const server = app.listen(port, "127.0.0.1", async () => {
    * So: say what this is, say whether ProPresenter is reachable, and if it is
    * not, say the one thing that is nearly always wrong.
    */
+  // Codes remembered by an earlier version are deleted: they were kept per
+  // machine and are never shown again.
+  if (config.liveModule?.messageRecent) {
+    updateLiveModule(({ messageRecent: _dropped, ...rest }) => rest).catch((err) => console.error("Couldn't clear old message codes:", err.message));
+  }
   console.log("");
   console.log(`  Refrain is running.  Open  http://localhost:${port}`);
   console.log("  Leave this window open while you use it. Closing it stops Refrain.");

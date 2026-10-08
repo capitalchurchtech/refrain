@@ -228,7 +228,7 @@ function startControl({ pictures = false } = {}) {
     pictures: () => pictures,
     currentSlides: () => ({ presentationId: "H", presentationName: "Hymn", currentIndex: 2, slides: [0, 1, 2, 3, 4].map((i) => ({ slideIndex: i, text: `line ${i + 1}` })) }),
     stage: async () => ({ presets: [{ id: "short", text: "Cut short, pressing for time" }], current: "" }),
-    messages: async () => [{ id: "PAGER", name: "Kids pager", active: false, fields: ["Code"], recent: {} }],
+    messages: async () => [{ id: "PAGER", name: "Kids pager", active: false, fields: ["Code"] }],
     noteActivity: () => activity.count++,
     control: async (action, deviceId) => (done.push({ ...action, deviceId }), { label: action.label }),
   });
