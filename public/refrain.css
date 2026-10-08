@@ -5073,8 +5073,8 @@ html:is([data-theme="dark"], .blackroom) [data-settings-subrow][data-settings-su
 /* Stage message rows as drawn: centred text, a dashed Edit row, and the custom
    field and Show on one line at the same 44px. */
 #view-live .rf-stage-clear { margin: 6px 0 8px; }
-#view-live .rf-stage-row { justify-content: center; text-align: center; }
-#view-live .rf-stage-text { text-align: center; }
+#view-live .rf-stage-row { justify-content: flex-start; text-align: left; }
+#view-live .rf-stage-text { text-align: left; }
 html:is([data-theme="dark"], .blackroom) #view-live#view-live .rf-stage-edit { background: transparent; box-shadow: none; }
 #view-live .rf-stage-custom .input { font-size: 13px; padding-inline: 10px; }
 #view-live .rf-stage-custom .btn { width: 60px; padding-inline: 0; }
@@ -5177,11 +5177,12 @@ html.stage-editing #view-live > div > :not(#live-stage-wrap) { display: none; }
 .rf-erow-x:hover { color: var(--rf-text); }
 #live-stage-add.rf-stage-edit { margin-top: 8px; }
 
-/* The childcare code row as drawn: a 112px code field in big spaced mono, Post
-   taking the rest of the line in plum, Clear 60px beside it. */
-.rf-poster-row { grid-template-columns: auto minmax(0, 1fr) 60px; }
+/* The childcare code row: the code field takes the line in big spaced mono, Post
+   and Clear are 60px each and equally quiet, and Post goes plum once there is a
+   code in the box (owner, 2026-10-08: used infrequently). */
+.rf-poster-row { grid-template-columns: minmax(0, 1fr) 60px 60px; }
 #view-live .rf-poster-field .input {
-  width: 112px;
+  width: 100%;
   padding: 0 0 0 0.28em;
   font-size: 20px;
   font-weight: 500;
@@ -5189,7 +5190,7 @@ html.stage-editing #view-live > div > :not(#live-stage-wrap) { display: none; }
   text-align: center;
 }
 #view-live#view-live .rf-poster-btn { padding-inline: 0; }
-html:is([data-theme="dark"], .blackroom) #view-live#view-live #live-message-post {
+html:is([data-theme="dark"], .blackroom) #view-live#view-live #live-message-poster[data-filled="1"] #live-message-post {
   background: linear-gradient(180deg, #7A44C4, #5B2FA0);
   border: 1px solid #8B5AD6;
   color: #fff;
