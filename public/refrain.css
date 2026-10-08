@@ -789,9 +789,9 @@ html.blackroom #results:has(.go-live-btn:focus-visible) .go-live-btn.rf-armed:no
  * THEME: DARK were ellipsising at 128 and a truncated legend is not a legend.
  * Still 80px narrower than the 224px this replaced.
  */
-#nav-rail.w-14 { width: 3.5rem; }
+#nav-rail.w-12 { width: 3rem; }
 
-#main-content.ml-14 { margin-left: 3.5rem; }
+#main-content.ml-12 { margin-left: 3rem; }
 
 /* Same class of bug, smaller blast radius: image-crop.js toggles these from JS
    to make the config fields inert while the module is off. Without a static
@@ -3535,7 +3535,7 @@ html.rail-right #nav-rail {
   left: auto;
   right: 0;
 }
-html.rail-right #main-content.ml-14 { margin-left: 0; margin-right: 3.5rem; }
+html.rail-right #main-content.ml-12 { margin-left: 0; margin-right: 3rem; }
 
 html.rail-right[data-theme="dark"] #nav-rail,
 html.rail-right.blackroom #nav-rail {
@@ -4853,3 +4853,229 @@ html.feature-off-slide-flags #live-flag-summary {
 .rf-feature-row:first-of-type {
   border-top-width: 0;
 }
+
+/* ============================================================
+   THE RAIL, EXACTLY AS DRAWN (owner, 2026-10-08: "match the UIs exactly")
+
+   48px wide (3rem, so `w-12` and `ml-12` say what they mean), keys 48px tall,
+   flat, one hairline under each; the latched key is raised (a lighter ground
+   with an inset shadow) beside the travelling edge, and a hovered key lights
+   its icon. The earlier machined keys (a bordered gradient button per key,
+   a ring on Search) are overridden here, in one place, at (2,2,1): the old
+   rules are theme-scoped at up to (1,5,1) and read correctly while losing.
+   Assert computed values when changing any of it, not the stylesheet.
+
+   Order: the keys, then History (a flyout, not a screen), then Settings at the
+   foot. `#nav-items` and the two foot wrappers are `display: contents` so the
+   keys, History and Settings are one column and `order` can place them.
+   ============================================================ */
+#nav-items,
+#rail-foot-wrap,
+#rail-foot { display: contents; }
+#nav-items .rf-group-break { display: none; }
+#history-key { order: 50; }
+#nav-items .nav-item[data-id="health"] { order: 99; margin-top: auto; }
+
+html:is([data-theme="dark"], .blackroom) #nav-rail#nav-rail {
+  background: linear-gradient(180deg, #0F0C15, #141019);
+  box-shadow: none;
+  padding: 0;
+}
+html.rail-right:is([data-theme="dark"], .blackroom) #nav-rail#nav-rail { border-left: 1px solid #2A2338; }
+html:not(.rail-right):is([data-theme="dark"], .blackroom) #nav-rail#nav-rail { border-right: 1px solid #2A2338; }
+
+/* The four lamps: two by two in one 48px cell. */
+html:is([data-theme="dark"], .blackroom) #nav-rail #status-cluster {
+  box-sizing: border-box;
+  height: 48px;
+  margin: 0;
+  padding: 6px 4px;
+  gap: 2px;
+  background: none;
+  box-shadow: none;
+  border-bottom: 1px solid #1B1626;
+}
+html:is([data-theme="dark"], .blackroom) #nav-rail .rf-lamp { width: 20px; height: 20px; }
+
+html:is([data-theme="dark"], .blackroom) #nav-rail:is(#nav-rail) :is(#nav-items .nav-item, #rail-foot #history-key) {
+  display: grid;
+  place-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  height: 48px;
+  min-height: 48px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid #1B1626;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--rf-muted);
+  transition: background 110ms ease-out, color 110ms ease-out, box-shadow 110ms ease-out, transform 50ms ease-out;
+}
+html:is([data-theme="dark"], .blackroom) #nav-rail:is(#nav-rail) :is(#nav-items .nav-item, #rail-foot #history-key) svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 1.7;
+  transition: filter 110ms ease-out;
+}
+html:is([data-theme="dark"], .blackroom) #nav-rail:is(#nav-rail) :is(#nav-items .nav-item, #rail-foot #history-key):is(:hover, :focus-visible) {
+  color: var(--rf-text);
+  background: #1A1524;
+  box-shadow: inset 0 1px 0 rgba(255, 240, 235, 0.10);
+}
+html:is([data-theme="dark"], .blackroom) #nav-rail:is(#nav-rail) :is(#nav-items .nav-item, #rail-foot #history-key):active {
+  transform: translateY(1px);
+  background: #0D0A13;
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.7);
+}
+html:is([data-theme="dark"], .blackroom) #nav-rail:is(#nav-rail) #nav-items .nav-item.btn-active,
+html:is([data-theme="dark"], .blackroom) #nav-rail:is(#nav-rail) #nav-items .nav-item.btn-active:is(:hover, :focus-visible, :active) {
+  color: var(--rf-text);
+  background: #181422;
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.6);
+}
+html:is([data-theme="dark"], .blackroom) #nav-rail:is(#nav-rail) #nav-items .nav-item.btn-active:active { transform: translateY(1px); }
+html:is([data-theme="dark"], .blackroom) #nav-rail:is(#nav-rail) #rail-foot #history-key[aria-expanded="true"] { color: var(--rf-text); background: #181422; box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.6); }
+/* The staff-request dot sits at the key's top corner, the same 9px in. */
+html:is([data-theme="dark"], .blackroom) #nav-rail #nav-items .nav-item.has-request:not(.btn-active)::after { top: 9px; right: 9px; }
+html.rail-right:is([data-theme="dark"], .blackroom) #nav-rail #nav-items .nav-item.has-request:not(.btn-active)::after { left: auto; right: 9px; }
+html:is([data-theme="dark"], .blackroom) #nav-rail:is(#nav-rail) #nav-items .nav-item[data-id="health"] { margin-top: auto; }
+
+/* The search field as drawn: 44px, 14px type, a magnifier inside at the left. */
+.rf-sf .rf-field-clearable > .input.input-bordered {
+  height: 44px;
+  min-height: 44px;
+  font-size: 14px;
+  padding-left: 34px;
+  background-repeat: no-repeat;
+  background-position: 11px 50%;
+  background-size: 16px 16px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23A295AC' stroke-width='1.8' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E");
+}
+.rf-sf .rf-field-clearable > .input.input-bordered::placeholder { color: var(--rf-dim); }
+
+/* ============================================================
+   SEARCH RESULTS, EXACTLY AS DRAWN (owner, 2026-10-08)
+
+   A song is a card: name and its slide count, then each slide as chit, words
+   and the two actions. Go Live is the one lit action, the red-orange cap the
+   brief keeps for what goes on the screens; Show is the plain cap beside it.
+   The moving plum collar (`.rf-armed`) is gone: the design has no ring on
+   either. Selectors are stacked on `#results` twice so they outrank the
+   theme-scoped tier rules above (up to 1,4,0) and read the same in the
+   computed style as here.
+   ============================================================ */
+#results .rf-card {
+  background: var(--rf-raised);
+  border: 1px solid var(--rf-hairline);
+  border-radius: 5px;
+  margin-bottom: 8px;
+  min-width: 0;
+}
+#results .rf-card-body { padding: 10px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+#results .rf-card-hd { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+#results .rf-card-name { font-weight: 600; font-size: 14px; line-height: 1.25; min-width: 0; overflow-wrap: anywhere; }
+#results .rf-card-n { font-family: var(--rf-mono); font-weight: 500; font-size: 10px; line-height: 1; color: var(--rf-muted); white-space: nowrap; }
+#results .rf-card-slides { display: flex; flex-direction: column; gap: 8px; }
+#results .rf-card-slides > .rf-slide-row { gap: 6px; padding-top: 8px; border-top: 1px solid var(--rf-hairline); }
+#results .rf-slide-text { margin: 0; font-size: 14px; line-height: 1.4; white-space: pre-line; }
+
+html:is([data-theme="dark"], .blackroom) #results#results .rf-slide-acts .btn {
+  border: 1px solid #3A3150;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #2A2338, #1D1829);
+  box-shadow: inset 0 1px 0 rgba(255, 240, 235, 0.08);
+  color: var(--rf-text);
+  font-size: 13px;
+  font-weight: 600;
+  filter: none;
+}
+html:is([data-theme="dark"], .blackroom) #results#results .rf-slide-acts .go-live-btn {
+  background: linear-gradient(180deg, #E8431F, #B8300F);
+  border-color: #FF6A47;
+  color: #fff;
+}
+html:is([data-theme="dark"], .blackroom) #results#results .rf-slide-acts .btn:is(:hover, :focus-visible) { filter: brightness(1.12); }
+html:is([data-theme="dark"], .blackroom) #results#results .rf-slide-acts .btn:active { transform: translateY(1px); }
+
+/* The strip: "445 songs · updated 7:02" fills the line; Libraries and the
+   Flag icon are 28px caps at its end. */
+.rf-search-strip { min-height: 28px; flex-wrap: nowrap; gap: 8px; }
+.rf-search-strip-status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-wrap: nowrap; }
+.rf-search-strip .btn-chip { height: 28px; min-height: 28px; }
+#search-flag#search-flag .slide-flag-btn { box-sizing: border-box; width: 28px; height: 28px; min-height: 28px; padding: 0; justify-content: center; }
+#results .rf-card-slides > .rf-slide-row { border-radius: 0; }
+#search-flag > div { display: contents; }
+#search-flag .slide-flag-status:empty { display: none; }
+#search-flag#search-flag .slide-flag-btn svg { width: 12px; height: 12px; }
+#search-flag#search-flag .slide-flag-btn { gap: 0; }
+.rf-search-strip-status { display: block; }
+.rf-search-strip-status > * { display: inline; margin-right: 6px; }
+
+/* ============================================================
+   PAGE TITLES AND SETTINGS TABS, AS DRAWN (owner, 2026-10-08)
+
+   A page title is 17px of the wide display face; Settings' tabs are flat mono
+   caps with the plum underline on the one you are on, not a bank of keys.
+   ============================================================ */
+#main-content h1:not(.rf-visually-hidden) {
+  font-size: 17px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  margin-bottom: 8px;
+}
+html:is([data-theme="dark"], .blackroom) #settings-tabs#settings-tabs,
+html:is([data-theme="dark"], .blackroom) [data-settings-subrow][data-settings-subrow] { gap: 12px; flex-wrap: nowrap; margin-bottom: 0; }
+html:is([data-theme="dark"], .blackroom) #settings-tabs#settings-tabs .rf-tab,
+html:is([data-theme="dark"], .blackroom) [data-settings-subrow][data-settings-subrow] .rf-tab {
+  min-height: 28px;
+  padding: 0 0 6px;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--rf-muted);
+  font-family: var(--rf-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+html:is([data-theme="dark"], .blackroom) #settings-tabs#settings-tabs .rf-tab[aria-selected="true"],
+html:is([data-theme="dark"], .blackroom) [data-settings-subrow][data-settings-subrow] .rf-tab[aria-selected="true"] {
+  background: none;
+  color: var(--rf-text);
+  box-shadow: inset 0 -2px 0 var(--rf-plum);
+}
+html:is([data-theme="dark"], .blackroom) #settings-tabs#settings-tabs .rf-tab:hover,
+html:is([data-theme="dark"], .blackroom) [data-settings-subrow][data-settings-subrow] .rf-tab:hover { color: var(--rf-text); }
+#view-health > div.flex.flex-col { gap: 10px; }
+
+/* Stage message rows as drawn: centred text, a dashed Edit row, and the custom
+   field and Show on one line at the same 44px. */
+#view-live .rf-stage-clear { margin: 6px 0 8px; }
+#view-live .rf-stage-row { justify-content: center; text-align: center; }
+#view-live .rf-stage-text { text-align: center; }
+html:is([data-theme="dark"], .blackroom) #view-live#view-live .rf-stage-edit { background: transparent; box-shadow: none; }
+#view-live .rf-stage-custom .input { font-size: 13px; padding-inline: 10px; }
+#view-live .rf-stage-custom .btn { width: 60px; padding-inline: 0; }
+html:is([data-theme="dark"], .blackroom) #view-live#view-live .rf-stage-edit { border: 1px dashed #3A3150; color: var(--rf-muted); }
+html:is([data-theme="dark"], .blackroom) #view-live#view-live .rf-stage-custom .input {
+  border: 1px solid #3A3150;
+  border-radius: 4px;
+  background: #06050A;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.7);
+}
+.rf-cap { font-family: var(--rf-mono); font-weight: 500; font-size: 9px; line-height: 1.6; letter-spacing: 0.16em; text-transform: uppercase; color: var(--rf-dim); margin: 2px 0 10px; }
+
+/* Spell Check's one action: a full-width plum cap, 44px. */
+#view-spellcheck #spellcheck-scan-btn { height: 44px; min-height: 44px; }
+html:is([data-theme="dark"], .blackroom) #view-spellcheck#view-spellcheck #spellcheck-scan-btn:not(:disabled) {
+  background: linear-gradient(180deg, #7A44C4, #5B2FA0);
+  border: 1px solid #8B5AD6;
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 240, 235, 0.08);
+}
+html:is([data-theme="dark"], .blackroom) .rf-sf { background: #3A3150; }

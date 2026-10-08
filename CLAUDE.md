@@ -51,23 +51,23 @@ when the problem is timing.
 
 So: **any class applied from JS needs a static home in `refrain.css`.** The rail
 width and the matching content margin already do —
-`#nav-rail.w-36 { width: 9rem }` and `#main-content.ml-36 { margin-left: 9rem }`.
+`#nav-rail.w-12 { width: 3rem }` and `#main-content.ml-12 { margin-left: 3rem }`.
 Those rules look redundant next to the utility class; they are not. Do not
 "clean them up".
 
-All the JS-applied utilities have static homes: `w-14`, `w-36`, `ml-14`,
-`ml-36`, `opacity-50`, `pointer-events-none`, the key bank's
+All the JS-applied utilities have static homes: `w-12`, `ml-12`,
+`opacity-50`, `pointer-events-none`, the key bank's
 `lg:grid-cols-4` and `xl:grid-cols-5`, and Health's status strip
 `sm:grid-cols-2` and `lg:grid-cols-4`. Keep it that way. When you add a class
 from JS, add its rule here in the same change.
 
-The collapsed pair was `w-16`/`ml-16` until the rail narrowed to 3.5rem. If you
-change that width again, pick the Tailwind class whose name matches the value
-and rename all four references (both `classList.toggle` calls in `nav.js`, the
-two static homes, the two initial classes in `index.html`, the `.rf-group-label`
-selector, and the ultra-narrow media block). Redefining `w-16` to mean something
-other than 4rem would be worse than the rename: these names are only safe as
-conventions while they are still true.
+The rail is one fixed width now (3rem, 48px; it was 3.5rem as `w-14`/`ml-14`
+before the design match). If you change that width again, pick the Tailwind
+class whose name matches the value and rename every reference (the two static
+homes and the right-hand variant in `refrain.css`, and the two initial classes
+in `index.html`). Redefining `w-12` to mean something other than 3rem would be
+worse than the rename: these names are only safe as conventions while they are
+still true.
 
 The utility names are the convention rather than semantic hooks like `.pinned`.
 That is deliberate: the static homes work, and renaming would churn markup for

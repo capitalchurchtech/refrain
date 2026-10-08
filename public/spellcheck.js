@@ -52,10 +52,10 @@ export function initSpellcheck() {
         <div class="card bg-base-200 rf-hero">
           <div class="card-body p-3 gap-3">
             <div class="rf-field">
-              <label for="spellcheck-playlist">Playlist</label>
+              <label for="spellcheck-playlist">Checking</label>
               <select id="spellcheck-playlist" class="select select-bordered"><option value="">Loading...</option></select>
             </div>
-            <button id="spellcheck-scan-btn" class="btn btn-brand btn-sm w-fit" title="Choose a playlist first" disabled>Check spelling</button>
+            <button id="spellcheck-scan-btn" class="btn btn-brand w-full" title="Choose a playlist first" disabled>Check spelling</button>
             <p id="spellcheck-scan-reason" class="rf-hint">Choose a playlist first.</p>
             <p class="text-xs opacity-60">Also flags past dates and missing media. Fix them in ProPresenter.</p>
           </div>

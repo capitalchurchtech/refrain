@@ -233,11 +233,11 @@ export function initLive() {
         <div id="live-stage-wrap">
           <h2 class="rf-subhead">Stage message</h2>
           <button id="live-stage-clear" type="button" class="btn btn-outline rf-stage-clear" disabled title="Nothing is on stage">Clear stage message</button>
-          <p id="live-stage-now" class="rf-hint mb-2"></p>
+          <p id="live-stage-now" class="rf-visually-hidden" role="status"></p>
           <div id="live-stage" class="rf-stage-list"></div>
           <button id="live-stage-edit" type="button" class="btn btn-outline rf-stage-row rf-stage-edit" aria-pressed="false">Edit messages</button>
           <div class="rf-stage-custom">
-            <input id="live-stage-text" class="input input-bordered flex-1 min-w-0" maxlength="80" placeholder="Say something else" aria-label="Stage message to show" />
+            <input id="live-stage-text" class="input input-bordered flex-1 min-w-0" maxlength="80" placeholder="Say something else…" aria-label="Stage message to show" />
             <button id="live-stage-show" type="button" class="btn btn-outline">Show</button>
           </div>
         </div>
@@ -650,7 +650,7 @@ export function initLive() {
     clearBtn.disabled = !stageCurrent;
     clearBtn.classList.toggle("ready", Boolean(stageCurrent));
     clearBtn.title = stageCurrent ? "Takes the message off the stage screens" : "Nothing is on stage";
-    document.getElementById("live-stage-text").placeholder = editingStage ? "A new message to keep" : "Say something else";
+    document.getElementById("live-stage-text").placeholder = editingStage ? "A new message to keep" : "Say something else…";
     document.getElementById("live-stage-now").textContent = stageCurrent ? `On stage now: "${stageCurrent}"` : "Nothing on stage.";
     if (editingStage) {
       grid.innerHTML = stagePresets
