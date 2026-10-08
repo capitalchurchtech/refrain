@@ -118,7 +118,7 @@ import { envEntries, applyEnvEdits, saveEnvFile, readText as readEnvText } from 
 import { crossSiteRefused } from "./request-guard.js";
 import { markHidden, setHidden, isControlId, hiddenIds } from "./live-visibility.js";
 import { safeSlides, addSafeSlide, removeSafeSlide, renameSafeSlide, moveSafeSlide } from "./safe-slides.js";
-import { stageMessages, addStageMessage, removeStageMessage, editStageMessage, moveStageMessage, cleanStageText, messageFieldValue } from "./stage-messages.js";
+import { stageMessages, addStageMessage, removeStageMessage, editStageMessage, moveStageMessage, placeStageMessage, cleanStageText, messageFieldValue } from "./stage-messages.js";
 import { layoutThemes, themesInDeck, themeReport } from "./theme-report.js";
 import { createRemoteApp, pushRecent, serviceProgress, pinFailureGuard } from "./remote.js";
 import { dailyPin, newSecret, endOfDay } from "./remote-auth.js";
@@ -4400,15 +4400,16 @@ app.post("/api/live/stage-messages", async (req, res) => {
 
 /** Edits, moves or removes one preset. */
 app.post("/api/live/stage-messages/:id", async (req, res) => {
-  const { action, text, dir } = req.body ?? {};
-  if (!["remove", "edit", "move"].includes(action)) return res.status(400).json({ error: 'action must be "remove", "edit" or "move"' });
+  const { action, text, dir, to } = req.body ?? {};
+  if (!["remove", "edit", "move", "place"].includes(action)) return res.status(400).json({ error: 'action must be "remove", "edit", "move" or "place"' });
+  if (action === "place" && !Number.isInteger(to)) return res.status(400).json({ error: "to must be a position" });
   if (action === "edit" && typeof text !== "string") return res.status(400).json({ error: "text must be the new wording" });
   if (action === "move" && ![-1, 1].includes(Number(dir))) return res.status(400).json({ error: "dir must be -1 or 1" });
   const saved = await saveLiveModule(res, (m) => {
     const current = stageMessages(m.stageMessages);
     if (!current.some((x) => x.id === req.params.id)) throw refuse(404, "That message isn't there any more.");
     const list =
-      action === "remove" ? removeStageMessage(current, req.params.id) : action === "edit" ? editStageMessage(current, req.params.id, text) : moveStageMessage(current, req.params.id, Number(dir));
+      action === "remove" ? removeStageMessage(current, req.params.id) : action === "edit" ? editStageMessage(current, req.params.id, text) : action === "place" ? placeStageMessage(current, req.params.id, to) : moveStageMessage(current, req.params.id, Number(dir));
     return { ...m, stageMessages: list };
   });
   if (!saved) return;

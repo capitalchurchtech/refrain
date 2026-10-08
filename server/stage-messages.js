@@ -70,6 +70,16 @@ export function moveStageMessage(list, id, dir) {
   return out;
 }
 
+/** Puts one at an index (0 is first), for drag and drop. An index off either end is clamped. */
+export function placeStageMessage(list, id, to) {
+  const out = [...stageMessages(list)];
+  const i = out.findIndex((m) => m.id === id);
+  if (i < 0 || !Number.isInteger(to)) return out;
+  const [m] = out.splice(i, 1);
+  out.splice(Math.max(0, Math.min(to, out.length)), 0, m);
+  return out;
+}
+
 export const MESSAGE_FIELD_MAX = 60;
 
 /**

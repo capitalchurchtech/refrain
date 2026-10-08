@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { stageMessages, addStageMessage, removeStageMessage, editStageMessage, moveStageMessage, cleanStageText, messageFieldValue, DEFAULT_STAGE_MESSAGES, MAX_STAGE_MESSAGES, STAGE_TEXT_MAX } from "../server/stage-messages.js";
+import { stageMessages, addStageMessage, removeStageMessage, editStageMessage, moveStageMessage, placeStageMessage, cleanStageText, messageFieldValue, DEFAULT_STAGE_MESSAGES, MAX_STAGE_MESSAGES, STAGE_TEXT_MAX } from "../server/stage-messages.js";
 
 test("a church that never saved any gets the three defaults; an emptied list stays empty", () => {
   assert.deepEqual(stageMessages(undefined).map((m) => m.text), DEFAULT_STAGE_MESSAGES.map((m) => m.text));
@@ -40,4 +40,14 @@ test("only text is a stage message: a number or a list is refused, by add and by
   assert.equal(addStageMessage([], 9).error, "Type the message first.");
   const list = [{ id: "a", text: "A" }];
   assert.deepEqual(editStageMessage(list, "a", 9), list, "an edit to a non-text keeps the old wording");
+});
+
+test("placeStageMessage drops one at an index, clamped, and ignores what it does not know", () => {
+  const list = [{ id: "a", text: "A" }, { id: "b", text: "B" }, { id: "c", text: "C" }];
+  assert.deepEqual(placeStageMessage(list, "c", 0).map((m) => m.id), ["c", "a", "b"]);
+  assert.deepEqual(placeStageMessage(list, "a", 2).map((m) => m.id), ["b", "c", "a"]);
+  assert.deepEqual(placeStageMessage(list, "a", 99).map((m) => m.id), ["b", "c", "a"]);
+  assert.deepEqual(placeStageMessage(list, "a", -4).map((m) => m.id), ["a", "b", "c"]);
+  assert.deepEqual(placeStageMessage(list, "zz", 0).map((m) => m.id), ["a", "b", "c"]);
+  assert.deepEqual(placeStageMessage(list, "a", 1.5).map((m) => m.id), ["a", "b", "c"]);
 });

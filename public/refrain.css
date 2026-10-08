@@ -5134,3 +5134,64 @@ html.rail-right #nav-rail .nav-item.has-notice:not(.btn-active)::after { right: 
 .rf-index-notice span { flex: 1 1 12rem; min-width: 0; }
 #search-flag-status { margin: -4px 0 10px; font-size: 12px; line-height: 1.4; color: var(--rf-muted); }
 #search-flag-status.hidden { display: none; }
+
+/* ============================================================
+   EDIT MESSAGES, AS DRAWN (owner, 2026-10-08)
+
+   A state of its own: the page is the editor. `stage-editing` is on <html>
+   while it is open (live.js), so nothing else on Now, and no title above it,
+   competes with it, and nothing in it can put words on a monitor.
+   ============================================================ */
+html.stage-editing #service-head { display: none; }
+html.stage-editing #view-live > div > :not(#live-stage-wrap) { display: none; }
+.rf-editbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.rf-edit-title { margin: 0; font-family: var(--rf-display, inherit); font-weight: 800; font-size: 17px; line-height: 1; letter-spacing: 0.02em; text-transform: uppercase; }
+.rf-chipbtn {
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--rf-plum-deep, #5B2FA0);
+  border-radius: 3px;
+  background: #1B1428;
+  color: var(--rf-phosphor);
+  font-family: var(--rf-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.rf-chipbtn:focus-visible { outline: 2px solid var(--rf-plum-lit); outline-offset: 2px; }
+.rf-edit-rule { margin: 0 0 8px; font-size: 12px; color: var(--rf-muted); }
+.rf-edit-note { margin: 6px 0 0; font-size: 12px; color: var(--rf-fault, #E8A33A); min-height: 0; }
+.rf-edit-note:empty { display: none; }
+#live-stage.rf-stage-list { gap: 8px; }
+.rf-erow { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 6px 8px; background: var(--rf-raised); border: 1px solid var(--rf-hairline); border-radius: 4px; }
+.rf-erow:focus-within { border-color: var(--rf-plum); }
+.rf-erow-over { border-color: var(--rf-fault, #E8A33A); }
+.rf-erow-drag { opacity: 0.5; }
+.rf-erow-grab { flex: none; padding: 0 2px; border: 0; background: none; color: var(--rf-dim); font: 500 14px/1 var(--rf-mono); letter-spacing: -2px; cursor: grab; }
+.rf-erow-grab:focus-visible { outline: 2px solid var(--rf-plum-lit); outline-offset: 2px; }
+.rf-erow-text { flex: 1; min-width: 0; padding: 0; border: 0; background: none; color: var(--rf-text); font: 600 13px/1.25 inherit; outline: none; text-overflow: ellipsis; }
+.rf-erow-count { flex: none; font: 500 9px/1 var(--rf-mono); color: var(--rf-dim); }
+.rf-erow-over .rf-erow-count { color: var(--rf-fault, #E8A33A); }
+.rf-erow-x { flex: none; width: 28px; height: 28px; border: 0; background: none; color: var(--rf-muted); font-size: 16px; cursor: pointer; }
+.rf-erow-x:hover { color: var(--rf-text); }
+#live-stage-add.rf-stage-edit { margin-top: 8px; }
+
+/* The childcare code row as drawn: a 112px code field in big spaced mono, Post
+   taking the rest of the line in plum, Clear 60px beside it. */
+.rf-poster-row { grid-template-columns: auto minmax(0, 1fr) 60px; }
+#view-live .rf-poster-field .input {
+  width: 112px;
+  padding: 0 0 0 0.28em;
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: 0.28em;
+  text-align: center;
+}
+#view-live#view-live .rf-poster-btn { padding-inline: 0; }
+html:is([data-theme="dark"], .blackroom) #view-live#view-live #live-message-post {
+  background: linear-gradient(180deg, #7A44C4, #5B2FA0);
+  border: 1px solid #8B5AD6;
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 240, 235, 0.08);
+}
