@@ -59,7 +59,7 @@ export function initSearch({ prefs = {} } = {}) {
   const libraryFilterKeys = document.getElementById("library-filter-keys");
   const libraryFilterAll = document.getElementById("library-filter-all");
   const libraryFilterLabel = document.getElementById("library-filter-label");
-  // Opened with the chip while typing; with an empty box the panel is open anyway.
+  // Opened and closed only by the Libraries chip.
   let libraryPanelOpened = false;
 
   let debounceTimer = null;
@@ -168,15 +168,16 @@ export function initSearch({ prefs = {} } = {}) {
     libraryFilterAll.classList.toggle("hidden", on === all);
   }
 
-  /** Open while the box is empty, or when the chip opened it. */
+  /**
+   * The library keys sit behind the Libraries chip and open only when it is
+   * pressed (owner, 2026-10-08, as designed): never on their own, so an empty
+   * box is the field and the strip, nothing more.
+   */
   function syncLibraryPanel() {
     if (allLibraryFolders.length <= 1) return;
-    const empty = !queryInput.value.trim();
-    const open = empty || libraryPanelOpened;
-    libraryFilterPanel.classList.toggle("hidden", !open);
-    // The chip is only the way back to the panel while typing.
-    libraryFilterWrap.classList.toggle("hidden", empty);
-    libraryFilterToggle.setAttribute("aria-expanded", String(open));
+    libraryFilterWrap.classList.remove("hidden");
+    libraryFilterPanel.classList.toggle("hidden", !libraryPanelOpened);
+    libraryFilterToggle.setAttribute("aria-expanded", String(libraryPanelOpened));
   }
 
   function selectedFolders() {
@@ -400,6 +401,7 @@ export function initSearch({ prefs = {} } = {}) {
   function renderNoResults(query, searched) {
     lastSearched = searched ?? [];
     queryRing?.classList.add("quiet");
+    queryRing?.classList.remove("typing");
     resultsEl.innerHTML = `
       <div class="rf-nores">
         <p class="rf-nores-head">Nothing says &ldquo;${escapeHtml(query.trim())}&rdquo; in ${escapeHtml(searchedNames(searched))}.</p>
@@ -521,6 +523,7 @@ export function initSearch({ prefs = {} } = {}) {
       return;
     }
     queryRing?.classList.remove("quiet");
+    syncRing();
     const correctedNotice = corrected
       ? `<div class="rf-hint px-1 pb-2">No exact match. Showing <strong>${escapeHtml(corrected)}</strong>.</div>`
       : "";
@@ -762,25 +765,25 @@ export function initSearch({ prefs = {} } = {}) {
    */
   const SEARCH_DEBOUNCE_MS = 90;
 
-  // The ring around the field travels while keys are going in and settles about
-  // a second after the last one. Nothing animates at rest.
-  let ringTimer = null;
-  function wakeRing() {
-    queryRing?.classList.add("typing");
-    clearTimeout(ringTimer);
-    ringTimer = setTimeout(() => queryRing?.classList.remove("typing"), 900);
+  // The ring around the field travels the whole time there is a query in it and
+  // the field is focused (as in the design's Search panel, where it never
+  // settles while results are showing). It holds still when the field is empty,
+  // loses focus, or finds nothing: then the glow moves to Deep Search, the next
+  // thing to press. Nothing animates at rest.
+  function syncRing() {
+    const on = document.activeElement === queryInput && queryInput.value.trim() !== "" && !queryRing?.classList.contains("quiet");
+    queryRing?.classList.toggle("typing", on);
   }
-  queryInput.addEventListener("blur", () => {
-    clearTimeout(ringTimer);
-    queryRing?.classList.remove("typing");
-  });
+  queryInput.addEventListener("focus", syncRing);
+  queryInput.addEventListener("blur", () => queryRing?.classList.remove("typing"));
 
   queryInput.addEventListener("input", () => {
     clearTimeout(debounceTimer);
     syncClearButton();
     syncLibraryPanel();
     acknowledgeInput(queryInput.value);
-    wakeRing();
+    queryRing?.classList.remove("quiet"); // a new query: the last miss no longer applies
+    syncRing();
     debounceTimer = setTimeout(() => runSearch(queryInput.value), SEARCH_DEBOUNCE_MS);
   });
 
@@ -799,6 +802,7 @@ export function initSearch({ prefs = {} } = {}) {
     clearTimeout(debounceTimer);
     queryInput.value = "";
     queryRing?.classList.remove("quiet");
+    syncRing();
     syncClearButton();
     libraryPanelOpened = false;
     syncLibraryPanel();
