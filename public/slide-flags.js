@@ -66,21 +66,34 @@ async function capture(type) {
   return data;
 }
 
-export function mountFlagButton(host) {
+/**
+ * @param {HTMLElement} host the button's place
+ * @param {HTMLElement} [statusHost] where "Flagged ..." is said, when it should
+ *   not sit beside the button (Search's strip has no room for a sentence)
+ */
+export function mountFlagButton(host, statusHost = null) {
   if (!host) return;
   host.innerHTML = `
     <div class="flex items-center gap-2 flex-wrap">
       <button type="button" class="btn btn-chip slide-flag-btn" title="Flag a slide: mark the one on the screens to fix later. Nothing on the screens changes." aria-label="Flag a slide">
         ${drawnIcon("flag")} <span class="slide-flag-label rf-visually-hidden">Flag</span>
       </button>
-      <span class="slide-flag-status text-xs opacity-60" aria-live="polite"></span>
+      ${statusHost ? "" : '<span class="slide-flag-status text-xs opacity-60" aria-live="polite"></span>'}
     </div>`;
   if (window.lucide) window.lucide.createIcons();
 
   const btn = host.querySelector(".slide-flag-btn");
   const label = host.querySelector(".slide-flag-label");
-  const status = host.querySelector(".slide-flag-status");
+  const status = statusHost ?? host.querySelector(".slide-flag-status");
   let resetTimer = null;
+  let statusTimer = null;
+  // Said, then gone: a confirmation left on the screen reads as a fault later.
+  const say = (text) => {
+    status.textContent = text;
+    status.classList.toggle("hidden", !text);
+    clearTimeout(statusTimer);
+    if (statusHost && text) statusTimer = setTimeout(() => say(""), 6000);
+  };
 
   btn.addEventListener("click", async () => {
     btn.disabled = true;
@@ -89,10 +102,10 @@ export function mountFlagButton(host) {
     try {
       const data = await capture(null);
       label.textContent = "Flagged";
-      status.textContent = describeFlagSave(data);
+      say(describeFlagSave(data));
     } catch (err) {
       label.textContent = "Flag";
-      status.textContent = "";
+      say("");
       showFailure(err.message);
     } finally {
       btn.disabled = false;

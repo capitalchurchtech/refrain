@@ -357,6 +357,22 @@ export function initHealth() {
       orphanResults.innerHTML = renderOrphanResults(lastOrphanScan);
       wireOrphanResults();
     }
+    document.getElementById("settings-index-refresh")?.addEventListener("click", async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      btn.textContent = "Refreshing";
+      try {
+        // Tells the progress bar a run is starting, as the other Refresh presses do.
+        document.dispatchEvent(new CustomEvent("refrain:index-requested"));
+        const res = await fetch("/api/index/reindex-changed", { method: "POST" });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Refresh didn't run");
+        render();
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = "Refresh";
+        showFailure(`Refresh didn't run: ${err.message}`);
+      }
+    });
     document.getElementById("settings-shortcuts-btn")?.addEventListener("click", () => document.getElementById("nav-help-toggle")?.click());
     document.getElementById("health-open-phone")?.addEventListener("click", () => document.getElementById("nav-phone-toggle")?.click());
 
@@ -2757,16 +2773,23 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
   // only show one group at a time.
   // Each tab opens with its own name, one step below the page title.
   // The second row under More: Phones, Customize, Telemetry, Audit.
+  // The search index's own notice (old, or built without slide anchors), moved
+  // here from Search (owner, 2026-10-08): a dot on More and System says it is
+  // waiting. One line and, unless Refresh would be refused, the one press.
+  const indexNotice = health.index?.accuracy ?? health.index?.staleness ?? null;
+  const indexNoticeCard = indexNotice
+    ? `<div id="settings-index-notice" class="rf-index-notice" role="status"><span>${escapeHtml(indexNotice.message)}</span>${indexNotice.held ? "" : '<button type="button" id="settings-index-refresh" class="btn btn-chip">Refresh</button>'}</div>`
+    : "";
   const subRow = () =>
     `<div data-settings-subrow class="rf-tabs" role="tablist" aria-label="More settings" style="margin-bottom:0">${SETTINGS_TABS.filter(([t]) => SETTINGS_MORE.includes(t))
-      .map(([id, label, icon]) => `<button type="button" role="tab" aria-controls="settings-panel-${id}" class="rf-tab" data-settings-tab="${id}" aria-selected="false" tabindex="-1"><i data-lucide="${icon}" class="w-4 h-4 shrink-0"></i><span>${label}</span></button>`)
+      .map(([id, label, icon]) => `<button type="button" role="tab" aria-controls="settings-panel-${id}" class="rf-tab" data-settings-tab="${id}" aria-selected="false" tabindex="-1"><i data-lucide="${icon}" class="w-4 h-4 shrink-0"></i><span${id === "system" && indexNotice ? ' class="rf-tab-dot"' : ""}>${label}</span></button>`)
       .join("")}</div>`;
   const panel = (id, ...cards) =>
     `<div data-settings-panel="${id}" id="settings-panel-${id}" role="tabpanel" aria-label="${SETTINGS_TABS.find(([t]) => t === id)[1]}" class="flex flex-col gap-4">${SETTINGS_MORE.includes(id) ? subRow() : ""}<h2 class="rf-visually-hidden">${SETTINGS_TABS.find(([t]) => t === id)[1]}</h2>${cards.join("")}</div>`;
   return `
     <div class="flex flex-col gap-4">
       <div id="settings-tabs" class="rf-tabs" role="tablist" aria-label="Settings" style="margin-bottom:0">
-        ${SETTINGS_TOP.map(([id, label, icon], i) => `<button type="button" role="tab" id="settings-top-${id}" class="rf-tab" data-settings-top="${id}" aria-selected="false" tabindex="-1"><i data-lucide="${icon}" class="w-4 h-4 shrink-0"></i><span>${label}</span><kbd class="kbd kbd-xs tab-key" aria-hidden="true">${i + 1}</kbd></button>`).join("")}
+        ${SETTINGS_TOP.map(([id, label, icon], i) => `<button type="button" role="tab" id="settings-top-${id}" class="rf-tab" data-settings-top="${id}" aria-selected="false" tabindex="-1"><i data-lucide="${icon}" class="w-4 h-4 shrink-0"></i><span${id === "more" && indexNotice ? ' class="rf-tab-dot"' : ""}>${label}</span><kbd class="kbd kbd-xs tab-key" aria-hidden="true">${i + 1}</kbd></button>`).join("")}
       </div>
       ${panel("status", readoutCard, statusStrip)}
       ${
@@ -2778,7 +2801,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
       ${panel("phones", phoneCard, picturesCard)}
       ${panel("customize", displayCard, welcomeCard, autostartCard)}
       ${panel("telemetry", telemetryCard)}
-      ${panel("system", killCard, propresenterCard, updatesCard)}
+      ${panel("system", indexNoticeCard, killCard, propresenterCard, updatesCard)}
       ${panel("audit", duplicateNamesCard, preferredCard, themesCard, orphanedMediaCard)}
       <div class="text-xs opacity-50 text-center mt-2 flex flex-col items-center gap-1">
         <div>
