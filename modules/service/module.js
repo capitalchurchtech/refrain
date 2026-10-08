@@ -16,5 +16,5 @@ export default {
   component: null,
   // Switchable on Settings > Features (server/features.js); off hides its
   // screen and its routes answer "switched off".
-  feature: { default: true, label: "Service day", description: "The day's timeline of what went live, the pre-service checks, the checklist and End the day.", apiPrefixes: ["/api/service/"] },
+  feature: { default: true, label: "Service day", summary: "Timeline, checks, close-out", description: "The day's timeline of what went live, the pre-service checks, the checklist and End the day.", apiPrefixes: ["/api/service/"] },
 };

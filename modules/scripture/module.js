@@ -19,5 +19,5 @@ export default {
   component: null,
   // Switchable on Settings > Features (server/features.js); off hides its
   // screen and its routes answer "switched off".
-  feature: { default: false, label: "Scripture", description: "Splits a pasted passage into slides.", apiPrefixes: ["/api/scripture"] },
+  feature: { default: false, label: "Scripture", summary: "Split a passage into slides", description: "Splits a pasted passage into slides.", apiPrefixes: ["/api/scripture"] },
 };

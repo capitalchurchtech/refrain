@@ -14,5 +14,5 @@ export default {
   component: null, // TODO: LyricsAssistScreen component
   // Switchable on Settings > Features (server/features.js); off hides its
   // screen and its routes answer "switched off".
-  feature: { default: false, label: "Lyrics", description: "Finds lyrics online and splits pasted lyrics into slides.", apiPrefixes: ["/api/lyrics-assist"] },
+  feature: { default: false, label: "Lyrics", summary: "Find and split lyrics", description: "Finds lyrics online and splits pasted lyrics into slides.", apiPrefixes: ["/api/lyrics-assist"] },
 };

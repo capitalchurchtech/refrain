@@ -1,6 +1,6 @@
 /**
  * Nav rail (Section 13) — manual narrow/wide toggle, persisted in
- * config.json's navMode; below 600px an expanded rail shows as icons. Items are
+ * icons only, always (owner, 2026-10-07: the width never changes). Items are
  * driven by /api/modules (Section 17.11: nav renders from registered
  * modules, not hardcoded) plus the always-present core "Health" screen.
  *
@@ -25,16 +25,6 @@ const THEME_ICON = { system: "sun-moon", light: "sun", dark: "moon", blackroom: 
 // module leaves out (plugin-loader.js, moduleNav), so there are no defaults
 // here to disagree with it.
 
-// Named so a group break can say what it separates. Cold zone, and short
-// enough to survive the rail at silkscreen size.
-// "Booth" rather than "Service": the group now holds a key called Service,
-// and "Booth" and "Desk" are the two places the brief names (booth: during
-// a service; desk: before one).
-const GROUP_LABEL = {
-  service: "Booth",
-  desk: "Desk",
-};
-
 export function applyTheme(theme) {
   const blackroom = theme === "blackroom";
   // Blackroom rides on top of the dark theme (see index.html) via a
@@ -58,18 +48,15 @@ export function applyTheme(theme) {
  * second copy. Filled in by initNav.
  */
 export const display = {
-  get: () => ({ theme: null, navSide: "right", navMode: "full" }),
+  get: () => ({ theme: null, navSide: "right" }),
   setTheme: async () => {},
   setSide: async () => {},
-  setWidth: async () => {},
   openWelcome: () => {},
 };
 
 export async function initNav({ onNavigate, viewIds, modules: given = null }) {
   const rail = document.getElementById("nav-rail");
   const navItemsEl = document.getElementById("nav-items");
-  const pinToggle = document.getElementById("nav-pin-toggle");
-  const pinIcon = document.getElementById("nav-pin-icon");
   const sideToggle = document.getElementById("nav-side-toggle");
   const sideIcon = document.getElementById("nav-side-icon");
   const sideLabel = document.getElementById("nav-side-label");
@@ -101,7 +88,9 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
    * (`nav.page`); the server fills that in (plugin-loader.js, moduleNav).
    */
   const PAGES = [
-    { id: "service", navLabel: "Service", icon: "calendar-clock", nav: { group: "service", order: 10 } },
+    // `noTabs`: the page is its first screen, with the others reached by rows on
+    // it (Flags, Service day) and a way back, not a row of tabs (owner, 2026-10-07).
+    { id: "service", navLabel: "Service", icon: "calendar-clock", nav: { group: "service", order: 10 }, noTabs: true },
     { id: "prep", navLabel: "Prep", icon: "clipboard-list", nav: { group: "desk", order: 50 } },
   ];
   const tabsOf = (page) => moduleItems.filter((m) => m.nav.page === page);
@@ -192,70 +181,31 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
     return String(str ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   }
   let currentTheme = prefs.theme ?? "blackroom";
-  // Expanded by default until the user chooses: on a fresh install navPinned
-  // is unset (null), so a first-time user sees labels rather than a wall of
-  // unlabeled icons. Once they collapse or expand, that choice (true/false)
-  // is stored and respected.
-  // Three states now. An install that predates them has only navPinned, so map
-  // it rather than resetting someone's rail to the default.
-  let navMode =
-    prefs.navMode ?? (prefs.navPinned == null ? "full" : prefs.navPinned ? "full" : "icons");
-  if (!["full", "icons", "sliver"].includes(navMode)) navMode = "full";
   // Right unless the owner chose left: the rail sits under the hand that is
   // already on the mouse beside ProPresenter (owner, 2026-10-07).
   let navSide = prefs.navSide === "left" ? "left" : "right";
   document.documentElement.classList.toggle("rail-right", navSide === "right");
-  /**
-   * The sliver does not survive a reload; it comes back as icons.
-   *
-   * Every other preference here is a setting, and settings should persist. The
-   * sliver is closer to a gesture — you push the rail out of the way for the
-   * thing you are doing right now. Reloading is usually what someone does when
-   * they are unsure what state they are in, and coming back to a 20px strip is
-   * the least helpful answer to that.
-   *
-   * Only from sliver, and only in this session: the stored value is left alone,
-   * so the preference is not quietly rewritten on every page load, and one
-   * press of the toggle puts it back.
-   */
-  if (navMode === "sliver") navMode = "icons";
-
   function renderItems() {
     let prevGroup = null;
     navItemsEl.innerHTML = items
       .map((item, i) => {
         const group = item.nav.group;
-        // A group break is a scored groove in the panel plus, when pinned, a
-        // silkscreen label naming what follows. The label is the half that
-        // makes the division mean something; collapsed shows the groove only,
-        // because a collapsed rail is for someone who already knows the
-        // layout.
-        // Rendered unconditionally and hidden by CSS when the rail is
-        // collapsed. Nav items are built once, before the pin state is
-        // applied, so a `pinned` check here renders nothing.
-        const isBreak = Boolean(prevGroup) && group !== prevGroup;
-        // The first group gets its legend too, with no groove above it -- there
-        // is nothing to separate it from. Naming two of three groups would be
-        // its own kind of confusing.
-        const label = `<div class="rf-group-label">${GROUP_LABEL[group] ?? group}</div>`;
-        const divider = isBreak
-          ? `<div class="rf-group-break" aria-hidden="true"></div>${label}`
-          : i === 0
-            ? label
-            : "";
+        // A group break is a scored groove in the panel, nothing more: the rail
+        // is icons only, and each key names itself in the pop beside it
+        // (showTip), not in a legend.
+        const divider = Boolean(prevGroup) && group !== prevGroup ? `<div class="rf-group-break" aria-hidden="true"></div>` : "";
         prevGroup = group;
-        // The number key that jumps here (first nine items), revealed while
-        // Cmd/Ctrl is held via the .nav-key CSS.
+        // The number key that jumps here (first nine items); the pop shows it.
         const keyBadge = i < 9 ? `<kbd class="kbd kbd-xs nav-key" aria-hidden="true">${i + 1}</kbd>` : "";
+        // No `title`: the browser's own tooltip would sit beside the pop.
         return `${divider}
       <button
         class="nav-item btn btn-ghost btn-sm justify-start gap-3 px-2 relative ${item.id === railIdFor(activeId) ? "btn-active" : ""}"
         data-id="${item.id}"
-        title="${item.navLabel}"
         data-name="${item.navLabel}"
+        aria-label="${item.navLabel}"
       >
         <i data-lucide="${item.icon}" class="shrink-0 w-4 h-4"></i>
-        <span class="nav-label whitespace-nowrap ${effectiveNavMode() === "full" ? "" : "hidden"}">${item.navLabel}</span>
         ${keyBadge}
       </button>
 
@@ -313,6 +263,22 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
       const panel = document.getElementById(`view-${activeId}`);
       if (panel && panel.previousElementSibling !== head) panel.before(head);
       const tabs = tabsOf(p.id);
+      if (p.noTabs) {
+        const row = head.querySelector(".rf-tabs");
+        const first = tabs[0];
+        if (!first) {
+          row.classList.add("hidden");
+          continue;
+        }
+        const onFirst = activeId === first.id;
+        // Not a tab list any more: just a way back from the screens it leads to.
+        row.removeAttribute("role");
+        row.removeAttribute("aria-label");
+        row.classList.toggle("hidden", onFirst);
+        row.innerHTML = onFirst ? "" : `<button type="button" class="rf-back" data-id="${first.id}">\u2039 Back to ${first.navLabel}</button>`;
+        row.querySelector(".rf-back")?.addEventListener("click", () => setActive(`${p.id}/${first.id}`));
+        continue;
+      }
       for (const t of tabs) {
         const section = document.getElementById(`view-${t.id}`);
         section?.setAttribute("role", "tabpanel");
@@ -512,35 +478,6 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
   }
 
   /**
-   * Three rail widths, cycled by one button: full, icons, sliver.
-   *
-   * The sliver is for a docked booth window, where the rail is the only thing
-   * between Refrain's content and the edge of the screen. It keeps nothing but
-   * the toggle, and it keeps hover-to-peek — a 20px rail with no way back is a
-   * trap, which is why the pre-existing auto-sliver under 449px was gated to
-   * pointer devices.
-   *
-   * That gate matters here too: with no hover there is no peek, so on touch the
-   * cycle is two states rather than three. Losing a state is better than losing
-   * the way back.
-   */
-  /**
-   * Below 600px the expanded rail takes a third of the panel and clips the
-   * screen beside it, so a stored "full" shows as icons there. That is a
-   * display rule, not a preference change: nothing is saved, and widening the
-   * window brings the labels back. Pressing the toggle while narrow is taken
-   * at its word for the rest of the session.
-   */
-  const narrowQuery = window.matchMedia?.("(max-width: 599px)");
-  let expandedWhileNarrow = false;
-  const effectiveNavMode = () =>
-    navMode === "full" && narrowQuery?.matches && !expandedWhileNarrow ? "icons" : navMode;
-  narrowQuery?.addEventListener("change", () => {
-    if (!narrowQuery.matches) expandedWhileNarrow = false;
-    applyPinnedState();
-  });
-
-  /**
    * The latched key's edge glides to its new place (140ms, ease-out) instead of
    * switching on where you land. It reads the active key's position from the
    * layout each time, so a change of menu width or a window resize only has to
@@ -579,14 +516,13 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
   rail.addEventListener("scroll", moveEdge, { passive: true });
 
   /**
-   * Names for icon-only keys, beside the rail, with the key that jumps there.
-   * Read from the key's own title and its number badge, so nothing is listed
-   * twice. Only while the rail shows icons: expanded, the label is already there.
+   * Names for the keys, beside the rail, with the key that jumps there. Read
+   * from the key's own name and its number badge, so nothing is listed twice.
    */
   const tip = document.getElementById("rail-tip");
   function showTip(el) {
     // The History key opens its own flyout in the same place; a name over it is noise.
-    if (!tip || el.id === "history-key" || rail.classList.contains("w-36") || rail.classList.contains("sliver")) return;
+    if (!tip || el.id === "history-key") return;
     const name = el.dataset.name || el.getAttribute("aria-label") || el.title;
     if (!name) return;
     const key = el.querySelector(".nav-key")?.textContent;
@@ -622,83 +558,6 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
   });
   rail.addEventListener("focusout", hideTip);
 
-  function applyPinnedState() {
-    const mode = effectiveNavMode();
-    const isFull = mode === "full";
-    const isSliver = mode === "sliver";
-    const pinned = isFull;
-    rail.classList.toggle("w-14", mode === "icons");
-    rail.classList.toggle("w-36", isFull);
-    rail.classList.toggle("w-5", isSliver);
-    rail.classList.toggle("sliver", isSliver);
-    if (!isSliver) cancelPeek();
-    rail.classList.toggle("collapsed", !isFull);
-    // The rail is `fixed` (Section 13.1: `sticky` detached from the top
-    // near the bottom of a tall page, since a sticky element can't stay
-    // pinned past its own container's bottom edge) — taking it out of
-    // flow means main has to carry a matching margin instead of the
-    // flex layout doing it automatically.
-    const mainContent = document.getElementById("main-content");
-    mainContent.classList.toggle("ml-14", mode === "icons");
-    mainContent.classList.toggle("ml-36", isFull);
-    mainContent.classList.toggle("ml-5", isSliver);
-    document.querySelectorAll(".nav-label").forEach((el) => el.classList.toggle("hidden", !pinned));
-    // "Collapse" points toward the rail's own edge, which flips with it.
-    const toward = navSide === "right" ? ["chevrons-right", "chevrons-left"] : ["chevrons-left", "chevrons-right"];
-    setIcon(pinIcon, isFull ? toward[0] : toward[1]);
-    pinToggle.title = isFull
-      ? "Collapse to icons"
-      : mode === "icons"
-        ? "Hide the menu"
-        : "Show the full menu";
-    pinToggle.setAttribute("aria-label", pinToggle.title);
-    // Group legends appear and go with the menu width, which moves every key.
-    moveEdge();
-  }
-
-  /**
-   * How long the pointer has to rest on the sliver before it opens.
-   *
-   * The sliver lives against the edge of the screen, which is precisely the
-   * path a pointer takes on its way somewhere else, so opening on contact made
-   * it flash every time you crossed it. Long enough to mean "I meant that",
-   * short enough not to feel broken.
-   */
-  const PEEK_DELAY_MS = 1500;
-  let peekTimer = null;
-
-  function cancelPeek() {
-    clearTimeout(peekTimer);
-    peekTimer = null;
-    rail.classList.remove("peek");
-  }
-
-  rail.addEventListener("pointerenter", (e) => {
-    // Touch reports as a pointerenter that never leaves, which would pin the
-    // rail open with no way to dismiss it. The cycle already skips the sliver
-    // without hover; this makes the peek agree.
-    if (e.pointerType === "touch") return;
-    if (!rail.classList.contains("sliver")) return;
-    clearTimeout(peekTimer);
-    peekTimer = setTimeout(() => rail.classList.add("peek"), PEEK_DELAY_MS);
-  });
-
-  // Leaving cancels immediately, whether it opened or was still counting down.
-  // The delay is for opening; closing promptly is what makes it feel deliberate
-  // rather than sticky.
-  rail.addEventListener("pointerleave", cancelPeek);
-
-  /** Hover-to-peek is the sliver's way back, so without it the sliver is a trap. */
-  function canHover() {
-    return window.matchMedia?.("(hover: hover)")?.matches ?? true;
-  }
-
-  function nextNavMode(current) {
-    const cycle = canHover() ? ["full", "icons", "sliver"] : ["full", "icons"];
-    const i = cycle.indexOf(current);
-    return cycle[(i + 1) % cycle.length];
-  }
-
   function applyThemeUI() {
     applyTheme(currentTheme);
     themeLabel.textContent = `Theme: ${THEME_LABEL[currentTheme]}`;
@@ -713,7 +572,8 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
     sideToggle.title = `Move the menu to the ${other}`;
     if (sideLabel) sideLabel.textContent = `Move ${other}`;
     setIcon(sideIcon, navSide === "right" ? "panel-left" : "panel-right");
-    applyPinnedState();
+    // The rail swaps edges, so the lit edge moves with it.
+    moveEdge();
   }
   sideToggle?.addEventListener("click", async () => {
     navSide = navSide === "right" ? "left" : "right";
@@ -722,18 +582,6 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ navSide }),
-    });
-  });
-
-  pinToggle.addEventListener("click", async () => {
-    const shown = effectiveNavMode();
-    navMode = nextNavMode(shown);
-    if (narrowQuery?.matches && navMode === "full") expandedWhileNarrow = true;
-    applyPinnedState();
-    await fetch("/api/preferences", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ navMode }),
     });
   });
 
@@ -754,7 +602,7 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
       console.warn(`Couldn't save that display setting: ${err.message}`);
     }
   }
-  display.get = () => ({ theme: currentTheme, navSide, navMode: navMode === "sliver" ? "icons" : navMode });
+  display.get = () => ({ theme: currentTheme, navSide });
   display.setTheme = async (theme) => {
     if (!THEME_CYCLE.includes(theme)) return;
     currentTheme = theme;
@@ -767,14 +615,6 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
     applySide();
     await savePref({ navSide });
   };
-  display.setWidth = async (mode) => {
-    if (mode !== "full" && mode !== "icons") return;
-    navMode = mode;
-    if (narrowQuery?.matches && navMode === "full") expandedWhileNarrow = true;
-    applyPinnedState();
-    await savePref({ navMode });
-  };
-
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
     if (currentTheme === "system") applyTheme("system");
   });

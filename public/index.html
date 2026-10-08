@@ -38,30 +38,6 @@
        against the stylesheet on equal specificity, so the next person adding
        collapsed-rail styling should add it there, not here. */
 
-    /* Narrow screens (<450px): every pixel counts, so a *collapsed* rail
-       shrinks to a thin edge handle instead of reserving its usual 64px —
-       main-content's margin shrinks to match, reclaiming ~52px. Hovering
-       (or focusing a nav button via keyboard) pops it back to full width;
-       since the rail is `position: fixed` and already layers above the
-       page (z-20), that's a pure overlay with no reflow of main-content.
-       Gated to pointer devices (hover: hover): on a touch phone there's no
-       hover to pop it back, so the sliver would trap the operator with no
-       way to reach even the expand button. Touch keeps the full icon rail. */
-    @media (max-width: 449px) and (hover: hover) {
-      #nav-rail.collapsed {
-        width: 0.75rem;
-        overflow-x: hidden;
-      }
-      #main-content.ml-14 {
-        margin-left: 0.75rem;
-      }
-      #nav-rail.collapsed:hover,
-      #nav-rail.collapsed:focus-within {
-        width: 3.5rem;
-        overflow-x: visible;
-      }
-    }
-
     /* The touch-target floor moved to refrain.css, directly beneath the tier
        heights it has to outrank. It lived here and was silently defeated: the
        tier rules are theme-scoped (`[data-theme="dark"] #nav-rail .nav-item`,
@@ -347,58 +323,40 @@
 
   <!-- Main app shell — nav rail + content, once setup is complete (Section 13) -->
   <div id="view-app" class="hidden flex min-h-screen">
-    <aside id="nav-rail" class="fixed top-0 left-0 z-20 h-screen overflow-y-auto bg-base-200 flex flex-col items-stretch py-3 transition-all duration-150 w-14">
+    <aside id="nav-rail" class="fixed top-0 left-0 z-20 h-screen overflow-y-auto bg-base-200 flex flex-col items-stretch py-3 w-14 collapsed">
       <!-- The edge that marks the screen you are on. One element that glides to
            the latched key (public/nav.js moveEdge), not a shadow on each key,
            so it can travel. Outside #nav-items because that is rebuilt on every
            press, which would reset it and cancel the glide. -->
       <span id="nav-edge" aria-hidden="true"></span>
-      <!-- The status cluster, at the top of the rail now that the wordmark is gone
-           (owner, 2026-10-07): the first place the eye
-           lands (owner, 2026-09-30, menu option B). Recessed, because recessed
-           means information comes out, the one place in the rail that reports
-           rather than responds. A row when the menu shows labels, a column of
-           dots when it's narrow. -->
+      <!-- The status cluster, at the top of the rail: the first place the eye
+           lands. Recessed, because recessed means information comes out, the
+           one place in the rail that reports rather than responds. Four small
+           icon lamps in two columns (owner, 2026-10-07). -->
       <div id="status-cluster" role="group" aria-label="ProPresenter status"></div>
 
       <nav id="nav-items" class="flex flex-col flex-1"></nav>
 
-      <!-- Quick slides: the first four safe slides and Clear all, two presses
-           each (owner, 2026-09-30). Filled by quick-slides.js when Live is on;
-           hidden otherwise. -->
-      <div id="rail-quick" class="hidden" role="group" aria-label="Quick slides"></div>
-
       <div class="flex flex-col">
-        <!-- Used rarely, so one slim row of icons, not three full keys: the
-             lower menu was as heavy as the top, and the rail read as two
-             blocks with a gap (owner, 2026-09-30). Names are in the tooltip
-             and aria-label. Stacked when the menu is narrow. -->
         <div id="rail-foot" class="flex flex-col">
           <!-- History: every place that has been on the screens, with Back and
                Forward (owner, 2026-10-07). A key of its own, not a screen:
                hover or press opens a flyout beside the rail. Opens things in
                the editor only. -->
-          <button id="history-key" class="btn btn-ghost btn-sm justify-start gap-3 px-2" title="History: places that have been on the screens" aria-label="History" aria-haspopup="true" aria-expanded="false" aria-controls="history-flyout">
+          <button id="history-key" class="btn btn-ghost btn-sm justify-start gap-3 px-2" aria-label="History" aria-haspopup="true" aria-expanded="false" aria-controls="history-flyout">
             <span class="shrink-0"><i data-lucide="history"></i></span>
-          </button>
-          <button id="nav-help-toggle" class="btn btn-ghost btn-sm justify-start gap-3 px-2" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">
-            <span class="shrink-0"><i data-lucide="keyboard"></i></span>
-          </button>
-          <button id="nav-phone-toggle" class="btn btn-ghost btn-sm justify-start gap-3 px-2" title="Use a phone" aria-label="Use a phone">
-            <span class="shrink-0"><i data-lucide="smartphone"></i></span>
-          </button>
-          <button id="nav-pin-toggle" class="btn btn-ghost btn-sm justify-start gap-3 px-2" title="Show the full menu" aria-label="Show the full menu">
-            <span id="nav-pin-icon" class="shrink-0"></span>
           </button>
         </div>
       </div>
     </aside>
 
-    <!-- Theme and menu side are set from Settings > This Mac now (handoff
-         section 40). The keys stay because the menu's code runs both, but
-         outside the rail: inside it, the sliver's peek and :focus-within
-         rules (2,2,0) beat a hidden class and brought them back. -->
+    <!-- Theme and menu side are set from Settings > Customize. The keys stay
+         because the menu's code runs both, but outside the rail. Shortcuts
+         (the ? key) and the Phone panel (Settings > Phones) are opened by
+         pressing these, from where they used to sit in the rail. -->
     <div class="hidden" aria-hidden="true">
+      <button id="nav-help-toggle" type="button" tabindex="-1" title="Keyboard shortcuts (?)">Keyboard shortcuts</button>
+      <button id="nav-phone-toggle" type="button" tabindex="-1" title="Use a phone">Use a phone</button>
       <button id="theme-toggle" type="button" tabindex="-1" title="Toggle theme">
         <span id="theme-icon"></span>
         <span id="theme-label">Theme: System</span>
@@ -409,7 +367,7 @@
       </button>
     </div>
 
-    <main id="main-content" class="flex-1 min-w-0 p-3 ml-14 transition-all duration-150">
+    <main id="main-content" class="flex-1 min-w-0 p-3 ml-14">
       <!-- App-wide "Return" bar (Section: snap-back). Hidden until an
            app-initiated Go Live arms a return pin server-side; then it
            shows on every screen so the operator can snap back to where the

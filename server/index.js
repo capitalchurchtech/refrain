@@ -308,7 +308,7 @@ function navEnabledFor(m) {
 }
 
 /** Every switchable feature with its state, for Settings › Features and the screens. */
-const featureStates = () => FEATURES.map((f) => ({ id: f.id, label: f.label, description: f.description, default: f.default, parent: f.parent, parentLabel: f.parentLabel, on: featureOn(config, f.id) }));
+const featureStates = () => FEATURES.map((f) => ({ id: f.id, label: f.label, summary: f.summary, description: f.description, default: f.default, parent: f.parent, parentLabel: f.parentLabel, on: featureOn(config, f.id) }));
 
 /**
  * Section 8.4: a write that failed (backend unreachable) is staged locally
@@ -3957,7 +3957,7 @@ app.get("/api/preview/image/:pid/:idx", async (req, res) => {
   const p = currentPreview();
   const nowOrNext = [p.current, p.next].some((t) => t && t.presentationId === req.params.pid && t.slideIndex === idx);
   // The church's own safe slides too (at most eight, same as the phone's
-  // route), for the menu's quick slides. Rendered once and kept on disk.
+  // route), for the safe slides on Now. Rendered once and kept on disk.
   const aSafeSlide = isSafeSlide(req.params.pid, idx);
   // And slides Spell Check flagged, so they can be found by eye in the editor.
   // Each new picture costs ProPresenter memory until it restarts, so these are
@@ -4061,6 +4061,13 @@ app.post("/api/live/safe-slides/current", async (_req, res) => {
   if (!saved) return;
   collectQuickSlidePictures().catch(() => {});
   res.json({ ok: true, added, safeSlides: saved.safeSlides });
+});
+
+/** Takes every safe slide off the list at once (the slides themselves are untouched in ProPresenter). */
+app.post("/api/live/safe-slides/clear", async (_req, res) => {
+  const saved = await saveLiveModule(res, (m) => ({ ...m, safeSlides: [] }));
+  if (!saved) return;
+  res.json({ ok: true, safeSlides: [] });
 });
 
 /** Rename, move or remove one. */
@@ -6103,6 +6110,9 @@ app.get("/api/health", async (_req, res) => {
     role: config.role ?? null,
     preferredArrangements: preferredArrangements(),
     propresenter,
+    // For the health check on Settings > Status.
+    performanceMode: { armed: performance.armed },
+    feed: serviceFeedLamp(),
     index: indexStatusPayload(),
     // Where Refrain actually lives and which port it answers on, so the
     // Health screen can hand over a command that works on this machine rather

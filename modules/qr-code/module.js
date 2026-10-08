@@ -16,5 +16,5 @@ export default {
   component: null, // TODO: QrCodeScreen component
   // Switchable on Settings > Features (server/features.js); off hides its
   // screen and its routes answer "switched off".
-  feature: { default: true, label: "QR Codes", description: "Make QR codes for slides: links, Wi-Fi, contact cards.", apiPrefixes: ["/api/qr"] },
+  feature: { default: true, label: "QR Codes", summary: "Make codes for slides", description: "Make QR codes for slides: links, Wi-Fi, contact cards.", apiPrefixes: ["/api/qr"] },
 };

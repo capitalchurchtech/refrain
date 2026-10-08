@@ -63,3 +63,14 @@ test("recent message values: newest first, no repeats, capped, blanks ignored", 
   assert.equal(r.PAGER.Code[0], "C9");
   assert.deepEqual(rememberValues({}, "", [{ name: "Code", text: "X" }]), {}, "no message id, nothing kept");
 });
+
+import { dayRowText } from "../public/live.js";
+
+test("Now's Service day row says where the day stands", () => {
+  assert.equal(dayRowText({ dayEnded: { at: "x" }, services: [{}] }), "Day ended");
+  assert.equal(dayRowText({ checksDue: [{ name: "9:00" }], services: [{}] }), "Checks due");
+  assert.equal(dayRowText({ services: [{}] }), "1 service today");
+  assert.equal(dayRowText({ services: [{}, {}] }), "2 services today");
+  assert.equal(dayRowText({ services: [] }), "No services yet");
+  assert.equal(dayRowText(null), "No services yet");
+});

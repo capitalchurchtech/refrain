@@ -5,6 +5,7 @@ import { display } from "./nav.js";
 import { SETTINGS_TABS, SETTINGS_TOP, SETTINGS_MORE, settingsTopTab, settingsTabFromHash } from "./settings-tabs.js";
 import { createMeter, updateMeter, meterCount } from "./led-meter.js";
 import { mountLiveReadout, unmountLiveReadout } from "./live-readout.js";
+import { healthCheckHtml } from "./health-check.js";
 const ARRANGEMENT_STATUS_LABEL = {
   off: null, // hidden entirely per Section 4.1
   misconfigured: "Misconfigured",
@@ -102,14 +103,14 @@ export function initHealth() {
   function wireDisplayCard() {
     const paint = () => {
       const now = display.get();
-      const current = { theme: now.theme, side: now.navSide, width: now.navMode };
+      const current = { theme: now.theme, side: now.navSide };
       container.querySelectorAll("[data-display]").forEach((b) => {
         const on = current[b.dataset.display] === b.dataset.value;
         b.setAttribute("aria-checked", String(on));
       });
     };
     paint();
-    const set = { theme: display.setTheme, side: display.setSide, width: display.setWidth };
+    const set = { theme: display.setTheme, side: display.setSide };
     container.querySelectorAll("[data-display]").forEach((b) =>
       b.addEventListener("click", async () => {
         await set[b.dataset.display](b.dataset.value);
@@ -117,6 +118,67 @@ export function initHealth() {
       })
     );
     document.getElementById("settings-welcome-btn")?.addEventListener("click", () => display.openWelcome());
+  }
+
+  /**
+   * Keeps the Status health check current (every 4s while Settings is open) and
+   * wires its two presses: performance mode on or off, and Refresh for the index.
+   * The rows are redrawn only when what they show changes.
+   */
+  let healthTimer = null;
+  function wireHealthCheck() {
+    clearInterval(healthTimer);
+    const host = document.getElementById("health-check");
+    if (!host) return;
+    // Start from what the render drew, so a press before the first poll lands
+    // flips the real state rather than an unknown one.
+    let last = { armed: host.querySelector('[data-hc="perf"]')?.textContent.trim() === "Turn off" };
+    const read = () => ({ ...last });
+    const paintRows = async () => {
+      try {
+        const [live, idx] = await Promise.all([fetch("/api/live-state").then((r) => r.json()), fetch("/api/index/status").then((r) => r.json())]);
+        const next = {
+          connected: Boolean(live.connected),
+          host: host.dataset.host,
+          port: host.dataset.port,
+          feed: live.feed ?? "off",
+          armed: Boolean(live.performanceMode?.armed),
+          indexBuiltAt: idx.builtAt ?? null,
+          indexCount: idx.presentationCount ?? 0,
+        };
+        const key = JSON.stringify([next.connected, next.feed, next.armed, next.indexBuiltAt, next.indexCount]);
+        if (key === host.dataset.key) return;
+        host.dataset.key = key;
+        last = { ...last, ...next };
+        host.innerHTML = healthCheckHtml(next);
+      } catch {
+        // Keep what is shown; the next poll tries again.
+      }
+    };
+    host.addEventListener("click", async (e) => {
+      const btn = e.target.closest("[data-hc]");
+      if (!btn) return;
+      btn.disabled = true;
+      try {
+        if (btn.dataset.hc === "perf") {
+          const armed = !read().armed;
+          const res = await fetch("/api/performance-mode", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ armed }) });
+          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? res.statusText);
+        } else if (btn.dataset.hc === "refresh") {
+          btn.textContent = "Refreshing";
+          const res = await fetch("/api/index/reindex-changed", { method: "POST" });
+          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Refresh didn't run");
+        }
+        host.dataset.key = "";
+        await paintRows();
+      } catch (err) {
+        showFailure(`${btn.dataset.hc === "perf" ? "Performance mode didn't change" : "Refresh didn't run"}: ${err.message}`);
+        host.dataset.key = "";
+        await paintRows();
+      }
+    });
+    healthTimer = setInterval(() => (container.classList.contains("hidden") ? null : paintRows()), 4000);
+    paintRows();
   }
 
   async function render() {
@@ -153,6 +215,7 @@ export function initHealth() {
     if (statusReadout) unmountLiveReadout(statusReadout);
     statusReadout = document.getElementById("settings-readout");
     mountLiveReadout(statusReadout);
+    wireHealthCheck();
     wireDisplayCard();
     if (window.lucide) window.lucide.createIcons();
     showUnfinishedDay();
@@ -294,6 +357,7 @@ export function initHealth() {
       orphanResults.innerHTML = renderOrphanResults(lastOrphanScan);
       wireOrphanResults();
     }
+    document.getElementById("settings-shortcuts-btn")?.addEventListener("click", () => document.getElementById("nav-help-toggle")?.click());
     document.getElementById("health-open-phone")?.addEventListener("click", () => document.getElementById("nav-phone-toggle")?.click());
 
     // Today's phone PIN, to read out; and a way to sign every phone out.
@@ -376,7 +440,9 @@ export function initHealth() {
     // screen are drawn again with it on or off.
     document.querySelectorAll("[data-feature]").forEach((key) =>
       key.addEventListener("click", async () => {
-        if (key.getAttribute("aria-checked") === "true") return;
+        // The switch asks for the opposite of what it shows (data-on is the
+        // state it would set).
+        if ((key.getAttribute("aria-checked") === "true") === (key.dataset.on === "true")) return;
         const status = document.getElementById("features-status");
         try {
           const res = await fetch("/api/features", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: key.dataset.feature, on: key.dataset.on === "true" }) });
@@ -415,8 +481,6 @@ export function initHealth() {
           const res = await fetch("/api/slide-pictures", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ show: key.dataset.picturesShow === "true" }) });
           const data = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(data.error ?? res.statusText);
-          // The menu's quick slides follow at once, not at their next check.
-          document.dispatchEvent(new CustomEvent("refrain:safe-slides-changed"));
           render(); // the card's wording and the draw-ahead keys follow it
         } catch (err) {
           showFailure(`Couldn't change slide pictures: ${err.message}`);
@@ -430,10 +494,9 @@ export function initHealth() {
           const res = await fetch("/api/slide-pictures", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ quickSlides: key.dataset.quickPictures === "true" }) });
           const data = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(data.error ?? res.statusText);
-          document.dispatchEvent(new CustomEvent("refrain:safe-slides-changed"));
           render();
         } catch (err) {
-          showFailure(`Couldn't change quick slide pictures: ${err.message}`);
+          showFailure(`Couldn't change safe slide pictures: ${err.message}`);
         }
       })
     );
@@ -2129,14 +2192,14 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
         </div>
         <p class="text-xs opacity-70 rf-measure">${
           pictures.show === true
-            ? "Now, Next, the menu's quick slides and Spell Check show slide pictures."
+            ? "Safe slides, Spell Check and phones show slide pictures."
             : pictures.quickSlides !== false
-              ? "Off: Now and Next show each slide's words. Only the menu's quick slides have pictures (below)."
-              : "Off: Refrain asks ProPresenter for no pictures. Now, Next and the menu show each slide's words."
+              ? "Off: slides show their words. Only your saved safe slides have pictures (below)."
+              : "Off: Refrain asks ProPresenter for no pictures. Slides show their words."
         }</p>
-        <div class="rf-subhead mt-2">Quick slides</div>
-        <p class="text-sm rf-measure">Pictures of your saved quick slides, even with pictures off, so the logo and the blank are told apart at a glance. Each is drawn once, when it's saved, and kept. Nothing new is drawn during a service.</p>
-        <div class="rf-tabs" role="radiogroup" aria-label="Quick slide pictures" style="margin-bottom:0">
+        <div class="rf-subhead mt-2">Safe slide pictures</div>
+        <p class="text-sm rf-measure">Pictures of your saved safe slides on Now, even with pictures off, so the logo and the blank are told apart at a glance. Each is drawn once, when it's saved, and kept. Nothing new is drawn during a service.</p>
+        <div class="rf-tabs" role="radiogroup" aria-label="Safe slide pictures" style="margin-bottom:0">
           <button type="button" role="radio" class="rf-tab" data-quick-pictures="true" aria-checked="${pictures.quickSlides !== false}"><span>Pictures</span></button>
           <button type="button" role="radio" class="rf-tab" data-quick-pictures="false" aria-checked="${pictures.quickSlides === false}"><span>Names</span></button>
         </div>
@@ -2568,68 +2631,46 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
   // it left the Search and Now pages, where it sat in the way). The same lit
   // face, polled by the same one poll.
   const readoutCard = `
-    <div class="card bg-base-200">
-      <div class="card-body p-3 gap-2">
-        <h2 class="card-title text-base">On the screens now</h2>
-        <div id="settings-readout" class="rf-readout" data-mode="standby"></div>
-        <p class="rf-readout-none text-sm opacity-70">Nothing to show: ProPresenter isn't answering.</p>
-      </div>
+    <div>
+      <div id="settings-readout" class="rf-readout" data-mode="standby"></div>
+      <p class="rf-readout-none text-sm opacity-70">Nothing on the screens to show: ProPresenter isn't answering.</p>
     </div>`;
+  // The health check: filled from this render's data, then kept current by the
+  // poll in wireHealthCheck().
   const statusStrip = `
-    <div id="health-status-strip" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-      <div class="bg-base-200 rounded p-3 flex flex-col gap-1">
-        <div class="text-xs uppercase tracking-wide opacity-50">ProPresenter</div>
-        <div class="text-sm font-medium flex items-center gap-1.5 rf-value">
-          <span class="rf-led ${propresenter.connected ? "lit" : ""}" title="${propresenter.connected ? "ProPresenter is answering" : "ProPresenter is not answering"}"></span>
-          ${propresenter.connected ? "Connected" : "Not answering"}
-        </div>
-        <div class="text-xs opacity-60 break-all">${escapeHtml(propresenter.host ?? "")}:${propresenter.port ?? ""}</div>
-      </div>
-      <div class="bg-base-200 rounded p-3 flex flex-col gap-1">
-        <div class="text-xs uppercase tracking-wide opacity-50">Search index</div>
-        <div class="text-sm font-medium rf-value">${index.builtAt ? `${index.presentationCount} presentations` : "Not built yet"}</div>
-        <div class="text-xs opacity-60">${index.builtAt ? `built ${new Date(index.builtAt).toLocaleString()}` : "search is empty until this runs"}</div>
-      </div>
-      <div class="bg-base-200 rounded p-3 flex flex-col gap-1">
-        <div class="text-xs uppercase tracking-wide opacity-50">Version</div>
-        <div class="text-sm font-medium flex items-center gap-1.5 rf-value">
-          <span class="rf-led ${versionInfo?.updateAvailable ? "lit" : ""}" title="${versionInfo?.updateAvailable ? "An update is available" : "Up to date"}"></span>
-          v${version}
-        </div>
-        <div class="text-xs opacity-60">${
-          versionInfo?.updateAvailable ? `v${escapeHtml(versionInfo.latestVersion)} available` : "up to date"
-        }</div>
-      </div>
-      <div class="bg-base-200 rounded p-3 flex flex-col gap-1">
-        <div class="text-xs uppercase tracking-wide opacity-50">Modules</div>
-        <div class="text-sm font-medium flex items-center gap-1.5 rf-value">
-          <span class="rf-led ${modules.attention ? "lit" : ""}" title="${modules.attention ? "Something needs a look" : "Nothing needs a look"}"></span>
-          ${escapeHtml(modules.headline)}
-        </div>
-        <div class="text-xs opacity-60">${escapeHtml(modules.detail)}</div>
-      </div>
-    </div>
-  `;
+    <div class="flex flex-col gap-2">
+      <h3 class="rf-silkscreen">Health check</h3>
+      <div id="health-check" class="flex flex-col gap-2" data-host="${escapeHtml(propresenter.host ?? "")}" data-port="${escapeHtml(String(propresenter.port ?? ""))}">${healthCheckHtml({
+        connected: propresenter.connected,
+        host: propresenter.host,
+        port: propresenter.port,
+        feed: health.feed ?? "off",
+        armed: Boolean(health.performanceMode?.armed),
+        indexBuiltAt: index.builtAt ?? null,
+        indexCount: index.presentationCount ?? 0,
+        modules,
+      })}</div>
+    </div>`;
 
+  // One row per feature: its name, one short line, and a switch. The longer
+  // sentence is the tooltip. Search and Spell Check are rows with no switch, so
+  // the list says what is always on without a paragraph.
   const featureRow = (f) => `
-        <div class="rf-feature-row flex items-start justify-between gap-3 flex-wrap py-2 border-t border-base-300">
-          <div class="min-w-0 rf-measure">
-            <div class="text-sm font-medium">${escapeHtml(f.label)}${f.parentLabel ? ` <span class="text-xs opacity-60 font-normal">on ${escapeHtml(f.parentLabel)}</span>` : ""}</div>
-            <div class="text-xs opacity-70">${escapeHtml(f.description)}</div>
-          </div>
-          <div class="rf-tabs shrink-0" role="radiogroup" aria-label="${escapeHtml(f.label)}" style="margin-bottom:0">
-            <button type="button" role="radio" class="rf-tab" data-feature="${escapeHtml(f.id)}" data-on="true" aria-checked="${f.on}"><span>On</span></button>
-            <button type="button" role="radio" class="rf-tab" data-feature="${escapeHtml(f.id)}" data-on="false" aria-checked="${!f.on}"><span>Off</span></button>
-          </div>
+        <div class="rf-feature-row" title="${escapeHtml(f.description)}">
+          <div class="rf-feature-text"><b>${escapeHtml(f.label)}</b><span>${escapeHtml(f.summary || f.description)}</span></div>
+          <button type="button" role="switch" class="rf-switch" data-feature="${escapeHtml(f.id)}" data-on="${!f.on}" aria-checked="${f.on}" aria-label="${escapeHtml(f.label)}"></button>
         </div>`;
+  const fixedRow = (name, line) => `
+        <div class="rf-feature-row"><div class="rf-feature-text"><b>${name}</b><span>${line}</span></div><span class="rf-feature-fixed">Always</span></div>`;
   const featuresCard = `
-    <div class="card bg-base-200">
-      <div class="card-body p-3 gap-1">
-        <h2 class="card-title text-base">Features</h2>
-        <p class="text-sm opacity-70 rf-measure">Always on: Search, Spell Check with date checks, and Now's safe slides, quick slides and Clear.</p>
-        <div class="flex flex-col">${features.map(featureRow).join("")}</div>
-        <div id="features-status" class="text-sm" role="status"></div>
-      </div>
+    <div class="rf-features">
+      <p class="rf-feature-lede">Search and Spell Check are always on. Turn on only what your team uses; each one adds a key.</p>
+      <h3 class="rf-silkscreen">Always on</h3>
+      ${fixedRow("Search", "Find a slide and send it")}
+      ${fixedRow("Spell Check", "Spelling, dates, media")}
+      <h3 class="rf-silkscreen">Optional</h3>
+      ${features.map(featureRow).join("")}
+      <div id="features-status" class="text-sm" role="status"></div>
     </div>`;
 
   // Protect ProPresenter (owner, 2026-10-04, after the main station's
@@ -2697,11 +2738,8 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
             <div class="rf-silkscreen">Menu side</div>
             <div class="rf-tabs" role="radiogroup" aria-label="Menu side" style="margin-bottom:0">${choice("side", "left", "Left")}${choice("side", "right", "Right")}</div>
           </div>
-          <div class="flex flex-col gap-1">
-            <div class="rf-silkscreen">Menu</div>
-            <div class="rf-tabs" role="radiogroup" aria-label="Menu width" style="margin-bottom:0">${choice("width", "full", "Labels")}${choice("width", "icons", "Icons")}</div>
-          </div>
         </div>
+        <button type="button" id="settings-shortcuts-btn" class="btn btn-outline btn-sm w-fit">Keyboard shortcuts</button>
         ${commandRow("Open in its own window", "Chrome with no tabs or address bar, to dock beside ProPresenter. It opens 420 wide if Chrome is closed; otherwise drag it narrow.", appModeCommand(port))}
       </div>
     </div>`;
@@ -2724,13 +2762,13 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
       .map(([id, label, icon]) => `<button type="button" role="tab" aria-controls="settings-panel-${id}" class="rf-tab" data-settings-tab="${id}" aria-selected="false" tabindex="-1"><i data-lucide="${icon}" class="w-4 h-4 shrink-0"></i><span>${label}</span></button>`)
       .join("")}</div>`;
   const panel = (id, ...cards) =>
-    `<div data-settings-panel="${id}" id="settings-panel-${id}" role="tabpanel" aria-label="${SETTINGS_TABS.find(([t]) => t === id)[1]}" class="flex flex-col gap-4">${SETTINGS_MORE.includes(id) ? subRow() : ""}<h2 class="rf-page-sub">${SETTINGS_TABS.find(([t]) => t === id)[1]}</h2>${cards.join("")}</div>`;
+    `<div data-settings-panel="${id}" id="settings-panel-${id}" role="tabpanel" aria-label="${SETTINGS_TABS.find(([t]) => t === id)[1]}" class="flex flex-col gap-4">${SETTINGS_MORE.includes(id) ? subRow() : ""}<h2 class="rf-visually-hidden">${SETTINGS_TABS.find(([t]) => t === id)[1]}</h2>${cards.join("")}</div>`;
   return `
     <div class="flex flex-col gap-4">
       <div id="settings-tabs" class="rf-tabs" role="tablist" aria-label="Settings" style="margin-bottom:0">
         ${SETTINGS_TOP.map(([id, label, icon], i) => `<button type="button" role="tab" id="settings-top-${id}" class="rf-tab" data-settings-top="${id}" aria-selected="false" tabindex="-1"><i data-lucide="${icon}" class="w-4 h-4 shrink-0"></i><span>${label}</span><kbd class="kbd kbd-xs tab-key" aria-hidden="true">${i + 1}</kbd></button>`).join("")}
       </div>
-      ${panel("status", statusStrip, readoutCard, killCard, propresenterCard, updatesCard)}
+      ${panel("status", readoutCard, statusStrip)}
       ${
         // While a run is going, the index card comes first (owner,
         // 2026-10-04: its messages were far below the libraries list).
@@ -2740,6 +2778,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
       ${panel("phones", phoneCard, picturesCard)}
       ${panel("customize", displayCard, welcomeCard, autostartCard)}
       ${panel("telemetry", telemetryCard)}
+      ${panel("system", killCard, propresenterCard, updatesCard)}
       ${panel("audit", duplicateNamesCard, preferredCard, themesCard, orphanedMediaCard)}
       <div class="text-xs opacity-50 text-center mt-2 flex flex-col items-center gap-1">
         <div>

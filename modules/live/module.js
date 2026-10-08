@@ -20,9 +20,10 @@ export default {
   // (server/features.js): off hides the section, its routes answer
   // "switched off", and ProPresenter isn't asked for what they'd show.
   features: [
-    { id: "messages", label: "Messages", default: true, description: "The pager and other ProPresenter messages, and stage messages, on Now and on phones.", apiPrefixes: ["/api/live/message", "/api/live/stage-message"] },
-    { id: "requests", label: "Staff requests", default: false, description: "Messages other staff send from the announcement app, shown on Now for someone here to approve before anything reaches the screens. Uses the address and key from Settings > Telemetry.", apiPrefixes: ["/api/live/requests"] },
-    { id: "macros", label: "Macros", default: false, description: "ProPresenter's macros as keys on Now.", apiPrefixes: ["/api/live/macro"] },
-    { id: "looks", label: "Looks", default: false, description: "ProPresenter's Looks as keys on Now.", apiPrefixes: ["/api/live/look", "/api/live/current-look"] },
+    { id: "messages", summary: "Pager and stage messages", label: "Messages", default: true, description: "The pager and other ProPresenter messages, and stage messages, on Now and on phones.", apiPrefixes: ["/api/live/message", "/api/live/stage-message"] },
+    { id: "safe-slides", summary: "Slides to cut to in a hurry", label: "Safe slides", default: false, description: "Up to four of your own known-good slides (a logo, a blank) as keys at the bottom of Now, kept from what is on the screens.", apiPrefixes: ["/api/live/safe-slides"] },
+    { id: "requests", summary: "Staff messages to approve", label: "Staff requests", default: false, description: "Messages other staff send from the announcement app, shown on Now for someone here to approve before anything reaches the screens. Uses the address and key from Settings > Telemetry.", apiPrefixes: ["/api/live/requests"] },
+    { id: "macros", summary: "ProPresenter macros on Now", label: "Macros", default: false, description: "ProPresenter's macros as keys on Now.", apiPrefixes: ["/api/live/macro"] },
+    { id: "looks", summary: "ProPresenter Looks on Now", label: "Looks", default: false, description: "ProPresenter's Looks as keys on Now.", apiPrefixes: ["/api/live/look", "/api/live/current-look"] },
   ],
 };

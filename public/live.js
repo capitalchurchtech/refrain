@@ -1,5 +1,4 @@
 import { mountLiveFlagSummary, refreshLiveSummaryOnNewFlags } from "./slide-flags.js";
-import { initQuickSlides } from "./quick-slides.js";
 
 /**
  * Live page — big, obvious controls for the operator during a service.
@@ -54,193 +53,31 @@ export function plainMessagesHtml(plain) {
     .join("");
 }
 
-/** The Now / Next pair, and the last phone press. Pure, for tests. */
-export function livePreviewHtml(p) {
-  const esc = (str) => String(str ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-  const pane = (label, s, empty, step = false, keep = false) => {
-    const inner = `
-      <figcaption class="rf-subhead">${label}${s ? ` · slide ${s.slideNumber}` : ""}${step ? " · click to show" : ""}</figcaption>
-      ${
-        // No picture (slide pictures off, or none drawn): the slide's words,
-        // so Now and Next still say what's up and what's coming.
-        // A slide with no words (a logo, a video) says so: an empty black
-        // box would read the same as "nothing showing".
-        s?.image
-          ? `<img src="${esc(s.image)}" alt="${esc(s.text ?? "")}" />`
-          : `<div class="live-preview-empty${s?.text?.trim() ? " live-preview-words" : ""}">${esc(s?.text?.trim() ? s.text : s ? "No words on this slide" : empty)}</div>`
-      }
-      ${
-        // The slide worth keeping (the logo, a blank) is usually the one up,
-        // so it can be kept from here as well as from Search.
-        keep ? `<button type="button" class="btn btn-chip mt-2 live-keep-safe" title="Keep the slide on screen now as a safe slide">Keep as safe slide</button>` : ""
-      }`;
-    // The Next picture is also the Next key (owner request): one click, like
-    // the other Live keys.
-    return step
-      ? `<button type="button" class="live-preview-pane live-preview-step" data-step="next" title="Show the next slide">${inner}</button>`
-      : `<figure class="live-preview-pane">${inner}</figure>`;
-  };
-  const phone = p.lastPhoneAction
-    ? `<div class="text-xs opacity-80 col-span-full">Phone: ${esc(p.lastPhoneAction.phone)} pressed ${esc(p.lastPhoneAction.label)} at ${esc(
-        new Date(p.lastPhoneAction.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-      )}${p.lastPhoneAction.ok ? "" : " (failed)"}</div>`
-    : "";
-  if (!p.current) return phone;
-  return `${pane("Now", p.current, "", false, true)}${pane("Next", p.next, p.atEnd ? "End of this presentation" : "", Boolean(p.next))}${phone}`;
+/** Where Service day stands, for Now's row. Pure, for tests. */
+export function dayRowText(day) {
+  if (day?.dayEnded) return "Day ended";
+  if (day?.checksDue?.length) return "Checks due";
+  const n = day?.services?.length ?? 0;
+  return n ? `${n} service${n === 1 ? "" : "s"} today` : "No services yet";
 }
 
 export function initLive() {
   const container = document.getElementById("view-live");
-  initQuickSlides();
 
-  // Refreshed on a timer as well as on click, because it arms itself: a
-  // volunteer who never touches this should still see it turn on when the
-  // service starts, and be able to trust what the card says.
-  let perfTimer = null;
-  function wirePerformanceMode() {
-    const dot = document.getElementById("perf-mode-dot");
-    const state = document.getElementById("perf-mode-state");
-    const why = document.getElementById("perf-mode-why");
-    const toggle = document.getElementById("perf-mode-toggle");
-    if (!toggle) return;
-
-    const paint = (data) => {
-      if (!document.getElementById("perf-mode-dot")) return; // re-rendered underneath us
-      const on = Boolean(data?.armed);
-      /**
-       * The lit state is the engaged state. This read inverted before: on --
-       * the deliberate, holding-still, safe-during-service state -- rendered
-       * as bg-warning, and off, which permits background indexing, rendered
-       * as bg-success. Both colours are retired anyway; green is not in the
-       * palette, and --rf-fault's amber is scoped under #view-health, so on
-       * the Live screen an amber button fell through to raw DaisyUI warning:
-       * the saturated warm reserved for what is on the screens, in the worst
-       * possible place for it.
-       */
-      dot.className = `rf-led${on ? " lit" : ""}`;
-      state.textContent = on ? "Holding still" : "Background work allowed";
-      why.textContent = data?.description ?? "";
-      toggle.textContent = on ? "Turn off" : "Turn on";
-      // Tier 2 machined in both states: the toggle is an ordinary control, and
-      // the dot beside it is what reports the state.
-      toggle.className = "btn btn-sm btn-outline";
-    };
-
-    const load = () =>
-      fetch("/api/performance-mode")
-        .then((r) => r.json())
-        .then(paint)
-        .catch(() => {});
-
-    toggle.addEventListener("click", async () => {
-      const turningOn = toggle.textContent === "Turn on";
-      toggle.disabled = true;
-      try {
-        const res = await fetch("/api/performance-mode", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ armed: turningOn }),
-        });
-        paint(await res.json());
-      } finally {
-        toggle.disabled = false;
-      }
-    });
-
-    // Lock in, from where the operator already is. Only when the Service
-    // module is on; its state lives on the Service screen.
-    const lockBtn = document.getElementById("live-lockin-btn");
-    const paintLock = async () => {
-      try {
-        const res = await fetch("/api/service/day");
-        if (!res.ok) return lockBtn.classList.add("hidden");
-        const day = await res.json();
-        lockBtn.classList.remove("hidden");
-        lockBtn.textContent = day.lockin ? "Release lock-in" : "Lock in";
-        lockBtn.dataset.locked = day.lockin ? "1" : "";
-      } catch {
-        lockBtn.classList.add("hidden");
-      }
-    };
-    lockBtn?.addEventListener("click", async () => {
-      lockBtn.disabled = true;
-      try {
-        const url = lockBtn.dataset.locked ? "/api/service/lockin/release" : "/api/service/lockin";
-        const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-        if (!res.ok) setStatus((await res.json().catch(() => ({}))).error ?? "Lock-in didn't change. Try again.");
-      } finally {
-        lockBtn.disabled = false;
-        await paintLock();
-        load();
-      }
-    });
-    paintLock();
-
-    load();
-    clearInterval(perfTimer);
-    perfTimer = setInterval(load, 30_000);
+  /** Service day's row on Now: hidden when Service day is switched off. */
+  async function paintDayRow() {
+    const row = document.getElementById("live-day-row");
+    const state = document.getElementById("live-day-state");
+    if (!row || !state) return;
+    if (document.documentElement.classList.contains("feature-off-service")) return row.classList.add("hidden");
+    try {
+      const res = await fetch("/api/service/day");
+      if (!res.ok) return row.classList.add("hidden");
+      state.textContent = dayRowText(await res.json());
+    } catch {
+      // The row stays, without a state; the Day screen is the source of truth.
+    }
   }
-
-  let previewTimer = null;
-  let previewKey = "";
-
-  function startPreview() {
-    clearInterval(previewTimer);
-    previewKey = "";
-    const tick = async () => {
-      const host = document.getElementById("live-preview");
-      if (!host || container.classList.contains("hidden")) return clearInterval(previewTimer);
-      // Behind a closed fold nobody sees it, and with pictures on it would
-      // still download them: ask only while it is open.
-      if (!document.getElementById("live-onscreen-wrap")?.open) return;
-      try {
-        const p = await fetch("/api/preview").then((r) => r.json());
-        // The slide itself, not only its picture: with pictures off there's
-        // no picture address to change when the slide does.
-        const key = JSON.stringify([p.current?.image, p.next?.image, p.current?.slideNumber, p.current?.text, p.next?.slideNumber, p.next?.text, p.presentationName, p.atEnd, p.lastPhoneAction?.at]);
-        if (key === previewKey) return;
-        previewKey = key;
-        host.innerHTML = livePreviewHtml(p);
-        host.classList.toggle("hidden", !p.current && !p.lastPhoneAction);
-        document.getElementById("live-preview-none")?.classList.toggle("hidden", Boolean(p.current || p.lastPhoneAction));
-        host.querySelector(".live-keep-safe")?.addEventListener("click", async (e) => {
-          const btn = e.currentTarget;
-          const answer = await fire(btn, "/api/live/safe-slides/current", {}, "Keep as safe slide");
-          if (answer?.added) {
-            btn.textContent = "Kept";
-            setStatus(`Kept as a safe slide: ${answer.added.label}.`);
-            safeList = answer.safeSlides ?? safeList;
-            paintSafeSlides();
-            document.dispatchEvent(new CustomEvent("refrain:safe-slides-changed"));
-          }
-        });
-        host.querySelector("[data-step]")?.addEventListener("click", async (e) => {
-          const btn = e.currentTarget;
-          btn.disabled = true;
-          const ok = await fire(btn, "/api/live/step", { dir: btn.dataset.step }, "Next slide");
-          if (ok) refreshSoon();
-        });
-      } catch {
-        // Leave the last preview up; the Link lamp says if the link is down.
-      }
-    };
-    tick();
-    // Opening the fold shows the current slide at once, not up to 3s later.
-    document.getElementById("live-onscreen-wrap")?.addEventListener("toggle", () => {
-      previewKey = "";
-      tick();
-    });
-    previewTimer = setInterval(tick, 3000);
-    // After a press: every 0.4s for a few seconds, then back to every 3s.
-    refreshSoon = () => {
-      let n = 0;
-      const t = setInterval(() => {
-        tick();
-        if (++n >= 8) clearInterval(t);
-      }, 400);
-    };
-  }
-  let refreshSoon = () => {};
 
   /**
    * Staff requests (server/staff-requests.js): messages from the announcement
@@ -405,40 +242,6 @@ export function initLive() {
           </div>
         </div>
 
-        <!-- The slide on the screens and the next one, folded: what is on
-             screen is the Live lamp's to say, and this is for the Next key and
-             for keeping a slide as a safe slide. -->
-        <details id="live-onscreen-wrap" class="collapse collapse-arrow bg-base-200 rounded rf-now-fold">
-          <summary class="collapse-title min-h-0 py-2">
-            <span class="flex items-center gap-2 text-sm font-medium"><i data-lucide="monitor" class="w-4 h-4 opacity-70 shrink-0"></i> On screen now</span>
-          </summary>
-          <div class="collapse-content">
-            <!-- Checked every few seconds while Now is showing; a picture only
-                 loads when the slide changes. -->
-            <div id="live-preview" class="hidden live-preview"></div>
-            <p id="live-preview-none" class="text-sm opacity-70">Nothing is on the screens.</p>
-          </div>
-        </details>
-
-        <!-- Performance mode: a one-line fold that says its state without
-             opening. It arms itself, so nobody needs it daily; the lock-in for
-             an event with no set time is inside. -->
-        <details id="live-perf-wrap" class="collapse collapse-arrow bg-base-200 rounded rf-now-fold">
-          <summary class="collapse-title min-h-0 py-2">
-            <span class="flex items-center gap-2 text-sm font-medium"><span id="perf-mode-dot" class="rf-led"></span><span id="perf-mode-state">Checking</span></span>
-          </summary>
-          <div class="collapse-content flex flex-col gap-2">
-            <div id="perf-mode-why" class="text-sm opacity-70"></div>
-            <span class="flex gap-2">
-              <button id="live-lockin-btn" class="btn btn-sm btn-outline hidden" title="Hold still until released. For events with no set time.">Lock in</button>
-              <button id="perf-mode-toggle" class="btn btn-sm btn-outline">Turn on</button>
-            </span>
-            <!-- One line, and it has to be true in the state you are reading it
-                 in. -->
-            <div class="text-xs opacity-60 rf-measure">Turns on by itself after a couple of minutes live.</div>
-          </div>
-        </details>
-
         <!-- Folded like the rest below (owner, 2026-10-04), in the Settings
              fold style. Each fold remembers whether it was left open, on this
              machine, so a church that lives in Macros keeps it open. Edit sits
@@ -467,16 +270,20 @@ export function initLive() {
           <div class="collapse-content"><div id="live-looks" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3"></div></div>
         </details>
 
-        <!-- Flagging lives on the Flags screen, which has no live controls
-             (handoff §39b). One line keeps the count and the way. -->
-        <div id="live-flag-summary"></div>
+        <!-- Flags and Service day, one row each with where they stand (owner,
+             2026-10-07: no tab row; the Now page is the page, and these are
+             the two places it leads to). -->
+        <div class="flex flex-col gap-2">
+          <div id="live-flag-summary"></div>
+          <a id="live-day-row" class="rf-navrow" href="#service/service"><span class="rf-navrow-name">Service day</span><span class="rf-navrow-state" id="live-day-state"></span></a>
+        </div>
 
         <div id="live-status" class="text-sm opacity-70"></div>
 
-        <!-- Last (owner, 2026-10-07): the church's own safe slides as the
-             slides themselves, the first four, the same four as the menu's
-             quick slides. A picture when slide pictures are on, the slide's
-             words when they are off. -->
+        <!-- Last (owner, 2026-10-07): up to four of the church's own safe
+             slides as the slides themselves, a picture when slide pictures are
+             on and the slide's words when they are off. Switched on in
+             Settings > Features (off by default). -->
         <div id="live-safe-wrap">
           <div class="flex items-center justify-between gap-2">
             <h2 class="rf-subhead">Safe slides</h2>
@@ -487,10 +294,10 @@ export function initLive() {
       </div>
     `;
     if (window.lucide) window.lucide.createIcons();
-    startPreview();
     wireRequests();
     mountLiveFlagSummary(document.getElementById("live-flag-summary"));
     refreshLiveSummaryOnNewFlags("live-flag-summary");
+    paintDayRow();
 
     rememberFolds();
     loadSafeSlides();
@@ -499,8 +306,6 @@ export function initLive() {
       editingSafe = !editingSafe;
       paintSafeSlides();
     });
-    wirePerformanceMode();
-
     try {
       const { looks, macros, messages, messageRecent: recent, currentLook, features = {} } = await fetch("/api/live/controls").then((r) => r.json());
       messageRecent = recent ?? {};
@@ -525,7 +330,7 @@ export function initLive() {
       const asked = [features.looks !== false && "Looks", features.macros !== false && "Macros"].filter(Boolean);
       if (asked.length && !(looks?.length ?? 0) && !(macros?.length ?? 0)) setStatus(`No ${asked.join(" or ")} found.`);
     } catch {
-      setStatus("Couldn't load Looks and Macros from ProPresenter. Clear still works.");
+      setStatus("Couldn't load Looks and Macros from ProPresenter.");
     }
   }
 
@@ -916,12 +721,16 @@ export function initLive() {
   let safeList = [];
   let safePictures = false;
   let editingSafe = false;
-  // The page shows the first four, the same four as the menu's quick slides.
-  // More can be kept (up to eight, so nothing already saved is dropped); Edit
-  // lists them all.
+  // The page shows the first four, and no more can be kept than that. A list
+  // saved when eight were allowed still reads whole in Edit, so nothing is
+  // dropped behind anyone's back.
   const SAFE_SHOWN = 4;
+  const SAFE_MAX = 4;
+
+  const safeOff = () => document.documentElement.classList.contains("feature-off-safe-slides");
 
   async function loadSafeSlides() {
+    if (safeOff()) return;
     try {
       const data = await fetch("/api/live/safe-slides").then((r) => r.json());
       safeList = data.safeSlides ?? [];
@@ -939,6 +748,12 @@ export function initLive() {
    * up whatever now sits at that number. Edit renames, reorders and removes;
    * nothing fires while editing.
    */
+  /** The way to add one: keep what is on the screens now. Off when the list is full. */
+  function keepTile() {
+    const full = safeList.length >= SAFE_MAX;
+    return `<button type="button" id="live-safe-keep" class="rf-safe-add" ${full ? "disabled" : ""} title="${full ? `There are already ${SAFE_MAX} safe slides. Remove one first.` : "Keep the slide that is on the screens now as a safe slide"}">Keep current</button>`;
+  }
+
   function paintSafeSlides() {
     const grid = document.getElementById("live-safe");
     const edit = document.getElementById("live-safe-edit");
@@ -948,7 +763,7 @@ export function initLive() {
     edit.setAttribute("aria-pressed", String(editingSafe));
     if (!safeList.length) {
       editingSafe = false;
-      grid.innerHTML = `<p class="text-sm opacity-70 rf-safe-none">None yet. When a slide worth keeping is up (the logo, a blank), open <strong>On screen now</strong> and press <strong>Keep as safe slide</strong>.</p>`;
+      grid.innerHTML = `<p class="text-sm opacity-70 rf-safe-none">None yet. When a slide worth keeping is up (the logo, a blank), press <strong>Keep current</strong>.</p>${keepTile()}`;
     } else if (editingSafe) {
       grid.innerHTML = safeList
         .map(
@@ -960,7 +775,7 @@ export function initLive() {
           <button type="button" class="btn btn-chip live-safe-remove">Remove</button>
         </div>`
         )
-        .join("");
+        .join("") + `<button type="button" class="btn btn-chip live-safe-clear col-span-full">Remove all</button>`;
     } else {
       // The slide itself: its picture when pictures are on, its words when
       // they are off (they are off by default for now), so what each key does
@@ -974,10 +789,31 @@ export function initLive() {
               : `<span class="rf-safe-words">${escapeHtml((sl.slideText ?? "").trim() || sl.label)}</span>`;
           return `<button type="button" class="rf-safe-key live-safe-key" data-safe="${escapeHtml(sl.id)}" title="${escapeHtml(sl.presentationName ?? "")}, slide ${sl.slideIndex + 1}"><span class="rf-safe-pic">${pic}</span><span class="rf-safe-label">${escapeHtml(sl.label)}</span></button>`;
         })
-        .join("");
+        .join("") + keepTile();
     }
     if (window.lucide) window.lucide.createIcons();
 
+    // Keep what is on the screens now (the tile is drawn with the keys, so it is
+    // wired with them).
+    grid.querySelector("#live-safe-keep")?.addEventListener("click", async (e) => {
+      const answer = await fire(e.currentTarget, "/api/live/safe-slides/current", {}, "Keep current");
+      if (answer?.added) {
+        safeList = answer.safeSlides ?? safeList;
+        paintSafeSlides();
+        setStatus(`Kept as a safe slide: ${answer.added.label}.`);
+      }
+    });
+    // A picture that will not load (ProPresenter not answering, nothing drawn
+    // yet) falls back to the slide's words, never a broken image.
+    grid.querySelectorAll(".rf-safe-pic img").forEach((img) =>
+      img.addEventListener("error", () => {
+        const sl = safeList.find((x) => x.id === img.closest(".live-safe-key")?.dataset.safe);
+        const words = document.createElement("span");
+        words.className = "rf-safe-words";
+        words.textContent = (sl?.slideText ?? "").trim() || sl?.label || "";
+        img.replaceWith(words);
+      })
+    );
     grid.querySelectorAll(".live-safe-key").forEach((btn) => {
       const sl = safeList.find((x) => x.id === btn.dataset.safe);
       btn.addEventListener("click", async () => {
@@ -996,12 +832,35 @@ export function initLive() {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error ?? res.statusText);
         safeList = data.safeSlides ?? [];
-        document.dispatchEvent(new CustomEvent("refrain:safe-slides-changed"));
       } catch (err) {
         setStatus(`That wasn't saved: ${err.message}`);
       }
       paintSafeSlides();
     };
+    // Remove all takes two presses, because it empties the list.
+    const clearBtn = grid.querySelector(".live-safe-clear");
+    clearBtn?.addEventListener("click", async () => {
+      if (!clearBtn.dataset.armed) {
+        clearBtn.dataset.armed = "1";
+        clearBtn.textContent = "Press again to remove all";
+        setTimeout(() => {
+          if (clearBtn.isConnected) {
+            delete clearBtn.dataset.armed;
+            clearBtn.textContent = "Remove all";
+          }
+        }, 3000);
+        return;
+      }
+      try {
+        const res = await fetch("/api/live/safe-slides/clear", { method: "POST" });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? res.statusText);
+        safeList = [];
+        editingSafe = false;
+      } catch (err) {
+        setStatus(`That wasn't saved: ${err.message}`);
+      }
+      paintSafeSlides();
+    });
     grid.querySelectorAll("[data-safe-row]").forEach((row) => {
       const id = row.dataset.safeRow;
       row.querySelector(".live-safe-name").addEventListener("change", (e) => change(id, { action: "rename", label: e.target.value }));
