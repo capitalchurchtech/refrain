@@ -66,11 +66,12 @@ export function initHistoryFlyout() {
     const r = rail.getBoundingClientRect();
     const k = key.getBoundingClientRect();
     const onRight = document.documentElement.classList.contains("rail-right");
-    // The key sits at the foot of the rail, so the flyout grows upward from it
+    // History is the fourth key, not the last, so the flyout hangs from its key
     // and scrolls inside itself rather than running off the screen.
-    flyout.style.top = "auto";
-    flyout.style.bottom = `${Math.max(8, window.innerHeight - k.bottom)}px`;
-    flyout.style.maxHeight = `${Math.max(160, k.bottom - 12)}px`;
+    const top = Math.max(8, k.top - 8);
+    flyout.style.bottom = "auto";
+    flyout.style.top = `${top}px`;
+    flyout.style.maxHeight = `${Math.max(160, window.innerHeight - top - 8)}px`;
     if (onRight) {
       flyout.style.right = `${window.innerWidth - r.left}px`;
       flyout.style.left = "auto";

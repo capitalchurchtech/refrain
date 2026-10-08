@@ -230,10 +230,19 @@ export function initLive() {
              stays up until it is cleared, and the clear is always in the same
              place above the list. -->
         <div id="live-stage-wrap">
-          <h2 class="rf-subhead">Stage message</h2>
+          <!-- Edit is a state of its own (as designed): the page becomes this list
+               and nothing in it shows anything on a monitor. -->
+          <div id="live-stage-editbar" class="rf-editbar hidden">
+            <h2 class="rf-edit-title">Edit messages</h2>
+            <button id="live-stage-done" type="button" class="rf-chipbtn">Done</button>
+          </div>
+          <p id="live-stage-editrule" class="rf-edit-rule hidden">Up to 8 messages, 80 characters each. Drag to reorder.</p>
+          <h2 class="rf-subhead" id="live-stage-head">Stage message</h2>
           <button id="live-stage-clear" type="button" class="btn btn-outline rf-stage-clear" disabled title="Nothing is on stage">Clear stage message</button>
           <p id="live-stage-now" class="rf-visually-hidden" role="status"></p>
           <div id="live-stage" class="rf-stage-list"></div>
+          <p id="live-stage-editnote" class="rf-edit-note hidden" role="status"></p>
+          <button id="live-stage-add" type="button" class="btn btn-outline rf-stage-row rf-stage-edit hidden">+ Add a message</button>
           <button id="live-stage-edit" type="button" class="btn btn-outline rf-stage-row rf-stage-edit" aria-pressed="false">Edit messages</button>
           <div class="rf-stage-custom">
             <input id="live-stage-text" class="input input-bordered flex-1 min-w-0" maxlength="80" placeholder="Say something else…" aria-label="Stage message to show" />
@@ -549,18 +558,32 @@ export function initLive() {
     const clear = document.getElementById("live-stage-clear");
     if (!edit) return;
     edit.addEventListener("click", () => {
-      editingStage = !editingStage;
+      editingStage = true;
       paintStage();
     });
-    show.addEventListener("click", async () => {
-      if (editingStage) {
-        const res = await fetch("/api/live/stage-messages", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: text.value }) });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) return setStatus(`Couldn't add it: ${data.error ?? res.statusText}`);
-        stagePresets = data.presets ?? stagePresets;
-        text.value = "";
-        return paintStage();
+    document.getElementById("live-stage-done").addEventListener("click", () => {
+      editingStage = false;
+      paintStage();
+    });
+    document.getElementById("live-stage-add").addEventListener("click", () => {
+      // A new row at the end to type into; saved on Enter or when you leave it
+      // with words in it, dropped when you leave it empty.
+      const list = document.getElementById("live-stage");
+      if (list.querySelector("[data-stage-new]") || stagePresets.length >= STAGE_MAX) return;
+      list.insertAdjacentHTML("beforeend", editRowHtml({ id: "", text: "" }, true));
+      const row = list.querySelector("[data-stage-new]");
+      const input = row.querySelector("input");
+      input.focus();
+      wireEditRow(row);
+    });
+    // Leaving the page leaves the editor: nothing should come back mid-edit.
+    window.addEventListener("hashchange", () => {
+      if (editingStage && !location.hash.startsWith("#service/live") && location.hash !== "#service") {
+        editingStage = false;
+        paintStage();
       }
+    });
+    show.addEventListener("click", async () => {
       const answer = await fire(show, "/api/live/stage-message", { text: text.value }, "Stage message");
       if (answer) {
         stageCurrent = answer.current ?? "";
@@ -615,13 +638,106 @@ export function initLive() {
     }, 10_000);
   }
 
+  const STAGE_MAX = 8;
+  const STAGE_TEXT_MAX = 80;
+
+  /** One row of the editor: a handle, the words, how many of 80 used, and remove. */
+  function editRowHtml(m, isNew = false) {
+    return `<div class="rf-erow" ${isNew ? "data-stage-new" : `data-stage-row="${escapeHtml(m.id)}"`} draggable="${isNew ? "false" : "true"}">
+      <button type="button" class="rf-erow-grab" aria-label="Move ${escapeHtml(m.text || "this message")} (arrow keys, or drag)" tabindex="${isNew ? -1 : 0}">\u22ee\u22ee</button>
+      <input class="rf-erow-text live-stage-name" value="${escapeHtml(m.text)}" aria-label="Stage message" autocomplete="off" spellcheck="false" />
+      <span class="rf-erow-count">${[...m.text].length}/${STAGE_TEXT_MAX}</span>
+      <button type="button" class="rf-erow-x" aria-label="Remove ${escapeHtml(m.text || "this message")}">\u2715</button>
+    </div>`;
+  }
+
+  async function changeStage(id, body) {
+    const res = await fetch(`/api/live/stage-messages/${encodeURIComponent(id)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return setStatus(`Couldn't save that: ${data.error ?? res.statusText}`);
+    stagePresets = data.presets ?? stagePresets;
+    paintStage();
+  }
+
+  function wireEditRow(row) {
+    const id = row.dataset.stageRow;
+    const input = row.querySelector("input");
+    const count = row.querySelector(".rf-erow-count");
+    const note = document.getElementById("live-stage-editnote");
+    const over = () => [...input.value.trim()].length > STAGE_TEXT_MAX;
+    input.addEventListener("input", () => {
+      const n = [...input.value.trim()].length;
+      count.textContent = `${n}/${STAGE_TEXT_MAX}`;
+      row.classList.toggle("rf-erow-over", n > STAGE_TEXT_MAX);
+      // What was typed is kept; it just is not saved while it is too long.
+      note.textContent = n > STAGE_TEXT_MAX ? `That message is ${n} characters. The limit is ${STAGE_TEXT_MAX}.` : "";
+    });
+    if (!id) {
+      // The new row: Enter or leaving it with words adds it; leaving it empty drops it.
+      const finish = async () => {
+        if (!row.isConnected) return;
+        if (over()) return;
+        if (!input.value.trim()) return row.remove();
+        const res = await fetch("/api/live/stage-messages", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: input.value }) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return setStatus(`Couldn't add it: ${data.error ?? res.statusText}`);
+        stagePresets = data.presets ?? stagePresets;
+        paintStage();
+      };
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") input.blur();
+        if (e.key === "Escape") {
+          input.value = "";
+          input.blur();
+        }
+      });
+      input.addEventListener("blur", finish);
+      row.querySelector(".rf-erow-x").addEventListener("click", () => row.remove());
+      return;
+    }
+    input.addEventListener("change", () => {
+      if (over()) return;
+      changeStage(id, { action: "edit", text: input.value });
+    });
+    row.querySelector(".rf-erow-x").addEventListener("click", () => changeStage(id, { action: "remove" }));
+    // Keyboard: the handle moves it a place with the arrow keys.
+    row.querySelector(".rf-erow-grab").addEventListener("keydown", (e) => {
+      if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+        e.preventDefault();
+        changeStage(id, { action: "move", dir: e.key === "ArrowUp" ? -1 : 1 });
+      }
+    });
+    // Mouse and touch: drag the row to the place it should take.
+    row.addEventListener("dragstart", (e) => {
+      row.classList.add("rf-erow-drag");
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", id);
+    });
+    row.addEventListener("dragend", () => row.classList.remove("rf-erow-drag"));
+    row.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+    });
+    row.addEventListener("drop", (e) => {
+      e.preventDefault();
+      const from = e.dataTransfer.getData("text/plain");
+      const to = stagePresets.findIndex((m) => m.id === id);
+      if (from && from !== id && to >= 0) changeStage(from, { action: "place", to });
+    });
+  }
+
   function paintStage() {
     const grid = document.getElementById("live-stage");
     if (!grid) return;
     const edit = document.getElementById("live-stage-edit");
-    edit.textContent = editingStage ? "Done" : "Edit messages";
-    edit.setAttribute("aria-pressed", String(editingStage));
-    document.getElementById("live-stage-show").textContent = editingStage ? "Add" : "Show";
+    // The editor replaces the whole page (CSS, on `stage-editing`), so a mistake
+    // while customising cannot put words on a monitor.
+    document.documentElement.classList.toggle("stage-editing", editingStage);
+    edit.classList.toggle("hidden", editingStage);
+    for (const id of ["live-stage-editbar", "live-stage-editrule", "live-stage-add", "live-stage-editnote"]) document.getElementById(id).classList.toggle("hidden", !editingStage);
+    document.getElementById("live-stage-head").classList.toggle("hidden", editingStage);
+    document.getElementById("live-stage-add").textContent = `+ Add a message \u00b7 ${stagePresets.length} of ${STAGE_MAX}`;
+    document.getElementById("live-stage-add").disabled = stagePresets.length >= STAGE_MAX;
     // Always in the same place above the list; dimmed when nothing is up and
     // lit when something is, so the operator never has to read to know.
     const clearBtn = document.getElementById("live-stage-clear");
@@ -629,32 +745,11 @@ export function initLive() {
     clearBtn.disabled = !stageCurrent;
     clearBtn.classList.toggle("ready", Boolean(stageCurrent));
     clearBtn.title = stageCurrent ? "Takes the message off the stage screens" : "Nothing is on stage";
-    document.getElementById("live-stage-text").placeholder = editingStage ? "A new message to keep" : "Say something else…";
+    document.querySelector(".rf-stage-custom").classList.toggle("hidden", editingStage);
     document.getElementById("live-stage-now").textContent = stageCurrent ? `On stage now: "${stageCurrent}"` : "Nothing on stage.";
     if (editingStage) {
-      grid.innerHTML = stagePresets
-        .map(
-          (m, i) => `<div class="flex items-center gap-1 col-span-full" data-stage-row="${escapeHtml(m.id)}">
-          <input class="input input-bordered input-sm flex-1 live-stage-name" maxlength="80" value="${escapeHtml(m.text)}" aria-label="Stage message" />
-          <button type="button" class="btn btn-chip live-stage-move" data-dir="-1" ${i === 0 ? "disabled" : ""} aria-label="Move earlier">↑</button>
-          <button type="button" class="btn btn-chip live-stage-move" data-dir="1" ${i === stagePresets.length - 1 ? "disabled" : ""} aria-label="Move later">↓</button>
-          <button type="button" class="btn btn-chip live-stage-remove">Remove</button>
-        </div>`
-        )
-        .join("");
-      const change = async (id, body) => {
-        const res = await fetch(`/api/live/stage-messages/${encodeURIComponent(id)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) return setStatus(`Couldn't save that: ${data.error ?? res.statusText}`);
-        stagePresets = data.presets ?? stagePresets;
-        paintStage();
-      };
-      grid.querySelectorAll("[data-stage-row]").forEach((row) => {
-        const id = row.dataset.stageRow;
-        row.querySelector(".live-stage-name").addEventListener("change", (e) => change(id, { action: "edit", text: e.target.value }));
-        row.querySelectorAll(".live-stage-move").forEach((b) => b.addEventListener("click", () => change(id, { action: "move", dir: Number(b.dataset.dir) })));
-        row.querySelector(".live-stage-remove").addEventListener("click", () => change(id, { action: "remove" }));
-      });
+      grid.innerHTML = stagePresets.map((m) => editRowHtml(m)).join("");
+      grid.querySelectorAll("[data-stage-row]").forEach(wireEditRow);
       return;
     }
     grid.innerHTML = stagePresets.length
