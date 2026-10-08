@@ -69,8 +69,8 @@ export function mountFlagButton(host) {
   if (!host) return;
   host.innerHTML = `
     <div class="flex items-center gap-2 flex-wrap">
-      <button type="button" class="btn btn-chip slide-flag-btn" title="Mark this slide to fix later. Nothing on the screens changes.">
-        <i data-lucide="flag" class="w-3 h-3"></i> <span class="slide-flag-label">Flag</span>
+      <button type="button" class="btn btn-chip slide-flag-btn" title="Flag a slide: mark the one on the screens to fix later. Nothing on the screens changes." aria-label="Flag a slide">
+        <i data-lucide="flag" class="w-3 h-3"></i> <span class="slide-flag-label rf-visually-hidden">Flag</span>
       </button>
       <span class="slide-flag-status text-xs opacity-60" aria-live="polite"></span>
     </div>`;

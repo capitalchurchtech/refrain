@@ -28,7 +28,7 @@
        as compensating so "a 24px icon in the 64px-wide rail" lands centred --
        20px being exactly (64 - 24) / 2. Correct when written, and then wrong
        twice over: icons became 16px when they got a default size, which put
-       every glyph 4px left of centre, and the rail is 3.5rem now, which moves
+       every glyph 4px left of centre, and the rail is 3rem now, which moves
        it again. It also never listed #nav-help-toggle, so the Shortcuts key
        sat on a different axis from its neighbours the whole time.
 
@@ -323,7 +323,7 @@
 
   <!-- Main app shell — nav rail + content, once setup is complete (Section 13) -->
   <div id="view-app" class="hidden flex min-h-screen">
-    <aside id="nav-rail" class="fixed top-0 left-0 z-20 h-screen overflow-y-auto bg-base-200 flex flex-col items-stretch py-3 w-14 collapsed">
+    <aside id="nav-rail" class="fixed top-0 left-0 z-20 h-screen overflow-y-auto bg-base-200 flex flex-col items-stretch w-12 collapsed">
       <!-- The edge that marks the screen you are on. One element that glides to
            the latched key (public/nav.js moveEdge), not a shadow on each key,
            so it can travel. Outside #nav-items because that is rebuilt on every
@@ -337,7 +337,7 @@
 
       <nav id="nav-items" class="flex flex-col flex-1"></nav>
 
-      <div class="flex flex-col">
+      <div id="rail-foot-wrap" class="flex flex-col">
         <div id="rail-foot" class="flex flex-col">
           <!-- History: every place that has been on the screens, with Back and
                Forward (owner, 2026-10-07). A key of its own, not a screen:
@@ -367,7 +367,7 @@
       </button>
     </div>
 
-    <main id="main-content" class="flex-1 min-w-0 p-3 ml-14">
+    <main id="main-content" class="flex-1 min-w-0 p-3 ml-12">
       <!-- App-wide "Return" bar (Section: snap-back). Hidden until an
            app-initiated Go Live arms a return pin server-side; then it
            shows on every screen so the operator can snap back to where the
@@ -429,7 +429,7 @@
           <button id="dock-nudge-dismiss" class="btn btn-chip ml-2" type="button">Got it</button>
         </div>
 
-        <h1 class="text-lg font-semibold flex items-center gap-2 mb-4"><i data-lucide="search" class="w-5 h-5"></i> Search</h1>
+        <h1 class="rf-visually-hidden">Search</h1>
 
         <!-- The field is the first thing on the screen (owner, 2026-10-07).
              What is on the screens is the Live lamp's job and Settings >

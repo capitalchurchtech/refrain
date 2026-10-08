@@ -4,6 +4,13 @@ import { crumb } from "./breadcrumbs.js";
 
 
 
+/** "today 7:02" for an index built today, else "10/8 7:02": the strip's one short line. */
+function updatedText(iso) {
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return d.toDateString() === new Date().toDateString() ? `today ${time}` : `${d.toLocaleDateString(undefined, { month: "numeric", day: "numeric" })} ${time}`;
+}
+
 export function initSearch({ prefs = {} } = {}) {
   /**
    * Ask for a docked window, on the surface where it matters.
@@ -253,7 +260,7 @@ export function initSearch({ prefs = {} } = {}) {
     // operator whether to trust a miss; how long the last refresh took was
     // furniture on a 260px screen.
     statusEl.innerHTML = indexRes.builtAt
-      ? `<span title="${indexRes.presentationCount} presentations"><span class="rf-value">${indexRes.presentationCount}</span> songs</span><span class="rf-search-strip-sep" aria-hidden="true">&middot;</span><span title="Last refreshed">${new Date(indexRes.builtAt).toLocaleString(undefined, { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>`
+      ? `<span title="${indexRes.presentationCount} presentations"><span class="rf-value">${indexRes.presentationCount}</span> songs</span><span class="rf-search-strip-sep" aria-hidden="true">&middot;</span><span title="Last refreshed">updated ${updatedText(indexRes.builtAt)}</span>`
       : `<span>Library not read yet</span>`;
 
     // The silent failure: a four-day-old index renders identically to a fresh
@@ -383,18 +390,20 @@ export function initSearch({ prefs = {} } = {}) {
   // is invisible to a normal search. An empty result is the moment that matters,
   // so that is where the one button appears, and the ring's glow moves from the
   // field to it: the light points at what to press next.
+  let lastSearched = [];
   function searchedNames(searched) {
     if (!searched.length) return "the arrangement each song plays";
     return searched.length === 1 ? searched[0] : `${searched.slice(0, -1).join(", ")} or ${searched.at(-1)}`;
   }
 
   function renderNoResults(query, searched) {
+    lastSearched = searched ?? [];
     queryRing?.classList.add("quiet");
     resultsEl.innerHTML = `
       <div class="rf-nores">
         <p class="rf-nores-head">Nothing says &ldquo;${escapeHtml(query.trim())}&rdquo; in ${escapeHtml(searchedNames(searched))}.</p>
         <button type="button" id="deep-btn" class="rf-deep hot"><span class="in"><i data-lucide="layers"></i><span id="deep-label">Deep Search Arrangements</span></span></button>
-        <p class="rf-hint">Search reads one arrangement of each song. Other arrangements can hold slides it skips.</p>
+        <p class="rf-hint">Search covers the arrangement each song plays. Other arrangements can hold slides it skips.</p>
       </div>`;
     if (window.lucide) window.lucide.createIcons();
   }
@@ -443,13 +452,16 @@ export function initSearch({ prefs = {} } = {}) {
       return;
     }
     resultsEl.innerHTML = `${head}
-      <div class="rf-hint px-1">${results.length} slide${results.length === 1 ? "" : "s"}, none in the arrangement Refrain reads.</div>
+      <div class="rf-cap">${results.length} slide${results.length === 1 ? "" : "s"}, none in ${escapeHtml(searchedNames(lastSearched))}</div>
       ${[...groups.values()]
         .map(
           (song) => `
-      <div class="card bg-base-200 shadow-sm"><div class="card-body p-3 gap-2">
-        <div class="font-semibold break-words">${escapeHtml(song.name)}</div>
-        <div class="flex flex-col gap-3 border-t border-base-300 pt-3">
+      <div class="rf-card"><div class="rf-card-body">
+        <div class="rf-card-hd">
+          <div class="rf-card-name">${escapeHtml(song.name)}</div>
+          <span class="rf-card-n">${escapeHtml([...new Set(song.slides.map((x) => x.arrangementName).filter(Boolean))].join(", ") || "No arrangement")}</span>
+        </div>
+        <div class="rf-card-slides">
           ${song.slides
             .map((r) => {
               const g = r.groupName ? escapeHtml(r.groupName) : "this group";
@@ -458,9 +470,8 @@ export function initSearch({ prefs = {} } = {}) {
           <div class="rf-slide-row">
             <div class="rf-slide-meta">
               <span class="rf-chit rf-chit-deep">${escapeHtml(r.groupName ?? "Slide")}${place}</span>
-              <span class="rf-slide-note">${r.arrangementName ? escapeHtml(r.arrangementName) : "In no arrangement"}</span>
             </div>
-            <div class="text-sm rf-measure">${highlightMatch(r.snippet, query)}</div>
+            <p class="rf-slide-text">${highlightMatch(r.snippet, query)}</p>
             <div class="rf-hint">Drag ${g.toUpperCase()} into arrangement to see slide</div>
             <button class="btn btn-outline show-in-editor-btn rf-show-deep" data-presentation-id="${escapeHtml(r.presentationId)}" title="Opens in ProPresenter's editor. Nothing goes to the screens.">Show<span>then drag ${g.toUpperCase()} into arrangement</span></button>
           </div>`;
@@ -525,16 +536,13 @@ export function initSearch({ prefs = {} } = {}) {
     resultsEl.innerHTML = correctedNotice + cappedNotice + songs
       .map(
         (song) => `
-      <div class="card bg-base-200 shadow-sm">
-        <div class="card-body p-3 gap-2">
-          <div class="flex items-baseline justify-between gap-3">
-            <div class="font-semibold min-w-0 break-words">${escapeHtml(song.presentationName)}</div>
-            ${song.arrangementName ? `<span class="badge badge-ghost badge-sm shrink-0" title="Slide numbers from the &quot;${escapeHtml(song.arrangementName)}&quot; arrangement">${escapeHtml(song.arrangementName)}</span>` : ""}
+      <div class="rf-card">
+        <div class="rf-card-body">
+          <div class="rf-card-hd">
+            <div class="rf-card-name"${song.arrangementName ? ` title="Slide numbers from the &quot;${escapeHtml(song.arrangementName)}&quot; arrangement"` : ""}>${escapeHtml(song.presentationName)}</div>
+            <span class="rf-card-n">${song.slides.length} slide${song.slides.length === 1 ? "" : "s"}</span>
           </div>
-          <div class="text-xs opacity-70">
-            ${song.slides.length} matching slide${song.slides.length === 1 ? "" : "s"}${song.appearsIn.length ? ` &middot; in ${song.appearsIn.length} playlist${song.appearsIn.length === 1 ? "" : "s"}` : ""}
-          </div>
-          <div class="flex flex-col gap-3 border-t border-base-300 pt-3">
+          <div class="rf-card-slides">
             ${song.slides
               .map(
                 (r) => `
@@ -543,7 +551,7 @@ export function initSearch({ prefs = {} } = {}) {
                   ${slideChit(r)}
                   ${r.repeatCount > 1 ? `<span class="rf-slide-note">sung ${r.repeatCount}&times;</span>` : ""}
                 </div>
-                <div class="text-sm rf-measure">${highlightMatch(r.snippet, query)}</div>
+                <p class="rf-slide-text">${highlightMatch(r.snippet, query)}</p>
                 <!-- Go Live stays primary and sits first: the slide's text is
                      rendered right above it, so it is the informed action.
                      Show sits apart from it, ten pixels and a whole button
