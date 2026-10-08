@@ -9,6 +9,7 @@
  */
 
 import { crumb } from "./breadcrumbs.js";
+import { drawnIcon } from "./icons.js";
 import { wireTabKeys, fitTabs } from "./tabs.js";
 import { setAvailableTools } from "./open-with.js";
 import { THEMES } from "./themes.js";
@@ -205,7 +206,7 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
         data-name="${item.navLabel}"
         aria-label="${item.navLabel}"
       >
-        <i data-lucide="${item.icon}" class="shrink-0 w-4 h-4"></i>
+        ${drawnIcon(item.id === "health" ? "menu" : item.id) ?? `<i data-lucide="${item.icon}" class="shrink-0 w-4 h-4"></i>`}
         ${keyBadge}
       </button>
 

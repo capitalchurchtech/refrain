@@ -1,6 +1,7 @@
 import { mountFlagButton } from "./slide-flags.js";
 import { showFailure } from "./notice.js";
 import { crumb } from "./breadcrumbs.js";
+import { drawnIcon } from "./icons.js";
 
 
 
@@ -402,7 +403,7 @@ export function initSearch({ prefs = {} } = {}) {
     resultsEl.innerHTML = `
       <div class="rf-nores">
         <p class="rf-nores-head">Nothing says &ldquo;${escapeHtml(query.trim())}&rdquo; in ${escapeHtml(searchedNames(searched))}.</p>
-        <button type="button" id="deep-btn" class="rf-deep hot"><span class="in"><i data-lucide="layers"></i><span id="deep-label">Deep Search Arrangements</span></span></button>
+        <button type="button" id="deep-btn" class="rf-deep hot"><span class="in">${drawnIcon("deep")}<span id="deep-label">Deep Search Arrangements</span></span></button>
         <p class="rf-hint">Search covers the arrangement each song plays. Other arrangements can hold slides it skips.</p>
       </div>`;
     if (window.lucide) window.lucide.createIcons();

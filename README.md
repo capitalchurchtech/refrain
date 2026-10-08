@@ -33,7 +33,7 @@ Refrain already did that groundwork, and it did it as a plugin system rather tha
 
 **A real plugin system under all of it.** Church management integrations, storage backends, lyrics splitting rules, and whole new screens are all things you add as files in a folder, not core surgery. When your team hits something Refrain doesn't do yet, the answer is "add a module", not "wait for a rewrite".
 
-**Only what you switch on.** Search and Spell Check (with its date checks) are always there; everything else is a switch on **Settings › Features**, and a feature that's off has no tab and no routes. Flags, Service day, Messages (the Live page's message poster and stage messages, and the phone's Alert tab) and QR Codes start on. Looks, Macros, Image Crop, Arrangement tracking, Lyrics and Scripture start off. Safe slides (up to four, the slides themselves at the foot of Now) are a switch that starts off. Staff requests starts off too. In `config.json` it's the `features` block; a feature left out of it follows its default.
+**Only what you switch on.** Search and Spell Check (with its date checks) are always there; everything else is a switch on **Settings › Features**, and a feature that's off has no tab and no routes. Flags, Service day and Messages (the Live page's message poster and stage messages, and the phone's Alert tab) start on. QR Codes, Looks, Macros, Image Crop, Arrangement tracking, Lyrics and Scripture start off. Safe slides (up to four, the slides themselves at the foot of Now) are a switch that starts off. Staff requests starts off too. In `config.json` it's the `features` block; a feature left out of it follows its default.
 
 ## What's finished and what isn't
 

@@ -344,7 +344,7 @@
                hover or press opens a flyout beside the rail. Opens things in
                the editor only. -->
           <button id="history-key" class="btn btn-ghost btn-sm justify-start gap-3 px-2" aria-label="History" aria-haspopup="true" aria-expanded="false" aria-controls="history-flyout">
-            <span class="shrink-0"><i data-lucide="history"></i></span>
+            <span class="shrink-0"><svg class="rf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2"/></svg></span>
           </button>
         </div>
       </div>
@@ -440,6 +440,7 @@
              in-browser Tailwind notices it. The clear sits inside the field
              because it acts on the field. -->
         <div id="query-ring" class="rf-sf mb-2">
+          <span class="rf-sf-glow" aria-hidden="true"><i></i></span><span class="rf-sf-ring" aria-hidden="true"><i></i></span>
           <div class="rf-field-clearable w-full">
             <input id="query" type="text" name="refrain-search" placeholder="Search any slide..." aria-label="Search all slides" class="input input-bordered w-full" autocomplete="off" spellcheck="false" autofocus />
             <button id="query-clear" class="rf-field-clear" type="button" hidden title="Clear search (Alt+X)" aria-label="Clear search">
@@ -456,7 +457,7 @@
           <div id="search-pending" class="rf-silkscreen"></div>
           <div class="rf-chip-row hidden" id="library-filter-wrap">
             <button id="library-filter-toggle" class="btn btn-chip" aria-expanded="false" aria-controls="library-filter-panel">
-              <i data-lucide="library"></i> <span id="library-filter-label">Libraries</span>
+              <svg class="rf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5a1 1 0 0 1 1-1h3v16H5a1 1 0 0 1-1-1zM12 4h3v16h-3zM19 6l-2.5 13"/></svg> <span id="library-filter-label">Libraries</span>
             </button>
           </div>
           <div id="search-flag"></div>

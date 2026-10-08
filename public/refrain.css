@@ -4099,27 +4099,45 @@ body[data-index-bar] #main-content {
   padding: 1.5px;
   background: var(--rf-hairline);
 }
-.rf-sf::before,
-.rf-sf::after {
-  content: "";
+/* The ring and its glow are two real elements (`.rf-sf-ring`, `.rf-sf-glow`,
+   written into the markup), not pseudo-elements. A pseudo-element's gradient can
+   only be moved with `background-position`, which runs on the main thread and
+   stalls while a big result list renders: exactly when the band should be
+   travelling. A child slid with `transform` runs on the compositor and keeps
+   moving. The child is three times as wide and tall as the ring, so the band
+   looks the same as the earlier background-position sweep. */
+.rf-sf-ring,
+.rf-sf-glow {
   position: absolute;
   border-radius: inherit;
+  overflow: hidden;
   opacity: 0;
   transition: opacity 250ms ease-out;
+  pointer-events: none;
+}
+.rf-sf-ring { inset: 0; z-index: -1; }
+.rf-sf-glow { inset: -2px; z-index: -2; filter: blur(9px); }
+.rf-sf-ring i,
+.rf-sf-glow i {
+  position: absolute;
+  top: -100%;
+  left: 0;
+  width: 300%;
+  height: 300%;
   background: linear-gradient(60deg, #5B2FA0, #A96FE8, #E6D7FF, #7A44C4, #A96FE8, #5B2FA0);
-  background-size: 300% 300%;
-  background-position: 0 50%;
 }
-.rf-sf::after { inset: 0; z-index: -1; }
-.rf-sf::before { inset: -2px; z-index: -2; filter: blur(9px); }
-.rf-sf:focus-within::after { opacity: 1; }
-.rf-sf:focus-within::before { opacity: 0.25; }
-.rf-sf.typing::after,
-.rf-sf.typing::before {
-  animation: rf-sweep 1.8s ease-in-out infinite alternate;
+.rf-sf:focus-within .rf-sf-ring { opacity: 1; }
+.rf-sf:focus-within .rf-sf-glow { opacity: 0.25; }
+.rf-sf.typing .rf-sf-ring i,
+.rf-sf.typing .rf-sf-glow i {
+  animation: rf-ring-slide 1.8s ease-in-out infinite alternate;
+  /* Only while it moves: a layer kept at rest is memory for nothing. */
+  will-change: transform;
 }
-.rf-sf.typing::after { opacity: 1; }
-.rf-sf.typing::before { opacity: 0.65; }
+.rf-sf.typing .rf-sf-ring { opacity: 1; }
+.rf-sf.typing .rf-sf-glow { opacity: 0.65; }
+@keyframes rf-ring-slide { to { transform: translateX(-66.667%); } }
+/* The other travelling gradients (Deep Search, a staff request) still move a background. */
 @keyframes rf-sweep { to { background-position: 100% 50%; } }
 /* The input draws its own border; the ring is the border here. Specificity
    (0,3,0) beats DaisyUI's `.input-bordered` (0,2,0) without !important. */
@@ -4130,8 +4148,8 @@ body[data-index-bar] #main-content {
   outline: none;
 }
 @media (prefers-reduced-motion: reduce) {
-  .rf-sf.typing::after,
-  .rf-sf.typing::before { animation: none; }
+  .rf-sf.typing .rf-sf-ring i,
+  .rf-sf.typing .rf-sf-glow i { animation: none; }
 }
 
 /* The strip under the field: index freshness, what is narrowing it, Flag. */
@@ -4200,8 +4218,8 @@ html.blackroom .rf-slide-row.rf-is-live .rf-chit::before { box-shadow: 0 0 6px r
 
 /* No results: the field's ring settles and the glow moves to Deep Search, the
    next thing to press. */
-.rf-sf.quiet:not(.typing):focus-within::after { opacity: 0.35; }
-.rf-sf.quiet:not(.typing):focus-within::before { opacity: 0; }
+.rf-sf.quiet:not(.typing):focus-within .rf-sf-ring { opacity: 0.35; }
+.rf-sf.quiet:not(.typing):focus-within .rf-sf-glow { opacity: 0; }
 .rf-nores { display: flex; flex-direction: column; gap: 12px; padding-top: 4px; }
 .rf-nores-head { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.35; }
 
@@ -5079,3 +5097,10 @@ html:is([data-theme="dark"], .blackroom) #view-spellcheck#view-spellcheck #spell
   box-shadow: inset 0 1px 0 rgba(255, 240, 235, 0.08);
 }
 html:is([data-theme="dark"], .blackroom) .rf-sf { background: #3A3150; }
+
+/* The drawn icons (public/icons.js): line drawings on a 24px grid. Sized by
+   where they sit; the rail's 20px comes from the rail rules above. */
+.rf-icon { flex: none; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.btn-chip .rf-icon { width: 12px; height: 12px; stroke-width: 1.8; }
+.rf-deep .rf-icon { width: 16px; height: 16px; stroke-width: 2; }
+#search-flag#search-flag .slide-flag-btn .rf-icon { width: 12px; height: 12px; }
