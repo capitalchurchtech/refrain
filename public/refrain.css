@@ -3911,16 +3911,236 @@ html.blackroom .rf-tab[aria-checked="true"] {
 }
 
 /* ============================================================
-   THE INDEXING BAR (owner, 2026-10-04)
+   THE INDEX RUN (owner, 2026-10-09, from the rebuild-progress mockups)
 
-   Along the bottom of the content column on every screen while the search
-   index is being built: 24 blocks that fill one at a time, an old game's
-   loading bar. Phosphor, because rebuild progress is the system reporting
-   on itself (brief: "index count and age, rebuild progress"). Blocks change
-   in 120ms and never pulse or shimmer; with reduced motion they change at
-   once. `data-on` and `data-state` are attributes set from
-   index-progress.js, so there's no JS-only class to miss.
+   Two surfaces draw one state (public/index-run.js):
+     - the strip along the bottom of the content column on every screen
+       (`.rf-index-bar`, index-progress.js), and
+     - the card inside Settings' Search index card (`.rf-run`, index-card.js),
+       whose outline turns while a run is going (`.rf-rim`).
+   Both use the same bar: a recessed groove, a fill with a light travelling
+   inside it, and a needle at the edge carrying the percent.
+
+   Phosphor, because rebuild progress is the system reporting on itself (brief:
+   "index count and age, rebuild progress"). Dark theme emits; light theme
+   prints: lit is solid plum, unlit is a pale groove, nothing glows, and the
+   rim still turns. Nothing here pulses. The sweep, the rim and the needle's
+   move are transform or left changes that stop under reduced motion.
+
+   Everything the bar needs in BOTH themes is unscoped; only emission and
+   material sit under the dark selectors, so a light panel never loses a state.
    ============================================================ */
+.rf-run-track {
+  position: relative;
+  margin: 24px 0 6px; /* room above for the percent tag */
+}
+.rf-run-groove {
+  height: 14px;
+  border-radius: 2px;
+  background: #e4dded;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18);
+  position: relative;
+  overflow: hidden;
+}
+.rf-run-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: 2px;
+  background: var(--rf-plum, #8446c9);
+  overflow: hidden;
+  transition: width 160ms ease-out;
+}
+/* A light that travels the filled part and arrives at the needle. */
+.rf-run-track .rf-run-fill::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0 40%, rgba(255, 255, 255, 0.5) 50%, transparent 60% 100%);
+  transform: translateX(-100%);
+  opacity: 0;
+}
+.rf-run[data-phase="running"] .rf-run-track .rf-run-fill::before,
+.rf-index-bar[data-state="running"] .rf-run-track .rf-run-fill::before {
+  opacity: 1;
+  animation: rf-run-sweep 1.6s ease-in-out infinite;
+  will-change: transform;
+}
+@keyframes rf-run-sweep { to { transform: translateX(100%); } }
+
+.rf-run-head {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 100%;
+  pointer-events: none;
+  transition: left 160ms ease-out;
+}
+.rf-run-line {
+  position: absolute;
+  right: 0;
+  top: -10px;
+  bottom: -10px;
+  width: 2px;
+  background: var(--rf-plum, #8446c9);
+}
+.rf-run-tag {
+  position: absolute;
+  right: 0;
+  top: -26px;
+  transform: translateX(50%);
+  padding: 3px 5px;
+  border-radius: 2px;
+  font: 600 10px/1 var(--rf-mono, ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  color: var(--rf-plum-deep, #6f39aa);
+  background: #fff;
+  box-shadow: inset 0 0 0 1px #cfc6d8;
+}
+.rf-run-head[data-edge="end"] .rf-run-tag { transform: none; }
+.rf-run-head[data-edge="start"] .rf-run-tag { transform: translateX(100%); }
+/* Finished or waiting: the words matter more than the bar. */
+.rf-run[data-phase="done"] .rf-run-head,
+.rf-run[data-phase="waiting"] .rf-run-head,
+.rf-index-bar[data-state="done"] .rf-run-head,
+.rf-index-bar[data-state="waiting"] .rf-run-head { display: none; }
+
+[data-theme="dark"] .rf-run-groove,
+html.blackroom .rf-run-groove {
+  background: var(--rf-ground);
+  box-shadow: var(--rf-junction-recessed);
+}
+[data-theme="dark"] .rf-run-fill,
+html.blackroom .rf-run-fill {
+  background: linear-gradient(180deg, #d9c3ff 0%, var(--rf-plum-lit, #a96fe8) 45%, var(--rf-plum, #8446c9) 100%);
+}
+[data-theme="dark"] .rf-run-line,
+html.blackroom .rf-run-line {
+  background: #f1e6ff;
+  box-shadow: 0 0 8px rgba(199, 155, 255, 0.95);
+}
+[data-theme="dark"] .rf-run-tag,
+html.blackroom .rf-run-tag {
+  color: var(--rf-phosphor, #cbb4f0);
+  background: var(--rf-ground);
+  box-shadow: var(--rf-junction-recessed), 0 0 10px rgba(132, 70, 201, 0.55);
+  text-shadow: 0 0 6px rgba(203, 180, 240, 0.6);
+}
+
+/* ---- the card, inside Search index ---- */
+.rf-run-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.rf-run-legend {
+  font: 600 9px/1 var(--rf-sans, system-ui);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--rf-muted);
+}
+.rf-run-word {
+  font: 600 9px/1 var(--rf-sans, system-ui);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--rf-plum-deep, #6f39aa);
+}
+/* Stopped or waiting is a fault, and Settings is the one place amber is allowed. */
+#view-health .rf-run[data-phase="stopped"] .rf-run-word,
+#view-health .rf-run[data-phase="waiting"] .rf-run-word { color: var(--rf-fault, #c9922e); }
+.rf-run-stages { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 4px 0 12px; }
+.rf-run-stage { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.rf-run-stage .rf-run-groove { height: 6px; }
+.rf-run-stage .rf-run-fill { transition: width 160ms ease-out; }
+.rf-run-stage .rf-run-legend { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rf-run-stage.active .rf-run-legend { color: var(--rf-plum-deep, #6f39aa); }
+/* The name is the church's own: shown as written, in full when it fits, never restyled. */
+.rf-run-now {
+  margin-top: 4px;
+  min-height: 22px;
+  font: 600 17px/1.25 var(--rf-sans, system-ui);
+  text-transform: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rf-run-trail { min-height: 36px; font-size: 12px; line-height: 1.5; color: var(--rf-muted); text-transform: none; }
+.rf-run-trail > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rf-run-trail > div + div { opacity: 0.75; }
+.rf-run .rf-run-track { margin-top: 26px; }
+.rf-run-spark { display: flex; align-items: flex-end; gap: 1px; height: 18px; margin-top: 8px; }
+.rf-run-spark i { flex: 0 0 calc((100% - 31px) / 32); min-height: 2px; border-radius: 1px; background: var(--rf-plum, #8446c9); opacity: 0.8; }
+.rf-run-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; }
+.rf-run-sentence { min-width: 0; font-size: 12.5px; color: var(--rf-muted); }
+.rf-run-actions { flex: none; }
+
+[data-theme="dark"] .rf-run-word,
+html.blackroom .rf-run-word,
+[data-theme="dark"] .rf-run-stage.active .rf-run-legend,
+html.blackroom .rf-run-stage.active .rf-run-legend,
+[data-theme="dark"] .rf-run-now,
+html.blackroom .rf-run-now {
+  color: var(--rf-phosphor, #cbb4f0);
+  text-shadow: 0 0 7px rgba(203, 180, 240, 0.5);
+}
+[data-theme="dark"] #view-health .rf-run[data-phase="stopped"] .rf-run-word,
+html.blackroom #view-health .rf-run[data-phase="stopped"] .rf-run-word,
+[data-theme="dark"] #view-health .rf-run[data-phase="waiting"] .rf-run-word,
+html.blackroom #view-health .rf-run[data-phase="waiting"] .rf-run-word {
+  color: var(--rf-fault, #c9922e);
+  text-shadow: none;
+}
+[data-theme="dark"] .rf-run-stage.active .rf-run-groove,
+html.blackroom .rf-run-stage.active .rf-run-groove {
+  box-shadow: var(--rf-junction-recessed), 0 0 10px rgba(132, 70, 201, 0.45);
+}
+/* The light theme text for the name: ink, not phosphor. */
+.rf-run-now { color: var(--rf-plum-deep, #6f39aa); }
+
+/* ---- the rim: the Search index card's outline turns while a run is going ---- */
+.rf-rim {
+  position: relative;
+  isolation: isolate;
+  border-radius: 5.5px;
+  padding: 1.5px;
+  background: #cfc6d8;
+}
+[data-theme="dark"] .rf-rim,
+html.blackroom .rf-rim { background: var(--rf-hairline); }
+.rf-rim > .card { border-radius: 4px; }
+.rf-rim-layer {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 250ms ease-out;
+}
+.rf-rim-halo { inset: -2px; z-index: -2; filter: blur(10px); }
+.rf-rim-layer > i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 150%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%) rotate(0deg);
+  background: conic-gradient(from 0deg, #5b2fa0, #a96fe8, #e6d7ff, #7a44c4, #a96fe8, #5b2fa0);
+}
+.rf-rim[data-phase="running"] > .rf-rim-layer,
+.rf-rim[data-phase="stopping"] > .rf-rim-layer { opacity: 1; }
+.rf-rim[data-phase="running"] > .rf-rim-halo,
+.rf-rim[data-phase="stopping"] > .rf-rim-halo { opacity: 0.6; }
+.rf-rim[data-phase="running"] > .rf-rim-layer > i,
+.rf-rim[data-phase="stopping"] > .rf-rim-layer > i {
+  animation: rf-rim-turn 5s linear infinite;
+  will-change: transform;
+}
+@keyframes rf-rim-turn { to { transform: translate(-50%, -50%) rotate(360deg); } }
+/* Light theme loses the glow and keeps the turning edge. */
+[data-theme="light"] .rf-rim-halo { display: none; }
+
+/* ---- the strip along the bottom of every screen ---- */
 .rf-index-bar {
   position: fixed;
   bottom: 0;
@@ -3928,9 +4148,9 @@ html.blackroom .rf-tab[aria-checked="true"] {
   width: 100%;
   z-index: 40;
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 16px calc(10px + env(safe-area-inset-bottom));
   background: var(--rf-ground, #0c0a11);
   border-top: 1px solid var(--rf-hairline, rgba(127, 127, 127, 0.3));
   box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.45);
@@ -3939,111 +4159,86 @@ html.blackroom .rf-tab[aria-checked="true"] {
   letter-spacing: 0.08em;
   color: var(--rf-text, #eee);
 }
-.rf-index-bar[hidden] {
-  display: none;
-}
+.rf-index-bar[hidden] { display: none; }
+.rf-index-line { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .rf-index-word {
   flex: none;
   text-transform: uppercase;
   letter-spacing: 0.15em;
   color: var(--rf-plum-lit, #a96fe8);
 }
-.rf-index-blocks {
-  flex: 1 1 auto;
-  min-width: 120px;
-  display: grid;
-  grid-template-columns: repeat(24, 1fr);
-  gap: 3px;
-  height: 18px;
-  padding: 2px;
-  border: 1px solid var(--rf-hairline, rgba(127, 127, 127, 0.3));
-  border-radius: 2px;
-  background: rgba(0, 0, 0, 0.35);
-}
-.rf-index-blocks i {
-  display: block;
-  background: transparent;
-  transition: background-color 120ms ease-out;
-}
-.rf-index-blocks i[data-on] {
-  background: var(--rf-plum-lit, #a96fe8);
-}
 .rf-index-text {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--rf-muted, #aaa);
+  text-transform: none;
 }
-/* Finished or waiting: the words matter more than the blocks. */
-.rf-index-bar[data-state="done"] .rf-index-blocks,
-.rf-index-bar[data-state="fault"] .rf-index-blocks {
-  display: none;
+.rf-index-stop {
+  flex: none;
+  /* A 44px hit area without a 44px strip. */
+  padding: 14px 4px;
+  margin: -14px 0;
+  background: none;
+  border: 0;
+  color: var(--rf-text, #eee);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
 }
+.rf-index-stop[hidden] { display: none; }
+.rf-index-bar .rf-run-track { margin: 22px 0 2px; }
+.rf-index-bar .rf-run-groove { height: 6px; }
+/* Finished or waiting: the words matter more than the bar. The strip is on
+   the live path, so a stop or a wait is plum with the words doing the work,
+   never the Settings-only amber. */
+.rf-index-bar[data-state="done"] .rf-run-track,
+.rf-index-bar[data-state="waiting"] .rf-run-track { display: none; }
 .rf-index-bar[data-state="done"] .rf-index-text,
-.rf-index-bar[data-state="fault"] .rf-index-text {
+.rf-index-bar[data-state="stopped"] .rf-index-text,
+.rf-index-bar[data-state="waiting"] .rf-index-text {
   white-space: normal;
   color: var(--rf-text, #eee);
 }
-.rf-index-bar[data-state="fault"] .rf-index-word {
-  color: var(--rf-fault, #c9922e);
-}
-@media (max-width: 599px) {
-  .rf-index-bar {
-    flex-wrap: wrap;
-  }
-  .rf-index-text {
-    flex-basis: 100%;
-    white-space: normal;
-  }
-}
-body[data-index-bar] #main-content {
-  padding-bottom: 64px;
-}
-@media (prefers-reduced-motion: reduce) {
-  .rf-index-blocks i {
-    transition: none;
-  }
-}
+.rf-index-bar[data-state="stopped"] .rf-run-track { margin-top: 8px; }
+.rf-index-bar[data-state="stopped"] .rf-run-tag { display: none; }
+@media (max-width: 599px) { .rf-index-text { white-space: normal; } }
+body[data-index-bar] #main-content { padding-bottom: 96px; }
 
-/* Indexing glows, wherever it shows (owner, 2026-10-04: "glowing and seem
-   powerful in all areas"). Phosphor is for what the system reports about
-   itself, and rebuild progress is named in the brief, so it may emit. A
-   steady glow, never a pulse: pulsing is kept for faults. The bar and,
-   while a run is going, Settings' Search index card. */
-.rf-index-bar[data-state="running"] {
+[data-theme="dark"] .rf-index-bar[data-state="running"],
+html.blackroom .rf-index-bar[data-state="running"] {
   border-top-color: var(--rf-plum-lit, #a96fe8);
-  box-shadow:
-    0 -1px 0 rgba(169, 111, 232, 0.55),
-    0 -10px 30px rgba(132, 70, 201, 0.28),
-    0 -8px 24px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 -1px 0 rgba(169, 111, 232, 0.55), 0 -10px 30px rgba(132, 70, 201, 0.28), 0 -8px 24px rgba(0, 0, 0, 0.45);
 }
-.rf-index-bar[data-state="running"] .rf-index-word {
+[data-theme="dark"] .rf-index-bar[data-state="running"] .rf-index-word,
+html.blackroom .rf-index-bar[data-state="running"] .rf-index-word {
   color: var(--rf-phosphor, #cbb4f0);
   text-shadow: 0 0 8px rgba(203, 180, 240, 0.6);
 }
-.rf-index-bar[data-state="running"] .rf-index-text {
+[data-theme="dark"] .rf-index-bar[data-state="running"] .rf-index-text,
+html.blackroom .rf-index-bar[data-state="running"] .rf-index-text {
   color: var(--rf-phosphor, #cbb4f0);
   text-shadow: 0 0 6px rgba(203, 180, 240, 0.35);
 }
-.rf-index-bar[data-state="running"] .rf-index-blocks {
-  border-color: rgba(169, 111, 232, 0.55);
-  box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.6), 0 0 12px rgba(132, 70, 201, 0.25);
+/* Light theme: the strip sits on a light page, so it is printed on it. */
+[data-theme="light"] .rf-index-bar {
+  background: #fff;
+  color: #1d1724;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.12);
 }
-.rf-index-blocks i[data-on] {
-  background: linear-gradient(180deg, #d9c3ff 0%, var(--rf-plum-lit, #a96fe8) 45%, var(--rf-plum, #8446c9) 100%);
-  box-shadow: 0 0 6px rgba(169, 111, 232, 0.7);
-  border-radius: 1px;
-}
-#view-health .card.rf-indexing {
-  box-shadow:
-    inset 0 0 0 1px var(--rf-plum-lit, #a96fe8),
-    0 0 24px rgba(132, 70, 201, 0.35);
-}
-#view-health .card.rf-indexing .card-title {
-  color: var(--rf-phosphor, #cbb4f0);
-  text-shadow: 0 0 8px rgba(203, 180, 240, 0.5);
+[data-theme="light"] .rf-index-word { color: var(--rf-plum-deep, #6f39aa); }
+[data-theme="light"] .rf-index-text { color: var(--rf-muted); }
+[data-theme="light"] .rf-index-stop,
+[data-theme="light"] .rf-index-bar[data-state="done"] .rf-index-text,
+[data-theme="light"] .rf-index-bar[data-state="stopped"] .rf-index-text,
+[data-theme="light"] .rf-index-bar[data-state="waiting"] .rf-index-text { color: #1d1724; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rf-run-fill, .rf-run-head { transition: none; }
+  .rf-run-track .rf-run-fill::before,
+  .rf-rim-layer > i { animation: none !important; }
 }
 
 /* ============================================================

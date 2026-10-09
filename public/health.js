@@ -3,7 +3,8 @@ import { showFailure } from "./notice.js";
 import { wireTabKeys, fitTabs } from "./tabs.js";
 import { display } from "./nav.js";
 import { SETTINGS_TABS, SETTINGS_TOP, SETTINGS_MORE, settingsTopTab, settingsTabFromHash } from "./settings-tabs.js";
-import { createMeter, updateMeter, meterCount } from "./led-meter.js";
+import { mountRunCard } from "./index-card.js";
+import { subscribeRun } from "./index-run.js";
 import { mountLiveReadout, unmountLiveReadout } from "./live-readout.js";
 import { healthCheckHtml } from "./health-check.js";
 const ARRANGEMENT_STATUS_LABEL = {
@@ -126,6 +127,8 @@ export function initHealth() {
    * The rows are redrawn only when what they show changes.
    */
   let healthTimer = null;
+  let unmountRunCard = null;
+  let unsubRunEdge = null;
   function wireHealthCheck() {
     clearInterval(healthTimer);
     const host = document.getElementById("health-check");
@@ -756,31 +759,23 @@ export function initHealth() {
         ?.addEventListener("click", (e) => runDetect(e.currentTarget, true));
     }
 
-    const rebuildMeter = document.getElementById("health-rebuild-meter");
-    if (rebuildMeter) {
-      createMeter(rebuildMeter);
-      updateMeter(rebuildMeter, health.index.rebuild.current, health.index.rebuild.total);
-      document.getElementById("health-rebuild-count").textContent = meterCount(
-        health.index.rebuild.current,
-        health.index.rebuild.total
-      );
-    }
-
-    // "Quit Refrain" used to be the only way to end a running crawl, which is
-    // a poor thing to tell someone ten minutes before doors.
-    const stopBtn = document.getElementById("health-stop-rebuild-btn");
-    if (stopBtn) {
-      stopBtn.addEventListener("click", async () => {
-        const status = document.getElementById("health-stop-rebuild-status");
-        stopBtn.disabled = true;
-        try {
-          const res = await fetch("/api/index/stop", { method: "POST" });
-          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? res.statusText);
-          if (status) status.textContent = "Stopping after this presentation.";
-        } catch (err) {
-          stopBtn.disabled = false;
-          if (status) status.textContent = `Couldn't stop it: ${err.message}`;
-        }
+    // The progress card is a subscriber to the shared run state, so leaving
+    // Settings and coming back redraws it from what the run already knows. A
+    // run starting or ending while this screen is open redraws the card around
+    // it, so the rebuild buttons appear and disappear with the run.
+    unmountRunCard?.();
+    unsubRunEdge?.();
+    const runHost = document.getElementById("index-run-host");
+    if (runHost) {
+      unmountRunCard = mountRunCard(runHost, document.querySelector("[data-run-rim]"));
+      let wasRunning = null;
+      unsubRunEdge = subscribeRun((run) => {
+        const running = run.phase === "running" || run.phase === "stopping";
+        const changed = wasRunning !== null && running !== wasRunning;
+        wasRunning = running;
+        // Not while a field here has focus: a redraw would throw away what is being typed.
+        const typing = container.contains(document.activeElement) && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+        if (changed && !typing && !container.classList.contains("hidden")) render();
       });
     }
 
@@ -1909,7 +1904,9 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
   `;
 
   const indexCard = `
-    <div class="card bg-base-200${health.index?.rebuild?.inProgress ? " rf-indexing" : ""}">
+    <div class="rf-rim" data-run-rim>
+      <span class="rf-rim-layer" aria-hidden="true"><i></i></span><span class="rf-rim-layer rf-rim-halo" aria-hidden="true"><i></i></span>
+    <div class="card bg-base-200">
       <div class="card-body p-3">
         <h2 class="card-title text-base"><i data-lucide="database" class="w-4 h-4 opacity-70"></i> Search index</h2>
         ${
@@ -1965,24 +1962,10 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
               : ""
         }
         ${renderIndexShortfall(index)}
+        <div id="index-run-host" class="mt-2" hidden></div>
         ${
           index.rebuild.inProgress
-            ? `<div class="flex items-center gap-3 mt-1">
-                 <div id="health-rebuild-meter" class="flex-1"></div>
-                 <span id="health-rebuild-count" class="rf-meter-count"></span>
-               </div>
-               <div class="text-sm mt-2">Reading every slide you own${
-                 index.rebuild.etaMs != null ? `: about ${formatDuration(index.rebuild.etaMs)} to go at this rate` : ""
-               }. Go coil something.</div>
-               <button id="health-stop-rebuild-btn" class="btn btn-brand btn-sm w-fit mt-2">Stop indexing</button>
-               <div id="health-stop-rebuild-status" class="rf-hint"></div>
-               <div class="alert alert-warning py-2 text-sm mt-2 items-start">
-                 <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
-                 <span><strong>A rebuild is running, so ProPresenter will be sluggish until it finishes.</strong>
-                 Keep ProPresenter open, or the build stops. Nothing goes to the screens, but Go Live, Clear
-                 and macros may be slow or not respond. Stop it if a service is about to start: what's already
-                 read is kept. After a big run, restart ProPresenter before the service.</span>
-               </div>`
+            ? ""
             : health.protectProPresenter
               ? `<div class="text-sm mt-2 rf-measure">Search uses the index it already has. Refrain doesn't read the library from ProPresenter while <strong>Protect ProPresenter</strong> is on (Advanced, below), so nothing here reads it again.</div>`
               : (() => {
@@ -2084,6 +2067,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
               })()
         }
       </div>
+    </div>
     </div>
   `;
 

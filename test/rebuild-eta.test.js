@@ -28,3 +28,13 @@ test("noteRead keeps only the last stretch of reads", () => {
   assert.equal(r.length, RECENT_READS);
   assert.equal(r.at(-1), RECENT_READS + 14);
 });
+
+test("noteName keeps the title just read first, and only the last three", async () => {
+  const { noteName, RECENT_NAMES } = await import("../server/rebuild-eta.js");
+  let n = [];
+  for (const name of ["A", "B", "C", "D"]) n = noteName(n, name);
+  assert.equal(RECENT_NAMES, 3);
+  assert.deepEqual(n, ["D", "C", "B"]);
+  assert.deepEqual(noteName(n, undefined), n, "a read with no name leaves the list alone");
+  assert.deepEqual(noteName(undefined, ""), []);
+});
