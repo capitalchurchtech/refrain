@@ -23,7 +23,8 @@
   "protectProPresenter": true,
   "_slidePicturesShow": "slidePictures.show: slide pictures anywhere in Refrain (safe slides, Spell Check, phones with networkModule.phonePictures, the pre-render and Update pictures). OFF unless true (temporarily, since 2026-10-04): while off Refrain asks ProPresenter for no picture and every screen shows the slide's words. Set on Settings › Phones › Slide pictures.",
   "_slidePicturesQuickSlides": "slidePictures.quickSlides: pictures of the saved safe slides (at most four; a list saved earlier may hold up to eight) even while show is false. ON unless false. Each is drawn once when it is saved and kept in data/slide-pictures; nothing new is drawn during performance mode. Settings › Phones › Slide pictures › Safe slide pictures.",
-  "slidePictures": { "show": false, "quickSlides": true, "prerender": false, "playlists": [] },
+  "_slidePicturesFlagged": "slidePictures.flagged: a picture of the slide a phone flags, taken when the flag is added and kept in data/flag-pictures with the flag, even while show is false and even during performance mode (one per flag, only that slide). ON unless false. It is what lets a flag still show the right slide after the presentation is edited.",
+  "slidePictures": { "show": false, "quickSlides": true, "flagged": true, "prerender": false, "playlists": [] },
   "_searchLibrariesOff": "Search's own choices, set on the Search screen and kept on this machine. searchLibrariesOff is the libraries switched off there (a library added later is searched); searchDateField is which date the Date filter uses, modified or created. The date range itself is never kept.",
   "searchLibrariesOff": [],
   "searchDateField": "modified",
@@ -81,14 +82,15 @@
     "hiddenMacros": [],
     "safeSlides": []
   },
-  "_networkModule": "Phone flags and the service progress feed (off until enabled). A separate listener on its own port that anyone on the church network can open on a phone: it shows what's live, the last few slides and where the service is, and adds a flag with a note and a name. It has no route that can change the screens, and never calls ProPresenter. Refrain's main screens stay on this machine only. pin is \"daily\" (a four-digit PIN that changes at midnight, shown in the booth on the Flags screen and Health), a fixed 4 to 8 digits, or empty for none. pinHint is what the phone's PIN screen says about where to find it. A correct PIN signs the phone in until midnight, or for 30 days if the person ticks \"Trust this phone\"; Forget all phones on Health signs them all out. phonePictures is false: a phone is never sent a slide picture, and the route that would serve one answers 404 whatever the page asks. Set it to true only if you want phones to see pictures (only ones already drawn ahead; nothing new is rendered). host defaults to every network address (0.0.0.0); set 127.0.0.1 to try it on this machine only.",
+  "_networkModule": "Phone flags and the service progress feed (off until enabled). A separate listener on its own port that anyone on the church network can open on a phone: it shows what's live, the last few slides and where the service is, and adds a flag with a note and a name. It can show slide pictures only if phonePictures is on, send stage messages and pager codes from phones the booth approved, and put a slide on the screens only if phoneGoLive is on. Refrain's main screens stay on this machine only. pin is \"daily\" (a four-digit PIN that changes at midnight, shown in the booth on the Flags screen and Health), a fixed 4 to 8 digits, or empty for none. pinHint is what the phone's PIN screen says about where to find it. A correct PIN signs the phone in until midnight, or for 30 days if the person ticks \"Trust this phone\"; Forget all phones on Health signs them all out. phonePictures is false: a phone is never sent a slide picture, and the route that would serve one answers 404 whatever the page asks. Set it to true only if you want phones to see pictures (only ones already drawn ahead; nothing new is rendered). phoneGoLive is false: no phone can put a slide on the screens. Turn it on in the Phone panel (\"Let phones go live\"): a phone then needs this month's four-digit device code (shown only in that panel) once a month, and for every go-live a fresh code the phone shows and the person types, then a separate confirm. Each one is logged with the phone's name, and switching it off stops phones at once. host defaults to every network address (0.0.0.0); set 127.0.0.1 to try it on this machine only.",
   "networkModule": {
     "enabled": false,
     "host": "0.0.0.0",
     "port": 9997,
     "pin": "daily",
     "pinHint": null,
-    "phonePictures": false
+    "phonePictures": false,
+    "phoneGoLive": false
   },
   "_reportModule": "Sending End's day summary somewhere (off until enabled). deliveryBackend is a file in delivery/: email (SMTP settings in .env, recipients here) or folder (folder here). A person presses Send after reading the summary unless requireReview is false. Email is the one thing in Refrain that sends data off the machine; it only happens for a church that turns this on.",
   "reportModule": {

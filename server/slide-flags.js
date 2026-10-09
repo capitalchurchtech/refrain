@@ -62,7 +62,7 @@ export const DEFAULT_FLAG_TYPES = [
   { label: "Foreground image", icon: "image" },
   { label: "Formatting", icon: "type" },
   { label: "Missing slide", icon: "file-plus" },
-  { label: "Other", icon: "circle-ellipsis" },
+  { label: "Note", icon: "sticky-note" },
   { label: "Slide order", icon: "list-ordered" },
   { label: "Template", icon: "layout-template" },
   { label: "Timing or advance", icon: "timer" },
@@ -82,7 +82,7 @@ export const DEFAULT_KEEP_RESOLVED_DAYS = 14;
  * is explicit: mid-service the operator is scanning, not reading, and a
  * left-aligned alphabetical grid is scannable where a grouped one is not. A
  * team adding its own type gets it in the right place without thinking about
- * it. Strict alphabetical does put "Other" in the middle; a pinned exception
+ * it. Strict alphabetical does put "Note" in the middle; a pinned exception
  * would be one more rule to remember, so it is not made.
  */
 export function flagTypes(configured) {

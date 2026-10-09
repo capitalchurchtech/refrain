@@ -280,11 +280,11 @@ test("the save message names the type when there is one", () => {
 
 // --- issue #2: types, changes, and the retention window ---------------------
 
-test("the eleven default types, sorted alphabetically with Other where it falls", () => {
+test("the eleven default types, sorted alphabetically with Note where it falls", () => {
   const labels = flagTypes().map((t) => t.label);
   assert.equal(labels.length, 11);
   assert.deepEqual(labels, [...labels].sort((a, b) => a.localeCompare(b)));
-  assert.ok(labels.indexOf("Other") > 0 && labels.indexOf("Other") < labels.length - 1, "strict alphabetical: Other sits in the middle");
+  assert.ok(labels.indexOf("Note") > 0 && labels.indexOf("Note") < labels.length - 1, "strict alphabetical: Note sits in the middle");
   assert.equal(DEFAULT_FLAG_TYPES.length, 11);
 });
 

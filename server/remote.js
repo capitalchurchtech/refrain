@@ -11,12 +11,14 @@
  *   - serve the phone page and its script,
  *   - report what's live, the last few slides, and service progress,
  *   - add a flag (a type, a note, a name) for one of those slides.
- * There is no route to Go Live, Clear, Looks, Macros, messages, settings or
- * anything on the main app. Two things reach ProPresenter, both narrow:
- * pictures of the current and next slide (cached), and, for a phone the
- * booth approved by name, next/previous slide and the church's own safe
- * slides, each needing a second, confirming press. The main app stays bound
- * to 127.0.0.1 regardless.
+ * There is no route to Clear, Looks, Macros, settings or anything on the main
+ * app. Three things reach ProPresenter, all narrow: pictures of the current
+ * and next slide (cached); for a phone the booth approved by name, a stage
+ * message or a pager code, each needing a second, confirming press; and, only
+ * while the booth has switched "Let phones go live" on, one searched slide
+ * put on the screens by a phone that has this month's device code, typed a
+ * fresh request code and pressed a separate confirm (server/remote-live.js).
+ * The main app stays bound to 127.0.0.1 regardless.
  *
  * "Nobody knows the URL" is not access control, so when a PIN is set (daily
  * or fixed; see server/remote-auth.js) every API call needs a phone token
@@ -29,7 +31,9 @@ import path from "node:path";
 import { buildFlag } from "./slide-flags.js";
 import { pinMatches, issueToken, tokenDevice } from "./remote-auth.js";
 import { createConfirmer, createCooldown } from "./remote-devices.js";
-import { messageFieldValue } from "./stage-messages.js";
+import { createLiveGate, deviceCodeMatches, endOfMonth } from "./remote-live.js";
+import { messageFieldValue, cleanStageText } from "./stage-messages.js";
+import { isFlagId } from "./slide-flags.js";
 import { installAsyncErrorCatching } from "./async-routes.js";
 
 export const RECENT_SLIDES = 12;
@@ -168,6 +172,17 @@ export function rateLimiter({ max = 20, windowMs = 60_000 } = {}) {
  * @param {() => Array} [deps.safeSlides]
  * @param {(action: object, deviceId: string) => Promise<{label: string}>} [deps.control]
  *   performs an approved, confirmed control action; throws with a sentence on failure
+ * @param {(q: string) => Array} [deps.search]  read-only text search of the index, for the phone's Search page; nothing it returns can be fired except through golive
+ * @param {() => Array} [deps.history]  how long each item was up (server/item-splits.js splitsView)
+ * @param {(flagId: string, presentationId: string, slideIndex: number) => Promise<string|null>} [deps.captureFlagPicture]
+ *   takes and keeps a picture of the flagged slide; the file name, or null if none could be taken
+ * @param {() => Promise<Array>} [deps.openFlags]  open flags, newest first, for the phone's list
+ * @param {(flagId: string) => Promise<{type, bytes}|null>} [deps.flagPicture]
+ * @param {object} [deps.golive]  going live from a phone (server/remote-live.js); off unless enabled() says so
+ *   { enabled(): boolean, code(): string (this month's device code), allowed(id): boolean, allow(id): void,
+ *     guard?: { blocked, fail } (a daily cap on wrong device codes across phones),
+ *     describe(presentationId, slideIndex): {label, text}|null (an indexed slide, or null),
+ *     onScreen(): string|null, run(action, deviceId): Promise<{label}> (throws a sentence on failure) }
  * @param {string} [deps.publicDir]
  */
 export function createRemoteApp({
@@ -187,6 +202,22 @@ export function createRemoteApp({
   noteActivity = () => {},
   control = async () => {
     throw new Error("Control isn't available.");
+  },
+  search = () => [],
+  history = () => [],
+  captureFlagPicture = async () => null,
+  openFlags = async () => [],
+  flagPicture = async () => null,
+  golive = {
+    enabled: () => false,
+    code: () => "",
+    allowed: () => false,
+    allow() {},
+    describe: () => null,
+    onScreen: () => null,
+    run: async () => {
+      throw new Error("Going live isn't available.");
+    },
   },
   publicDir = "./public",
 }) {
@@ -263,7 +294,7 @@ export function createRemoteApp({
   const phoneFeature = (raw) => {
     const path = String(raw).toLowerCase().replace(/\/+$/, "");
     // Slide pictures on a phone are only for choosing a slide to flag.
-    if (path === "/api/flag" || path === "/api/flag-slides" || path.startsWith("/api/preview/image/")) return "flags";
+    if (path === "/api/flag" || path === "/api/flags" || path === "/api/flag-slides" || path.startsWith("/api/flag-picture/") || path.startsWith("/api/preview/image/")) return "flags";
     if (path === "/api/stage" || path === "/api/messages" || path.startsWith("/api/control/")) return "messages";
     return null;
   };
@@ -288,8 +319,9 @@ export function createRemoteApp({
   });
 
   // --- helper level: read-only --------------------------------------------
-  // The phone is for alerts and flags (owner, 2026-10-04). It has no search,
-  // no preview of what's next, and nothing that moves a slide.
+  // Search came back on the phone on 2026-10-09 (read-only text). It still has
+  // no preview of what's next, and nothing here moves a slide: that is only
+  // /api/golive, behind the booth's switch.
 
   /**
    * Every slide of the presentation on the screens, for the Flag tab:
@@ -331,6 +363,115 @@ export function createRemoteApp({
     res.set("Cache-Control", "private, max-age=300").type(imgData.type).send(imgData.bytes);
   });
 
+  // --- Search, History, and the flags list: read-only -----------------------
+  const allowSearch = rateLimiter({ max: 120, windowMs: 60_000 });
+  app.get("/api/search", (req, res) => {
+    const q = req.query.q;
+    if (typeof q !== "string") return res.status(400).json({ error: "Send what to search for, once, as text." });
+    if (!allowSearch(req.deviceId ?? req.ip)) return res.status(429).json({ error: "That's a lot of searches. Wait a moment." });
+    const text = q.trim().slice(0, 100);
+    if (text.length < 2) return res.json({ results: [], more: false });
+    const found = search(text);
+    res.json({
+      more: found.length > 20,
+      results: found.filter((r) => Number.isInteger(r.slideIndex)).slice(0, 20).map((r) => ({
+        presentationId: r.presentationId,
+        slideIndex: r.slideIndex,
+        presentationName: r.presentationName ?? null,
+        slideNumber: r.slideIndex + 1,
+        text: String(r.snippet ?? "").slice(0, 200),
+      })),
+    });
+  });
+
+  app.get("/api/history", (_req, res) => res.json({ items: history() }));
+
+  app.get("/api/flags", async (_req, res) => res.json({ flags: await openFlags() }));
+  app.get("/api/flag-picture/:id", async (req, res) => {
+    if (!isFlagId(req.params.id)) return res.status(404).json({ error: "No picture for that flag." });
+    const img = await flagPicture(req.params.id);
+    if (!img) return res.status(404).json({ error: "No picture for that flag." });
+    res.set("Cache-Control", "private, max-age=3600").type(img.type).send(img.bytes);
+  });
+
+  // --- going live: the booth's switch, the device code, a request code ------
+  // See server/remote-live.js for why there are three gates. Each request
+  // re-reads the booth's switch and the phone's permission, so turning the
+  // switch off, a new month, or removing a phone stops the next press.
+  const liveGate = createLiveGate();
+  const liveConfirmer = createConfirmer({ ttlMs: 30_000 });
+  const liveCooldown = createCooldown(5000);
+  const allowLiveTry = rateLimiter({ max: 10, windowMs: 60_000 });
+  const minutes = (ms) => Math.max(1, Math.ceil(ms / 60_000));
+  const lockedSentence = (ms) => `Too many wrong codes. This phone is locked out for ${minutes(ms)} more minute${minutes(ms) === 1 ? "" : "s"}.`;
+
+  const liveOn = (req, res, next) => {
+    if (!pinOn()) return res.status(403).json({ error: "Going live from a phone needs phone PINs turned on." });
+    if (!golive.enabled()) return res.status(403).json({ error: "Going live from phones is off at the booth.", off: true });
+    next();
+  };
+  const liveAllowed = (req, res, next) => {
+    if (!golive.allowed(req.deviceId)) return res.status(403).json({ error: "This phone needs this month's device code first.", needsCode: true });
+    next();
+  };
+
+  app.get("/api/golive/status", (req, res) => {
+    const enabled = pinOn() && Boolean(golive.enabled());
+    if (!enabled) return res.json({ enabled: false });
+    const allowed = Boolean(golive.allowed(req.deviceId));
+    res.json({ enabled: true, allowed, until: allowed ? new Date(endOfMonth()).toISOString() : null, lockedMs: liveGate.lockedMs(req.deviceId, Date.now()) });
+  });
+
+  /** The device code, once a month per phone. */
+  app.post("/api/golive/allow", liveOn, (req, res) => {
+    const locked = liveGate.lockedMs(req.deviceId, Date.now());
+    if (locked) return res.status(429).json({ error: lockedSentence(locked) });
+    if (golive.guard?.blocked()) return res.status(429).json({ error: "Too many wrong device codes today, so no phone can be allowed until tomorrow." });
+    if (!allowLiveTry(req.deviceId)) return res.status(429).json({ error: "Too many tries. Wait a minute." });
+    if (!deviceCodeMatches(req.body?.code, golive.code())) {
+      golive.guard?.fail();
+      const left = liveGate.failDevice(req.deviceId, Date.now());
+      return res.status(403).json({ error: left ? `That isn't this month's device code. ${left} ${left === 1 ? "try" : "tries"} left.` : lockedSentence(liveGate.lockedMs(req.deviceId, Date.now())) });
+    }
+    liveGate.succeed(req.deviceId);
+    golive.allow(req.deviceId);
+    res.json({ ok: true, until: new Date(endOfMonth()).toISOString() });
+  });
+
+  /** Asks to put one indexed slide up. The server makes the request code; nothing goes live yet. */
+  app.post("/api/golive/request", liveOn, liveAllowed, (req, res) => {
+    const { presentationId, slideIndex } = req.body ?? {};
+    if (typeof presentationId !== "string" || !presentationId || !Number.isInteger(slideIndex) || slideIndex < 0) return res.status(400).json({ error: "Pick a slide first." });
+    const info = golive.describe(presentationId, slideIndex);
+    if (!info) return res.status(404).json({ error: "That slide isn't in the index any more. Search for it again." });
+    const out = liveGate.request(req.deviceId, { kind: "golive", presentationId, slideIndex, slideText: info.text ?? "", label: info.label });
+    if (!out.ok) return res.status(429).json({ error: lockedSentence(out.lockedMs) });
+    res.json({ requestId: out.requestId, code: out.code, label: info.label, replaces: golive.onScreen() ?? null });
+  });
+
+  /** The typed request code. Right: hands back a one-time id for the confirm press. */
+  app.post("/api/golive/approve", liveOn, liveAllowed, (req, res) => {
+    const out = liveGate.approve(req.deviceId, req.body?.requestId, req.body?.code);
+    if (out.lockedMs) return res.status(429).json({ error: lockedSentence(out.lockedMs) });
+    if (out.expired) return res.status(409).json({ error: "That request timed out. Pick the slide again." });
+    if (!out.ok) return res.status(403).json({ error: `That code isn't right. ${out.left} ${out.left === 1 ? "try" : "tries"} left.`, code: out.code });
+    res.json({ confirmId: liveConfirmer.prepare(req.deviceId, out.action), label: out.action.label, replaces: golive.onScreen() ?? null });
+  });
+
+  /** The confirm press: the only thing that sends it. */
+  app.post("/api/golive/confirm", liveOn, liveAllowed, async (req, res) => {
+    if (!liveCooldown.ready(req.deviceId)) return res.status(429).json({ error: "Wait a few seconds between go-lives, then confirm again." });
+    const action = liveConfirmer.take(req.deviceId, String(req.body?.confirmId ?? ""));
+    if (!action) return res.status(409).json({ error: "That confirmation timed out. Pick the slide again." });
+    liveCooldown.mark(req.deviceId);
+    try {
+      const out = await golive.run(action, req.deviceId);
+      res.json({ ok: true, label: out?.label ?? action.label });
+    } catch (err) {
+      res.status(502).json({ error: err.message });
+    }
+  });
+
   // --- control level: approved phones, confirmed presses -------------------
 
   // The stage message (handoff section 44): presets only from a phone, so a
@@ -364,6 +505,13 @@ export function createRemoteApp({
     if (kind === "stage") {
       const p = (await stage()).presets.find((x) => x.id === req.body?.presetId);
       if (p) action = { kind, text: p.text, label: `Stage: "${p.text}"` };
+    } else if (kind === "stage-custom") {
+      // Typed on the phone (owner, 2026-10-09; before that presets only, so a
+      // phone could not put a typo in front of whoever is speaking). Cleaned
+      // exactly as the booth cleans one, and the label confirmed is what goes up.
+      const text = cleanStageText(req.body?.text);
+      if (!text) return res.status(400).json({ error: "Type the message first." });
+      action = { kind: "stage", text, label: `Stage: "${text}"` };
     } else if (kind === "stage-clear") {
       action = { kind, label: "Take down the stage message" };
     } else if (kind === "message" || kind === "message-clear") {
@@ -422,11 +570,17 @@ export function createRemoteApp({
     if (!entry) return res.status(404).json({ error: "That slide has scrolled out of the recent list. Pick it again." });
     const types = flagTypes().map((t) => t.label);
     const chosenType = typeof type === "string" && types.includes(type) ? type : null;
+    // A "Note" is for the team, so it needs its words (owner, 2026-10-09).
+    if (chosenType === "Note" && !String(note ?? "").trim()) return res.status(400).json({ error: "Write the note for the team first." });
     const built = flagFromRecent(entry, { type: chosenType, note, name });
     if (!built.ok) return res.status(409).json({ error: built.error });
     try {
+      // The picture is part of the flag, so it is taken before the flag is
+      // saved; one that cannot be taken never stops the flag (it is words only).
+      const picture = await captureFlagPicture(built.flag.id, entry.presentationId, entry.slideIndex).catch(() => null);
+      if (picture) built.flag.picture = picture;
       const saved = await saveFlag(built.flag);
-      res.json({ ok: true, id: built.flag.id, shared: saved?.shared !== false });
+      res.json({ ok: true, id: built.flag.id, shared: saved?.shared !== false, picture: Boolean(picture) });
     } catch (err) {
       res.status(500).json({ error: `Not saved: ${err.message}` });
     }
