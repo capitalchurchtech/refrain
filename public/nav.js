@@ -509,7 +509,7 @@ export async function initNav({ onNavigate, viewIds, modules: given = null }) {
     navItemsEl.querySelectorAll(".nav-item").forEach((b) => b.classList.toggle("has-request", requestsWaiting > 0 && b.dataset.id === "service"));
   }
   // The index needs a refresh: the same kind of dot on the Settings key, where
-  // the notice and its Refresh live (Settings > More > System).
+  // the notice and its Refresh live (Settings > System).
   let indexNoticeUp = false;
   function applyNoticeDot() {
     navItemsEl.querySelectorAll(".nav-item").forEach((b) => b.classList.toggle("has-notice", indexNoticeUp && b.dataset.id === "health"));

@@ -100,3 +100,16 @@ test("a run that finishes reports attempted and completed as equal", async () =>
   assert.equal(idx.reindexAttempted, 15);
   assert.equal(idx.reindexCompleted, 15, "nothing was skipped, so they match");
 });
+
+test("while a rebuild runs, the progress says which presentation it just read", async () => {
+  const { getRebuildProgress } = await import("../server/search-index.js");
+  const seen = [];
+  const c = client(6, { onFetch: () => seen.push(getRebuildProgress().recentNames ?? []) });
+  await rebuildIndex(c, {}, []);
+  const last = seen.at(-1);
+  assert.ok(seen.some((names) => names.length > 0), "names were reported mid-run");
+  assert.ok(last.length <= 3, "kept to the last few");
+  assert.ok(last.every((n) => /^Song \d$/.test(n)), `only titles: ${last}`);
+  assert.equal(getRebuildProgress().inProgress, false, "and nothing is left behind once it ends");
+  assert.equal(getRebuildProgress().recentNames, undefined);
+});

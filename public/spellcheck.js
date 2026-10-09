@@ -43,7 +43,7 @@ export function initSpellcheck() {
   async function render() {
     container.innerHTML = `
       <div class="flex flex-col gap-4 max-w-3xl">
-        <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="spell-check" class="w-5 h-5"></i> Spell Check</h1>
+        <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="spell-check" class="w-5 h-5"></i> Quality Control</h1>
 
         <!-- E2, the hero: the scan is the whole screen. Its own key now, so the
              page is named once, here, and the card does not repeat it. The

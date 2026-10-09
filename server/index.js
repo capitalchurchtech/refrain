@@ -119,6 +119,7 @@ import { createThumbStore, slideKey as pictureKey } from "./thumb-store.js";
 import { readFingerprint } from "./index-fingerprint.js";
 import { envEntries, applyEnvEdits, saveEnvFile, readText as readEnvText } from "./env-file.js";
 import { crossSiteRefused } from "./request-guard.js";
+import { readEta } from "./rebuild-eta.js";
 import { markHidden, setHidden, isControlId, hiddenIds } from "./live-visibility.js";
 import { safeSlides, addSafeSlide, removeSafeSlide, renameSafeSlide, moveSafeSlide } from "./safe-slides.js";
 import { stageMessages, addStageMessage, removeStageMessage, editStageMessage, moveStageMessage, placeStageMessage, cleanStageText, messageFieldValue } from "./stage-messages.js";
@@ -2548,10 +2549,10 @@ function indexStatusPayload() {
  * and the morning's decisions followed the wrong number (issue #13).
  */
 function rebuildProjection(p, now = Date.now()) {
-  if (!p.inProgress || !p.startedAt) return p;
-  const elapsedMs = now - p.startedAt;
-  const perSec = p.current > 0 ? p.current / (elapsedMs / 1000) : null;
-  return { ...p, elapsedMs, perSec, etaMs: perSec ? Math.round(((p.total - p.current) / perSec) * 1000) : null };
+  const shown = { ...p };
+  delete shown.recent; // the read times are for the estimate, not for the screen
+  if (!p.inProgress || !p.startedAt) return shown;
+  return { ...shown, elapsedMs: now - p.startedAt, ...readEta(p, now) };
 }
 
 app.get("/api/propresenter/status", async (_req, res) => {
@@ -4102,7 +4103,7 @@ app.get("/api/preview/image/:pid/:idx", async (req, res) => {
   // never drawn during a service.
   const flagged = spellcheckPictures.has(`${req.params.pid}:${idx}`);
   if (!nowOrNext && !aSafeSlide && !flagged) {
-    return res.status(404).json({ error: "Only the current and next slide, a safe slide, or a slide Spell Check found can be previewed." });
+    return res.status(404).json({ error: "Only the current and next slide, a safe slide, or a slide Quality Control found can be previewed." });
   }
   // The address can show a different slide after one is removed in
   // ProPresenter, so the browser checks each time; the answer is tagged with

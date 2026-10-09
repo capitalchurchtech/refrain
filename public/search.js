@@ -160,7 +160,7 @@ export function initSearch({ prefs = {} } = {}) {
     saveSearchPrefs({ searchLibrariesOff: off });
   }
 
-  /** The chip carries a dot when the search is narrowed, so a filter is never invisible. */
+  /** The Filter chip carries a dot when the search is narrowed, so a filter is never invisible. */
   function syncLibraryLabel() {
     const on = libraryFilterKeys.querySelectorAll('[aria-checked="true"]').length;
     const all = allLibraryFolders.length;

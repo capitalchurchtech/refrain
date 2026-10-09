@@ -12,21 +12,23 @@ export const SETTINGS_TABS = [
   ["telemetry", "Telemetry", "radio-tower"],
   // Last: the least used (owner, 2026-09-30).
   ["audit", "Audit", "clipboard-check"],
-  // Stop Refrain, the ProPresenter connection and Updates (owner, 2026-10-07:
-  // under More, not on Status).
+  // Stop Refrain, the ProPresenter connection and Updates. A tab of its own
+  // (owner, 2026-10-09) because it carries the index notice's dot.
   ["system", "System", "cpu"],
 ];
 
 /**
- * The top row, four tabs (owner, 2026-10-07: seven did not fit a 260px
- * column). The last, More, holds the rest as a second row, so every old link
- * (`#settings/phones`) still lands on its own panel.
+ * The top row, five tabs (owner, 2026-10-07: seven did not fit a 260px column;
+ * System joined the row on 2026-10-09). The last, More, holds the rest as a
+ * second row, so every old link (`#settings/phones`) still lands on its own
+ * panel.
  */
-export const SETTINGS_MORE = ["phones", "customize", "telemetry", "audit", "system"];
+export const SETTINGS_MORE = ["phones", "customize", "telemetry", "audit"];
 export const SETTINGS_TOP = [
   ["status", "Status", "activity"],
   ["search", "Search", "search"],
   ["features", "Features", "toggle-right"],
+  ["system", "System", "cpu"],
   ["more", "More", "ellipsis"],
 ];
 
