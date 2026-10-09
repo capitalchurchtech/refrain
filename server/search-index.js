@@ -6,6 +6,7 @@
 import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { normalizeText } from "./propresenter-client.js";
+import { noteRead, readEta } from "./rebuild-eta.js";
 import { resolveArrangement, flattenGroups, otherArrangementSlides } from "./arrangements.js";
 import {
   readFingerprint,
@@ -661,12 +662,14 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
       }
       fetched += 1;
       rebuildProgress.current = fetched;
+      rebuildProgress.recent = noteRead(rebuildProgress.recent, Date.now());
       // Breathe between documents so ProPresenter stays responsive to the
       // operator while this runs. Injectable only so tests needn't wait.
       await pause(options.pacingMs ?? FETCH_PACING_MS);
       if (fetched % 50 === 0 || fetched === idsNeedingSlides.length) {
         const secs = (Date.now() - rebuildProgress.startedAt) / 1000;
-        const left = fetched < idsNeedingSlides.length ? `, about ${Math.ceil(((idsNeedingSlides.length - fetched) / (fetched / secs)) / 60)} min to go` : "";
+        const eta = readEta({ ...rebuildProgress, total: idsNeedingSlides.length }).etaMs;
+        const left = fetched < idsNeedingSlides.length && eta != null ? `, about ${Math.ceil(eta / 60_000)} min to go` : "";
         console.log(`Indexing... ${fetched}/${idsNeedingSlides.length} presentations (${(fetched / secs).toFixed(1)}/s${left})`);
       }
       if (fetched % CHECKPOINT_EVERY === 0 && fetched < idsNeedingSlides.length) await checkpoint();

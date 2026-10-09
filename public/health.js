@@ -2208,7 +2208,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
         </div>
         <p class="text-xs opacity-70 rf-measure">${
           pictures.show === true
-            ? "Safe slides, Spell Check and phones show slide pictures."
+            ? "Safe slides, Quality Control and phones show slide pictures."
             : pictures.quickSlides !== false
               ? "Off: slides show their words. Only your saved safe slides have pictures (below)."
               : "Off: Refrain asks ProPresenter for no pictures. Slides show their words."
@@ -2680,10 +2680,10 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
         <div class="rf-feature-row"><div class="rf-feature-text"><b>${name}</b><span>${line}</span></div><span class="rf-feature-fixed">Always</span></div>`;
   const featuresCard = `
     <div class="rf-features">
-      <p class="rf-feature-lede">Search and Spell Check are always on. Turn on only what your team uses; each one adds a key.</p>
+      <p class="rf-feature-lede">Search and Quality Control are always on. Turn on only what your team uses; each one adds a key.</p>
       <h3 class="rf-silkscreen">Always on</h3>
       ${fixedRow("Search", "Find a slide and send it")}
-      ${fixedRow("Spell Check", "Spelling, dates, media")}
+      ${fixedRow("Quality Control", "Spelling, dates, media")}
       <h3 class="rf-silkscreen">Optional</h3>
       ${features.map(featureRow).join("")}
       <div id="features-status" class="text-sm" role="status"></div>
@@ -2703,7 +2703,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
           <button type="button" role="radio" class="rf-tab" data-protect="true" aria-checked="${health.protectProPresenter === true}"><span>Protect ProPresenter</span></button>
           <button type="button" role="radio" class="rf-tab" data-protect="false" aria-checked="${health.protectProPresenter !== true}"><span>Allow library reads</span></button>
         </div>
-        <p class="text-sm rf-measure">On (recommended): Refrain never reads presentations from ProPresenter in bulk. No index runs, automatic or pressed; no Spell Check, pre-service checks or Update pictures. Search uses the index it has; Go Live, Now and Clear work as always.</p>
+        <p class="text-sm rf-measure">On (recommended): Refrain never reads presentations from ProPresenter in bulk. No index runs, automatic or pressed; no Quality Control scans, pre-service checks or Update pictures. Search uses the index it has; Go Live, Now and Clear work as always.</p>
         <p class="text-xs opacity-70 rf-measure">Off lets those run again. Each presentation read costs ProPresenter about 10 MB until it restarts, and a whole-library read is the heaviest thing Refrain does. Only on a machine where that's safe, never near a service, and restart ProPresenter afterwards.</p>
         <div id="protect-status" class="text-sm" role="status"></div>
       </div>
@@ -2774,7 +2774,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
   // Each tab opens with its own name, one step below the page title.
   // The second row under More: Phones, Customize, Telemetry, Audit.
   // The search index's own notice (old, or built without slide anchors), moved
-  // here from Search (owner, 2026-10-08): a dot on More and System says it is
+  // here from Search (owner, 2026-10-08): a dot on the System tab says it is
   // waiting. One line and, unless Refresh would be refused, the one press.
   const indexNotice = health.index?.accuracy ?? health.index?.staleness ?? null;
   const indexNoticeCard = indexNotice
@@ -2782,14 +2782,14 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
     : "";
   const subRow = () =>
     `<div data-settings-subrow class="rf-tabs" role="tablist" aria-label="More settings" style="margin-bottom:0">${SETTINGS_TABS.filter(([t]) => SETTINGS_MORE.includes(t))
-      .map(([id, label, icon]) => `<button type="button" role="tab" aria-controls="settings-panel-${id}" class="rf-tab" data-settings-tab="${id}" aria-selected="false" tabindex="-1"><i data-lucide="${icon}" class="w-4 h-4 shrink-0"></i><span${id === "system" && indexNotice ? ' class="rf-tab-dot"' : ""}>${label}</span></button>`)
+      .map(([id, label, icon]) => `<button type="button" role="tab" aria-controls="settings-panel-${id}" class="rf-tab" data-settings-tab="${id}" aria-selected="false" tabindex="-1"><i data-lucide="${icon}" class="w-4 h-4 shrink-0"></i><span>${label}</span></button>`)
       .join("")}</div>`;
   const panel = (id, ...cards) =>
     `<div data-settings-panel="${id}" id="settings-panel-${id}" role="tabpanel" aria-label="${SETTINGS_TABS.find(([t]) => t === id)[1]}" class="flex flex-col gap-4">${SETTINGS_MORE.includes(id) ? subRow() : ""}<h2 class="rf-visually-hidden">${SETTINGS_TABS.find(([t]) => t === id)[1]}</h2>${cards.join("")}</div>`;
   return `
     <div class="flex flex-col gap-4">
       <div id="settings-tabs" class="rf-tabs" role="tablist" aria-label="Settings" style="margin-bottom:0">
-        ${SETTINGS_TOP.map(([id, label, icon], i) => `<button type="button" role="tab" id="settings-top-${id}" class="rf-tab" data-settings-top="${id}" aria-selected="false" tabindex="-1"><i data-lucide="${icon}" class="w-4 h-4 shrink-0"></i><span${id === "more" && indexNotice ? ' class="rf-tab-dot"' : ""}>${label}</span><kbd class="kbd kbd-xs tab-key" aria-hidden="true">${i + 1}</kbd></button>`).join("")}
+        ${SETTINGS_TOP.map(([id, label, icon], i) => `<button type="button" role="tab" id="settings-top-${id}" class="rf-tab" data-settings-top="${id}" aria-selected="false" tabindex="-1"><i data-lucide="${icon}" class="w-4 h-4 shrink-0"></i><span${id === "system" && indexNotice ? ' class="rf-tab-dot"' : ""}>${label}</span><kbd class="kbd kbd-xs tab-key" aria-hidden="true">${i + 1}</kbd></button>`).join("")}
       </div>
       ${panel("status", readoutCard, statusStrip)}
       ${

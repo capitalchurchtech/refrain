@@ -12,6 +12,7 @@ const PATHS = {
   menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
   flag: '<path d="M5 21V4h12l-2 4 2 4H5"/>',
   library: '<path d="M4 19V5a1 1 0 0 1 1-1h3v16H5a1 1 0 0 1-1-1zM12 4h3v16h-3zM19 6l-2.5 13"/>',
+  filter: '<path d="M3 5h18l-7 8.5V19l-4 2v-7.5z"/>',
   deep: '<path d="M12 3 3 8l9 5 9-5zM3 12.5l9 5 9-5M3 17l9 5 9-5"/>',
 };
 
