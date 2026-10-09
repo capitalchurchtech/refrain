@@ -7,7 +7,7 @@
  */
 export default {
   id: "spellcheck",
-  navLabel: "Spell Check",
+  navLabel: "Quality Control",
   icon: "spell-check",
   // Its own key beside Search (owner, 2026-10-07): Search and Spell Check are the
   // two things the app is for, so neither sits under another page.

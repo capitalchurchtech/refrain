@@ -36,7 +36,7 @@ export function takeOpenWith(tool) {
 }
 
 const TOOLS = [
-  ["spellcheck", "Spell check this"],
+  ["spellcheck", "Check this"],
   ["arrangement", "Arrangement"],
 ];
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);

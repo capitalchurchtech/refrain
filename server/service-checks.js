@@ -66,7 +66,7 @@ export function checksFromScan(scan) {
   const media = find("missingMedia");
   const out = [
     typos.length
-      ? result("typos", "attention", `${plural(typos.length, "likely typo")}. Spell Check shows each on its slide.`, typos)
+      ? result("typos", "attention", `${plural(typos.length, "likely typo")}. Quality Control shows each on its slide.`, typos)
       : result("typos", "pass", "None found."),
     dates.length
       ? result("past-dates", "attention", `${plural(dates.length, "date")} already over, like last week's event still in the loop.`, dates)
