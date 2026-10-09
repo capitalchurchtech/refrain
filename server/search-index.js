@@ -6,7 +6,7 @@
 import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { normalizeText } from "./propresenter-client.js";
-import { noteRead, readEta } from "./rebuild-eta.js";
+import { noteRead, noteName, readEta } from "./rebuild-eta.js";
 import { resolveArrangement, flattenGroups, otherArrangementSlides } from "./arrangements.js";
 import {
   readFingerprint,
@@ -663,6 +663,9 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
       fetched += 1;
       rebuildProgress.current = fetched;
       rebuildProgress.recent = noteRead(rebuildProgress.recent, Date.now());
+      // What the progress card shows as "reading now": the title as the church
+      // wrote it, plus the two before it. Held in memory only, never logged.
+      rebuildProgress.recentNames = noteName(rebuildProgress.recentNames, presentations[id]?.name);
       // Breathe between documents so ProPresenter stays responsive to the
       // operator while this runs. Injectable only so tests needn't wait.
       await pause(options.pacingMs ?? FETCH_PACING_MS);

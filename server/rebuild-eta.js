@@ -41,3 +41,12 @@ export function readEta(p, now = Date.now()) {
   const perSec = recent ? Math.min(overall, recent) : overall;
   return { perSec, etaMs: Math.round(((p.total - p.current) / perSec) * 1000) };
 }
+
+/** Names kept for the progress card: the one just read first, then the two before it. */
+export const RECENT_NAMES = 3;
+
+/** Puts a just-read presentation's name at the front. Returns the list. */
+export function noteName(names, name) {
+  if (typeof name !== "string" || !name) return Array.isArray(names) ? names : [];
+  return [name, ...(Array.isArray(names) ? names : [])].slice(0, RECENT_NAMES);
+}
