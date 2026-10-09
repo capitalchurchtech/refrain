@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rebuild progress, six directions</title>
+<!-- Mockup only. Not shipped, not wired to the server. Tokens and fonts are copied
+     from public/refrain.css so the values are the real ones. All names below are
+     public-domain hymn titles, never real service content. -->
+<style>
+@font-face { font-family: "Archivo"; src: url("../../public/vendor/fonts/archivo-latin.woff2") format("woff2"); font-weight: 100 900; }
+@font-face { font-family: "Martian Mono"; src: url("../../public/vendor/fonts/martian-mono-latin.woff2") format("woff2"); font-weight: 100 800; }
+
+:root {
+  --ground:#0C0A11; --surface:#16121C; --raised:#221D2B; --machined:#302838; --hairline:#3D3348;
+  --text:#F4EFF3; --muted:#A295AC; --dim:#7A6E86;
+  --plum:#8446C9; --plum-lit:#A96FE8; --phosphor:#CBB4F0; --neon-plum:#C79BFF; --fault:#C9922E;
+  --cell-off:#302838; --cell-on:#C79BFF;
+  --glow:1;
+  --sans:"Archivo",system-ui,sans-serif; --mono:"Martian Mono",ui-monospace,Menlo,monospace;
+  --recessed: inset 0 2px 6px rgba(0,0,0,.8), inset 0 -1px 0 rgba(255,240,235,.07), 0 1px 0 rgba(255,240,235,.05);
+  --raised-j: inset 0 1px 0 rgba(255,240,235,.14), inset 0 -1px 0 rgba(0,0,0,.55), 0 1px 0 rgba(255,240,235,.04), 0 2px 4px rgba(0,0,0,.5);
+}
+/* Light: lit is printed ink, not light. Both states stay visible; no emission. */
+body[data-theme="light"] {
+  --ground:#F2EEF4; --surface:#FFFFFF; --raised:#F7F4F9; --machined:#E4DDEA; --hairline:#CFC6D8;
+  --text:#1D1724; --muted:#685F72; --dim:#9A90A6; --phosphor:#6F39AA; --plum-lit:#8446C9; --neon-plum:#8446C9; --fault:#8A5F0F;
+  --cell-off:#C9C0D2; --cell-on:#8446C9; --glow:0;
+  --recessed: inset 0 1px 2px rgba(0,0,0,.18);
+  --raised-j: 0 1px 2px rgba(0,0,0,.15);
+}
+* { box-sizing: border-box; }
+body { margin:0; background:var(--ground); color:var(--text); font:14px/1.45 var(--sans); }
+a { color: var(--plum-lit); }
+.page { max-width: 1240px; margin: 0 auto; padding: 24px 20px 120px; }
+h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: .01em; }
+.lede { color: var(--muted); max-width: 70ch; margin: 0 0 16px; }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.legend { font: 600 9px/1 var(--sans); letter-spacing: .15em; text-transform: uppercase; color: var(--muted); }
+
+/* Controls: drive the one simulated run all six share. */
+.bench { position: sticky; top: 0; z-index: 50; background: var(--ground); padding: 10px 0; border-bottom: 1px solid var(--hairline); display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; }
+.bench .grp { display:flex; gap:4px; align-items:center; }
+.chip { font: 500 10px/1 var(--mono); letter-spacing:.06em; padding: 8px 10px; min-height: 32px; color: var(--text); background: var(--raised); border: 1px solid var(--hairline); border-radius: 3px; cursor: pointer; }
+.chip[aria-pressed="true"] { border-color: var(--plum-lit); color: var(--phosphor); }
+.chip:focus-visible { outline: 2px solid var(--plum-lit); outline-offset: 2px; }
+
+.grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(540px, 1fr)); gap: 20px; margin-top: 20px; }
+@media (max-width: 620px) { .grid { grid-template-columns: 1fr; } }
+.variant { background: var(--surface); border:1px solid var(--hairline); border-radius: 4px; padding: 14px; display:flex; flex-direction:column; gap:12px; }
+.variant > header { display:flex; gap:10px; align-items:baseline; }
+.variant .n { font: 700 11px var(--mono); color: var(--phosphor); }
+.variant h2 { font-size: 15px; margin:0; }
+.variant .why { color: var(--muted); margin: 0; font-size: 12.5px; }
+.variant .costs { color: var(--muted); margin: 0; font-size: 12px; border-top: 1px solid var(--hairline); padding-top: 8px; }
+.variant .costs b { color: var(--text); font-weight: 600; }
+.slot-label { margin-bottom: 6px; }
+
+/* A docked window, 316px: what the booth gets. */
+.dock { width: 316px; max-width: 100%; background: var(--ground); border:1px solid var(--hairline); border-radius: 3px; height: 150px; position: relative; overflow: hidden; display:flex; flex-direction:column; justify-content:flex-end; }
+.dock .fake { position:absolute; inset: 0 0 auto 0; padding: 10px 12px; color: var(--dim); font: 10px var(--mono); }
+.dock .fake i { display:block; height: 8px; background: var(--machined); border-radius: 1px; margin-bottom: 6px; opacity:.6; }
+.both { display:grid; grid-template-columns: 1fr; gap: 14px; }
+
+/* ---------- shared: card, ladder, ring, buttons ---------- */
+.card { background: var(--raised); border-radius: 4px; padding: 12px; position: relative; box-shadow: var(--raised-j); }
+.card h3 { margin:0; font-size: 14px; display:flex; gap:8px; align-items:center; }
+.card .sub { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+.state-word { font: 600 9px/1 var(--sans); letter-spacing:.15em; text-transform:uppercase; color: var(--muted); margin-left:auto; }
+[data-phase="running"] .state-word, [data-phase="stopping"] .state-word { color: var(--phosphor); text-shadow: 0 0 calc(8px*var(--glow)) rgba(203,180,240,.6); }
+.btn { font: 600 12px/1 var(--sans); padding: 10px 14px; min-height: 40px; background: var(--machined); color: var(--text); border: 0; border-radius: 3px; box-shadow: var(--raised-j); cursor:pointer; }
+.btn:focus-visible { outline: 2px solid var(--plum-lit); outline-offset: 2px; }
+.btn[disabled] { opacity:.5; cursor: default; }
+.row { display:flex; gap:10px; align-items:center; flex-wrap: wrap; }
+.read { font-family: var(--mono); font-variant-numeric: tabular-nums; letter-spacing:.04em; }
+.phos { color: var(--phosphor); text-shadow: 0 0 calc(7px*var(--glow)) rgba(203,180,240,.5); }
+.fault-t { color: var(--fault); }
+.hide { display:none !important; }
+
+/* The new sliding ring + blurred glow (the rf-sf pattern), as a wrapper that
+   is lit only while a run is going. Compositor-only: transform, opacity. */
+.ringed { position: relative; isolation: isolate; border-radius: 5px; padding: 1.5px; background: var(--hairline); }
+.ringed > .rg, .ringed > .rg-glow { position:absolute; border-radius: inherit; overflow:hidden; opacity:0; transition: opacity 250ms ease-out; pointer-events:none; }
+.ringed > .rg { inset:0; z-index:-1; }
+.ringed > .rg-glow { inset:-2px; z-index:-2; filter: blur(9px); }
+.ringed > .rg i, .ringed > .rg-glow i { position:absolute; top:-100%; left:0; width:300%; height:300%;
+  background: linear-gradient(60deg,#5B2FA0,#A96FE8,#E6D7FF,#7A44C4,#A96FE8,#5B2FA0); }
+[data-phase="running"] .ringed > .rg, [data-phase="stopping"] .ringed > .rg { opacity: 1; }
+[data-phase="running"] .ringed > .rg-glow, [data-phase="stopping"] .ringed > .rg-glow { opacity: calc(.55*var(--glow)); }
+[data-phase="running"] .ringed > .rg i, [data-phase="running"] .ringed > .rg-glow i,
+[data-phase="stopping"] .ringed > .rg i, [data-phase="stopping"] .ringed > .rg-glow i { animation: slide 1.8s ease-in-out infinite alternate; will-change: transform; }
+@keyframes slide { to { transform: translateX(-66.667%); } }
+.ringed > .inner { background: var(--raised); border-radius: 4px; }
+body[data-theme="light"] .ringed > .rg-glow { display:none; }
+
+/* Ladder (the existing .rf-meter, unchanged idea) */
+.ladder { display:flex; gap:2px; height:14px; }
+.ladder b { flex:1 1 0; border-radius:1px; background: var(--cell-off); box-shadow: var(--recessed); transition: background-color 120ms ease-out; }
+.ladder b.on { background: var(--cell-on); box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 0 calc(5px*var(--glow)) rgba(199,155,255,.75), 0 0 calc(13px*var(--glow)) rgba(199,155,255,.45); }
+body[data-theme="light"] .ladder b { box-shadow:none; }
+.ladder.sm { height: 10px; }
+
+/* Groove: continuous fill */
+.groove { height: 12px; border-radius: 2px; background: var(--ground); box-shadow: var(--recessed); position:relative; overflow: hidden; }
+.groove > .fill { position:absolute; inset:0 auto 0 0; width:0; background: linear-gradient(180deg,#d9c3ff 0%, var(--plum-lit) 45%, var(--plum) 100%); transition: width 160ms ease-out; border-radius: 2px; }
+.groove > .fill::after { content:""; position:absolute; right:0; top:0; bottom:0; width:3px; background:#F1E6FF; box-shadow: 0 0 calc(8px*var(--glow)) rgba(199,155,255,.9); }
+[data-phase="done"] .groove > .fill::after, [data-phase="idle"] .groove > .fill::after, [data-phase="stopped"] .groove > .fill::after, [data-phase="held"] .groove > .fill::after { display:none; }
+.groove.thin { height: 4px; }
+.ticks { position:absolute; inset:0; background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), rgba(0,0,0,.5) calc(10% - 1px) 10%); }
+body[data-theme="light"] .groove > .fill { background: var(--plum); }
+body[data-theme="light"] .groove > .fill::after { display:none; }
+
+/* ---------- V2 glass readout ---------- */
+.glass { background: linear-gradient(180deg,#0a0810,#141019); border-radius: 3px; box-shadow: var(--recessed); padding: 10px 12px; position:relative; overflow:hidden; }
+.glass::after { content:""; position:absolute; inset:0; background: linear-gradient(115deg, rgba(255,255,255,.05), transparent 38%); pointer-events:none; }
+body[data-theme="light"] .glass { background:#EDE7F1; }
+.big { font: 600 40px/1 var(--mono); letter-spacing: -.01em; }
+.lamps { display:flex; gap: 14px; flex-wrap:wrap; }
+.lamp { display:flex; gap:6px; align-items:center; font: 600 9px/1 var(--sans); letter-spacing:.15em; text-transform:uppercase; color: var(--muted); }
+.lamp i { width:8px; height:8px; border-radius:50%; background: var(--cell-off); box-shadow: var(--recessed); }
+.lamp.on { color: var(--text); }
+.lamp.on i { background: var(--neon-plum); box-shadow: 0 0 calc(4px*var(--glow)) rgba(199,155,255,.9), 0 0 calc(10px*var(--glow)) rgba(199,155,255,.5); }
+.lamp.done i { background: var(--plum); box-shadow:none; }
+body[data-theme="light"] .lamp i { box-shadow: none; border:1px solid var(--dim); }
+body[data-theme="light"] .lamp.on i, body[data-theme="light"] .lamp.done i { background: var(--plum); border-color: var(--plum); }
+
+/* ---------- V3 stages ---------- */
+.stages { display:grid; grid-template-columns: repeat(4,1fr); gap: 4px; }
+.stage { display:flex; flex-direction:column; gap:6px; }
+.stage .groove { height: 6px; }
+.stage.active .legend { color: var(--phosphor); text-shadow: 0 0 calc(6px*var(--glow)) rgba(203,180,240,.5); }
+.stage.pending .legend { color: var(--muted); }
+.stage .legend { white-space: nowrap; overflow:hidden; text-overflow: ellipsis; }
+.stage .groove .fill::after { display:none; }
+.stage.active .groove { box-shadow: var(--recessed), 0 0 calc(10px*var(--glow)) rgba(132,70,201,.45); }
+
+/* ---------- V4 gauge ---------- */
+.gauge { display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
+.gauge svg { width:116px; height:116px; flex:none; }
+.gauge .track { stroke: var(--machined); }
+.gauge .arc { stroke: var(--neon-plum); filter: drop-shadow(0 0 calc(4px*var(--glow)) rgba(199,155,255,.8)); transition: stroke-dashoffset 160ms ease-out; }
+body[data-theme="light"] .gauge .track { stroke: var(--cell-off); }
+body[data-theme="light"] .gauge .arc { stroke: var(--plum); }
+.stats { display:grid; grid-template-columns: repeat(2, minmax(80px,1fr)); gap: 10px 18px; }
+.stats .v { font: 600 16px/1.1 var(--mono); }
+
+/* ---------- V5 now reading ---------- */
+.nowname { font: 600 17px/1.25 var(--sans); min-height: 22px; white-space: nowrap; overflow:hidden; text-overflow: ellipsis; text-transform:none; }
+.trail { color: var(--muted); font-size: 12px; line-height: 1.5; min-height: 54px; }
+.trail div { white-space: nowrap; overflow:hidden; text-overflow:ellipsis; text-transform:none; }
+.trail div:nth-child(1){opacity:1} .trail div:nth-child(2){opacity:.85} .trail div:nth-child(3){opacity:.7}
+.spark { display:flex; align-items:flex-end; gap:1px; height: 22px; }
+.spark i { flex:1; background: var(--plum); min-height:2px; border-radius:1px; }
+
+/* ---------- V6 rail ---------- */
+.railbox { display:flex; gap:10px; align-items:flex-start; }
+.rail { width: 48px; background: var(--surface); border:1px solid var(--hairline); border-radius:3px; padding: 8px 0; display:flex; flex-direction:column; align-items:center; gap: 10px; }
+.rail .k { width:32px; height:32px; border-radius:3px; background: var(--raised); display:grid; place-items:center; color: var(--muted); box-shadow: var(--raised-j); }
+.rail .k svg, .rail .lampk svg { width:16px; height:16px; }
+.lampk { position:relative; width:34px; height:34px; display:grid; place-items:center; color: var(--muted); background:none; border:0; cursor:pointer; border-radius: 50%; }
+.lampk:focus-visible { outline:2px solid var(--plum-lit); outline-offset:2px; }
+.lampk svg.r { position:absolute; inset:0; width:34px; height:34px; transform: rotate(-90deg); }
+.lampk .rt { stroke: var(--machined); fill:none; }
+.lampk .ra { stroke: var(--neon-plum); fill:none; filter: drop-shadow(0 0 calc(3px*var(--glow)) rgba(199,155,255,.9)); transition: stroke-dashoffset 160ms ease-out; }
+.lampk .ic { color: var(--phosphor); filter: drop-shadow(0 0 calc(4px*var(--glow)) rgba(169,111,232,.9)); }
+[data-phase="idle"] .lampk .rt, [data-phase="idle"] .lampk .ra { display:none; }
+[data-phase="idle"] .lampk .ic, [data-phase="done"] .lampk .ic { color: var(--muted); filter:none; }
+.flyout { flex:1; min-width: 0; }
+.tip { position:relative; }
+
+/* ---------- compact dock strips ---------- */
+.strip { background: var(--ground); border-top: 1px solid var(--hairline); padding: 8px 10px calc(8px); display:flex; flex-direction:column; gap:6px; font: 11px/1.3 var(--mono); letter-spacing:.06em; }
+.strip .l1 { display:flex; gap:8px; align-items:center; min-width:0; }
+.strip .l1 .t { color: var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; flex:1; }
+[data-phase="running"] .strip .l1 .t, [data-phase="stopping"] .strip .l1 .t { color: var(--phosphor); text-shadow: 0 0 calc(6px*var(--glow)) rgba(203,180,240,.35); }
+.strip .wd { color: var(--plum-lit); text-transform:uppercase; letter-spacing:.15em; flex:none; }
+[data-phase="running"] .strip .wd { color: var(--phosphor); text-shadow: 0 0 calc(8px*var(--glow)) rgba(203,180,240,.6); }
+.strip a, .strip button.lnk { color: var(--text); background:none; border:0; padding: 8px 0; min-height:32px; font: inherit; text-decoration: underline; cursor:pointer; }
+.strip.edge { position:relative; padding-top: 10px; }
+.strip.edge .topring { position:absolute; left:0; right:0; top:-1px; height: 2px; overflow:hidden; opacity:0; transition: opacity 250ms; }
+.strip.edge .topring i { position:absolute; top:0; left:0; width:300%; height:100%; background: linear-gradient(90deg,#5B2FA0,#A96FE8,#E6D7FF,#7A44C4,#A96FE8,#5B2FA0); }
+[data-phase="running"] .strip.edge .topring { opacity:1; box-shadow: 0 0 calc(10px*var(--glow)) rgba(169,111,232,.8); }
+[data-phase="running"] .strip.edge .topring i { animation: slide 1.8s ease-in-out infinite alternate; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ringed > .rg i, .ringed > .rg-glow i, .strip.edge .topring i { animation: none !important; }
+  .ladder b, .groove > .fill, .gauge .arc, .lampk .ra { transition: none; }
+}
+</style>
+</head>
+<body data-theme="dark">
+<div class="page" id="app" data-phase="running">
+  <h1>Rebuild progress, six directions</h1>
+  <p class="lede">One simulated rebuild drives all six. Each direction has a <b>card</b> for Settings (a desk, any width) and a <b>docked form</b> for every other screen (316px, glanced at). The buttons below jump to any state, so you can see the done, stopped and waiting states, not just the happy path.</p>
+
+  <div class="bench" role="toolbar" aria-label="Simulation">
+    <div class="grp"><span class="legend">State</span>
+      <button class="chip" data-set="running" aria-pressed="true">Running</button>
+      <button class="chip" data-set="stopping" aria-pressed="false">Stopping</button>
+      <button class="chip" data-set="done" aria-pressed="false">Done</button>
+      <button class="chip" data-set="stopped" aria-pressed="false">Stopped early</button>
+      <button class="chip" data-set="held" aria-pressed="false">Waiting</button>
+      <button class="chip" data-set="idle" aria-pressed="false">Idle</button>
+    </div>
+    <div class="grp"><span class="legend">Speed</span>
+      <button class="chip" data-speed="1" aria-pressed="true">1x</button>
+      <button class="chip" data-speed="4" aria-pressed="false">4x</button>
+      <button class="chip" data-speed="0" aria-pressed="false">Pause</button>
+    </div>
+    <div class="grp"><span class="legend">Theme</span>
+      <button class="chip" data-theme-set="dark" aria-pressed="true">Dark</button>
+      <button class="chip" data-theme-set="light" aria-pressed="false">Light</button>
+    </div>
+    <div class="grp"><span class="legend">Navigate away</span>
+      <button class="chip" id="navaway" aria-pressed="false">Simulate</button>
+      <span class="mono" style="color:var(--muted);font-size:10px" id="navnote"></span>
+    </div>
+  </div>
+
+  <div class="grid" id="grid"></div>
+</div>
+
+<script>
+// ---------- the simulated run (shape matches /api/index/status .rebuild) ----------
+const NAMES = ["Amazing Grace","Be Thou My Vision","Come Thou Fount","Great Is Thy Faithfulness","Holy, Holy, Holy","It Is Well With My Soul","Joyful, Joyful, We Adore Thee","Rock of Ages","Blessed Assurance","How Great Thou Art","Crown Him with Many Crowns","O for a Thousand Tongues","A Mighty Fortress Is Our God","Come, Thou Long-Expected Jesus","Fairest Lord Jesus","Abide with Me"];
+const STAGES = [["library","Reading the library",1400],["playlists","Reading playlists",1400],["checking files","Checking which files changed",1800],["presentations","Reading presentations",0]];
+const TOTAL = 842;
+const S = { phase:"running", stage:0, stageT:0, current:0, total:TOTAL, speed:1, rate:0, hist:[], names:[], elapsed:0, held:"Performance mode is on, so indexing is paused." };
+const stageLabels = ["Library","Playlists","Files","Slides"];
+const fmtEta = (ms) => { const m = Math.round(ms/60000); return m < 1 ? "under a minute left" : `about ${m} min left`; };
+const fmtDur = (ms) => { const s = Math.round(ms/1000); return s < 60 ? `${s}s` : `${Math.floor(s/60)}m ${String(s%60).padStart(2,"0")}s`; };
+const pct = () => S.phase==="done" ? 100 : (S.stage<3 ? 0 : Math.floor(S.current/S.total*100));
+// Honest ETA: the sim runs fast, so scale to "a real hour-long run" for display.
+const etaMs = () => S.rate>0 ? (S.total-S.current)/S.rate*1000*(REAL_SCALE) : null;
+const REAL_SCALE = 60;
+const frac = () => S.phase==="done" ? 1 : (S.stage<3 ? 0 : S.current/S.total);
+
+function words() {
+  const st = STAGES[Math.min(S.stage,3)][1];
+  switch (S.phase) {
+    case "running": return S.stage<3 ? st : `${st} · ${Math.floor(S.current)} of ${S.total}${S.rate>0&&S.current>20 ? " · "+fmtEta(etaMs()) : ""}`;
+    case "stopping": return "Stopping after this presentation";
+    case "done": return `Search index ready: ${S.total} presentations.`;
+    case "stopped": return `Indexing stopped after ${Math.floor(S.current)} of ${S.total}. Search still works with what it has. Run it again when nothing is on the screens.`;
+    case "held": return S.held;
+    default: return "Index is current. Last built 6 minutes ago.";
+  }
+}
+const word = () => ({running:"Indexing",stopping:"Stopping",done:"Done",stopped:"Stopped",held:"Waiting",idle:"Ready"})[S.phase];
+const shortWords = () => S.phase==="running" ? (S.stage<3 ? STAGES[S.stage][1] : `${Math.floor(S.current)} of ${S.total}${S.rate>0&&S.current>20 ? " · "+fmtEta(etaMs()).replace(" left","") : ""}`) :
+  S.phase==="stopped" ? `Stopped after ${Math.floor(S.current)} of ${S.total}` : S.phase==="done" ? `Ready: ${S.total} presentations` : S.phase==="held" ? "Paused: performance mode is on" : S.phase==="stopping" ? "Stopping after this one" : "Index is current";
+const showStop = () => S.phase==="running";
+
+function tick(dt) {
+  if (S.phase!=="running" || S.speed===0) return;
+  const d = dt*S.speed;
+  S.elapsed += d;
+  if (S.stage<3) {
+    S.stageT += d;
+    if (S.stageT >= STAGES[S.stage][2]) { S.stage++; S.stageT = 0; }
+  } else {
+    const perSec = 14 + 6*Math.sin(S.elapsed/2500); // wanders, like a real run
+    S.rate = perSec;
+    const before = Math.floor(S.current);
+    S.current = Math.min(S.total, S.current + perSec*d/1000);
+    S.hist.push(perSec); if (S.hist.length>40) S.hist.shift();
+    for (let i=before; i<Math.floor(S.current); i++) { S.names.unshift(NAMES[i % NAMES.length]); }
+    S.names = S.names.slice(0,6);
+    if (S.current >= S.total) { S.phase = "done"; syncChips(); }
+  }
+}
+function setPhase(p) {
+  S.phase = p;
+  if (p==="running" && (S.stage<3 || S.current>=S.total)) { S.stage = 3; S.current = Math.max(S.current, 312); S.rate = 14; if(!S.names.length) S.names=NAMES.slice(0,6); }
+  if (p==="stopping") { S.stage=3; S.current = Math.max(S.current,312); setTimeout(()=>{ if (S.phase==="stopping") { S.phase="stopped"; syncChips(); paint(); } }, 1800); }
+  if (p==="stopped") { S.stage=3; S.current = S.current>0&&S.current<S.total ? S.current : 312; }
+  if (p==="done") { S.current = S.total; S.stage=3; }
+  syncChips(); paint();
+}
+
+// ---------- icons ----------
+const dbIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>`;
+const sq = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>`;
+const ring = `<span class="rg" aria-hidden="true"><i></i></span><span class="rg-glow" aria-hidden="true"><i></i></span>`;
+const cells = (n,cls="") => `<div class="ladder ${cls}" role="progressbar" aria-label="Index progress">${"<b></b>".repeat(n)}</div>`;
+const fakeScreen = `<div class="fake"><i style="width:70%"></i><i style="width:90%"></i><i style="width:50%"></i><i style="width:80%"></i></div>`;
+const stopBtn = `<button class="btn" data-act="stop">Stop indexing</button>`;
+const againBtn = `<button class="btn" data-act="again">Run it again</button>`;
+const actions = () => S.phase==="running" ? stopBtn : S.phase==="stopping" ? `<button class="btn" disabled>Stopping…</button>` : S.phase==="stopped" ? againBtn : "";
+
+// ---------- the six variants ----------
+const V = [];
+V.push({
+  n:"1", title:"Ladder in a lit ring", why:"The ladder you already have, now inside the new travelling ring. Smallest change; the same object on every screen.",
+  costs:"<b>Costs:</b> says the least about where in the run you are. <b>Needs:</b> a one-line amendment to Motion (ring may travel while a rebuild runs).",
+  card:`<div class="ringed"> ${ring}<div class="inner card" style="box-shadow:none">
+      <h3>${dbIcon.replace("<svg","<svg width='16' height='16'")} Search index <span class="state-word" data-b="word"></span></h3>
+      <div class="sub" data-b="words"></div>
+      <div style="margin:10px 0 8px" data-b="ladder">${cells(24)}</div>
+      <div class="row"><span class="read phos" data-b="count"></span><span class="read" style="color:var(--muted)" data-b="eta"></span><span style="margin-left:auto" data-b="actions"></span></div>
+    </div></div>`,
+  dock:`<div class="strip edge"><span class="topring"><i></i></span>
+      <div class="l1"><span class="wd" data-b="word"></span><span class="t" data-b="short"></span><span data-b="dockact"></span></div>
+      <div data-b="ladder">${cells(24,"sm")}</div></div>`,
+  paint(el){ ladder(el, frac()); }
+});
+V.push({
+  n:"2", title:"Glass readout", why:"A big phosphor number on recessed glass with a continuous fill and four stage lamps. Reads from across a desk; the number is what the system reports about itself, which is exactly what phosphor is for.",
+  costs:"<b>Costs:</b> the biggest card of the six. <b>Good at:</b> telling a hurried admin 'it is 37%, leave it alone' in one look.",
+  card:`<div class="card">
+      <h3>${dbIcon.replace("<svg","<svg width='16' height='16'")} Search index <span class="state-word" data-b="word"></span></h3>
+      <div class="glass" style="margin:10px 0">
+        <div class="row" style="align-items:flex-end;justify-content:space-between">
+          <div><span class="big phos" data-b="bigpct"></span></div>
+          <div style="text-align:right"><div class="legend">Time left</div><div class="read phos" style="font-size:15px" data-b="etashort"></div></div>
+        </div>
+        <div class="groove" style="margin-top:12px"><div class="fill" data-b="fill"></div><div class="ticks"></div></div>
+      </div>
+      <div class="lamps" data-b="lamps"></div>
+      <div class="sub" style="margin:8px 0" data-b="words"></div>
+      <div data-b="actions"></div></div>`,
+  dock:`<div class="strip"><div class="l1"><span class="wd" data-b="word"></span><span class="read phos" style="font-size:16px" data-b="bigpct"></span><span class="t" data-b="short"></span></div>
+      <div class="groove thin"><div class="fill" data-b="fill"></div></div></div>`,
+  paint(){}
+});
+V.push({
+  n:"3", title:"Four stages", why:"Shows the run as the four things it does, each with its own bar. The lit ring sits on the stage that is working. Answers 'is it stuck?' because the first three finish visibly.",
+  costs:"<b>Costs:</b> the first three stages are short, so most of the run looks like one wide bar. <b>Honest:</b> only the last stage has a count today.",
+  card:`<div class="card">
+      <h3>${dbIcon.replace("<svg","<svg width='16' height='16'")} Search index <span class="state-word" data-b="word"></span></h3>
+      <div class="stages" style="margin:12px 0 10px" data-b="stages"></div>
+      <div class="sub" data-b="words"></div>
+      <div class="row" style="margin-top:8px"><span class="read phos" data-b="count"></span><span style="margin-left:auto" data-b="actions"></span></div></div>`,
+  dock:`<div class="strip"><div class="l1"><span class="wd" data-b="word"></span><span class="t" data-b="short"></span></div><div class="stages" data-b="stagesmini"></div></div>`,
+  paint(){}
+});
+V.push({
+  n:"4", title:"Gauge", why:"A glowing arc with the four numbers an admin actually asks about: read, left, speed, elapsed. In the dock it shrinks to a 30px dial and one line.",
+  costs:"<b>Costs:</b> a dial is the most 'rack unit' and the least like the bar you have now. Needs a speed figure (reads per minute) the server can already derive.",
+  card:`<div class="card">
+      <h3>${dbIcon.replace("<svg","<svg width='16' height='16'")} Search index <span class="state-word" data-b="word"></span></h3>
+      <div class="gauge" style="margin-top:10px">
+        <svg viewBox="0 0 120 120" aria-hidden="true"><circle class="track" cx="60" cy="60" r="50" fill="none" stroke-width="9"/><circle class="arc" data-b="arc" cx="60" cy="60" r="50" fill="none" stroke-width="9" stroke-linecap="butt" transform="rotate(-90 60 60)" stroke-dasharray="314.16" stroke-dashoffset="314.16"/><text x="60" y="66" text-anchor="middle" class="read" style="fill:var(--phosphor);font:600 22px var(--mono)" data-b="svgpct"></text></svg>
+        <div class="stats">
+          <div><div class="legend">Read</div><div class="v phos" data-b="readc"></div></div>
+          <div><div class="legend">Left</div><div class="v phos" data-b="etashort"></div></div>
+          <div><div class="legend">Speed</div><div class="v" data-b="speed"></div></div>
+          <div><div class="legend">Elapsed</div><div class="v" data-b="elapsed"></div></div>
+        </div></div>
+      <div class="sub" style="margin:10px 0 8px" data-b="words"></div><div data-b="actions"></div></div>`,
+  dock:`<div class="strip"><div class="l1" style="gap:10px">
+      <svg viewBox="0 0 34 34" width="30" height="30" aria-hidden="true" style="flex:none"><circle class="track" cx="17" cy="17" r="13" fill="none" stroke="var(--machined)" stroke-width="4"/><circle class="arc" data-b="arcmini" cx="17" cy="17" r="13" fill="none" stroke="var(--neon-plum)" stroke-width="4" transform="rotate(-90 17 17)" stroke-dasharray="81.68" stroke-dashoffset="81.68" style="filter:drop-shadow(0 0 calc(3px*var(--glow)) rgba(199,155,255,.9))"/></svg>
+      <div style="min-width:0;flex:1"><div class="wd" data-b="word"></div><div class="t" style="color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" data-b="short"></div></div><span data-b="dockact"></span></div></div>`,
+  paint(){}
+});
+V.push({
+  n:"5", title:"Now reading", why:"Shows the presentation being read right now, the last few above it, and a throughput trace. Proves it is alive and moving, which is what a nervous admin needs while ProPresenter is sluggish.",
+  costs:"<b>Costs:</b> <b>needs a new server field</b> (current presentation name; not in the status today). Names shown as written, never restyled. Busiest of the six.",
+  card:`<div class="ringed">${ring}<div class="inner card" style="box-shadow:none">
+      <h3>${dbIcon.replace("<svg","<svg width='16' height='16'")} Search index <span class="state-word" data-b="word"></span></h3>
+      <div style="margin:10px 0 4px"><div class="legend slot-label">Reading now</div><div class="nowname phos" data-b="now"></div></div>
+      <div class="trail" data-b="trail"></div>
+      <div class="groove thin" style="margin:6px 0 8px"><div class="fill" data-b="fill"></div></div>
+      <div class="row"><span class="read phos" data-b="count"></span><span class="read" style="color:var(--muted)" data-b="eta"></span><span style="margin-left:auto" data-b="actions"></span></div>
+      <div class="spark" style="margin-top:8px" data-b="spark" aria-hidden="true"></div>
+    </div></div>`,
+  dock:`<div class="strip edge"><span class="topring"><i></i></span><div class="l1"><span class="wd" data-b="word"></span><span class="t" data-b="nowshort"></span><span data-b="dockact"></span></div>
+      <div class="groove thin"><div class="fill" data-b="fill"></div></div></div>`,
+  paint(){}
+});
+V.push({
+  n:"6", title:"Rail lamp, flyout on press", why:"Nothing is added to the bottom of the screen. The rail's lamp column gets a ring that fills around a database icon; press it and a flyout holds the full card. Covers no content, so it is the only one that costs the booth zero pixels.",
+  costs:"<b>Costs:</b> one more thing in the lamp column (the brief counts emitters: this would be the fifth, so one lamp must give way). Hidden until pressed; a user who never looks never learns.",
+  card:`<div class="railbox"><div class="rail" aria-label="Rail">
+        <div class="k">${sq}</div><div class="k">${sq}</div>
+        <button class="lampk" aria-label="Search index" data-b="lampk"><svg class="r" viewBox="0 0 34 34" aria-hidden="true"><circle class="rt" cx="17" cy="17" r="15" stroke-width="2"/><circle class="ra" data-b="arclamp" cx="17" cy="17" r="15" stroke-width="2" stroke-dasharray="94.25" stroke-dashoffset="94.25"/></svg><span class="ic">${dbIcon}</span></button>
+      </div>
+      <div class="flyout card" style="padding:12px">
+        <h3>Search index <span class="state-word" data-b="word"></span></h3>
+        <div class="sub" data-b="words"></div>
+        <div style="margin:10px 0 8px" data-b="ladder">${cells(24,"sm")}</div>
+        <div class="row"><span class="read phos" data-b="count"></span><span class="read" style="color:var(--muted)" data-b="eta"></span><span style="margin-left:auto" data-b="actions"></span></div>
+      </div></div>`,
+  dock:`<div class="railbox" style="padding:10px"><div class="rail" style="padding:6px 0"><div class="k" style="width:28px;height:28px">${sq}</div>
+        <button class="lampk" aria-label="Search index" data-b="lampk"><svg class="r" viewBox="0 0 34 34" aria-hidden="true"><circle class="rt" cx="17" cy="17" r="15" stroke-width="2"/><circle class="ra" data-b="arclamp" cx="17" cy="17" r="15" stroke-width="2" stroke-dasharray="94.25" stroke-dashoffset="94.25"/></svg><span class="ic">${dbIcon}</span></button></div>
+        <div style="color:var(--muted);font:11px/1.4 var(--mono);padding-top:6px"><span class="wd" style="color:var(--phosphor)" data-b="word"></span><br><span data-b="short"></span></div></div>`,
+  paint(){}
+});
+
+// ---------- paint ----------
+function ladder(root, f){ root.querySelectorAll("[data-b=ladder]").forEach(l=>{ const bs=[...l.querySelectorAll("b")]; const lit=Math.round(f*bs.length); bs.forEach((b,i)=>b.classList.toggle("on",i<lit)); l.setAttribute("aria-valuenow",Math.round(f*100)); }); }
+const setAll = (root, key, html) => root.querySelectorAll(`[data-b="${key}"]`).forEach(e => { if (e.innerHTML!==html) e.innerHTML = html; });
+const setTxt = (root, key, t) => root.querySelectorAll(`[data-b="${key}"]`).forEach(e => { if (e.textContent!==t) e.textContent = t; });
+
+function paintOne(root) {
+  const f = frac(), p = pct();
+  setTxt(root,"word",word()); setTxt(root,"words",words()); setTxt(root,"short",shortWords());
+  setTxt(root,"count", S.stage<3&&S.phase==="running" ? "" : `${Math.floor(S.current)} / ${S.total}`);
+  setTxt(root,"eta", S.phase==="running"&&S.rate>0&&S.current>20 ? fmtEta(etaMs()) : "");
+  setTxt(root,"etashort", S.phase==="running"&&S.rate>0&&S.current>20 ? `${Math.max(1,Math.round(etaMs()/60000))} min` : S.phase==="done" ? "0" : "—");
+  setTxt(root,"bigpct", `${p}%`); setTxt(root,"svgpct", `${p}%`);
+  setTxt(root,"readc", `${Math.floor(S.current)}`);
+  setTxt(root,"speed", S.rate>0&&S.phase==="running" ? `${Math.round(S.rate*60/ (REAL_SCALE/ 1) *1)}/min` : "—");
+  setTxt(root,"elapsed", fmtDur(S.elapsed*REAL_SCALE));
+  setAll(root,"actions", actions());
+  setAll(root,"dockact", showStop() ? `<button class="lnk" data-act="stop">Stop</button>` : S.phase==="stopped" ? `<button class="lnk" data-act="again">Run again</button>` : "");
+  root.querySelectorAll("[data-b=fill]").forEach(e=> e.style.width = `${f*100}%`);
+  const circ = (c, r) => e => e.style.strokeDashoffset = String(c*(1-f));
+  root.querySelectorAll("[data-b=arc]").forEach(circ(314.16));
+  root.querySelectorAll("[data-b=arcmini]").forEach(circ(81.68));
+  root.querySelectorAll("[data-b=arclamp]").forEach(circ(94.25));
+  root.querySelectorAll("[data-b=ladder]").forEach(l=>{ const bs=[...l.querySelectorAll("b")]; const lit=Math.round(f*bs.length); bs.forEach((b,i)=>b.classList.toggle("on",i<lit)); });
+  const lamps = STAGES.map((s,i)=>{ const done = S.phase==="done"||S.stage>i; const on = !done && S.stage===i && (S.phase==="running"||S.phase==="stopping"); return `<span class="lamp ${done?"done":on?"on":""}"><i></i>${stageLabels[i]}</span>`; }).join("");
+  setAll(root,"lamps",lamps);
+  const stg = (mini)=>STAGES.map((s,i)=>{ const done = S.phase==="done"||S.stage>i; const act = !done && S.stage===i && (S.phase==="running"||S.phase==="stopping"); const w = done?100: act ? (i===3?f*100: Math.min(100,S.stageT/s[2]*100)) : 0;
+    return `<div class="stage ${done?"done":act?"active":"pending"}"><div class="groove"><div class="fill" style="width:${w}%"></div></div><span class="legend">${stageLabels[i]}</span></div>`; }).join("");
+  setAll(root,"stages",stg()); setAll(root,"stagesmini",stg());
+  setTxt(root,"now", S.phase==="running"||S.phase==="stopping" ? (S.stage<3 ? STAGES[S.stage][1] : (S.names[0]??"")) : S.phase==="done" ? "All read" : S.phase==="stopped" ? "Stopped" : "—");
+  setTxt(root,"nowshort", S.phase==="running"&&S.stage===3 ? (S.names[0]??"") : shortWords());
+  setAll(root,"trail", S.names.slice(1,4).map(n=>`<div>${n}</div>`).join(""));
+  setAll(root,"spark", S.hist.map(h=>`<i style="height:${Math.round(h/22*100)}%"></i>`).join(""));
+}
+function paint(){ document.getElementById("app").dataset.phase = S.phase; document.querySelectorAll("[data-phase-scope]").forEach(e=>e.dataset.phase=S.phase); document.querySelectorAll(".variant").forEach(paintOne); }
+
+// ---------- build ----------
+const grid = document.getElementById("grid");
+V.forEach(v => {
+  const el = document.createElement("section"); el.className="variant"; el.dataset.phase = S.phase; el.setAttribute("data-phase-scope","");
+  el.innerHTML = `<header><span class="n">${v.n}</span><h2>${v.title}</h2></header><p class="why">${v.why}</p>
+    <div class="both"><div><div class="legend slot-label">Settings (card)</div><div class="cardslot">${v.card}</div></div>
+    <div><div class="legend slot-label">Every other screen (docked, 316px)</div><div class="dock">${fakeScreen}${v.dock}</div></div></div>
+    <p class="costs">${v.costs}</p>`;
+  grid.appendChild(el);
+});
+
+// ---------- controls ----------
+function syncChips(){ document.querySelectorAll("[data-set]").forEach(b=>b.setAttribute("aria-pressed", String(b.dataset.set===S.phase))); }
+document.addEventListener("click", e => {
+  const t = e.target.closest("button"); if (!t) return;
+  if (t.dataset.set) setPhase(t.dataset.set);
+  if (t.dataset.speed!==undefined) { S.speed = Number(t.dataset.speed); document.querySelectorAll("[data-speed]").forEach(b=>b.setAttribute("aria-pressed", String(b===t))); }
+  if (t.dataset.themeSet) { document.body.dataset.theme = t.dataset.themeSet; document.querySelectorAll("[data-theme-set]").forEach(b=>b.setAttribute("aria-pressed", String(b===t))); }
+  if (t.dataset.act==="stop") setPhase("stopping");
+  if (t.dataset.act==="again") { S.current=0; S.stage=0; S.stageT=0; S.elapsed=0; S.hist=[]; S.names=[]; setPhase("running"); S.stage=0; }
+});
+// The reason this exists: the run lives in one store, the views are disposable.
+// Tearing every view down and rebuilding it loses nothing, because nothing lived in the view.
+document.getElementById("navaway").addEventListener("click", () => {
+  const note = document.getElementById("navnote");
+  grid.innerHTML = ""; note.textContent = "views destroyed…";
+  setTimeout(() => {
+    V.forEach(v => { const el = document.createElement("section"); el.className="variant"; el.setAttribute("data-phase-scope",""); el.dataset.phase=S.phase;
+      el.innerHTML = `<header><span class="n">${v.n}</span><h2>${v.title}</h2></header><p class="why">${v.why}</p><div class="both"><div><div class="legend slot-label">Settings (card)</div><div class="cardslot">${v.card}</div></div><div><div class="legend slot-label">Every other screen (docked, 316px)</div><div class="dock">${fakeScreen}${v.dock}</div></div></div><p class="costs">${v.costs}</p>`;
+      grid.appendChild(el); });
+    paint(); note.textContent = "rebuilt from the store: run kept going, nothing lost";
+  }, 900);
+});
+
+setPhase("running"); S.stage = 0; S.current = 0; S.names = []; paint();
+let last = performance.now();
+(function loop(now){ tick(now-last); last = now; if (S.phase==="running"||S.phase==="stopping") paint(); requestAnimationFrame(loop); })(last);
+</script>
+</body>
+</html>
