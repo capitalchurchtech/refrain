@@ -263,7 +263,8 @@ test("alerts: unapproved phones can't; approved ones prepare then confirm, once;
     for (const kind of ["next", "previous", "safe", "focus", "clear-all"]) {
       assert.equal((await post("/api/control/prepare", { kind, safeId: "logo", presentationId: "H" }, token)).status, 400, `${kind} isn't something a phone can do`);
     }
-    for (const path of ["/api/preview", "/api/search?q=grace", "/api/safe-slides"]) {
+    // Search came back on the phone on 2026-10-09 (read-only; see remote-phone-pages.test.js).
+    for (const path of ["/api/preview", "/api/search/deep?q=grace", "/api/safe-slides"]) {
       assert.equal((await fetch(t.base + path, { headers: { "x-refrain-device": token } })).status, 404, `${path} is gone from the phone`);
     }
     t.remove(id);

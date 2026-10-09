@@ -6,8 +6,10 @@
  * this exists. Then the phones that have signed in: each can flag with
  * today's PIN; alerts (a stage message, a pager code) are for the ones
  * approved here, by name, and every alert still needs a second tap to
- * confirm it. No phone moves slides (owner, 2026-10-04: the phone is an
- * alert tool and a flag tool).
+ * confirm it. A phone moves slides only if the booth switches on "Let phones
+ * go live" (owner, 2026-10-09; before that, 2026-10-04, none could): each
+ * go-live then needs this month's device code, a request code and a confirm,
+ * and is logged here by phone name.
  */
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -19,7 +21,7 @@ export function phonePanelHtml(d) {
   if (d.status === "off") {
     return `
       <p>Use a phone to flag a slide that needs fixing, from anywhere in the room. Phones you approve here can also send a stage message or a pager code.</p>
-      <p class="opacity-70">Turning this on lets phones on the same Wi-Fi as this Mac open Refrain's phone page. A phone never moves slides.</p>
+      <p class="opacity-70">Turning this on lets phones on the same Wi-Fi as this Mac open Refrain's phone page. A phone can't put a slide on the screens unless you switch that on after turning phones on.</p>
       <button type="button" id="phone-enable" class="btn btn-brand btn-sm w-fit">Turn on phones</button>`;
   }
   if (d.status === "misconfigured") {
@@ -75,12 +77,39 @@ export function phonePanelHtml(d) {
         .join("")}</div>`
     : `<div class="text-xs opacity-70">No phone has sent an alert yet.</div>`;
 
+  const gl = d.goLive ?? { enabled: false, code: null, takeovers: [] };
+  const goLive = `
+    <h3 class="rf-subhead">Going live from a phone</h3>
+    <label class="flex items-center gap-2 cursor-pointer">
+      <input type="checkbox" id="phone-golive" class="toggle toggle-sm" ${gl.enabled ? "checked" : ""} />
+      <span class="font-medium">Let phones go live</span>
+    </label>
+    ${
+      gl.enabled
+        ? `<p class="opacity-80">${
+            d.pinMode === "none"
+              ? "Turn on a PIN first: without one, a phone has no name to log and can't go live."
+              : `A phone can put a searched slide on the screens once it has typed this month's device code, then a fresh code it shows, then confirmed. It takes the screens even if someone here is using them, and each one is logged below. Switching this off stops phones at once.`
+          }</p>
+          ${gl.code ? `<p>Device code for ${esc(new Date().toLocaleDateString([], { month: "long" }))}: <strong class="font-mono text-lg" id="phone-golive-code">${esc(gl.code)}</strong> <span class="opacity-60">(changes on the 1st; give it only to people who should go live)</span></p>` : ""}`
+        : `<p class="opacity-70">Off. Phones can search and flag, and approved phones can send alerts; none can go live.</p>`
+    }
+    <div class="flex flex-col gap-1">${
+      (gl.takeovers ?? []).length
+        ? gl.takeovers
+            .slice(0, 5)
+            .map((t) => `<div class="text-xs">${esc(clock(t.at))} · ${esc(t.phone)} put up ${esc(t.slide)}${t.replaced ? `, replacing ${esc(t.replaced)}` : ""}${t.ok === false ? ` <span class="opacity-80">(didn't work: ${esc(t.error ?? "")})</span>` : ""}</div>`)
+            .join("")
+        : `<div class="text-xs opacity-70">No phone has gone live.</div>`
+    }</div>`;
+
   return `
     ${steps}
     <h3 class="rf-subhead">Phones</h3>
     <div class="flex flex-col gap-2">${phones}</div>
     <h3 class="rf-subhead">Recent phone presses</h3>
     ${activity}
+    ${goLive}
     <div class="flex gap-2 flex-wrap mt-1">
       ${d.pinMode === "none" ? "" : `<button type="button" id="phone-forget" class="btn btn-chip" title="Signs every phone out and changes today's PIN">Sign out all phones</button>`}
       <button type="button" id="phone-disable" class="btn btn-chip">Turn off phones</button>
@@ -131,6 +160,17 @@ export function initPhonePanel() {
     act(document.getElementById("phone-enable"), () => post("/api/network/enable"));
     act(document.getElementById("phone-disable"), () => post("/api/network/disable"));
     act(document.getElementById("phone-forget"), () => post("/api/network/forget-phones"));
+    const goLive = document.getElementById("phone-golive");
+    goLive?.addEventListener("change", async () => {
+      goLive.disabled = true;
+      try {
+        await post("/api/network/phone-golive", { enabled: goLive.checked });
+        lastError = "";
+      } catch (err) {
+        lastError = err.message;
+      }
+      await load();
+    });
     body.querySelectorAll(".phone-act").forEach((b) =>
       act(b, () => post(`/api/network/phones/${encodeURIComponent(b.closest("[data-phone]").dataset.phone)}`, { action: b.dataset.action }))
     );

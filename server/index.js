@@ -110,7 +110,10 @@ import {
 } from "./slide-flags.js";
 import { heartbeatInterval } from "./heartbeat-pacing.js";
 import QRCode from "qrcode";
-import { emptyRegistry, seeDevice, setApproved, removeDevice, isApproved, isRemoved, deviceList, loadRegistry, saveRegistry } from "./remote-devices.js";
+import { emptyRegistry, seeDevice, setApproved, removeDevice, isApproved, isRemoved, deviceList, loadRegistry, saveRegistry, setLiveMonth, isLiveAllowed } from "./remote-devices.js";
+import { monthKey, deviceCode, appendTakeover } from "./remote-live.js";
+import { noteItem, splitsView } from "./item-splits.js";
+import { saveFlagPicture, readFlagPicture } from "./flag-pictures.js";
 import { previewTargets, createThumbCache } from "./slide-preview.js";
 import { createThumbStore, slideKey as pictureKey } from "./thumb-store.js";
 import { readFingerprint } from "./index-fingerprint.js";
@@ -1199,6 +1202,8 @@ function slideKey(slide) {
 // few hundred events at most, and a fold nobody caches cannot go stale.
 let serviceDay = { day: null, events: [], loading: null };
 let recentSlides = [];
+// How long each item was up, for the phone's History (server/item-splits.js).
+let itemSplits = [];
 
 /** Where a phone on the church network would open the flag page, one URL per network address. */
 function networkUrls() {
@@ -1293,6 +1298,36 @@ function flushRemoteDevices() {
 }
 setInterval(flushRemoteDevices, 30_000).unref?.();
 
+// --- Going live from a phone (server/remote-live.js) --------------------------
+// The booth's switch is networkModule.phoneGoLive, off unless a person turns it
+// on in the Phone panel. Every go-live, and every one that failed, is kept in
+// data/phone-golive-log.json (phone name, slide, what it replaced; never a
+// code) so the booth can see which phone took the screens.
+const phoneGoLiveOn = () => config.networkModule?.phoneGoLive === true;
+const GOLIVE_LOG_FILE = "./data/phone-golive-log.json";
+let goLiveLog = null;
+let goLiveLogWrite = Promise.resolve();
+function readGoLiveLog() {
+  if (goLiveLog) return goLiveLog;
+  try {
+    const parsed = JSON.parse(readFileSync(GOLIVE_LOG_FILE, "utf-8"));
+    goLiveLog = Array.isArray(parsed) ? parsed : [];
+  } catch {
+    goLiveLog = [];
+  }
+  return goLiveLog;
+}
+function noteTakeover(entry) {
+  goLiveLog = appendTakeover(readGoLiveLog(), entry);
+  const snapshot = goLiveLog;
+  // One write at a time, in order, so two quick go-lives cannot save out of order.
+  goLiveLogWrite = goLiveLogWrite
+    .then(() => writeAtomic(path.dirname(GOLIVE_LOG_FILE), path.basename(GOLIVE_LOG_FILE), snapshot, { mode: 0o600 }))
+    .catch((err) => console.error("Couldn't save the phone take-over log:", err.message));
+}
+const goLiveCodeGuard = pinFailureGuard({ dayOf: (now) => dayKey(now) });
+const slideLabel = (name, slideIndex) => `${name ?? "A presentation"}, slide ${slideIndex + 1}`;
+
 /** The last phone control presses, newest first, for Live and the phone panel. */
 let phoneActivity = [];
 function notePhoneAction(entry) {
@@ -1346,7 +1381,30 @@ const picturesOn = () => config.slidePictures?.show === true;
 const quickSlidePicturesOn = () => config.slidePictures?.quickSlides !== false;
 const isSafeSlide = (pid, idx) => safeSlides(config.liveModule?.safeSlides).some((x) => x.presentationId === pid && x.slideIndex === idx);
 /** Whether a picture of this slide may be shown or drawn at all. */
-const pictureAllowed = (pid, idx) => picturesOn() || (quickSlidePicturesOn() && isSafeSlide(pid, idx));
+const pictureAllowed = (pid, idx) => picturesOn() || (quickSlidePicturesOn() && isSafeSlide(pid, idx)) || flagCaptures.has(`${pid}:${idx}`);
+// The one slide a phone is flagging right now (owner, 2026-10-09: a flagged
+// slide always gets its picture). One at a time per flag, human-paced, and the
+// switch is `slidePictures.flagged`, on unless false; any other slide's picture
+// is still refused while pictures are off.
+const flaggedPicturesOn = () => config.slidePictures?.flagged !== false;
+const flagCaptures = new Map(); // "pid:idx" -> how many flags are being captured for it, so one finishing never closes the gate for another
+const FLAG_PICTURES_DIR = "./data/flag-pictures";
+const FLAG_CAPTURE_MS = 6000;
+/** Takes (or finds) a picture of the flagged slide and keeps it with the flag. The file name, or null. */
+async function captureFlagPicture(flagId, pid, idx) {
+  if (!flaggedPicturesOn()) return null;
+  const key = `${pid}:${idx}`;
+  flagCaptures.set(key, (flagCaptures.get(key) ?? 0) + 1);
+  try {
+    const fp = await pictureFingerprint(pid).catch(() => null);
+    const img = (fp ? await thumbStore.get(pid, idx, fp).catch(() => null) : null) ?? (await Promise.race([thumbCache(pid, idx, fp), new Promise((r) => setTimeout(() => r(null), FLAG_CAPTURE_MS))]));
+    return img ? await saveFlagPicture(FLAG_PICTURES_DIR, flagId, img) : null;
+  } finally {
+    const left = (flagCaptures.get(key) ?? 1) - 1;
+    if (left > 0) flagCaptures.set(key, left);
+    else flagCaptures.delete(key);
+  }
+}
 
 const thumbCache = createThumbCache(
   async (pid, idx, fp) => {
@@ -1616,6 +1674,18 @@ function currentPreview() {
  * Starts the phone listener when networkModule is on. Separate app, separate
  * port, a handful of routes; see server/remote.js for the boundary.
  */
+// The phone's open-flags list, read from the flags folder (which may be on the
+// network) at most every five seconds however many phones are looking.
+let openFlagsCache = { at: 0, list: [] };
+async function openFlagsCached() {
+  if (Date.now() - openFlagsCache.at < 5000) return openFlagsCache.list;
+  const list = visibleFlags(await listFlags({ folder: slideFlagsFolder() }))
+    .filter((f) => !f.resolved)
+    .slice(0, 30)
+    .map((f) => ({ id: f.id, presentationName: f.presentationName ?? null, slideNumber: Number.isInteger(f.slideIndex) ? f.slideIndex + 1 : null, type: f.type ?? null, note: f.note ?? "", by: f.submittedBy ?? null, at: f.capturedAt, picture: f.picture ?? null }));
+  openFlagsCache = { at: Date.now(), list };
+  return list;
+}
 let remoteServer = null;
 function startRemoteListener() {
   const { status, problems } = getNetworkModuleStatus(config, port);
@@ -1630,9 +1700,18 @@ function startRemoteListener() {
       recent: recentSlides,
       progress: serviceProgress(serviceModuleOn() && serviceDay.day ? serviceState() : null, liveState),
     }),
-    saveFlag: (flag) => saveFlag(flag, { folder: slideFlagsFolder() }),
+    saveFlag: async (flag) => {
+      const saved = await saveFlag(flag, { folder: slideFlagsFolder() });
+      openFlagsCache.at = 0; // the phone that just added it sees it in View flags at once
+      return saved;
+    },
     flagTypes: configuredFlagTypes,
     knownSlide: (presentationId, slideIndex) => getIndexedSlide(presentationId, slideIndex),
+    search: (q) => search({ query: q }),
+    history: () => splitsView(itemSplits),
+    captureFlagPicture,
+    openFlags: () => openFlagsCached(),
+    flagPicture: (id) => readFlagPicture(FLAG_PICTURES_DIR, id),
     devices: {
       see: (id, { name, signIn } = {}) => changeDevices(seeDevice(remoteDevices, id, { name, signIn }), { now: Boolean(signIn) }),
       approved: (id) => isApproved(remoteDevices, id),
@@ -1674,6 +1753,37 @@ function startRemoteListener() {
       }
     },
     pinGuard: remotePinGuard,
+    golive: {
+      enabled: phoneGoLiveOn,
+      code: () => deviceCode(loadRemoteSecret(), monthKey()),
+      guard: goLiveCodeGuard,
+      allowed: (id) => isLiveAllowed(remoteDevices, id, monthKey()),
+      allow: (id) => changeDevices(setLiveMonth(remoteDevices, id, monthKey()), { now: true }),
+      // Only a slide the index knows, so a phone cannot name one that isn't there.
+      describe: (presentationId, slideIndex) => {
+        const slide = getIndexedSlide(presentationId, slideIndex);
+        return slide ? { label: slideLabel(slide.presentationName, slideIndex), text: slide.text ?? "" } : null;
+      },
+      onScreen: () => (liveState.live && liveState.slide ? slideLabel(liveState.slide.presentationName ?? liveState.slide.name, liveState.slide.slideIndex) : null),
+      run: async (action, deviceId) => {
+        const phone = remoteDevices.devices?.[deviceId]?.name ?? "A phone";
+        const replaced = liveState.live && liveState.slide ? slideLabel(liveState.slide.presentationName ?? liveState.slide.name, liveState.slide.slideIndex) : null;
+        try {
+          // The slide's own words anchor it, so a presentation edited since the
+          // index ran refuses rather than putting up a different slide.
+          const out = await fireSlide({ presentationId: action.presentationId, slideIndex: action.slideIndex, slideText: action.slideText, requireAnchor: Boolean(action.slideText), requireChecked: Boolean(action.slideText) });
+          if (out.refused) throw new Error(out.unchecked ? "Refrain couldn't confirm that slide in ProPresenter just now. Try again." : "That slide has changed in ProPresenter since it was indexed. Search for it again.");
+          beatNow();
+          noteTakeover({ phone, slide: action.label, replaced });
+          notePhoneAction({ phone, label: `Went live: ${action.label}`, ok: true });
+          return { label: action.label };
+        } catch (err) {
+          noteTakeover({ phone, slide: action.label, replaced, ok: false, error: err.message });
+          notePhoneAction({ phone, label: `Went live: ${action.label}`, ok: false, error: err.message });
+          throw err;
+        }
+      },
+    },
     auth: {
       expectedPin: () => expectedRemotePin(),
       secret: () => loadRemoteSecret(),
@@ -1843,6 +1953,8 @@ async function heartbeat() {
   // The last few slides that were on the screens, for a flag sent late from
   // a phone (server/remote.js). In memory only: it's a scrollback, not a record.
   if (liveState.live && enriched) recentSlides = pushRecent(recentSlides, enriched, now);
+  // Only while ProPresenter answers: "can't see" is not "the screens were cleared".
+  if (connected) itemSplits = noteItem(itemSplits, liveState.live && enriched ? { presentationId: enriched.presentationId, name: enriched.presentationName ?? enriched.name ?? null } : null, now);
 
   // The service timeline: what goes live, when, and in which service. It reads
   // only what this beat already fetched. Skipped while ProPresenter is not
@@ -3570,10 +3682,13 @@ async function resolveTriggerIndex(presentationId, requestedIndex, anchor) {
  * Puts one slide on the screens by its anchor, recording where the operator
  * was for Return. Shared by Search's Go Live, safe slides on Live, and an
  * approved phone's safe slides, so all three fire exactly the same way.
+ * `requireChecked` (a phone going live) also refuses when the slide could not be
+ * checked against ProPresenter at all (it timed out), so an unverified number is
+ * never fired from a phone: `{ refused, unchecked: true }`.
  * Returns `{ refused }` instead of firing when `requireAnchor` is set and the
  * slide can't be found. Throws if ProPresenter fails.
  */
-async function fireSlide({ presentationId, slideIndex, groupId, groupOffset, slideText, requireAnchor = false }) {
+async function fireSlide({ presentationId, slideIndex, groupId, groupOffset, slideText, requireAnchor = false, requireChecked = false }) {
   // Both reads are independent of each other, and ProPresenter can take
   // seconds per call on a busy machine, so run them together rather than
   // stacking their latency ahead of the slide actually going live. Reading
@@ -3596,6 +3711,7 @@ async function fireSlide({ presentationId, slideIndex, groupId, groupOffset, sli
   // no longer has it (the deck was edited and the group is gone), refuse,
   // rather than firing whatever now sits at that number. Search's Go Live
   // doesn't ask for this and behaves as it always has.
+  if (requireChecked && target.anchorChecked === false) return { refused: "unchecked", unchecked: true };
   if (requireAnchor && target.missing) {
     return { refused: "Can't find that slide any more. The presentation was changed; save it as a safe slide again." };
   }
@@ -3870,9 +3986,29 @@ app.get("/api/network/setup", async (_req, res) => {
     pin: status === "active" ? expectedRemotePin() : null,
     wrongToday: remotePinGuard.count(),
     qrSvg,
-    phones: deviceList(remoteDevices),
+    phones: deviceList(remoteDevices, Date.now(), monthKey()),
     activity: phoneActivity,
+    goLive: {
+      enabled: phoneGoLiveOn(),
+      // Shown only here, on the main app, which only this machine can reach.
+      code: status === "active" && phoneGoLiveOn() ? deviceCode(loadRemoteSecret(), monthKey()) : null,
+      takeovers: readGoLiveLog().slice(0, 10),
+    },
   });
+});
+
+/**
+ * "Let phones go live": the booth's own switch. Off by default; read on every
+ * phone request, so switching it off stops the next press at once.
+ */
+app.post("/api/network/phone-golive", async (req, res) => {
+  if (typeof req.body?.enabled !== "boolean") return res.status(400).json({ error: "enabled must be true or false" });
+  try {
+    await saveNetworkModule({ phoneGoLive: req.body.enabled });
+  } catch (err) {
+    return res.status(500).json({ error: `Failed to save config.json: ${err.message}` });
+  }
+  res.json({ ok: true, enabled: req.body.enabled });
 });
 
 /** Saves networkModule over the latest config, atomically. */

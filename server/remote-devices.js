@@ -34,6 +34,8 @@ export function seeDevice(reg, id, { name, now = Date.now(), signIn = false } = 
     approved: prev && !prev.removed ? Boolean(prev.approved) : false,
     approvedAt: prev && !prev.removed ? (prev.approvedAt ?? null) : null,
     removed: false,
+    // The month this phone typed the device code in (server/remote-live.js).
+    liveMonth: prev && !prev.removed ? (prev.liveMonth ?? null) : null,
   };
   return { devices };
 }
@@ -47,17 +49,27 @@ export function setApproved(reg, id, approved, now = Date.now()) {
 export function removeDevice(reg, id) {
   const d = reg?.devices?.[id];
   if (!d) return reg;
-  return { devices: { ...reg.devices, [id]: { ...d, approved: false, approvedAt: null, removed: true } } };
+  return { devices: { ...reg.devices, [id]: { ...d, approved: false, approvedAt: null, removed: true, liveMonth: null } } };
 }
+
+/** Records that this phone typed the device code in `month` ("2026-10"). */
+export function setLiveMonth(reg, id, month) {
+  const d = reg?.devices?.[id];
+  if (!d || d.removed) return reg;
+  return { devices: { ...reg.devices, [id]: { ...d, liveMonth: month } } };
+}
+
+/** Allowed to ask to go live only in the month it typed the code, and never once removed. */
+export const isLiveAllowed = (reg, id, month) => Boolean(month) && reg?.devices?.[id]?.liveMonth === month && !isRemoved(reg, id);
 
 export const isRemoved = (reg, id) => Boolean(reg?.devices?.[id]?.removed);
 export const isApproved = (reg, id) => Boolean(reg?.devices?.[id]?.approved) && !isRemoved(reg, id);
 
 /** For the booth's list: newest first, removed ones left out. */
-export function deviceList(reg, now = Date.now()) {
+export function deviceList(reg, now = Date.now(), month = null) {
   return Object.entries(reg?.devices ?? {})
     .filter(([, d]) => !d.removed)
-    .map(([id, d]) => ({ id, name: d.name, approved: Boolean(d.approved), lastSeen: d.lastSeen, activeRecently: now - d.lastSeen < 5 * 60_000 }))
+    .map(([id, d]) => ({ id, name: d.name, approved: Boolean(d.approved), live: Boolean(month) && d.liveMonth === month, lastSeen: d.lastSeen, activeRecently: now - d.lastSeen < 5 * 60_000 }))
     .sort((a, b) => b.lastSeen - a.lastSeen);
 }
 
