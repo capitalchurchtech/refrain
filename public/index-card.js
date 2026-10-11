@@ -41,7 +41,6 @@ const CARD = `
     <div class="rf-run-spark" aria-hidden="true"></div>
     <div class="rf-run-foot"><span class="rf-run-sentence"></span><span class="rf-run-actions"></span></div>
     <div class="rf-hint rf-run-hint"></div>
-    <div class="rf-hint rf-run-warm" hidden>Reading every slide you own. Go coil something.</div>
     <div class="alert alert-warning py-2 text-sm mt-2 items-start rf-run-warn" hidden>
       <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
       <span><strong>A rebuild is running, so ProPresenter will be sluggish until it finishes.</strong>
@@ -131,7 +130,6 @@ export function mountRunCard(host, rim = null) {
 
     const running = s.phase === "running" || s.phase === "stopping";
     q(".rf-run-warn").hidden = !running;
-    q(".rf-run-warm").hidden = !running;
     // Only when the phase changes: a button rebuilt every poll swallows a click
     // that lands between two polls and drops keyboard focus.
     if (s.phase !== actionsKey) {
