@@ -383,18 +383,17 @@
             <button id="return-bar-btn" class="btn btn-outline btn-sm">
               <i data-lucide="corner-up-left" class="w-4 h-4"></i> Return
             </button>
-            <!-- The pulldown handle. Sits with Return rather than apart from it,
+            <!-- The History handle. Sits with Return rather than apart from it,
                  because "back one" and "back further" are the same intent at
-                 different depths. -->
-            <button id="return-history-toggle" class="btn btn-chip hidden" aria-expanded="false"
-                    aria-controls="return-history-panel" title="Earlier places you jumped from">
+                 different depths. It opens the rail's History flyout (the same
+                 window as the History key), not a list of its own. -->
+            <button id="return-history-toggle" class="btn btn-chip hidden" data-opens-history
+                    aria-haspopup="dialog" aria-controls="history-flyout" title="Open History">
               <i data-lucide="history" class="w-3 h-3"></i>
               <span id="return-history-count"></span>
             </button>
           </span>
         </div>
-
-        <div id="return-history-panel" class="hidden" role="group" aria-label="Places you jumped from"></div>
       </div>
 
       <section id="view-search">
