@@ -26,6 +26,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { BLANK_GRACE_MS } from "./item-splits.js";
 
 export const FEED_PROTOCOL_VERSION = 1;
 export const TOKEN_ENV = "SERVICE_FEED_TOKEN";
@@ -134,6 +135,9 @@ function isLoopback(host) {
 /** Names one slide's picture, so the server shows it only beside the status it belongs to. */
 export const imageKeyOf = (slide) => `${slide.presentationId}:${slide.slideIndex}`;
 
+/** The whole status stays under this, so a long list of long names cannot make it huge. The other side caps the body at 16 KB. */
+export const STATUS_MAX_BYTES = 8 * 1024;
+
 /** The status body. Slide text only goes if the church asked for it. */
 export function buildStatus({ live, mod, consoleId, appVersion, seq, now }) {
   const slide = live?.slide
@@ -146,7 +150,7 @@ export function buildStatus({ live, mod, consoleId, appVersion, seq, now }) {
         ...(mod?.includeSlideImage && live.slide.presentationId != null ? { imageKey: imageKeyOf(live.slide) } : {}),
       }
     : null;
-  return {
+  const status = {
     v: FEED_PROTOCOL_VERSION,
     consoleId,
     name: String(mod?.name ?? "").trim(),
@@ -158,7 +162,13 @@ export function buildStatus({ live, mod, consoleId, appVersion, seq, now }) {
     liveSince: live?.liveSince ?? null,
     performanceMode: Boolean(live?.performanceMode?.armed),
     slide,
+    // When each item changed: the same stays the phone's History shows, as a
+    // snapshot (latest wins, so a dropped push loses nothing). Names only.
+    ...(Array.isArray(live?.history) ? { tz: live.tz ?? null, history: { graceMs: BLANK_GRACE_MS, items: live.history } } : {}),
   };
+  // Oldest items go first if it is ever too big; the newest are what matters.
+  while (status.history?.items.length > 0 && Buffer.byteLength(JSON.stringify(status)) > STATUS_MAX_BYTES) status.history.items = status.history.items.slice(0, -1);
+  return status;
 }
 
 /**

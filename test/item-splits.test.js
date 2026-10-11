@@ -80,3 +80,75 @@ test("the view says which presentation, and marks an open stay whose screens are
   log = noteItem(log, a, 6000);
   assert.equal(splitsView(log, 7000)[0].blank, false, "back, so not blank");
 });
+
+// --- What leaves this Mac (docs/service-feed.md) ---------------------------------
+import { feedItems, itemLines, leftOpenLines, FEED_ITEMS_MAX, FEED_NAME_MAX } from "../server/item-splits.js";
+
+const TZ = "America/Denver";
+const SECRET = "Was blind but now I see";
+
+test("the history snapshot is newest first, capped, names trimmed, UTC times, and has nothing but the named fields", () => {
+  let log = [];
+  for (let i = 0; i < 45; i++) log = noteItem(log, { presentationId: `P${i}`, name: i === 44 ? "x".repeat(500) : `Item ${i}`, text: SECRET, slideText: SECRET }, i * 60_000, 60);
+  const items = feedItems(log);
+  assert.equal(items.length, FEED_ITEMS_MAX);
+  assert.equal(items[0].name.length, FEED_NAME_MAX);
+  assert.deepEqual(Object.keys(items[0]).sort(), ["blank", "current", "endedAt", "id", "name", "startedAt"]);
+  assert.deepEqual([items[0].current, items[0].endedAt], [true, null]);
+  assert.equal(items[1].endedAt, new Date(44 * 60_000).toISOString(), "UTC ISO, closed when the next came up");
+  assert.doesNotMatch(JSON.stringify(items), /Was blind|presentationId|P44/);
+});
+
+test("item lines: one when an item opens, one with the same id when it closes, none for what did not change", () => {
+  let log = [];
+  const all = [];
+  const step = (item, t) => {
+    const next = noteItem(log, item, t);
+    all.push(...itemLines(log, next, TZ));
+    log = next;
+  };
+  step(a, 0);
+  step(a, 4000); // still the same item
+  step(null, 10_000); // a blank being forgiven: no line
+  step(a, 20_000);
+  assert.equal(all.length, 1, "one open line so far");
+  assert.deepEqual([all[0].endedAt, all[0].reason, all[0].tz, all[0].name], [null, null, TZ, "Welcome Loop"]);
+  step(b, 60_000);
+  assert.equal(all.length, 3);
+  assert.deepEqual([all[1].id === all[0].id, all[1].reason, all[1].endedAt], [true, "moved", new Date(60_000).toISOString()]);
+  assert.deepEqual([all[2].endedAt, all[2].reason, all[2].name], [null, null, "Amazing Grace"]);
+  step(null, 70_000);
+  step(null, 70_000 + BLANK_GRACE_MS + 1);
+  const last = all.at(-1);
+  assert.deepEqual([last.id === all[2].id, last.reason, last.endedAt], [true, "blank-timeout", new Date(70_000).toISOString()], "ended when the screens went blank");
+});
+
+test("the same item keeps the same id every time it is sent", () => {
+  const log = noteItem([], a, 5000);
+  assert.equal(feedItems(log)[0].id, feedItems(log)[0].id);
+  assert.equal(feedItems(noteItem(log, a, 9000))[0].id, feedItems(log)[0].id, "slides changing inside one item do not re-id it");
+});
+
+test("an item open when Refrain restarts is closed at the last moment the old run wrote anything, as a restart; this run's own are left alone", () => {
+  const BOOT = "2026-10-11T16:00:00.000Z";
+  const text = [
+    { t: "2026-10-11T15:40:00.000Z", event: "item", id: "old-1", name: "Sermon", startedAt: "2026-10-11T15:30:00.000Z", endedAt: null, reason: null, tz: TZ },
+    { t: "2026-10-11T15:41:00.000Z", event: "item", id: "old-0", name: "Song", startedAt: "2026-10-11T15:20:00.000Z", endedAt: null, reason: null, tz: TZ },
+    { t: "2026-10-11T15:42:00.000Z", event: "item", id: "old-0", name: "Song", startedAt: "2026-10-11T15:20:00.000Z", endedAt: "2026-10-11T15:42:00.000Z", reason: "moved", tz: TZ },
+    { t: "2026-10-11T15:55:00.000Z", event: "minute", live: true },
+    { t: "2026-10-11T16:00:30.000Z", event: "item", id: "new-1", name: "Sermon", startedAt: "2026-10-11T16:00:30.000Z", endedAt: null, reason: null, tz: TZ },
+  ].map((l) => JSON.stringify(l)).join("\n") + "\nnot json\n";
+  const lines = leftOpenLines(text, BOOT, TZ);
+  assert.deepEqual(lines, [{ id: "old-1", name: "Sermon", startedAt: "2026-10-11T15:30:00.000Z", endedAt: "2026-10-11T15:55:00.000Z", reason: "restart", tz: TZ }]);
+  assert.deepEqual(leftOpenLines("", BOOT, TZ), []);
+  // The run that comes back opens its items with new ids.
+  const reopened = noteItem([], a, Date.parse(BOOT) + 40_000);
+  assert.notEqual(feedItems(reopened)[0].id, "old-1");
+});
+
+test("no slide words appear in the snapshot or the item lines, whatever the item carried", () => {
+  let log = noteItem([], { ...a, text: SECRET, snippet: SECRET }, 0);
+  const next = noteItem(log, { ...b, text: SECRET }, 9000);
+  const out = JSON.stringify([feedItems(next), itemLines(log, next, TZ), splitsView(next)]);
+  assert.doesNotMatch(out, /Was blind/);
+});

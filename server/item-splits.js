@@ -61,7 +61,9 @@ export function noteItem(log, item, now = Date.now(), max = MAX_SPLITS, graceMs 
   // The stay is over: a different item came up, or it has been blank too long.
   let next = list;
   if (open) {
-    next = [{ ...forgiven(open), endMs: endedAt }, ...list.slice(1)];
+    // Why it ended, for the service log: another item came up, or the screens
+    // stayed blank past the grace (then it ended when they went blank).
+    next = [{ ...forgiven(open), endMs: endedAt, reason: gone ? "blank-timeout" : "moved" }, ...list.slice(1)];
   }
   if (pid) next = [{ id: `${now.toString(36)}-${next.length}`, presentationId: pid, name: item.name ?? null, startMs: now, endMs: null }, ...next];
   return next.slice(0, max);
@@ -70,6 +72,7 @@ export function noteItem(log, item, now = Date.now(), max = MAX_SPLITS, graceMs 
 /** What the phone shows: a name, when it came up, when it left, and how long it was up (still counting for the open one). */
 export function splitsView(log, now = Date.now()) {
   return (log ?? []).map((e) => ({
+    id: e.id,
     presentationId: e.presentationId,
     name: e.name ?? "Untitled",
     startedAt: new Date(e.startMs).toISOString(),
@@ -79,4 +82,74 @@ export function splitsView(log, now = Date.now()) {
     // Open, but the screens are empty right now (a blank being forgiven).
     blank: e.endMs == null && e.blankSince != null,
   }));
+}
+
+// --- What leaves this Mac: the status feed's snapshot and the service log ------
+// (docs/service-feed.md). Presentation names only: no slide text, no
+// presentation ids, nothing about who did anything.
+
+export const FEED_ITEMS_MAX = 30;
+export const FEED_NAME_MAX = 200;
+const nameOf = (e) => String(e.name ?? "Untitled").slice(0, FEED_NAME_MAX);
+
+/** The `history` snapshot for POST /status: newest first, capped. Times are UTC. */
+export function feedItems(log, max = FEED_ITEMS_MAX) {
+  return (log ?? []).slice(0, max).map((e) => ({
+    id: e.id,
+    name: nameOf(e),
+    startedAt: new Date(e.startMs).toISOString(),
+    endedAt: e.endMs == null ? null : new Date(e.endMs).toISOString(),
+    current: e.endMs == null,
+    blank: e.endMs == null && e.blankSince != null,
+  }));
+}
+
+/**
+ * The `item` lines to write when the log went from `prev` to `next`: one when an
+ * item opens (endedAt null) and one, with the same id, when it closes. The
+ * later line wins per id, so an item still on screen when the log is sent is
+ * there as an open line. Oldest first.
+ */
+export function itemLines(prev, next, tz) {
+  const was = new Map((prev ?? []).map((e) => [e.id, e]));
+  const lines = [];
+  for (const e of [...(next ?? [])].reverse()) {
+    const p = was.get(e.id);
+    if (p && !(p.endMs == null && e.endMs != null)) continue; // unchanged
+    lines.push({
+      id: e.id,
+      name: nameOf(e),
+      startedAt: new Date(e.startMs).toISOString(),
+      endedAt: e.endMs == null ? null : new Date(e.endMs).toISOString(),
+      reason: e.endMs == null ? null : (e.reason ?? "moved"),
+      tz,
+    });
+  }
+  return lines;
+}
+
+/**
+ * Items a previous run left open (Refrain was restarted, or crashed, mid-
+ * service): one close line each, ended at the last moment that run wrote
+ * anything, reason "restart". `text` is the day file(s), JSON Lines; only lines
+ * written before `before` (this run's start) count, so this run's own items are
+ * never closed. The run that comes back opens its items afresh, with new ids.
+ */
+export function leftOpenLines(text, before, tz) {
+  const latest = new Map();
+  let lastT = null;
+  for (const raw of String(text ?? "").split("\n")) {
+    let line;
+    try {
+      line = JSON.parse(raw);
+    } catch {
+      continue;
+    }
+    if (typeof line?.t !== "string" || line.t >= before) continue;
+    lastT = lastT == null || line.t > lastT ? line.t : lastT;
+    if (line.event === "item" && typeof line.id === "string") latest.set(line.id, line);
+  }
+  return [...latest.values()]
+    .filter((l) => l.endedAt == null)
+    .map((l) => ({ id: l.id, name: l.name, startedAt: l.startedAt, endedAt: lastT, reason: "restart", tz: l.tz ?? tz }));
 }
