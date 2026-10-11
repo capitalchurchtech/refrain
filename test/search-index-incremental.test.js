@@ -119,7 +119,7 @@ test("an incremental run re-reads only the presentation whose file changed", asy
 
     assert.equal(index.buildMode, "incremental");
     assert.deepEqual(client.fetched, ["b"], "only the edited presentation should be re-read");
-    assert.deepEqual(index.reindexCounts, { carriedOver: 2, changed: 1, added: 0, unverifiable: 0, unverifiableWhy: { noRecord: 0, fileMissing: 0 }, olderFormat: 0 });
+    assert.deepEqual(index.reindexCounts, { carriedOver: 2, changed: 1, added: 0, unverifiable: 0, unverifiableWhy: { noRecord: 0, fileMissing: 0 }, olderFormat: 0, noDeepData: 0 });
     assert.equal(index.presentations.b.slides[0].text, "bravo rewritten", "the edit must land in the index");
     assert.equal(index.presentations.a.slides[0].text, "alpha", "untouched entries keep their slides");
     assert.equal(index.presentations.c.slides[0].text, "charlie");

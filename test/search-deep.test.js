@@ -79,6 +79,17 @@ test("searchOtherArrangements matches an unplaced group, ignores an empty query,
   assert.deepEqual(searchOtherArrangements({ query: "tag", folders: ["Elsewhere"] }), []);
 });
 
-test("coverage says how many songs Deep Search could read", () => {
-  assert.deepEqual(otherSlidesCoverage(), { covered: 1, total: 2 });
+test("coverage says how many presentations Deep Search could read, and in which libraries the rest are", () => {
+  const all = otherSlidesCoverage();
+  assert.deepEqual([all.covered, all.total], [1, 2]);
+  assert.equal(all.missing.reduce((n, m) => n + m.count, 0), 1);
+});
+
+test("coverage counts only the libraries being searched, so a library turned off is not held against it", () => {
+  const all = otherSlidesCoverage();
+  const unreadFolder = all.missing[0].folder;
+  const without = otherSlidesCoverage({ folders: ["No such library"] });
+  assert.deepEqual([without.covered, without.total, without.missing], [0, 0, []]);
+  const onlyUnread = otherSlidesCoverage({ folders: [unreadFolder] });
+  assert.equal(onlyUnread.covered, onlyUnread.total - onlyUnread.missing[0].count);
 });

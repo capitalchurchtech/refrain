@@ -200,13 +200,21 @@ export function planIncremental({ ids, previous, fingerprints = {}, buildOptions
   // "unverifiable" on the booth (issue #12) said nothing about which fix it
   // needed: no record of the file, or a file that is no longer there.
   // `olderFormat` counts entries carried over from the v0.12 fingerprint.
-  const counts = { carriedOver: 0, changed: 0, added: 0, unverifiable: 0, unverifiableWhy: { noRecord: 0, fileMissing: 0 }, olderFormat: 0 };
+  const counts = { carriedOver: 0, changed: 0, added: 0, unverifiable: 0, unverifiableWhy: { noRecord: 0, fileMissing: 0 }, olderFormat: 0, noDeepData: 0 };
 
   for (const id of ids) {
     const prev = previous.presentations?.[id];
     if (!prev) {
       needFetch.push(id);
       counts.added += 1;
+      continue;
+    }
+    // An entry read before Deep Search existed has no record of the slides its
+    // arrangement skips, and an unchanged file would carry that gap over for ever
+    // (Deep Search "could read 255 of 692"): re-read it now, once.
+    if (!Array.isArray(prev.otherSlides)) {
+      needFetch.push(id);
+      counts.noDeepData += 1;
       continue;
     }
     // An entry from before fingerprinting existed, or one indexed while

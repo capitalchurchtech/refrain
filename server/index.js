@@ -1069,7 +1069,9 @@ const protectOn = () => config.protectProPresenter !== false;
 const PROTECT_REFUSAL =
   "Protect ProPresenter is on, so Refrain doesn't read presentations from ProPresenter in bulk. Search uses the index it already has. To run this, turn protection off in Settings › Search › Advanced.";
 
-function startRebuild({ incremental = false, operatorInitiated = false } = {}) {
+const DEEP_PACING_MS = 500;
+const DEEP_RETRY_DELAY_MS = 2000;
+function startRebuild({ incremental = false, operatorInitiated = false, deep = false } = {}) {
   // The one door every index run goes through, so no caller can forget.
   if (protectOn()) {
     indexWorkDeferred = "Protect ProPresenter is on: the index isn't read from ProPresenter";
@@ -1077,9 +1079,12 @@ function startRebuild({ incremental = false, operatorInitiated = false } = {}) {
   }
   rebuildStopRequested = false;
   const started = Date.now();
-  diag("index-start", { incremental, operatorInitiated, performance: { armed: performance.armed, source: performance.source } });
+  diag("index-start", { incremental, operatorInitiated, deep, performance: { armed: performance.armed, source: performance.source } });
   const run = rebuildIndex(client, config.librarySync, preferredArrangements(), {
     incremental,
+    // Deep reindex: every presentation, read slowly and retried patiently, for a
+    // ProPresenter that answers some reads with an error under a faster crawl.
+    ...(deep ? { pacingMs: DEEP_PACING_MS, retryDelayMs: DEEP_RETRY_DELAY_MS } : {}),
     // An operator's run still stands down when content goes live or
     // performance mode is switched on by hand: pressing Refresh at 07:38 is
     // not consent to crawl through the service (issue #13: it did). It
@@ -2800,6 +2805,9 @@ app.post("/api/library-folders", async (req, res) => {
   if (folders !== null && !Array.isArray(folders)) {
     return res.status(400).json({ error: "folders must be an array of names, or null for all" });
   }
+  // Asked before anything is saved, so Cancel leaves the settings as they were.
+  const warning = serviceRunWarning(req.body);
+  if (warning) return res.status(409).json({ error: warning, needsConfirm: true });
 
   try {
     await updateConfig((c) => ({ ...c, librarySync: { ...c.librarySync, folders } }));
@@ -2818,7 +2826,10 @@ app.post("/api/library-folders", async (req, res) => {
   // progress rather than this request staying open for what could be
   // a slow full-library crawl.
   indexWorkDeferred = null;
-  startRebuild({ incremental: true, operatorInitiated: true })
+  // `deep` (Save and deep reindex): every presentation read again, slowly, not
+  // only what changed, for an index whose Deep Search coverage has gaps.
+  const deep = req.body?.deep === true;
+  startRebuild({ incremental: !deep, operatorInitiated: true, deep })
     .then(startWatching)
     .catch((err) => {
       console.error("Library-scope rebuild failed:", err.message);
@@ -2866,9 +2877,10 @@ app.post("/api/index/rebuild", async (req, res) => {
   if (warning) return res.status(409).json({ error: warning, needsConfirm: true });
   try {
     indexWorkDeferred = null; // the operator has taken it in hand
-    const index = await startRebuild({ operatorInitiated: true });
+    // `deep`: the same full rebuild, slower (see startRebuild).
+    const index = await startRebuild({ operatorInitiated: true, deep: req.body?.deep === true });
     startWatching();
-    res.json({ builtAt: index.builtAt, presentationCount: Object.keys(index.presentations).length });
+    res.json({ builtAt: index.builtAt, presentationCount: Object.keys(index.presentations).length, ...otherSlidesCoverage() });
   } catch (err) {
     res.status(502).json({ error: indexBuildError(err) });
   }
@@ -3719,7 +3731,7 @@ app.get("/api/search/deep", (req, res) => {
   if (typeof v !== "string") return res.status(400).json({ error: "Send q once, as text." });
   const folders = Array.isArray(req.query.folders) ? req.query.folders.filter((f) => typeof f === "string") : typeof req.query.folders === "string" ? req.query.folders : undefined;
   const folderList = Array.isArray(folders) ? folders : folders ? folders.split(",") : undefined;
-  res.json({ results: searchOtherArrangements({ query: v, folders: folderList }), ...otherSlidesCoverage() });
+  res.json({ results: searchOtherArrangements({ query: v, folders: folderList }), ...otherSlidesCoverage({ folders: folderList }) });
 });
 
 app.get("/api/search/folders", (_req, res) => {

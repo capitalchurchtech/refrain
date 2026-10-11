@@ -487,12 +487,12 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
         Object.assign(presentations[id], carried);
       }
       idsNeedingSlides = plan.needFetch;
-      const { carriedOver, changed, added, unverifiable, unverifiableWhy, olderFormat } = plan.counts;
+      const { carriedOver, changed, added, unverifiable, unverifiableWhy, olderFormat, noDeepData } = plan.counts;
       const why = unverifiable ? ` (${unverifiableWhy.noRecord} with no record of their file, ${unverifiableWhy.fileMissing} whose file wasn't found)` : "";
       const older = olderFormat ? ` ${olderFormat} of the unchanged were recorded by an older Refrain and compared by size and date.` : "";
       console.log(
         `Incremental reindex: ${carriedOver} unchanged, ${changed} changed, ${added} new, ` +
-          `${unverifiable} unverifiable${why}. Re-reading ${idsNeedingSlides.length} of ${skeletonIds.length}.${older}`
+          `${unverifiable} unverifiable${why}${noDeepData ? `, ${noDeepData} read before Deep Search` : ""}. Re-reading ${idsNeedingSlides.length} of ${skeletonIds.length}.${older}`
       );
     } else if (incremental) {
       console.log(`Full rebuild instead of incremental: ${plan.reason}.`);
@@ -1199,9 +1199,22 @@ export function searchOtherArrangements({ query, folders }) {
   return results;
 }
 
-/** How many songs Deep Search can read, of how many are indexed. */
-export function otherSlidesCoverage() {
-  const entries = Object.values(currentIndex.presentations ?? {});
-  return { covered: entries.filter((e) => Array.isArray(e.otherSlides)).length, total: entries.length };
+/**
+ * How many presentations Deep Search can read, of how many it is searching.
+ * With `folders` (the libraries switched on under Search's Filter) it counts only
+ * those, so a library you have turned off is not held against it. `missing` says
+ * which libraries the unread ones are in, biggest first, so "could only read 255
+ * of 692" names where the rest are.
+ */
+export function otherSlidesCoverage({ folders } = {}) {
+  const folderSet = folders && folders.length > 0 ? new Set(folders) : null;
+  const entries = Object.values(currentIndex.presentations ?? {}).filter((e) => !folderSet || folderSet.has(e.folder));
+  const unread = new Map();
+  for (const e of entries) if (!Array.isArray(e.otherSlides)) unread.set(e.folder ?? "No library", (unread.get(e.folder ?? "No library") ?? 0) + 1);
+  return {
+    covered: entries.filter((e) => Array.isArray(e.otherSlides)).length,
+    total: entries.length,
+    missing: [...unread].map(([folder, count]) => ({ folder, count })).sort((a, b) => b.count - a.count),
+  };
 }
 

@@ -26,6 +26,7 @@ function previousIndex(overrides = {}) {
         name: "Build My Life",
         slides: [{ index: 0, text: "holy", groupId: "g1", groupOffset: 0 }],
         groupSequence: ["Verse 1"],
+        otherSlides: [],
         arrangementName: "FS",
         arrangementId: "arr-fs",
         arrangementSource: "preferred",
@@ -346,9 +347,24 @@ test("carriedEntryFields handles a missing previous entry", () => {
 });
 
 test("a first build saved part-way is built on, not started over", () => {
-  const previous = { builtAt: null, partial: { read: 2, of: 3 }, schemaVersion: 7, buildOptions: { preferredArrangements: [], crawlPlaylists: false }, presentations: { a: { fingerprint: "1:1", presentationPath: "/a.pro", slides: [{}] }, b: { fingerprint: "2:2", presentationPath: "/b.pro", slides: [{}] }, c: {} } };
+  const previous = { builtAt: null, partial: { read: 2, of: 3 }, schemaVersion: 7, buildOptions: { preferredArrangements: [], crawlPlaylists: false }, presentations: { a: { fingerprint: "1:1", presentationPath: "/a.pro", slides: [{}], otherSlides: [] }, b: { fingerprint: "2:2", presentationPath: "/b.pro", slides: [{}], otherSlides: [] }, c: {} } };
   const plan = planIncremental({ ids: ["a", "b", "c"], previous, fingerprints: { a: "1:1", b: "2:2" }, buildOptions: { preferredArrangements: [], crawlPlaylists: false }, schemaVersion: 7 });
   assert.equal(plan.mode, "incremental");
   assert.deepEqual(plan.needFetch, ["c"], "only the one it never read");
   assert.equal(planIncremental({ ids: ["a"], previous: { ...previous, partial: undefined }, buildOptions: previous.buildOptions, schemaVersion: 7 }).mode, "full", "no builtAt and not partial: nothing to build on");
+});
+
+test("an unchanged entry read before Deep Search existed is read again, once, and counted", () => {
+  const previous = previousIndex();
+  delete previous.presentations.song1.otherSlides;
+  const plan = planIncremental({ ids: ["song1"], previous, fingerprints: { song1: "100:1700000000000:abc" }, buildOptions: previous.buildOptions, schemaVersion: SCHEMA });
+  assert.equal(plan.mode, "incremental");
+  assert.deepEqual(plan.needFetch, ["song1"]);
+  assert.equal(plan.counts.noDeepData, 1);
+  assert.equal(plan.counts.carriedOver, 0);
+  // Once it has been read, an empty list counts as having the data: it is carried over again.
+  const healed = previousIndex();
+  const again = planIncremental({ ids: ["song1"], previous: healed, fingerprints: { song1: "100:1700000000000:abc" }, buildOptions: healed.buildOptions, schemaVersion: SCHEMA });
+  assert.deepEqual(again.needFetch, []);
+  assert.equal(again.counts.noDeepData, 0);
 });
