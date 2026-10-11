@@ -45,12 +45,14 @@ async function toApproved(base, tok, code) {
   return { req, ok };
 }
 
-test("the booth's switch off: no phone can ask, allow or confirm, and status says so", async () => {
+test("the booth's switch off: no phone can go live, but it can still be given the permission, and status says so", async () => {
   const { server, base } = await start({ enabled: false });
   try {
     const t = phone();
-    assert.deepEqual((await call(base, t, "/api/golive/status")).body, { enabled: false });
-    for (const [p, b] of [["/api/golive/allow", { code: CODE }], ["/api/golive/request", { presentationId: "P1", slideIndex: 3 }], ["/api/golive/approve", {}], ["/api/golive/confirm", {}]]) {
+    assert.deepEqual((await call(base, t, "/api/golive/status")).body, { pin: true, enabled: false, allowed: false, until: null, lockedMs: 0 });
+    // The permission itself (the device code) does not depend on the booth's go-live switch: it is also what Search and Alerts need.
+    assert.equal((await call(base, t, "/api/golive/allow", { code: CODE })).status, 200);
+    for (const [p, b] of [["/api/golive/request", { presentationId: "P1", slideIndex: 3 }], ["/api/golive/approve", {}], ["/api/golive/confirm", {}]]) {
       const r = await call(base, t, p, b);
       assert.equal(r.status, 403, p);
       assert.match(r.body.error, /off at the booth/);
@@ -63,7 +65,7 @@ test("without phone PINs there is no phone identity, so there is no going live",
   try {
     const r = await fetch(base + "/api/golive/allow", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: CODE }) });
     assert.equal(r.status, 403);
-    assert.deepEqual(await (await fetch(base + "/api/golive/status")).json(), { enabled: false });
+    assert.deepEqual(await (await fetch(base + "/api/golive/status")).json(), { pin: false, enabled: false, allowed: false });
   } finally { server.close(); }
 });
 

@@ -4134,7 +4134,9 @@ app.get("/api/network/setup", async (_req, res) => {
     goLive: {
       enabled: phoneGoLiveOn(),
       // Shown only here, on the main app, which only this machine can reach.
-      code: status === "active" && phoneGoLiveOn() ? deviceCode(loadRemoteSecret(), monthKey()) : null,
+      // Shown whenever phones are on: it is what a phone types to be allowed to search
+      // and send alerts as well as to go live.
+      code: status === "active" ? deviceCode(loadRemoteSecret(), monthKey()) : null,
       takeovers: readGoLiveLog().slice(0, 10),
     },
   });
