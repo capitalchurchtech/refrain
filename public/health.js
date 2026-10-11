@@ -1552,14 +1552,96 @@ function wireDaySummarySettings(rerender) {
  * scrolling. No countdown and no dialog. After the kill, the page watches
  * Refrain go quiet before it says "stopped"; still answering after 10s, it
  * says so and points at Terminal.
+ *
+ * Restart sits beside it and is pressed the same way (owner, 2026-10-10).
  */
 function wireKillSwitch() {
-  const reveal = document.getElementById("kill-reveal");
-  const kill = document.getElementById("kill-confirm");
   const status = document.getElementById("kill-status");
-  if (!reveal || !kill) return;
+  wireTwoPress({
+    reveal: document.getElementById("kill-reveal"),
+    confirm: document.getElementById("kill-confirm"),
+    status,
+    prompt: "Press Kill to stop Refrain. Anything else cancels.",
+    run: async (kill) => {
+      kill.disabled = true;
+      status.textContent = "Stopping...";
+      let answer = null;
+      try {
+        const res = await fetch("/api/panic", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirm: true }), signal: AbortSignal.timeout(5000) });
+        answer = await res.json().catch(() => null);
+      } catch {
+        /* it may have gone before answering; watching says which */
+      }
+      // Stopped is something seen, not assumed: Refrain has to stop answering.
+      const started = Date.now();
+      while (Date.now() - started < 10_000) {
+        await new Promise((r) => setTimeout(r, 500));
+        try {
+          await fetch("/api/health", { cache: "no-store", signal: AbortSignal.timeout(1000) });
+        } catch {
+          return showStopped(answer);
+        }
+      }
+      kill.disabled = false;
+      status.innerHTML = `<strong>Refrain is still answering.</strong> Use the Stream Deck key, or in Terminal: <code class="font-mono">launchctl bootout gui/$(id -u)/com.refrain.server</code>`;
+    },
+  });
+  wireTwoPress({
+    reveal: document.getElementById("restart-reveal"),
+    confirm: document.getElementById("restart-confirm"),
+    status,
+    prompt: "Press Restart now to stop Refrain and start it again. Anything else cancels.",
+    run: async (restart) => {
+      restart.disabled = true;
+      status.textContent = "Restarting...";
+      // Which run this is now, so the new one can be told from it however short the gap.
+      const before = await fetch("/api/boot", { cache: "no-store", signal: AbortSignal.timeout(2000) }).then((r) => r.json()).then((d) => d.boot, () => null);
+      let answer = null;
+      try {
+        const res = await fetch("/api/restart", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirm: true }), signal: AbortSignal.timeout(5000) });
+        answer = await res.json().catch(() => null);
+        if (!res.ok) {
+          restart.disabled = false;
+          status.textContent = `Not restarted: ${answer?.error ?? res.statusText}`;
+          return;
+        }
+      } catch {
+        /* it may have gone before answering; watching says which */
+      }
+      // Restarted is something seen too: a different run of Refrain has to
+      // answer (the gap can be shorter than a poll). Then the page is reloaded
+      // so every screen is drawn fresh.
+      const started = Date.now();
+      let wentDown = false;
+      while (Date.now() - started < 60_000) {
+        await new Promise((r) => setTimeout(r, 700));
+        try {
+          const now = await fetch("/api/boot", { cache: "no-store", signal: AbortSignal.timeout(1500) }).then((r) => r.json());
+          if (before && now.boot !== before) return location.reload();
+          if (wentDown && !before) return location.reload(); // could not be told apart, but it went quiet and is back
+          if (!wentDown && Date.now() - started > 10_000) break; // still the old one
+        } catch {
+          wentDown = true;
+        }
+      }
+      restart.disabled = false;
+      const cmd = escapeHtml(answer?.restart ?? "launchctl kickstart gui/$(id -u)/com.refrain.server");
+      status.innerHTML = wentDown
+        ? `<strong>Refrain hasn't come back after a minute.</strong> In Terminal: <code class="font-mono">${cmd}</code>`
+        : `<strong>Refrain didn't restart.</strong> It is still answering. Try again, or in Terminal: <code class="font-mono">${cmd}</code>`;
+    },
+  });
+}
+
+/**
+ * One two-press key pair: the first press reveals the confirm key, the second
+ * does it, and anything else cancels (a click or tap elsewhere, Escape,
+ * scrolling). `run` is called with the confirm key once it is pressed.
+ */
+function wireTwoPress({ reveal, confirm, status, prompt, run }) {
+  if (!reveal || !confirm) return;
   const cancel = () => {
-    kill.classList.add("hidden");
+    confirm.classList.add("hidden");
     reveal.classList.remove("hidden");
     status.textContent = "";
     document.removeEventListener("pointerdown", outside, true);
@@ -1568,16 +1650,16 @@ function wireKillSwitch() {
     window.removeEventListener("wheel", cancel, true);
   };
   const outside = (e) => {
-    if (e.target !== kill && !kill.contains(e.target)) cancel();
+    if (e.target !== confirm && !confirm.contains(e.target)) cancel();
   };
   const onKey = (e) => {
-    if (e.key === "Escape" || (e.target !== kill && !["Enter", " ", "Tab", "Shift"].includes(e.key))) cancel();
+    if (e.key === "Escape" || (e.target !== confirm && !["Enter", " ", "Tab", "Shift"].includes(e.key))) cancel();
   };
   reveal.addEventListener("click", () => {
     reveal.classList.add("hidden");
-    kill.classList.remove("hidden");
-    status.textContent = "Press Kill to stop Refrain. Anything else cancels.";
-    kill.focus();
+    confirm.classList.remove("hidden");
+    status.textContent = prompt;
+    confirm.focus();
     // Next tick, so the press that revealed it isn't taken as "elsewhere".
     setTimeout(() => {
       document.addEventListener("pointerdown", outside, true);
@@ -1586,32 +1668,12 @@ function wireKillSwitch() {
       window.addEventListener("wheel", cancel, true);
     }, 0);
   });
-  kill.addEventListener("click", async () => {
+  confirm.addEventListener("click", async () => {
     document.removeEventListener("pointerdown", outside, true);
     document.removeEventListener("keydown", onKey, true);
     window.removeEventListener("scroll", cancel, true);
     window.removeEventListener("wheel", cancel, true);
-    kill.disabled = true;
-    status.textContent = "Stopping...";
-    let answer = null;
-    try {
-      const res = await fetch("/api/panic", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirm: true }), signal: AbortSignal.timeout(5000) });
-      answer = await res.json().catch(() => null);
-    } catch {
-      /* it may have gone before answering; watching says which */
-    }
-    // Stopped is something seen, not assumed: Refrain has to stop answering.
-    const started = Date.now();
-    while (Date.now() - started < 10_000) {
-      await new Promise((r) => setTimeout(r, 500));
-      try {
-        await fetch("/api/health", { cache: "no-store", signal: AbortSignal.timeout(1000) });
-      } catch {
-        return showStopped(answer);
-      }
-    }
-    kill.disabled = false;
-    status.innerHTML = `<strong>Refrain is still answering.</strong> Use the Stream Deck key, or in Terminal: <code class="font-mono">launchctl bootout gui/$(id -u)/com.refrain.server</code>`;
+    await run(confirm);
   });
 }
 
@@ -2702,11 +2764,13 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
     <div id="kill-card" class="card bg-base-200 rf-kill">
       <div class="card-body p-3 gap-2">
         <h2 class="card-title text-base">Stop Refrain</h2>
-        <p class="text-sm rf-measure">If the booth feels slow, this stops Refrain at once. ProPresenter and the screens aren't touched.</p>
+        <p class="text-sm rf-measure">If the booth feels slow, Stop Refrain stops it at once, and Restart Refrain stops it and starts it again in a few seconds. ProPresenter and the screens aren't touched either way. History, the places you jumped from and how long each item was up, starts over.</p>
         <p class="text-xs opacity-70 rf-measure">If this page isn't responding, use the Stream Deck key or Terminal instead.</p>
         <div class="flex flex-wrap items-center gap-2">
           <button type="button" id="kill-reveal" class="btn btn-outline btn-sm rf-kill-reveal">Stop Refrain</button>
           <button type="button" id="kill-confirm" class="btn btn-sm rf-kill-confirm hidden">Kill</button>
+          <button type="button" id="restart-reveal" class="btn btn-outline btn-sm rf-kill-reveal">Restart Refrain</button>
+          <button type="button" id="restart-confirm" class="btn btn-sm rf-kill-confirm hidden">Restart now</button>
           <span id="kill-status" class="text-sm" role="status" aria-live="polite"></span>
         </div>
       </div>
