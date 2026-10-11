@@ -383,3 +383,16 @@ test("resolved flags drop out of the list after the window, but open ones never 
   ];
   assert.deepEqual(visibleFlags(flags, { now: now2, keepResolvedDays: 14 }).map((f) => f.id), ["open-old", "resolved-recent"]);
 });
+
+test("the Flags list offers Get slide pictures with how many are missing, shows a flag's picture, and stays quiet with nothing open", () => {
+  const f = (id, extra = {}) => ({ id, capturedAt: "2026-10-11T15:00:00.000Z", presentationId: "p", presentationName: "Song", slideIndex: 1, text: "x", ...extra });
+  const html = renderReviewHtml([f("2026-10-11T15-00-00-000Z-aaaaaaaa", { hasPicture: true }), f("2026-10-11T15-01-00-000Z-bbbbbbbb")], [], { needPictures: 1 });
+  assert.match(html, /Get slide pictures \(1\)/);
+  assert.match(html, /\/api\/slide-flags\/2026-10-11T15-00-00-000Z-aaaaaaaa\/picture/);
+  assert.equal((html.match(/slide-flag-pic/g) ?? []).length, 1, "only the flag with a picture shows one");
+  const none = renderReviewHtml([f("2026-10-11T15-00-00-000Z-aaaaaaaa", { hasPicture: true })], [], { needPictures: 0 });
+  assert.doesNotMatch(none, /id="slide-flags-get-pictures"/);
+  assert.match(none, /Every open flag has a picture/);
+  const resolvedOnly = renderReviewHtml([f("2026-10-11T15-00-00-000Z-aaaaaaaa", { resolved: true })], [], { needPictures: 0 });
+  assert.doesNotMatch(resolvedOnly, /get-pictures|Every open flag/);
+});
