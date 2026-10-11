@@ -324,6 +324,23 @@ test("the watcher resumes once performance mode ends", async () => {
   }
 });
 
+test("a scheduled service's lead time holds the watcher before any call, and it resumes afterwards", async () => {
+  let held = "held for a service: it is starting or running";
+  const { deps, calls } = harness({ held: () => held });
+  const w = startLibraryWatch(deps, { debounceMs: 1, safetyNetMs: 60_000 });
+  try {
+    await w.checkNow("safety net");
+    assert.equal(calls.plans, 0, "no API call during the hold, any more than in performance mode");
+    assert.equal(calls.reindexes, 0);
+    assert.match(w.status().outcome, /held for a service/);
+    held = null;
+    await w.checkNow("after the service");
+    assert.equal(calls.reindexes, 1, "what was deferred happens once the service is over");
+  } finally {
+    w.stop();
+  }
+});
+
 test("a save during performance mode is reported as waiting, not silently dropped", async () => {
   // The finding this exists for: a deck imported minutes before an unscheduled
   // event, with performance mode armed (by Lock in, or by itself). Nothing may

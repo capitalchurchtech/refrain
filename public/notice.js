@@ -76,3 +76,42 @@ export function dismissFailure() {
   clearTimeout(timer);
   if (host) host.innerHTML = "";
 }
+
+/**
+ * A notice with a choice in it, for something the person can overrule: the text,
+ * then a confirm key and Cancel. Resolves true on the confirm key, false on
+ * Cancel or the close mark. It does not fade on its own, because an unanswered
+ * question that vanished would read as an answer; it also never takes the
+ * keyboard or moves the layout, like every notice here.
+ */
+export function askToConfirm(text, confirmLabel = "Do it anyway") {
+  const el = ensureHost();
+  el.innerHTML = "";
+  clearTimeout(timer);
+  return new Promise((resolve) => {
+    const note = document.createElement("div");
+    note.className = "rf-notice";
+    note.setAttribute("role", "alertdialog");
+    note.setAttribute("aria-label", "Confirm");
+    const body = document.createElement("span");
+    body.className = "rf-notice-text";
+    body.textContent = text;
+    const finish = (answer) => {
+      el.innerHTML = "";
+      resolve(answer);
+    };
+    const mk = (label, answer, cls) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = cls;
+      b.textContent = label;
+      b.addEventListener("click", () => finish(answer));
+      return b;
+    };
+    const acts = document.createElement("span");
+    acts.className = "rf-notice-acts";
+    acts.append(mk(confirmLabel, true, "rf-notice-act rf-notice-go"), mk("Cancel", false, "rf-notice-act"));
+    note.append(body, acts);
+    el.appendChild(note);
+  });
+}
