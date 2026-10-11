@@ -9,7 +9,7 @@
 import "./log-stamp.js";
 import { readFileSync, existsSync, statSync } from "node:fs";
 import { copyFile, readdir, mkdir, stat, readFile, chmod, appendFile, rm as rmPath } from "node:fs/promises";
-import { exec, execFile } from "node:child_process";
+import { exec, execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { platform, homedir, networkInterfaces, totalmem } from "node:os";
 import { monitorEventLoopDelay } from "node:perf_hooks";
@@ -177,7 +177,7 @@ import { generateQr, getQrHistoryList, getQrHistoryEntry, addQrHistoryEntry, cle
 import { loadSpeller, findTypos, tokenize, addToAllowlist, removeFromAllowlist, parseWordList } from "./spellcheck.js";
 import { normalizeSongTitle } from "../providers/planning-center.js";
 import * as autostart from "./autostart.js";
-import { restartCommand, isConfirmedKill, runByLoginItem } from "./panic.js";
+import { restartCommand, isConfirmedKill, isConfirmedRestart, restartPlan, runByLoginItem } from "./panic.js";
 import { autoEndSettings, autoEndPlan, autoEndNote, withAutoNote } from "./auto-end.js";
 import { installAsyncErrorCatching, routeErrorHandler } from "./async-routes.js";
 import { THEMES, DEFAULT_THEME } from "../public/themes.js";
@@ -269,20 +269,54 @@ app.use((req, res, next) => {
  * once the answer has gone, so the page can tell a kill from a hang and the
  * LaunchAgent (KeepAlive: SuccessfulExit false) leaves it stopped.
  */
+/** Whether the login item is what runs this copy (see runByLoginItem). */
+function runByLoginItemHere() {
+  try {
+    return autostart.isSupported() && runByLoginItem(readFileSync(autostart.plistPath(), "utf8"), process.cwd());
+  } catch {
+    return false; // no login item
+  }
+}
+
 app.post("/api/panic", express.json(), (req, res) => {
   if (!isConfirmedKill(req.body)) return res.status(400).json({ error: "Send { confirm: true } to stop Refrain." });
-  let launchAgent = false;
-  try {
-    launchAgent = autostart.isSupported() && runByLoginItem(readFileSync(autostart.plistPath(), "utf8"), process.cwd());
-  } catch {
-    /* no login item */
-  }
+  const launchAgent = runByLoginItemHere();
   const restart = restartCommand({ launchAgent, label: autostart.LABEL, installDir: process.cwd() });
   // The moment someone panics is the moment most worth recording (#13).
   console.log(`Stopped by the kill switch on Settings. Nothing on the screens was changed. To start again: ${restart}`);
   res.on("finish", () => setTimeout(() => process.exit(0), 50));
   setTimeout(() => process.exit(0), 3000); // if the answer never finishes sending
   res.json({ stopping: true, restart, comesBackAtLogin: launchAgent });
+});
+
+// Which run of Refrain this is, so a page can tell a restarted Refrain from the
+// one it asked, even when the gap between them is too short to see.
+const BOOT_ID = randomUUID();
+app.get("/api/boot", (_req, res) => res.json({ boot: BOOT_ID }));
+
+/**
+ * Restart (owner, 2026-10-10): the kill switch's sibling, and just as early,
+ * for the same reason. Answers, then brings Refrain back by itself (see
+ * restartPlan). ProPresenter and the screens are not touched. The page waits
+ * for Refrain to go quiet and come back before it reloads.
+ */
+app.post("/api/restart", express.json(), (req, res) => {
+  if (!isConfirmedRestart(req.body)) return res.status(400).json({ error: "Send { confirm: true } to restart Refrain." });
+  const launchAgent = runByLoginItemHere();
+  const plan = restartPlan({ launchAgent, label: autostart.LABEL, uid: process.getuid?.(), pid: process.pid, execPath: process.execPath, script: process.argv[1], cwd: process.cwd() });
+  const command = restartCommand({ launchAgent, label: autostart.LABEL, installDir: process.cwd() });
+  console.log(`Restarted from Settings (${plan.how}). Nothing on the screens was changed.`);
+  res.on("finish", () => {
+    const child = spawn(plan.command, plan.args, { cwd: plan.cwd, detached: true, stdio: "ignore", env: process.env });
+    // Only let go once the replacement has really been started: if it could not
+    // be, stay up rather than leave nothing running.
+    child.once("error", (err) => console.error(`Couldn't restart: ${err.message}`));
+    child.once("spawn", () => {
+      child.unref();
+      setTimeout(() => process.exit(0), 100);
+    });
+  });
+  res.json({ restarting: true, restart: command });
 });
 
 app.use(express.static("public"));

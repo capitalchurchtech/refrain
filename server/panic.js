@@ -32,3 +32,27 @@ export function runByLoginItem(plistText, cwd) {
 export function isConfirmedKill(body) {
   return body?.confirm === true;
 }
+
+/** Likewise a restart: only `{ confirm: true }`. */
+export const isConfirmedRestart = isConfirmedKill;
+
+/**
+ * How Refrain comes back after Restart (owner, 2026-10-10), as a command to run
+ * once the answer has gone. Unlike the kill switch it must start again by
+ * itself, so the exit-0 trick above is no use here.
+ *
+ *  - Run by the login item: ask launchd to restart that job (`kickstart -k`),
+ *    which stops this process and starts the job again straight away.
+ *  - Run by hand (npm start, a checkout): wait for this process to let go of
+ *    its port, then start the same script again in the same folder. A copy run
+ *    under `node --watch` comes back as a plain `node` run.
+ */
+export function restartPlan({ launchAgent, label, uid, pid, execPath, script, cwd }) {
+  if (launchAgent) return { how: "launchd", command: "/bin/launchctl", args: ["kickstart", "-k", `gui/${uid}/${label}`], cwd };
+  return {
+    how: "respawn",
+    command: "/bin/sh",
+    args: ["-c", 'while kill -0 "$1" 2>/dev/null; do sleep 0.2; done; shift; exec "$@"', "sh", String(pid), execPath, script],
+    cwd,
+  };
+}
