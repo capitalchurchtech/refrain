@@ -170,6 +170,14 @@ export function initHistoryFlyout() {
   key.addEventListener("mouseleave", closeSoon);
   flyout.addEventListener("mouseenter", () => clearTimeout(closeTimer));
   flyout.addEventListener("mouseleave", closeSoon);
+  // The Return bar's History handle (public/return-bar.js) opens the same
+  // flyout, held open as a press on the key holds it, and closes it when pressed
+  // again. It hangs from the key, since that is where History lives.
+  window.toggleHistoryFlyout = () => {
+    if (!flyout.hidden && pinned) return setOpen(false);
+    pinned = true;
+    if (flyout.hidden) setOpen(true);
+  };
   key.addEventListener("click", (e) => {
     if (!flyout.hidden && pinned) return setOpen(false);
     pinned = true;
@@ -191,7 +199,9 @@ export function initHistoryFlyout() {
   // like a press outside.
   document.addEventListener("click", (e) => {
     const path = e.composedPath();
-    if (!flyout.hidden && !path.includes(flyout) && !path.includes(key)) setOpen(false);
+    // A handle that opens History is a press on History, not outside it.
+    const onHandle = path.some((el) => el.hasAttribute?.("data-opens-history"));
+    if (!flyout.hidden && !path.includes(flyout) && !path.includes(key) && !onHandle) setOpen(false);
   });
   window.addEventListener("resize", () => !flyout.hidden && place());
 

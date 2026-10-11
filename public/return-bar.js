@@ -15,9 +15,12 @@ import { showFailure } from "./notice.js";
  * something mid-service looks like — which is why Return "sometimes worked".
  *
  * Now the most recent place stays on the bar, and everything behind it is one
- * pull away. Two shapes, because there are two situations:
+ * press away, in the same History flyout as the rail's History key (owner,
+ * 2026-10-10: a second list under the bar was a second place for the same
+ * thing). Two shapes, because there are two situations:
  *
- *   - Just jumped: the bar, as before, with a pulldown handle beside Return.
+ *   - Just jumped: the bar, as before, with a History handle beside Return that
+ *     opens the flyout.
  *   - Jumped a while ago and already came back: no bar. The whole history is on
  *     the rail's History key, so nothing here claims something is happening
  *     now.
@@ -35,66 +38,23 @@ export function initReturnBar() {
   const btn = document.getElementById("return-bar-btn");
   const toggle = document.getElementById("return-history-toggle");
   const toggleCount = document.getElementById("return-history-count");
-  const panel = document.getElementById("return-history-panel");
-  if (!bar || !label || !btn || !panel) return;
+  if (!bar || !label || !btn || !toggle) return;
 
   let history = [];
   let pin = null; // the place the bar is currently offering, or null
   let renderedKey = null; // so repeated polls don't thrash the DOM
-  let open = false;
 
   const keyOf = (e) => `${e.presentationId}:${e.slideIndex}`;
 
-  function setOpen(next) {
-    open = next;
-    panel.classList.toggle("hidden", !open);
-    toggle.setAttribute("aria-expanded", String(open));
-  }
-
-  /**
-   * What the pulldown should list.
-   *
-   * With the bar up, the head is already on it, so listing it again would offer
-   * the same jump twice. With the bar down, there is nothing holding the head
-   * and the whole history is fair game.
-   */
-  function listable() {
-    return pin ? history.slice(1) : history;
-  }
-
-  /**
-   * Renders a list of places into the panel.
-   *
-   * Takes the list rather than deriving it: the bar's handle excludes the head
-   * (it is already on the bar, and offering the same jump twice is a bug).
-   */
-  function renderPanel(entries) {
-    panel.innerHTML = entries
-      .map(
-        (e) => `
-        <button class="rf-return-entry" data-presentation="${escapeHtml(e.presentationId)}" data-slide="${e.slideIndex}"
-                title="${escapeHtml(e.name ?? "Untitled")}">
-          <span class="rf-return-name">${escapeHtml(e.name ?? "Untitled")}</span>
-          <span class="rf-return-meta">SLIDE ${e.slideIndex + 1}</span>
-        </button>`
-      )
-      .join("");
-    panel.querySelectorAll(".rf-return-entry").forEach((el) =>
-      el.addEventListener("click", () =>
-        goBack({ presentationId: el.dataset.presentation, slideIndex: Number(el.dataset.slide) }, el)
-      )
-    );
-  }
-
   function paint() {
     // Re-render only when the history actually changed, so a poll every three
-    // seconds does not rebuild the list under the operator's cursor or close a
-    // panel they just opened.
+    // seconds does not rewrite the bar under the operator's cursor.
     const key = `${pin ? keyOf(pin) : "-"}#${history.map(keyOf).join("|")}`;
     if (key === renderedKey) return;
     renderedKey = key;
 
-    const rest = listable();
+    // The head is already on the bar, so the handle counts only what is behind it.
+    const rest = pin ? history.slice(1) : history;
 
     if (pin) {
       const name = pin.name ? `“${escapeHtml(pin.name)}”` : "the previous slide";
@@ -107,13 +67,7 @@ export function initReturnBar() {
       // hover away on the rail's History key (public/history-flyout.js).
       bar.classList.add("hidden");
       toggle.classList.add("hidden");
-      // The handle is gone, so a panel left open would have no way to close.
-      if (open) setOpen(false);
     }
-
-    // A panel showing nothing is worse than no panel.
-    if (open && rest.length === 0) setOpen(false);
-    if (open) renderPanel(rest);
   }
 
   /**
@@ -124,8 +78,7 @@ export function initReturnBar() {
    * than by list position, because the history can gain an entry between render
    * and click.
    */
-  async function goBack(target, sourceEl) {
-    if (sourceEl) sourceEl.disabled = true;
+  async function goBack(target) {
     btn.disabled = true;
     try {
       const res = await fetch("/api/return", {
@@ -148,7 +101,6 @@ export function initReturnBar() {
       }
     } finally {
       btn.disabled = false;
-      if (sourceEl) sourceEl.disabled = false;
     }
   }
 
@@ -164,19 +116,11 @@ export function initReturnBar() {
     }
   }
 
-  btn.addEventListener("click", () => goBack(pin, null));
+  btn.addEventListener("click", () => goBack(pin));
 
-  // Both handles open the same panel over the same list; only `listable()`
-  // differs by whether the bar is holding the head. Guarded against opening on
-  // an empty list, which the visibility check in paint() cannot catch because
-  // it only runs when the data changes, not when a handle is clicked.
-  function openPanel() {
-    const rest = listable();
-    if (rest.length === 0) return;
-    renderPanel(rest);
-    setOpen(!open);
-  }
-  toggle.addEventListener("click", openPanel);
+  // The handle opens the History flyout (public/history-flyout.js), the same
+  // window as the rail's History key, and closes it when pressed again.
+  toggle.addEventListener("click", () => window.toggleHistoryFlyout?.());
 
   // Let Go Live handlers ask for an immediate refresh instead of waiting on
   // the poll, so the bar appears the moment they jump.
