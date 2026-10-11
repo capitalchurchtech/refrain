@@ -71,3 +71,12 @@ test("the list is capped, newest kept, and an unnamed item still reads", () => {
   assert.equal(log[0].presentationId, `P${MAX_SPLITS + 9}`);
   assert.equal(splitsView(log, 1e9)[0].name, "Untitled");
 });
+
+test("the view says which presentation, and marks an open stay whose screens are blank", () => {
+  let log = noteItem([], a, 0);
+  assert.deepEqual([splitsView(log, 5000)[0].presentationId, splitsView(log, 5000)[0].blank], ["A", false]);
+  log = noteItem(log, null, 4000);
+  assert.equal(splitsView(log, 5000)[0].blank, true);
+  log = noteItem(log, a, 6000);
+  assert.equal(splitsView(log, 7000)[0].blank, false, "back, so not blank");
+});

@@ -4530,6 +4530,10 @@ html.blackroom #results .rf-slide-acts .btn {
 .rf-hf-name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rf-hf-meta { display: flex; align-items: center; gap: 8px; font-family: var(--rf-mono); font-size: 10px; letter-spacing: 0.06em; color: var(--rf-muted); }
 .rf-hf-slide { color: var(--rf-dim); }
+/* When a place started, how long it was up, when it left: silkscreen under the name. The running item's is phosphor. */
+.rf-hf-times { font-family: var(--rf-mono); font-size: 10px; letter-spacing: 0.06em; color: var(--rf-dim); }
+.rf-hf-times.live { color: var(--rf-phosphor); }
+.rf-hf-times b { font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; }
 /* "Show" takes the place of the time on hover, so the row says what a press does. */
 .rf-hf-go { display: none; margin-left: auto; color: var(--rf-phosphor); letter-spacing: 0.1em; text-transform: uppercase; }
 .rf-hf-row:hover .rf-hf-go,
