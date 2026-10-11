@@ -2256,8 +2256,8 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
           pictures.show === true
             ? "Safe slides, Quality Control and phones show slide pictures."
             : pictures.quickSlides !== false
-              ? "Off: slides show their words. Only your saved safe slides have pictures (below)."
-              : "Off: Refrain asks ProPresenter for no pictures. Slides show their words."
+              ? "Off: slides show their words. Pictures are drawn only for your saved safe slides (below) and when you ask: Quality Control's flagged slides, and Get slide pictures on Flags."
+              : "Off: slides show their words. Pictures are drawn only when you ask: Quality Control's flagged slides, and Get slide pictures on Flags."
         }</p>
         <div class="rf-subhead mt-2">Safe slide pictures</div>
         <p class="text-sm rf-measure">Pictures of your saved safe slides on Now, even with pictures off, so the logo and the blank are told apart at a glance. Each is drawn once, when it's saved, and kept. Nothing new is drawn during a service.</p>

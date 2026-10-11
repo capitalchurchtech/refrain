@@ -226,6 +226,7 @@ function renderReviewRow(f, types, showMachine) {
             // which reads like missing data.
             `<div class="text-xs opacity-60 italic">No text on this slide.</div>`
       }
+      ${f.hasPicture ? `<img src="/api/slide-flags/${encodeURIComponent(f.id)}/picture" alt="Picture of the flagged slide" loading="lazy" class="rounded slide-flag-pic" style="max-width:240px;width:100%;aspect-ratio:16/9;object-fit:contain;background:#000" />` : ""}
       ${facts.length ? `<div class="text-xs opacity-60">${facts.join(" · ")}</div>` : ""}
       <div class="flex flex-wrap items-center gap-2">
         <label class="sr-only" for="flag-type-${escapeHtml(f.id)}">Type</label>
@@ -243,8 +244,19 @@ function renderReviewRow(f, types, showMachine) {
     </div>`;
 }
 
+/**
+ * Get slide pictures: pulls a picture of each open flag's slide that has none,
+ * on request, so it can be done between services. It does not look at the
+ * slide-pictures switches: pressing it is asking for them.
+ */
+function picturesButtonHtml(needPictures) {
+  return needPictures
+    ? `<button type="button" id="slide-flags-get-pictures" class="btn btn-chip" title="Draws a picture of each open flag's slide that has none. Ignores the slide-pictures setting. Not during a service.">Get slide pictures (${needPictures})</button>`
+    : `<span class="text-xs opacity-60">Every open flag has a picture.</span>`;
+}
+
 /** The Flags screen's list. Pure, so escaping, grouping and the empty state are tested. */
-export function renderReviewHtml(flags, types = [], { hiddenResolved = 0, keepResolvedDays = 14 } = {}) {
+export function renderReviewHtml(flags, types = [], { hiddenResolved = 0, keepResolvedDays = 14, needPictures = 0 } = {}) {
   const all = flags ?? [];
   const hiddenNote = hiddenResolved
     ? `<div class="text-xs opacity-60">${hiddenResolved} resolved flag${hiddenResolved === 1 ? "" : "s"} older than ${keepResolvedDays} days not shown. They are kept, not deleted.</div>`
@@ -283,7 +295,11 @@ export function renderReviewHtml(flags, types = [], { hiddenResolved = 0, keepRe
     .join("");
   const older = all.length - shown.length;
   return `
-    <div class="text-sm opacity-70">${open} open, ${shown.length - open} resolved.</div>
+    <div class="flex items-center justify-between gap-2 flex-wrap">
+      <div class="text-sm opacity-70">${open} open, ${shown.length - open} resolved.</div>
+      ${open ? picturesButtonHtml(needPictures) : ""}
+    </div>
+    <div id="slide-flags-pictures-status" class="text-xs opacity-70 rf-measure" role="status" aria-live="polite"></div>
     ${days}
     ${older > 0 ? `<div class="text-xs opacity-60">${older} older flag${older === 1 ? "" : "s"} not shown.</div>` : ""}
     ${hiddenNote}`;
@@ -302,6 +318,29 @@ async function postChange(flagIdValue, change) {
 
 function wireReview(host, reload) {
   wireOpenWith(host);
+  const pull = host.querySelector("#slide-flags-get-pictures");
+  pull?.addEventListener("click", async () => {
+    const status = host.querySelector("#slide-flags-pictures-status");
+    pull.disabled = true;
+    status.textContent = "Getting pictures. This asks ProPresenter to draw each slide, one at a time...";
+    try {
+      const res = await fetch("/api/slide-flags/pictures", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      await reload();
+      const again = document.getElementById("slide-flags-pictures-status");
+      if (again) {
+        again.textContent = [
+          data.taken ? `Got ${data.taken} picture${data.taken === 1 ? "" : "s"}.` : "No new pictures.",
+          data.failed ? `${data.failed} couldn't be drawn (ProPresenter didn't send one).` : "",
+          data.remaining ? `${data.remaining} more: press again.` : "",
+        ].filter(Boolean).join(" ");
+      }
+    } catch (err) {
+      status.textContent = `Not done: ${err.message}`;
+      pull.disabled = false;
+    }
+  });
   host.querySelectorAll(".slide-flag-editor-btn").forEach((btn) => {
     btn.addEventListener("click", async () => {
       btn.disabled = true;

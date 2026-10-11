@@ -113,7 +113,7 @@ import QRCode from "qrcode";
 import { emptyRegistry, seeDevice, setApproved, removeDevice, isApproved, isRemoved, deviceList, loadRegistry, saveRegistry, setLiveMonth, isLiveAllowed } from "./remote-devices.js";
 import { monthKey, deviceCode, appendTakeover } from "./remote-live.js";
 import { noteItem, splitsView } from "./item-splits.js";
-import { saveFlagPicture, readFlagPicture } from "./flag-pictures.js";
+import { saveFlagPicture, readFlagPicture, listFlagPictureIds } from "./flag-pictures.js";
 import { previewTargets, createThumbCache } from "./slide-preview.js";
 import { createThumbStore, slideKey as pictureKey } from "./thumb-store.js";
 import { readFingerprint } from "./index-fingerprint.js";
@@ -1415,7 +1415,10 @@ const picturesOn = () => config.slidePictures?.show === true;
 const quickSlidePicturesOn = () => config.slidePictures?.quickSlides !== false;
 const isSafeSlide = (pid, idx) => safeSlides(config.liveModule?.safeSlides).some((x) => x.presentationId === pid && x.slideIndex === idx);
 /** Whether a picture of this slide may be shown or drawn at all. */
-const pictureAllowed = (pid, idx) => picturesOn() || (quickSlidePicturesOn() && isSafeSlide(pid, idx)) || flagCaptures.has(`${pid}:${idx}`);
+// Slides Quality Control found are allowed whatever the pictures switch says: it
+// is a prep tool, run on purpose between services, and its pictures are how a
+// slide is found by eye in the editor (owner, 2026-10-11).
+const pictureAllowed = (pid, idx) => picturesOn() || (quickSlidePicturesOn() && isSafeSlide(pid, idx)) || flagCaptures.has(`${pid}:${idx}`) || spellcheckPictures.has(`${pid}:${idx}`);
 // The one slide a phone is flagging right now (owner, 2026-10-09: a flagged
 // slide always gets its picture). One at a time per flag, human-paced, and the
 // switch is `slidePictures.flagged`, on unless false; any other slide's picture
@@ -1425,8 +1428,10 @@ const flagCaptures = new Map(); // "pid:idx" -> how many flags are being capture
 const FLAG_PICTURES_DIR = "./data/flag-pictures";
 const FLAG_CAPTURE_MS = 6000;
 /** Takes (or finds) a picture of the flagged slide and keeps it with the flag. The file name, or null. */
-async function captureFlagPicture(flagId, pid, idx) {
-  if (!flaggedPicturesOn()) return null;
+async function captureFlagPicture(flagId, pid, idx, { force = false } = {}) {
+  // `force`: someone pressed Get slide pictures on the Flags screen, asking for
+  // exactly this, so the switch is not consulted.
+  if (!force && !flaggedPicturesOn()) return null;
   const key = `${pid}:${idx}`;
   flagCaptures.set(key, (flagCaptures.get(key) ?? 0) + 1);
   try {
@@ -1713,10 +1718,11 @@ function currentPreview() {
 let openFlagsCache = { at: 0, list: [] };
 async function openFlagsCached() {
   if (Date.now() - openFlagsCache.at < 5000) return openFlagsCache.list;
-  const list = visibleFlags(await listFlags({ folder: slideFlagsFolder() }))
+  const [all, pictured] = await Promise.all([listFlags({ folder: slideFlagsFolder() }), listFlagPictureIds(FLAG_PICTURES_DIR)]);
+  const list = visibleFlags(all)
     .filter((f) => !f.resolved)
     .slice(0, 30)
-    .map((f) => ({ id: f.id, presentationName: f.presentationName ?? null, slideNumber: Number.isInteger(f.slideIndex) ? f.slideIndex + 1 : null, type: f.type ?? null, note: f.note ?? "", by: f.submittedBy ?? null, at: f.capturedAt, picture: f.picture ?? null }));
+    .map((f) => ({ id: f.id, presentationName: f.presentationName ?? null, slideNumber: Number.isInteger(f.slideIndex) ? f.slideIndex + 1 : null, type: f.type ?? null, note: f.note ?? "", by: f.submittedBy ?? null, at: f.capturedAt, picture: f.picture ?? (pictured.has(f.id) ? "local" : null) }));
   openFlagsCache = { at: Date.now(), list };
   return list;
 }
@@ -3501,10 +3507,60 @@ app.get("/api/slide-flags", async (_req, res) => {
     const days = Number.isInteger(config.slideFlagsModule?.keepResolvedDays)
       ? config.slideFlagsModule.keepResolvedDays
       : DEFAULT_KEEP_RESOLVED_DAYS;
-    const flags = visibleFlags(all, { keepResolvedDays: days });
-    res.json({ flags, types: configuredFlagTypes(), keepResolvedDays: days, hiddenResolved: all.length - flags.length });
+    const pictured = await listFlagPictureIds(FLAG_PICTURES_DIR);
+    const flags = visibleFlags(all, { keepResolvedDays: days }).map((f) => ({ ...f, hasPicture: pictured.has(f.id) }));
+    res.json({
+      flags,
+      types: configuredFlagTypes(),
+      keepResolvedDays: days,
+      hiddenResolved: all.length - flags.length,
+      // Open flags with no picture yet, for the Get slide pictures button.
+      needPictures: flags.filter((f) => !f.resolved && !f.hasPicture).length,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+/** A flag's picture, by its id, from this machine's folder (pictures are not shared). */
+app.get("/api/slide-flags/:id/picture", async (req, res) => {
+  const img = await readFlagPicture(FLAG_PICTURES_DIR, req.params.id);
+  if (!img) return res.status(404).json({ error: "No picture for that flag." });
+  res.set("Cache-Control", "private, max-age=3600").type(img.type).send(img.bytes);
+});
+
+/**
+ * Get slide pictures (owner, 2026-10-11): draws a picture of each open flag's
+ * slide that has none, one at a time, for the Flags screen. The person pressing
+ * it asked for exactly this, so the pictures switches are not consulted. It is
+ * still a read of ProPresenter, so like Quality Control's scan it holds still
+ * during a service (performance mode) and under Protect ProPresenter, and does
+ * at most FLAG_PICTURES_PER_PRESS a press; press again for the rest.
+ */
+const FLAG_PICTURES_PER_PRESS = 40;
+let pullingFlagPictures = false;
+app.post("/api/slide-flags/pictures", async (_req, res) => {
+  if (protectOn()) return res.status(409).json({ error: PROTECT_REFUSAL });
+  if (performance.armed) return res.status(409).json({ error: "Performance mode is on, so Refrain is holding still. Run this when nothing is live." });
+  if (pullingFlagPictures) return res.status(409).json({ error: "Already getting pictures. Wait for it to finish." });
+  pullingFlagPictures = true;
+  try {
+    const [all, pictured] = await Promise.all([listFlags({ folder: slideFlagsFolder() }), listFlagPictureIds(FLAG_PICTURES_DIR)]);
+    const todo = visibleFlags(all).filter((f) => !f.resolved && !pictured.has(f.id) && f.presentationId && Number.isInteger(f.slideIndex));
+    let taken = 0;
+    let failed = 0;
+    for (const f of todo.slice(0, FLAG_PICTURES_PER_PRESS)) {
+      if (performance.armed) break; // a service started while this ran
+      const got = await captureFlagPicture(f.id, f.presentationId, f.slideIndex, { force: true }).catch(() => null);
+      if (got) taken++;
+      else failed++;
+    }
+    openFlagsCache.at = 0; // phones see them too
+    res.json({ taken, failed, remaining: Math.max(0, todo.length - taken - failed) });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  } finally {
+    pullingFlagPictures = false;
   }
 });
 
@@ -5116,7 +5172,6 @@ app.post("/api/spellcheck/scan", async (req, res) => {
   try {
     const only = one ? [{ id: one, name: getIndex().presentations?.[one]?.name ?? null }] : null;
     const { presentations, scannedCount, truncated, mediaUnreadable } = await scanPlaylist(playlistId, { only });
-    if (!picturesOn()) for (const p of presentations) for (const sl of p.slides) sl.pictureIndex = null;
     allowSpellcheckPictures(presentations);
     // Pictures from before a slide was removed are dropped from memory: when
     // the file's version can't be read (ProPresenter on another Mac), the
