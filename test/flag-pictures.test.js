@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readdir, stat, rm } from "node:fs/promises";
+import { mkdtemp, readdir, stat, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { saveFlagPicture, readFlagPicture, MAX_PICTURE_BYTES } from "../server/flag-pictures.js";
+import { saveFlagPicture, readFlagPicture, listFlagPictureIds, MAX_PICTURE_BYTES } from "../server/flag-pictures.js";
 
 const ID = "2026-10-09T10-52-01-123Z-0a1b2c3d";
 const png = { type: "image/png", bytes: Buffer.from([137, 80, 78, 71, 1, 2, 3]) };
@@ -41,5 +41,16 @@ test("a picture can only be read by a real flag id, never by a path", async () =
     assert.equal(await readFlagPicture(dir, "bad-id"), null);
     assert.equal(await readFlagPicture(dir, "2026-10-09T10-52-01-123Z-ffffffff"), null, "no such flag");
     assert.equal((await readFlagPicture(dir, ID)).type, "image/png");
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("the pictured flags are listed from one look at the folder, and anything else in it is ignored", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "flagpic-"));
+  try {
+    assert.equal((await listFlagPictureIds(path.join(dir, "missing"))).size, 0, "no folder yet is just none");
+    await saveFlagPicture(dir, ID, png);
+    await writeFile(path.join(dir, "notes.txt"), "x");
+    await writeFile(path.join(dir, "bad-id.png"), "x");
+    assert.deepEqual([...(await listFlagPictureIds(dir))], [ID]);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

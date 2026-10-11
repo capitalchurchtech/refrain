@@ -9,7 +9,7 @@
  * the flags folder may be shared, the pictures are not.
  */
 
-import { mkdir, readFile, rename, writeFile, rm } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, writeFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { isFlagId } from "./slide-flags.js";
 
@@ -32,6 +32,20 @@ export async function saveFlagPicture(dir, flagId, img) {
     throw err;
   }
   return name;
+}
+
+/** The ids of the flags that have a picture saved, from one look at the folder. */
+export async function listFlagPictureIds(dir) {
+  try {
+    const ids = new Set();
+    for (const name of await readdir(dir)) {
+      const m = name.match(/^(.+)\.(png|jpg|webp)$/);
+      if (m && isFlagId(m[1])) ids.add(m[1]);
+    }
+    return ids;
+  } catch {
+    return new Set();
+  }
 }
 
 /** A flag's picture, or null. The id is checked and the name is built here, so a path can never be asked for. */
