@@ -811,6 +811,7 @@ export function initHealth() {
                 `${c.changed} changed`,
                 `${c.added} new`,
                 ...(c.unverifiable ? [`${c.unverifiable} re-checked`] : []),
+                ...(c.noDeepData ? [`${c.noDeepData} read again for Deep Search`] : []),
                 `${c.carriedOver} reused`,
               ]
             : [];
@@ -835,6 +836,37 @@ export function initHealth() {
           if (reindexBtn.isConnected) {
             reindexBtn.disabled = false;
             label.textContent = "Reindex changed only";
+          }
+        }
+      });
+    }
+
+    // Deep reindex: Rebuild everything, read slowly, and then say how many presentations
+    // Deep Search can now read, so a partial result is seen rather than assumed.
+    const deepBtn = document.getElementById("health-deep-rebuild-btn");
+    if (deepBtn) {
+      const deepLabel = document.getElementById("health-deep-rebuild-btn-label");
+      deepBtn.addEventListener("click", async () => {
+        deepBtn.disabled = true;
+        deepLabel.textContent = "Deep reindexing...";
+        let said = null;
+        try {
+          document.dispatchEvent(new CustomEvent("refrain:index-requested"));
+          const res = await postIndexRun("/api/index/rebuild", { extra: { deep: true } });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) said = { text: data.error ?? "The deep reindex didn't start.", flag: true };
+          else if (data.total && data.covered < data.total) said = { text: `Done, but Deep Search could only read ${data.covered} of ${data.total} presentations in all libraries${(data.missing ?? []).length ? ` (not read: ${data.missing.slice(0, 3).map((m) => `${m.folder} ${m.count}`).join(", ")})` : ""}. ProPresenter didn't give up the rest; try again when it is idle.`, flag: true };
+          else said = { text: `Done. Deep Search can read ${data.covered ?? "all"} of ${data.total ?? "your"} presentations.`, flag: false };
+          await render();
+          const statusEl = document.getElementById("health-reindex-status");
+          if (said && statusEl) {
+            statusEl.textContent = said.text;
+            statusEl.className = `text-sm ${said.flag ? "rf-flag" : "rf-nominal"}`;
+          }
+        } finally {
+          if (deepBtn.isConnected) {
+            deepBtn.disabled = false;
+            deepLabel.textContent = "Deep reindex (slower)";
           }
         }
       });
@@ -869,21 +901,25 @@ export function initHealth() {
     }
 
     const saveFoldersBtn = document.getElementById("save-library-folders-btn");
+    const saveDeepBtn = document.getElementById("save-library-folders-deep-btn");
     if (saveFoldersBtn) {
-      saveFoldersBtn.addEventListener("click", async () => {
+      // Two keys, one handler: Save and rebuild reads what changed; Save and
+      // deep reindex (slower) reads every presentation again, slowly.
+      let saveDeep = false;
+      const wireSave = (pressed, deep, label) => pressed?.addEventListener("click", async () => {
+        saveDeep = deep;
+        const saveFoldersBtn = pressed;
         const allChecked = document.getElementById("library-folder-all").checked;
         const folders = allChecked
           ? null
           : Array.from(document.querySelectorAll(".library-folder-checkbox:checked")).map((el) => el.value);
 
+        // Both keys go quiet while one saves, so a second press cannot save twice.
+        for (const b of [document.getElementById("save-library-folders-btn"), document.getElementById("save-library-folders-deep-btn")]) if (b && b !== saveFoldersBtn) b.disabled = true;
         saveFoldersBtn.disabled = true;
         saveFoldersBtn.textContent = "Saving...";
         try {
-          const res = await fetch("/api/library-folders", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ folders }),
-          });
+          const res = await postIndexRun("/api/library-folders", { extra: { folders, deep: saveDeep } });
           const data = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(data.error ?? res.statusText);
           // The bar along the bottom shows the run, or why it can't start.
@@ -892,8 +928,8 @@ export function initHealth() {
           showFailure(`Couldn't save the libraries: ${err.message}`);
         } finally {
           if (saveFoldersBtn.isConnected) {
-            saveFoldersBtn.disabled = false;
-            saveFoldersBtn.textContent = "Save and rebuild";
+            saveFoldersBtn.textContent = label;
+            for (const b of [document.getElementById("save-library-folders-btn"), document.getElementById("save-library-folders-deep-btn")]) if (b) b.disabled = false;
           }
         }
         // Not awaited: /api/health's live ProPresenter connectivity
@@ -902,6 +938,8 @@ export function initHealth() {
         // hang on an unrelated status refresh.
         render();
       });
+      wireSave(saveFoldersBtn, false, "Save and rebuild");
+      wireSave(saveDeepBtn, true, "Save and deep reindex (slower)");
 
       const allCheckbox = document.getElementById("library-folder-all");
       const folderCheckboxes = document.querySelectorAll(".library-folder-checkbox");
@@ -1251,10 +1289,15 @@ function renderLibraryCard({ folders = [], selected = null, indexed = {}, error 
         </div>
         <div class="alert alert-warning py-2 text-sm mt-2 items-start">
           <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
-          <span><strong>Saving starts a full rebuild.</strong> ProPresenter can be slow or unresponsive
-          for an hour or more. Save only when it's free for the next two hours.</span>
+          <span><strong>Saving starts a reindex.</strong> A library you switch on is read in full, and
+          ProPresenter can be slow or unresponsive for an hour or more. Save only when it's free for the
+          next two hours.</span>
         </div>
-        <button id="save-library-folders-btn" class="btn btn-sm btn-outline mt-1 w-fit">Save and rebuild</button>
+        <div class="flex flex-wrap items-center gap-2 mt-1">
+          <button id="save-library-folders-btn" class="btn btn-sm btn-outline w-fit">Save and rebuild</button>
+          <button id="save-library-folders-deep-btn" class="btn btn-sm btn-outline w-fit">Save and deep reindex (slower)</button>
+          ${infoIcon("Saves, then reads every presentation again, slowly, retrying the ones ProPresenter fails to answer. For when Deep Search says it could only read some of your presentations.")}
+        </div>
 
         ${arrangementFolders ? renderArrangementFoldersSection(arrangementFolders) : ""}
       </div>
@@ -2051,6 +2094,10 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
                   <div class="flex items-center gap-2 mt-1">
                     <button id="health-rebuild-btn" class="btn btn-sm btn-outline w-fit"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> <span id="health-rebuild-btn-label">${index.builtAt ? "Rebuild everything" : "Build index"}</span></button>
                     ${infoIcon("Reads the whole library again. Only for a first build, or when reindexing hasn't fixed search.")}
+                  </div>
+                  <div class="flex items-center gap-2 mt-1">
+                    <button id="health-deep-rebuild-btn" class="btn btn-sm btn-outline w-fit"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> <span id="health-deep-rebuild-btn-label">Deep reindex (slower)</span></button>
+                    ${infoIcon("Reads every presentation again, slowly, retrying the ones ProPresenter fails to answer. For when Deep Search says it could only read some of your presentations after a rebuild.")}
                   </div>`;
 
                 if (!index.builtAt) {

@@ -198,7 +198,7 @@ export function initSearch({ prefs = {} } = {}) {
     // operator whether to trust a miss; how long the last refresh took was
     // furniture on a 260px screen.
     statusEl.innerHTML = indexRes.builtAt
-      ? `<span title="${indexRes.presentationCount} presentations"><span class="rf-value">${indexRes.presentationCount}</span> songs</span><span class="rf-search-strip-sep" aria-hidden="true">&middot;</span><span title="Last refreshed">updated ${updatedText(indexRes.builtAt)}</span>`
+      ? `<span title="${indexRes.presentationCount} presentations"><span class="rf-value">${indexRes.presentationCount}</span> presentations</span><span class="rf-search-strip-sep" aria-hidden="true">&middot;</span><span title="Last refreshed">updated ${updatedText(indexRes.builtAt)}</span>`
       : `<span>Library not read yet</span>`;
 
     // The silent failure: a four-day-old index renders identically to a fresh
@@ -375,18 +375,20 @@ export function initSearch({ prefs = {} } = {}) {
     }
   }
 
-  function renderDeepResults({ results, covered, total }, query) {
+  function renderDeepResults({ results, covered, total, missing = [] }, query) {
     const groups = new Map();
     for (const r of results) {
       if (!groups.has(r.presentationId)) groups.set(r.presentationId, { name: r.presentationName, slides: [] });
       groups.get(r.presentationId).slides.push(r);
     }
+    // Which libraries the unread ones are in, so "255 of 692" says where the rest are.
+    const where = missing.slice(0, 3).map((m) => `${escapeHtml(m.folder)} (${m.count})`).join(", ");
     const partial = total > 0 && covered < total
-      ? `<p class="rf-hint">Deep search could read ${covered} of ${total} songs. The rest are read after the next full refresh of the library.</p>`
+      ? `<p class="rf-hint">Deep search could read ${covered} of ${total} presentations in the libraries you are searching${where ? `. Not read: ${where}` : ""}. Press <strong>Deep reindex (slower)</strong> in Settings › Search to read the rest.</p>`
       : "";
     const head = `<div class="rf-search-strip"><button type="button" id="deep-exit" class="btn btn-chip">Deep search &times;</button></div>`;
     if (!results.length) {
-      resultsEl.innerHTML = `${head}<div class="rf-nores"><p class="rf-nores-head">${covered === 0 && total > 0 ? "Deep search can't read your songs yet." : `Nothing says &ldquo;${escapeHtml(query.trim())}&rdquo; in any arrangement.`}</p><p class="rf-hint">${covered === 0 && total > 0 ? "It needs one full refresh of the library, in Settings. Then press it again." : "Check the spelling, or try fewer words."}</p>${partial}</div>`;
+      resultsEl.innerHTML = `${head}<div class="rf-nores"><p class="rf-nores-head">${covered === 0 && total > 0 ? "Deep search can't read your presentations yet." : `Nothing says &ldquo;${escapeHtml(query.trim())}&rdquo; in any arrangement.`}</p><p class="rf-hint">${covered === 0 && total > 0 ? "Press Deep reindex (slower) in Settings › Search, then press this again." : "Check the spelling, or try fewer words."}</p>${partial}</div>`;
       return;
     }
     resultsEl.innerHTML = `${head}

@@ -40,3 +40,9 @@ test("a hard refusal is not overridable: it is returned as it came, with no ques
   assert.equal((await res.json()).error, "Performance mode is on.");
   assert.equal(calls.length, 1);
 });
+
+test("extra fields (the Deep reindex flag) ride on both sends", async () => {
+  const { send, calls } = sender(reply(409, { error: "Run it anyway?", needsConfirm: true }), reply(200, {}));
+  await postIndexRun("/api/index/rebuild", { send, ask: async () => true, extra: { deep: true } });
+  assert.deepEqual(calls.map((c) => c.body), [{ deep: true }, { deep: true, confirm: true }]);
+});
