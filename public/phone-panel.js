@@ -21,7 +21,7 @@ export function phonePanelHtml(d) {
   if (d.status === "off") {
     return `
       <p>Use a phone to flag a slide that needs fixing, from anywhere in the room. Phones you approve here can also send a stage message or a pager code.</p>
-      <p class="opacity-70">Turning this on lets phones on the same Wi-Fi as this Mac open Refrain's phone page. A phone can't put a slide on the screens unless you switch that on after turning phones on.</p>
+      <p class="opacity-70">Turning this on lets phones on the same Wi-Fi as this Mac open Refrain's phone page. A phone can't put a slide on the screens unless you switch that on after turning phones on, and needs a monthly device code to search or send alerts.</p>
       <button type="button" id="phone-enable" class="btn btn-brand btn-sm w-fit">Turn on phones</button>`;
   }
   if (d.status === "misconfigured") {
@@ -42,6 +42,7 @@ export function phonePanelHtml(d) {
             }. Tick <em>Trust this phone</em> to skip this for 30 days.</li>`
       }
       <li>To let it send stage messages and pager codes, press <em>Allow alerts</em> beside its name below.</li>
+      ${d.pinMode === "none" ? "" : `<li>For Search or Alerts, the phone also types this month's device code (shown below), once a month.</li>`}
     </ol>
     ${d.loopbackOnly ? `<p class="opacity-80">This address only works on this Mac. For phones, set networkModule.host to 0.0.0.0.</p>` : ""}
     ${d.wrongToday ? `<p class="opacity-80">${d.wrongToday} wrong PIN${d.wrongToday === 1 ? "" : "s"} today.</p>` : ""}`;
@@ -78,6 +79,14 @@ export function phonePanelHtml(d) {
     : `<div class="text-xs opacity-70">No phone has sent an alert yet.</div>`;
 
   const gl = d.goLive ?? { enabled: false, code: null, takeovers: [] };
+  // The permission to use Search and Alerts (owner, 2026-10-11), and to go live
+  // if that is switched on below. Shown whenever phones are on.
+  const deviceCode = gl.code && d.pinMode !== "none"
+    ? `
+    <h3 class="rf-subhead">Device code</h3>
+    <p>For ${esc(new Date().toLocaleDateString([], { month: "long" }))}: <strong class="font-mono text-lg" id="phone-device-code">${esc(gl.code)}</strong> <span class="opacity-60">(changes on the 1st)</span></p>
+    <p class="opacity-80">A phone types this once a month to use Search and Alerts, and to go live if you allow it below. Without it a phone can only flag and read. Give it only to people you trust with those.</p>`
+    : "";
   const goLive = `
     <h3 class="rf-subhead">Going live from a phone</h3>
     <label class="flex items-center gap-2 cursor-pointer">
@@ -89,10 +98,9 @@ export function phonePanelHtml(d) {
         ? `<p class="opacity-80">${
             d.pinMode === "none"
               ? "Turn on a PIN first: without one, a phone has no name to log and can't go live."
-              : `A phone can put a searched slide on the screens once it has typed this month's device code, then a fresh code it shows, then confirmed. It takes the screens even if someone here is using them, and each one is logged below. Switching this off stops phones at once.`
-          }</p>
-          ${gl.code ? `<p>Device code for ${esc(new Date().toLocaleDateString([], { month: "long" }))}: <strong class="font-mono text-lg" id="phone-golive-code">${esc(gl.code)}</strong> <span class="opacity-60">(changes on the 1st; give it only to people who should go live)</span></p>` : ""}`
-        : `<p class="opacity-70">Off. Phones can search and flag, and approved phones can send alerts; none can go live.</p>`
+              : `A phone with the device code can put a searched slide on the screens: it types a fresh code the phone shows, then confirms. It takes the screens even if someone here is using them, and each one is logged below. Switching this off stops phones at once.`
+          }</p>`
+        : `<p class="opacity-70">Off. Phones with the device code can search, and approved ones can send alerts; none can go live.</p>`
     }
     <div class="flex flex-col gap-1">${
       (gl.takeovers ?? []).length
@@ -109,6 +117,7 @@ export function phonePanelHtml(d) {
     <div class="flex flex-col gap-2">${phones}</div>
     <h3 class="rf-subhead">Recent phone presses</h3>
     ${activity}
+    ${deviceCode}
     ${goLive}
     <div class="flex gap-2 flex-wrap mt-1">
       ${d.pinMode === "none" ? "" : `<button type="button" id="phone-forget" class="btn btn-chip" title="Signs every phone out and changes today's PIN">Sign out all phones</button>`}
