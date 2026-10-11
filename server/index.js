@@ -112,7 +112,7 @@ import { heartbeatInterval } from "./heartbeat-pacing.js";
 import QRCode from "qrcode";
 import { emptyRegistry, seeDevice, setApproved, removeDevice, isApproved, isRemoved, deviceList, loadRegistry, saveRegistry, setLiveMonth, isLiveAllowed } from "./remote-devices.js";
 import { monthKey, deviceCode, appendTakeover } from "./remote-live.js";
-import { noteItem, splitsView } from "./item-splits.js";
+import { noteItem, splitsView, feedItems, itemLines, leftOpenLines } from "./item-splits.js";
 import { saveFlagPicture, readFlagPicture, listFlagPictureIds } from "./flag-pictures.js";
 import { previewTargets, createThumbCache } from "./slide-preview.js";
 import { createThumbStore, slideKey as pictureKey } from "./thumb-store.js";
@@ -1994,7 +1994,12 @@ async function heartbeat() {
   // a phone (server/remote.js). In memory only: it's a scrollback, not a record.
   if (liveState.live && enriched) recentSlides = pushRecent(recentSlides, enriched, now);
   // Only while ProPresenter answers: "can't see" is not "the screens were cleared".
-  if (connected) itemSplits = noteItem(itemSplits, liveState.live && enriched ? { presentationId: enriched.presentationId, name: enriched.presentationName ?? enriched.name ?? null } : null, now);
+  if (connected) {
+    const before = itemSplits;
+    itemSplits = noteItem(itemSplits, liveState.live && enriched ? { presentationId: enriched.presentationId, name: enriched.presentationName ?? enriched.name ?? null } : null, now);
+    // When an item opens and when it closes, into the day's log (docs/service-feed.md).
+    for (const line of itemLines(before, itemSplits, STATION_TZ)) diag("item", line);
+  }
 
   // The service timeline: what goes live, when, and in which service. It reads
   // only what this beat already fetched. Skipped while ProPresenter is not
@@ -2074,6 +2079,24 @@ function diag(event, data = {}) {
     .then(() => appendFile(path.join(DIAGNOSTICS_DIR, `${day}.jsonl`), line))
     .catch(() => {});
 }
+// The machine's own time zone, which the day files are cut by, so the other
+// side can read their times (docs/service-feed.md).
+const STATION_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+const BOOT_AT = Date.now();
+/**
+ * An item the last run left open (a restart or a crash mid-service) is closed
+ * in the log at the last moment that run wrote anything, reason "restart".
+ */
+async function closeItemsLeftOpen() {
+  const dayOf = (ms) => {
+    const d = new Date(ms);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  let text = "";
+  for (const day of [dayOf(BOOT_AT - 86_400_000), dayOf(BOOT_AT)]) text += (await readFile(path.join(DIAGNOSTICS_DIR, `${day}.jsonl`), "utf-8").catch(() => "")) + "\n";
+  for (const line of leftOpenLines(text, new Date(BOOT_AT).toISOString(), STATION_TZ)) diag("item", line);
+}
+setTimeout(() => closeItemsLeftOpen().catch(() => {}), 1000).unref();
 async function pruneDiagnostics(now = Date.now()) {
   try {
     for (const name of await readdir(DIAGNOSTICS_DIR)) {
@@ -2314,6 +2337,8 @@ function liveStatePayload() {
           text: liveState.slide.text ?? null,
         }
       : null,
+    history: feedItems(itemSplits),
+    tz: STATION_TZ,
     liveSince: liveState.liveSince ? new Date(liveState.liveSince).toISOString() : null,
     checkedAt: liveState.checkedAt ? new Date(liveState.checkedAt).toISOString() : null,
     performanceMode: { armed: performance.armed, source: performance.source },

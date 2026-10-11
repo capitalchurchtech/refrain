@@ -68,9 +68,52 @@ truth.
     "slideCount": 6,
     "text": "only present when includeSlideText is on",
     "imageKey": "only present when picture sending is on"
+  },
+  "tz": "America/Denver",
+  "history": {
+    "graceMs": 300000,
+    "items": [
+      { "id": "mgx1k2-0", "name": "Amazing Grace", "startedAt": "2026-10-04T15:01:50.000Z", "endedAt": null, "current": true, "blank": false },
+      { "id": "mgx0ab-1", "name": "Welcome Loop", "startedAt": "2026-10-04T14:55:00.000Z", "endedAt": "2026-10-04T15:01:50.000Z", "current": false, "blank": false }
+    ]
   }
 }
 ```
+
+### Item history in `/status` (added 2026-10-11; `v` stays 1)
+
+`tz` and `history` are **additive**: a receiver that reads only the fields it
+names keeps working, and an older console simply does not send them. They tell
+the other side exactly when each item changed, in the terms of the phone's
+History page.
+
+- `history.items` is a **snapshot**, newest first, at most 30. Status is latest
+  wins, so a dropped push loses nothing: the next one carries the whole list.
+  The whole status stays under 8 KB; if it ever would not, the oldest items are
+  dropped first. A name is at most 200 characters.
+- Each item is one **stay**: a presentation comes up and stays until a
+  different one comes up, or the screens stay blank for more than `graceMs`
+  (five minutes). Coming back to a song later is a new item. A long item (a
+  sermon) that goes blank for a minute or two, or whose slide cannot be read for
+  a beat, is still one item.
+- `id` is unique per console and the same every time that item is sent (it is
+  made from the moment the item opened). **It is not stable across a Refrain
+  restart**: see "A restart" below.
+- `startedAt` and `endedAt` are UTC ISO times. `endedAt` is null while the item
+  is open, and `current` is true for the one open item (always the first).
+  `endedAt` is when the item went off, which is when the screens went blank if
+  they did before the next item came up. A blank gap needs no entry of its own:
+  it is the time between one item's `endedAt` and the next item's `startedAt`.
+- `blank` is true only on the open item, while the screens are empty and the
+  gap is still being forgiven. Do not call it live then.
+- Elapsed time is not sent (it would change every second). For the open item it
+  is `sentAt` minus `startedAt` plus the time since the status arrived; for
+  closed items it is `endedAt` minus `startedAt`.
+- `tz` is the console's own IANA time zone, the one its day files are cut by.
+  Show times in it, not the viewer's.
+- Presentation names only (the same kind of name as `slide.presentationName`).
+  No slide text and no presentation ids, whether or not `includeSlideText` is
+  on, and nothing about who did anything (the phone take-over log is not sent).
 
 `slide` is `null` when nothing is live. `connected: false` means Refrain cannot
 reach ProPresenter (the console is up; the rig is not). No heartbeat for ~90 s
@@ -97,8 +140,41 @@ per line (`t`, `event`, ...). **Idempotent: a later PUT for the same day replace
 the earlier one**, because today's file can be sent again after more was added.
 Refrain sends it only when a person presses Send log: every day file whose size
 changed since the server last accepted it, oldest first, and nothing during
-performance mode. The files hold timings, counts and
-ProPresenter call paths. They do not hold slide text.
+performance mode. The files hold timings, counts,
+ProPresenter call paths and `item` lines (below). They do not hold slide text.
+
+### `item` lines in the day file
+
+One line when an item **opens** and another, with the same `id`, when it
+**closes**, so an item still on the screens when someone presses Send log is
+there as an open line (often the last item of the service). The later `t` wins
+per `id`.
+
+```json
+{"t":"2026-10-11T16:41:00.000Z","event":"item","id":"mgx0ab-1","name":"Welcome Loop","startedAt":"2026-10-11T16:41:00.000Z","endedAt":null,"reason":null,"tz":"America/Denver"}
+{"t":"2026-10-11T16:47:00.000Z","event":"item","id":"mgx0ab-1","name":"Welcome Loop","startedAt":"2026-10-11T16:41:00.000Z","endedAt":"2026-10-11T16:47:00.000Z","reason":"moved","tz":"America/Denver"}
+```
+
+- `reason` is null while open, then `moved` (a different item came up),
+  `blank-timeout` (the screens stayed blank past `graceMs`; `endedAt` is when
+  they went blank) or `restart` (see below). There is no separate `cleared`: a
+  clear is a blank, and it only ends an item once it has lasted past the grace.
+- Times are UTC. The day file is the **local** day (a Saturday service can run
+  into the next UTC day), so `tz` travels on every line.
+- Same privacy rules as the snapshot: names only.
+- These lines are written to the local day file as items change, whether or not
+  telemetry is on. Nothing leaves the Mac until a person presses Send log.
+
+### A restart
+
+Items live in memory, so a restart mid-service forgets the open one. Within a
+second of starting, Refrain reads yesterday's and today's day files, finds each
+`item` whose latest line is still open, and writes one close line for it:
+`reason: "restart"`, `endedAt` the last moment the previous run wrote anything
+(at most about a minute before the restart, since a `minute` line is written
+every minute). What is on the screens afterwards opens as a new item with a **new
+`id`**, even if it is the same presentation, and the phone's own History starts
+again. A crash is the same as a restart.
 
 ### Answers
 
@@ -200,6 +276,12 @@ first; its non-negotiables apply.
 
 ## Left undone / not yet verified
 
+- Item history (2026-10-11) is unit-tested only. It has not been seen in a real
+  service, and nothing has received it yet: the first check is a real Send log
+  and a live status from a real service.
+- `reason: "cleared"` is not emitted (see above). The overnight `live: true`
+  and index-start-in-a-pre-service-window observations from the announce side
+  are answered in the handoff, not fixed.
 - Refrain side only has been exercised against a local test server and its unit
   tests. It has not been run against the real announcement server, because the
   receiving side does not exist yet.

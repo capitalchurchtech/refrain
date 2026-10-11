@@ -324,3 +324,40 @@ test("feedLamp: off, fault, idle and ok, and a failure is never reported as fine
   assert.equal(feedLamp({ moduleStatus: "active", lastError: null, mod, now: sunday10 }), "ok");
   assert.equal(feedLamp({ moduleStatus: "active", lastError: null, mod, now: monday10 }), "idle");
 });
+
+// --- item history on the wire -------------------------------------------------------
+import { STATUS_MAX_BYTES } from "../server/service-feed.js";
+
+const hist = (n, name = "Item") => Array.from({ length: n }, (_, i) => ({ id: `id-${i}`, name: `${name} ${i}`, startedAt: "2026-10-11T16:00:00.000Z", endedAt: i ? "2026-10-11T16:05:00.000Z" : null, current: i === 0, blank: false }));
+
+test("the status carries tz and the history snapshot, additively, version 1", () => {
+  const s = buildStatus({ live: live({ history: hist(3), tz: "America/Denver" }), mod: good, consoleId: "c1", appVersion: "1", seq: 1, now: 0 });
+  assert.equal(s.v, 1);
+  assert.equal(s.tz, "America/Denver");
+  assert.equal(s.history.graceMs, 300000);
+  assert.deepEqual(s.history.items.map((i) => i.id), ["id-0", "id-1", "id-2"]);
+  const old = buildStatus({ live: live(), mod: good, consoleId: "c1", appVersion: "1", seq: 1, now: 0 });
+  assert.equal("history" in old, false, "a console without history sends none");
+});
+
+test("the status stays under 8 KB however long the names, dropping the oldest items first", () => {
+  const long = hist(30, "y".repeat(190));
+  const s = buildStatus({ live: live({ history: long, tz: "America/Denver" }), mod: { ...good, includeSlideText: true }, consoleId: "c1", appVersion: "1", seq: 1, now: 0 });
+  assert.ok(Buffer.byteLength(JSON.stringify(s)) <= STATUS_MAX_BYTES);
+  assert.ok(s.history.items.length < 30 && s.history.items.length > 0);
+  assert.equal(s.history.items[0].id, "id-0", "the newest is kept");
+});
+
+test("history never carries slide words, even when the church sends them in slide.text", () => {
+  const s = buildStatus({ live: live({ history: hist(2) }), mod: { ...good, includeSlideText: true }, consoleId: "c1", appVersion: "1", seq: 1, now: 0 });
+  assert.equal(s.slide.text, "Was blind but now I see");
+  assert.doesNotMatch(JSON.stringify(s.history), /Was blind|text/);
+  const off = buildStatus({ live: live({ history: hist(2) }), mod: good, consoleId: "c1", appVersion: "1", seq: 1, now: 0 });
+  assert.doesNotMatch(JSON.stringify(off), /Was blind/);
+});
+
+test("a history change is a change worth sending; the clock is not", () => {
+  const mk = (h, now) => buildStatus({ live: live({ history: h, tz: "America/Denver" }), mod: good, consoleId: "c1", appVersion: "1", seq: now, now });
+  assert.equal(statusFingerprint(mk(hist(2), 1)), statusFingerprint(mk(hist(2), 99_999)));
+  assert.notEqual(statusFingerprint(mk(hist(2), 1)), statusFingerprint(mk(hist(3), 1)));
+});
