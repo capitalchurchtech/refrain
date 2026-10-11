@@ -1,5 +1,6 @@
 import { COPY_FAILED, noProPresenterFound } from "./strings.js";
 import { showFailure } from "./notice.js";
+import { postIndexRun } from "./index-press.js";
 import { wireTabKeys, fitTabs } from "./tabs.js";
 import { display } from "./nav.js";
 import { SETTINGS_TABS, SETTINGS_TOP, SETTINGS_MORE, settingsTopTab, settingsTabFromHash } from "./settings-tabs.js";
@@ -169,7 +170,7 @@ export function initHealth() {
           if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? res.statusText);
         } else if (btn.dataset.hc === "refresh") {
           btn.textContent = "Refreshing";
-          const res = await fetch("/api/index/reindex-changed", { method: "POST" });
+          const res = await postIndexRun("/api/index/reindex-changed");
           if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Refresh didn't run");
         }
         host.dataset.key = "";
@@ -367,7 +368,7 @@ export function initHealth() {
       try {
         // Tells the progress bar a run is starting, as the other Refresh presses do.
         document.dispatchEvent(new CustomEvent("refrain:index-requested"));
-        const res = await fetch("/api/index/reindex-changed", { method: "POST" });
+        const res = await postIndexRun("/api/index/reindex-changed");
         if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Refresh didn't run");
         render();
       } catch (err) {
@@ -790,7 +791,7 @@ export function initHealth() {
         statusEl.className = "text-sm";
         try {
           document.dispatchEvent(new CustomEvent("refrain:index-requested"));
-          const res = await fetch("/api/index/reindex-changed", { method: "POST" });
+          const res = await postIndexRun("/api/index/reindex-changed");
           const data = await res.json();
           if (!res.ok) {
             statusEl.textContent = data.error;
@@ -847,7 +848,7 @@ export function initHealth() {
         btnLabel.textContent = "Rebuilding...";
         try {
           document.dispatchEvent(new CustomEvent("refrain:index-requested"));
-          const res = await fetch("/api/index/rebuild", { method: "POST" });
+          const res = await postIndexRun("/api/index/rebuild");
           const refused = res.ok ? null : ((await res.json().catch(() => ({}))).error ?? "The rebuild didn't start.");
           await render();
           // After render, which redraws the card: said where the other index

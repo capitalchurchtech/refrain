@@ -106,6 +106,7 @@ export function decideAutoReindex({
  *   readyForMs()      -> ms ProPresenter has been answering, or null (may be async)
  *   crawlPlaylists()
  *   frozen()          -> true when performance mode is on (optional)
+ *   held()            -> a sentence when a scheduled service is starting or running, else null (optional)
  */
 export function startLibraryWatch(deps, options = {}) {
   const cfg = { ...WATCH_DEFAULTS, ...options };
@@ -137,10 +138,16 @@ export function startLibraryWatch(deps, options = {}) {
     // Performance mode is checked before anything else, and before any API
     // call: the promise is that Refrain goes completely quiet, not that it
     // looks around and then decides to behave.
-    if (deps.frozen?.()) {
+    // `held` is the other reason to stay quiet (owner, 2026-10-11): a scheduled
+    // service is starting or running, so nothing reindexes from its lead time
+    // on, before performance mode has had anything to arm on. It says why in
+    // words, or null.
+    const frozen = Boolean(deps.frozen?.());
+    const holdReason = frozen ? "performance mode is on" : (deps.held?.() ?? null);
+    if (holdReason) {
       last = {
         at: new Date().toISOString(),
-        outcome: "performance mode is on",
+        outcome: holdReason,
         count: 0,
         // `pending` belongs to the last real check and is rendered on Health as
         // a count or a full-rebuild warning. Performance mode did not resolve

@@ -1120,6 +1120,17 @@ function indexRunHeldReason() {
   return null;
 }
 
+/**
+ * A person pressing Refresh during a scheduled service's window is warned, not
+ * stopped (owner, 2026-10-11): the page asks "Run anyway?" and sends
+ * `{ confirm: true }`. Null when there is nothing to warn about or it was
+ * confirmed. The hard refusals in indexRunHeldReason() are separate and stay.
+ */
+function serviceRunWarning(body) {
+  if (body?.confirm === true || !holdHeartbeatPace()) return null;
+  return "A service is starting or running. A reindex makes ProPresenter wait, and one stalled it for about 44 seconds mid-afternoon on a service day. Run it anyway?";
+}
+
 async function operatorIndexRefusal() {
   const held = indexRunHeldReason();
   if (held) return held;
@@ -2482,6 +2493,10 @@ function startWatching() {
     // Performance mode is a hard stop, not a preference: while it is on, the
     // watcher does not even check, so Refrain makes no unsolicited API calls.
     frozen,
+    // From a scheduled service's lead time (15 minutes before it, by default)
+    // until its window closes, or while a lock-in is open: no reindex starts,
+    // even if nothing is on the screens yet. A person pressing Refresh still can.
+    held: () => (holdHeartbeatPace() ? "held for a service: it is starting or running" : null),
     rebuildInProgress: () => getRebuildProgress().inProgress,
     readyForMs: propresenterReadyForMs,
     crawlPlaylists: () => Boolean(config.librarySync?.crawlPlaylists),
@@ -2542,9 +2557,14 @@ function lockinStaleness(now = Date.now()) {
  *   than a watcher that setting deliberately turns off.
  */
 function deferredStaleness() {
-  if (!frozen()) return null;
+  // A service's lead time holds the watcher before anything is live, so there
+  // is no performance mode or live slide to point at: say so, and leave Refresh
+  // there, since a person pressing it is allowed through.
+  const serviceHold = !frozen() && holdHeartbeatPace();
+  if (!frozen() && !serviceHold) return null;
   if (!liveState.connected) return null;
   if (!libraryWatch?.status()?.unreadChanges) return null;
+  if (serviceHold) return { message: "A presentation changed since this index. It catches up after the service, or press Refresh.", held: false };
   const held = indexRunHeldReason();
   if (!held) return null;
   // Short on purpose. This row is `flex items-center` beside the index chip,
@@ -2839,9 +2859,11 @@ app.post("/api/index/stop", (_req, res) => {
   res.json({ ok: true });
 });
 
-app.post("/api/index/rebuild", async (_req, res) => {
+app.post("/api/index/rebuild", async (req, res) => {
   const refusal = await operatorIndexRefusal();
   if (refusal) return res.status(409).json({ error: refusal });
+  const warning = serviceRunWarning(req.body);
+  if (warning) return res.status(409).json({ error: warning, needsConfirm: true });
   try {
     indexWorkDeferred = null; // the operator has taken it in hand
     const index = await startRebuild({ operatorInitiated: true });
@@ -2857,9 +2879,11 @@ app.post("/api/index/rebuild", async (_req, res) => {
 // unsafe (settings changed, schema changed, ProPresenter on another machine) —
 // the response says which happened so the operator isn't surprised by an
 // hour-long crawl they didn't ask for.
-app.post("/api/index/reindex-changed", async (_req, res) => {
+app.post("/api/index/reindex-changed", async (req, res) => {
   const refusal = await operatorIndexRefusal();
   if (refusal) return res.status(409).json({ error: refusal });
+  const warning = serviceRunWarning(req.body);
+  if (warning) return res.status(409).json({ error: warning, needsConfirm: true });
   try {
     indexWorkDeferred = null; // the operator has taken it in hand
     const index = await startRebuild({ incremental: true, operatorInitiated: true });
@@ -3154,7 +3178,9 @@ async function runServiceChecks(service) {
 const preServiceReindexed = new Set();
 let preServiceReindexRunning = false;
 async function preServiceReindex(now = Date.now()) {
-  if (protectOn() || !serviceModuleOn() || preServiceReindexRunning || performance.armed || !liveState.connected) return;
+  // Not once a service's lead time has begun (see the watcher's `held`): a
+  // console started late is left alone rather than crawled at the last minute.
+  if (protectOn() || !serviceModuleOn() || preServiceReindexRunning || performance.armed || !liveState.connected || holdHeartbeatPace(now)) return;
   const due = serviceState(now).services.find(
     (s) => s.startsAt && s.startsAt - now > 0 && s.startsAt - now <= 60 * 60_000 && !s.endedAt && !preServiceReindexed.has(s.serviceId)
   );

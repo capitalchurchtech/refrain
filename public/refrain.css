@@ -2770,6 +2770,30 @@ html.blackroom .rf-notice {
 .rf-notice-close:hover {
   opacity: 1;
 }
+/* A notice with a choice (askToConfirm): the confirm key and Cancel, beneath-or-beside the words. */
+.rf-notice-acts {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+.rf-notice-act {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.rf-notice-go {
+  background: var(--rf-fault);
+  border-color: var(--rf-fault);
+  color: #1a1206;
+  font-weight: 700;
+}
 [data-theme="dark"] .rf-notice-close,
 html.blackroom .rf-notice-close {
   color: var(--rf-text);
