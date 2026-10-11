@@ -70,10 +70,13 @@ export function noteItem(log, item, now = Date.now(), max = MAX_SPLITS, graceMs 
 /** What the phone shows: a name, when it came up, when it left, and how long it was up (still counting for the open one). */
 export function splitsView(log, now = Date.now()) {
   return (log ?? []).map((e) => ({
+    presentationId: e.presentationId,
     name: e.name ?? "Untitled",
     startedAt: new Date(e.startMs).toISOString(),
     endedAt: e.endMs == null ? null : new Date(e.endMs).toISOString(),
     elapsedMs: Math.max(0, (e.endMs ?? now) - e.startMs),
     current: e.endMs == null,
+    // Open, but the screens are empty right now (a blank being forgiven).
+    blank: e.endMs == null && e.blankSince != null,
   }));
 }

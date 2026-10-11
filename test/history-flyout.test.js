@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { agoText, historyView } from "../public/history-flyout.js";
+import { agoText, historyView, durationText, placeTimes } from "../public/history-flyout.js";
 
 const NOW = Date.parse("2026-10-11T10:30:00Z");
 const at = (minAgo) => new Date(NOW - minAgo * 60_000).toISOString();
@@ -38,4 +38,31 @@ test("a cursor out of range, or an empty history, is made safe", () => {
   const none = historyView([], 0, NOW);
   assert.deepEqual([none.rows.length, none.back, none.forward, none.cursor], [0, null, null, 0]);
   assert.equal(historyView(null, 0, NOW).rows.length, 0);
+});
+
+test("durations read as m:ss, and h:mm:ss past an hour", () => {
+  assert.equal(durationText(0), "0:00");
+  assert.equal(durationText(65_000), "1:05");
+  assert.equal(durationText(3_725_000), "1:02:05");
+  assert.equal(durationText(-5), "0:00");
+});
+
+test("a place's times come from its latest stay, and the running one keeps counting from when it was heard", () => {
+  const splits = [
+    { presentationId: "a", startedAt: "2026-10-11T16:47:00Z", endedAt: null, elapsedMs: 60_000, current: true },
+    { presentationId: "b", startedAt: "2026-10-11T16:30:00Z", endedAt: "2026-10-11T16:41:00Z", elapsedMs: 660_000, current: false },
+  ];
+  const running = placeTimes(splits, { presentationId: "a" }, 1000, 31_000);
+  assert.deepEqual([running.live, running.elapsed, running.left], [true, "1:30", ""]);
+  const done = placeTimes(splits, { presentationId: "b" }, 1000, 999_999);
+  assert.deepEqual([done.live, done.elapsed], [false, "11:00"], "a finished stay does not count on");
+  assert.notEqual(done.left, "");
+  assert.equal(placeTimes(splits, { presentationId: "zzz" }, 0), null, "a place the server never counted has no times line");
+  assert.equal(placeTimes(undefined, { presentationId: "a" }, 0), null);
+});
+
+test("an item whose screens are blank for a moment is not called live", () => {
+  const splits = [{ presentationId: "a", startedAt: "2026-10-11T16:47:00Z", endedAt: null, elapsedMs: 60_000, current: true, blank: true }];
+  const t = placeTimes(splits, { presentationId: "a" }, 0, 0);
+  assert.deepEqual([t.live, t.cleared, t.left], [false, true, ""]);
 });

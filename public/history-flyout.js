@@ -14,6 +14,10 @@ import { escapeHtml } from "./slide-tools.js";
  * because returning mid-service must never change what the audience sees. Back
  * and Forward move a cursor over the list; they do not trigger anything.
  *
+ * Each place also says when it started, how long it was up and when it left,
+ * from the server's item splits (the phone's History, 2026-10-09; added here on
+ * 2026-10-11). The item on the screens now counts up and is marked Live.
+ *
  * The cursor lives here, in the browser, and goes back to the newest place when
  * the newest place changes. Forward is only "the place I was before I pressed
  * Back", which is all the server's list needs to answer.
@@ -46,6 +50,30 @@ export function historyView(history, cursor, now = Date.now()) {
   };
 }
 
+/** "5:12" or "1:05:12": a length of time. */
+export function durationText(ms) {
+  const t = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(t / 3600);
+  const m = Math.floor((t % 3600) / 60);
+  const s = String(t % 60).padStart(2, "0");
+  return h ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
+}
+
+const clockText = (iso) => (iso ? new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "");
+
+/**
+ * The times line for one place, from the latest stay the server counted for
+ * that presentation, or null when it has none (a place from before the server
+ * started counting). `heardAt` is when the splits arrived, so the running
+ * item keeps counting between polls. Pure, for tests.
+ */
+export function placeTimes(splits, entry, heardAt, now = Date.now()) {
+  const s = (Array.isArray(splits) ? splits : []).find((x) => x.presentationId === entry?.presentationId);
+  if (!s) return null;
+  const elapsed = s.elapsedMs + (s.current ? Math.max(0, now - heardAt) : 0);
+  return { live: Boolean(s.current) && !s.blank, cleared: Boolean(s.current) && Boolean(s.blank), started: clockText(s.startedAt), elapsed: durationText(elapsed), left: s.current ? "" : clockText(s.endedAt) };
+}
+
 const label = (e) => `${e.name ?? "Untitled"} #${e.slideIndex + 1}`;
 
 export function initHistoryFlyout() {
@@ -55,11 +83,14 @@ export function initHistoryFlyout() {
   if (!key || !flyout || !rail) return;
 
   let history = [];
+  let splits = [];
+  let splitsAt = Date.now(); // when `splits` arrived
   let cursor = 0;
   let headKey = "";
   let pinned = false; // opened by a press, so moving the mouse away does not close it
   let closeTimer = null;
   let pollTimer = null;
+  let tickTimer = null;
 
   function place() {
     // Beside the rail, on whichever side it is, level with its key.
@@ -80,6 +111,11 @@ export function initHistoryFlyout() {
       flyout.style.right = "auto";
     }
   }
+
+  const timesHtml = (t) =>
+    t
+      ? `<span class="rf-hf-times${t.live ? " live" : ""}">${t.live ? `<b>Live</b> · ` : t.cleared ? `<b>Screens clear</b> · ` : ""}started ${escapeHtml(t.started)} · <span ${t.live || t.cleared ? "data-hf-tick" : ""}>${escapeHtml(t.elapsed)}</span>${t.left ? ` · left ${escapeHtml(t.left)}` : ""}</span>`
+      : "";
 
   function paint() {
     const v = historyView(history, cursor);
@@ -103,6 +139,7 @@ export function initHistoryFlyout() {
           (r) => `<button type="button" class="rf-hf-row${r.current ? " current" : ""}" data-i="${r.i}" title="Opens in ProPresenter's editor. Nothing goes to the screens.">
             <span class="rf-hf-name">${escapeHtml(r.name ?? "Untitled")}</span>
             <span class="rf-hf-meta"><span class="rf-hf-slide">#${r.slideIndex + 1}</span><span class="rf-hf-ago">${escapeHtml(r.ago)}</span><span class="rf-hf-go">Show</span></span>
+            ${timesHtml(placeTimes(splits, r, splitsAt))}
           </button>`
         )
         .join("")}</div>
@@ -130,6 +167,8 @@ export function initHistoryFlyout() {
     try {
       const data = await fetch("/api/return-pin").then((r) => r.json());
       history = Array.isArray(data.history) ? data.history : [];
+      splits = Array.isArray(data.splits) ? data.splits : [];
+      splitsAt = Date.now();
       // A new newest place puts the cursor back on it.
       const k = history[0] ? `${history[0].presentationId}:${history[0].slideIndex}` : "";
       if (k !== headKey) {
@@ -147,11 +186,18 @@ export function initHistoryFlyout() {
     flyout.hidden = !open;
     key.setAttribute("aria-expanded", String(open));
     clearInterval(pollTimer);
+    clearInterval(tickTimer);
     if (open) {
       place();
       load().then(paint);
       paint();
       pollTimer = setInterval(load, POLL_MS);
+      // The running item counts on between polls.
+      tickTimer = setInterval(() => {
+        const el = flyout.querySelector("[data-hf-tick]");
+        const live = splits.find((x) => x.current);
+        if (el && live) el.textContent = durationText(live.elapsedMs + (Date.now() - splitsAt));
+      }, 1000);
     } else {
       pinned = false;
     }

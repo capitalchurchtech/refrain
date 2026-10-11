@@ -3895,10 +3895,12 @@ app.post("/api/focus", async (req, res) => {
 // Current return pin, for the app-wide "Return" bar to show/hide itself.
 // `pin` is the most recent place, which is what the bar shows at rest;
 // `history` is everything reachable behind it. Both come from one call so the
-// bar and its pulldown can never disagree about the same moment.
+// bar and its History flyout can never disagree about the same moment.
 app.get("/api/return-pin", (_req, res) => {
   noteClientActivity();
-  res.json({ pin: returnPin, history: returnHistory });
+  // `splits` is how long each item was up (the same list the phone's History
+  // shows), so the flyout can say when each place started and left.
+  res.json({ pin: returnPin, history: returnHistory, splits: splitsView(itemSplits) });
 });
 
 // Snap back to where we were before the jump: bring that presentation up
