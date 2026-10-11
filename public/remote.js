@@ -28,7 +28,8 @@ const monthName = () => new Date().toLocaleDateString([], { month: "long" });
 
 let token = store.get("refrain.remote.token", "");
 let state = null; // /api/state
-let glive = { enabled: false, allowed: false }; // /api/golive/status
+// /api/golive/status: `allowed` is this phone's monthly permission (Search, Alerts and going live); `enabled` is only whether the booth lets phones go live.
+let glive = { pin: true, enabled: false, allowed: false };
 let openFlagCount = null;
 let page = "service";
 let sheet = null;
@@ -192,13 +193,15 @@ function paintSearchPage() {
 function paintLiveBar() {
   const el = $("live-bar");
   if (!el) return;
-  if (!glive.enabled) el.innerHTML = `<p class="note">Going live from phones is off at the booth.</p>`;
-  else if (!glive.allowed) el.innerHTML = `<div class="lockbar"><span>Live is locked on this phone</span><button class="key chip" data-act="allow">Allow</button></div>`;
-  else el.innerHTML = `<div class="lockbar open"><span>Live allowed on this phone</span><span>while signed in · to ${esc(new Date(new Date(glive.until).getTime() - 1).toLocaleDateString([], { month: "short", day: "numeric" }))}</span></div>`;
+  if (!glive.pin) el.innerHTML = `<p class="note">Search needs phone PINs turned on at the booth.</p>`;
+  else if (!glive.allowed) el.innerHTML = `<div class="lockbar"><span>Search is locked on this phone</span><button class="key chip" data-act="allow">Allow</button></div>`;
+  else if (!glive.enabled) el.innerHTML = `<p class="note">Going live from phones is off at the booth.</p>`;
+  else el.innerHTML = `<div class="lockbar open"><span>Allowed on this phone</span><span>while signed in · to ${esc(new Date(new Date(glive.until).getTime() - 1).toLocaleDateString([], { month: "short", day: "numeric" }))}</span></div>`;
 }
 function paintResults() {
   const el = $("results");
   if (!el) return;
+  if (!glive.allowed) return void (el.innerHTML = `<div class="box" style="margin-top:12px"><b>Search is locked on this phone.</b>Press Allow and type this month's device code from the booth to use it.</div>`);
   if (search.err) return void (el.innerHTML = `<div class="err">${esc(search.err)}</div>`);
   if (search.q.trim().length < 2) return void (el.innerHTML = `<p class="note">Type two or more letters. You can flag a result${glive.enabled ? " or, once allowed, put it on the screens" : ""}.</p>`);
   if (!search.done) return void (el.innerHTML = `<p class="note">Searching…</p>`);
@@ -224,7 +227,7 @@ document.addEventListener("input", (e) => {
   clearTimeout(searchTimer);
   paintResults();
   const q = search.q.trim();
-  if (q.length < 2) return;
+  if (q.length < 2 || !glive.allowed) return;
   const seq = ++searchSeq;
   searchTimer = setTimeout(async () => {
     try {
@@ -233,6 +236,7 @@ document.addEventListener("input", (e) => {
       search = { ...search, results: r.results, more: r.more, done: true, err: "" };
     } catch (err) {
       if (seq !== searchSeq) return;
+      if (err.data?.needsCode) glive = { ...glive, allowed: false }; // the month turned over, or the booth removed this phone
       search = { ...search, results: [], done: true, err: err.status ? err.message : "Can't reach the booth. Check the Wi-Fi." };
     }
     $("ring")?.classList.toggle("quiet", !search.results.length);
@@ -278,7 +282,7 @@ function paintPhonePage() {
     <div class="sect"><span>Link</span></div>
     <div class="box"><b>${state?.connected ? "Link active" : "No link"}</b>${state?.connected ? "This phone can reach the booth, and the booth can see ProPresenter." : "The booth has lost ProPresenter. Flags and alerts may not work until it's back."}</div>
     <div class="sect"><span>This phone</span></div>
-    <div class="box"><b>${esc(name ?? "A phone")}</b>${state?.phone?.canControl ? "Can send alerts." : "Flags and search only. Ask the booth to allow alerts."}${glive.enabled ? ` ${glive.allowed ? `Can go live while it stays signed in, to the end of ${esc(monthName())} at most.` : "Needs this month's device code to go live."}` : ""}</div>
+    <div class="box"><b>${esc(name ?? "A phone")}</b>${glive.allowed ? `Can search${state?.phone?.canControl ? " and send alerts" : ""}${glive.enabled ? " and go live" : ""} while it stays signed in, to the end of ${esc(monthName())} at most.` : "Can flag and read. Needs this month's device code to search, send alerts or go live."}${glive.allowed && !state?.phone?.canControl ? " Ask the booth to allow alerts." : ""}</div>
     <div class="sect"><span>Sign-in</span></div>
     <button class="key chip" style="width:100%" data-act="forget">Forget this phone</button>
     <p class="note">You'll need the PIN again next time.</p>`;
@@ -502,7 +506,7 @@ async function openAlert() {
   await loadAlertData();
 }
 async function loadAlertData() {
-  if (!state?.phone?.canControl || sheet?.kind !== "alert") return;
+  if (!state?.phone?.canControl || !glive.allowed || sheet?.kind !== "alert") return;
   try {
     const [stage, msgs] = await Promise.all([api("/api/stage"), api("/api/messages").catch((err) => ({ messages: [], error: err.message }))]);
     if (sheet?.kind !== "alert") return;
@@ -520,6 +524,9 @@ function alertBody() {
   const s = sheet;
   if (!state) return `<p class="note">Loading…</p>`;
   if (!featureOn("messages")) return `<div class="box"><b>Alerts are switched off at the booth.</b></div>`;
+  if (!glive.allowed) {
+    return `<div class="box"><b>Alerts are locked on this phone.</b>Type this month's device code from the booth to use them.</div><button class="send" data-act="allow-for-alerts">Allow this phone</button>`;
+  }
   if (!state?.phone?.canControl) {
     return `<div class="box"><b>This phone can't send alerts yet.</b>${state?.pinRequired ? `Ask the person at the booth to press Allow alerts beside ${state?.phone?.name ? `“${esc(state.phone.name)}”` : "this phone"} in the Phone panel.` : "Alerts from a phone need phone PINs turned on at the booth."}</div>`;
   }
@@ -607,7 +614,7 @@ async function confirmArmed() {
 const FAIL_NET = "Can't reach the booth. Check the Wi-Fi.";
 function allowBody() {
   const s = sheet;
-  return `<p class="muted" style="margin:0 0 10px">Type this month's device code from the booth, in Settings › Phones. This phone can then go live until the end of ${esc(monthName())}, or until it signs in again.</p>
+  return `<p class="muted" style="margin:0 0 10px">Type this month's device code from the booth, in Settings › Phones. This phone can then search and send alerts${glive.enabled ? " and go live" : ""} until the end of ${esc(monthName())}, or until it signs in again.</p>
     <input class="f code-in" id="code" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="4" placeholder="Device code" aria-label="Device code" value="${esc(s.code ?? "")}" />
     ${s.err ? `<div class="err">${esc(s.err)}</div>` : ""}
     <button class="send" data-act="submit-allow" ${(s.code ?? "").length === 4 && !s.busy ? "" : "disabled"}>${s.busy ? "Checking…" : "Allow this phone"}</button>`;
@@ -647,10 +654,12 @@ async function submitAllow() {
   renderSheet();
   try {
     const r = await post("/api/golive/allow", { code: s.code });
-    glive = { ...glive, enabled: true, allowed: true, until: r.until };
+    glive = { ...glive, allowed: true, until: r.until };
+    const back = s.then;
     closeSheet();
     paintPage();
-    toast(`This phone can go live until the end of ${monthName()}, or until it signs in again.`);
+    toast(`This phone is allowed until the end of ${monthName()}, or until it signs in again.`);
+    if (back === "alert") openAlert();
   } catch (err) {
     s.busy = false;
     s.code = "";
@@ -724,6 +733,7 @@ document.addEventListener("click", (e) => {
   else if (act === "alert-tab") { disarm(); sheet.tab = el.dataset.tab; renderSheet(); }
   else if (act === "press") press(el.dataset.key);
   else if (act === "allow") openSheet({ kind: "allow", code: "", busy: false, err: "" });
+  else if (act === "allow-for-alerts") openSheet({ kind: "allow", code: "", busy: false, err: "", then: "alert" });
   else if (act === "submit-allow") submitAllow();
   else if (act === "go-live") { const r = search.results[Number(el.dataset.i)]; if (r) startLive(r); }
   else if (act === "live-approve") liveApprove();
@@ -740,7 +750,12 @@ async function refresh() {
     state = await api("/api/state");
     paintLamp();
     if (page === "service") paintReadout();
-    try { glive = await api("/api/golive/status"); } catch { /* keep what was shown */ }
+    try {
+      const before = glive.allowed;
+      glive = await api("/api/golive/status");
+      // An Alert sheet opened before the permission was known: show it as it is now.
+      if (sheet?.kind === "alert" && glive.allowed !== before) { renderSheet(); loadAlertData(); }
+    } catch { /* keep what was shown */ }
     if (page === "search") { paintLiveBar(); if (search.done) paintResults(); }
     if (page === "history") {
       try { history = { items: (await api("/api/history")).items, at: Date.now(), loaded: true }; if (!sheet) paintHistoryPage(); } catch { /* keep what was shown */ }

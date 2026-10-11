@@ -29,19 +29,27 @@ test("phones: allow alerts, stop them, remove; never Allow alerts without a PIN"
   assert.match(noPin, /no phone can send alerts/);
 });
 
-test("going live: off by default with nothing shown; on shows the device code and the take-over log, escaped", () => {
+test("the device code shows whenever phones are on, and going live is off by default with nothing about it shown", () => {
   const base = { status: "active", urls: ["http://x:9997/"], pinMode: "daily", pin: "1", phones: [], activity: [] };
-  const off = phonePanelHtml({ ...base, goLive: { enabled: false, code: null, takeovers: [] } });
+  const off = phonePanelHtml({ ...base, goLive: { enabled: false, code: "4821", takeovers: [] } });
+  assert.match(off, /id="phone-device-code">4821</, "the code is how a phone gets to search and send alerts, so it shows with go-live off");
+  assert.match(off, /Search and Alerts/);
   assert.match(off, /id="phone-golive"/);
   assert.doesNotMatch(off, /checked/);
-  assert.doesNotMatch(off, /phone-golive-code/);
   assert.match(off, /none can go live/);
+  const noPin = phonePanelHtml({ ...base, pinMode: "none", goLive: { enabled: false, code: "4821", takeovers: [] } });
+  assert.doesNotMatch(noPin, /phone-device-code/, "without a PIN a phone has no identity to allow, so no code is offered");
+  const noCode = phonePanelHtml({ ...base, goLive: { enabled: false, code: null, takeovers: [] } });
+  assert.doesNotMatch(noCode, /phone-device-code/);
+});
+
+test("going live: on shows the take-over log, escaped, and says a PIN is needed without one", () => {
+  const base = { status: "active", urls: ["http://x:9997/"], pinMode: "daily", pin: "1", phones: [], activity: [] };
   const on = phonePanelHtml({
     ...base,
     goLive: { enabled: true, code: "4821", takeovers: [{ at: new Date().toISOString(), phone: "Sam <b>", slide: "Amazing Grace, slide 4", replaced: "Welcome Loop, slide 1", ok: true }, { at: new Date().toISOString(), phone: "Lee", slide: "Offering, slide 1", ok: false, error: "ProPresenter isn't answering." }] },
   });
   assert.match(on, /checked/);
-  assert.match(on, /phone-golive-code">4821</);
   assert.match(on, /Sam &lt;b&gt; put up Amazing Grace, slide 4, replacing Welcome Loop, slide 1/);
   assert.match(on, /Lee put up Offering, slide 1.*didn't work: ProPresenter isn&#39;t answering/);
   const noPin = phonePanelHtml({ ...base, pinMode: "none", goLive: { enabled: true, code: "4821", takeovers: [] } });

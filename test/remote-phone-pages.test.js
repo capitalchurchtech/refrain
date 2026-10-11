@@ -6,7 +6,7 @@ import { issueToken } from "../server/remote-auth.js";
 const SECRET = "test-secret";
 const FLAG_ID = "2026-10-09T10-52-01-123Z-0a1b2c3d";
 
-function start({ approved = true, captured = "pic.png", controls = [], searchLog = [] } = {}) {
+function start({ approved = true, permitted = true, captured = "pic.png", controls = [], searchLog = [] } = {}) {
   const saved = [];
   const app = createRemoteApp({
     getState: () => ({ liveState: { connected: true, live: true }, recent: [], progress: null }),
@@ -15,6 +15,7 @@ function start({ approved = true, captured = "pic.png", controls = [], searchLog
     knownSlide: (pid, idx) => (pid === "P1" && idx === 3 ? { presentationName: "Amazing Grace", text: "Was blind, but now I see" } : null),
     auth: { expectedPin: () => "0000", secret: () => SECRET, hint: () => "", daily: () => true },
     devices: { see() {}, approved: () => approved, removed: () => false, name: () => "Sam" },
+    golive: { enabled: () => false, code: () => "4821", allowed: () => permitted, allow() {}, describe: () => null, onScreen: () => null, run: async () => ({}) },
     search: (q) => (searchLog.push(q), Array.from({ length: 25 }, (_, i) => ({ presentationId: "P1", slideIndex: i, presentationName: "Amazing Grace", snippet: `line ${i} ${q}` }))),
     history: () => [{ name: "Amazing Grace", startedAt: "2026-10-09T10:00:00.000Z", endedAt: null, elapsedMs: 5000, current: true }],
     stage: async () => ({ presets: [{ id: "a", text: "Keep going" }], current: "" }),
@@ -135,4 +136,34 @@ test("a typed stage message is cleaned like the booth's, needs a second tap, and
   try {
     assert.equal((await post(un.base, tok(), "/api/control/prepare", { kind: "stage-custom", text: "Hi" })).status, 403);
   } finally { un.server.close(); }
+});
+
+test("a phone without this month's device code cannot search, whatever else it has", async () => {
+  const log = [];
+  const { server, base } = await start({ permitted: false, searchLog: log });
+  try {
+    const r = await get(base, tok(), "/api/search?q=grace");
+    assert.equal(r.status, 403);
+    assert.equal((await r.json()).needsCode, true);
+    assert.equal(log.length, 0, "the search never ran");
+    // Flagging and reading stay open to any signed-in phone.
+    assert.equal((await get(base, tok(), "/api/history")).status, 200);
+    assert.equal((await get(base, tok(), "/api/flags")).status, 200);
+  } finally { server.close(); }
+});
+
+test("one phone is held to 40 searches a minute, and all phones together to 150", async () => {
+  const { server, base } = await start();
+  try {
+    const t = tok();
+    let last = 200;
+    for (let i = 0; i < 41; i++) last = (await get(base, t, "/api/search?q=grace")).status;
+    assert.equal(last, 429, "the 41st search in a minute from one phone is refused");
+    let refused = false;
+    for (let i = 0; i < 4 && !refused; i++) {
+      const other = tok();
+      for (let j = 0; j < 40; j++) if ((await get(base, other, "/api/search?q=grace")).status === 429) { refused = true; break; }
+    }
+    assert.equal(refused, true, "and the phones together are held to a total too");
+  } finally { server.close(); }
 });

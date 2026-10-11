@@ -211,6 +211,7 @@ import { emptyRegistry, seeDevice, setApproved, removeDevice, isApproved, isRemo
 
 function startControl({ pictures = false } = {}) {
   let reg = emptyRegistry();
+  const permitted = new Set(); // phones that typed this month's device code
   const done = [];
   const activity = { count: 0 };
   const app = createRemoteApp({
@@ -230,11 +231,12 @@ function startControl({ pictures = false } = {}) {
     stage: async () => ({ presets: [{ id: "short", text: "Cut short, pressing for time" }], current: "" }),
     messages: async () => [{ id: "PAGER", name: "Kids pager", active: false, fields: ["Code"] }],
     noteActivity: () => activity.count++,
+    golive: { enabled: () => false, code: () => "4821", allowed: (id) => permitted.has(id), allow: (id) => permitted.add(id), describe: () => null, onScreen: () => null, run: async () => ({}) },
     control: async (action, deviceId) => (done.push({ ...action, deviceId }), { label: action.label }),
   });
   return new Promise((resolve) => {
     const server = app.listen(0, "127.0.0.1", () =>
-      resolve({ server, base: `http://127.0.0.1:${server.address().port}`, done, activity, approve: (id) => (reg = setApproved(reg, id, true)), remove: (id) => (reg = removeDevice(reg, id)), reg: () => reg })
+      resolve({ server, base: `http://127.0.0.1:${server.address().port}`, done, activity, approve: (id) => (reg = setApproved(reg, id, true)), permit: (id) => permitted.add(id), remove: (id) => (reg = removeDevice(reg, id)), reg: () => reg })
     );
   });
 }
@@ -248,6 +250,13 @@ test("alerts: unapproved phones can't; approved ones prepare then confirm, once;
     assert.equal(t.reg().devices[id].name, "Sam");
     assert.equal((await post("/api/control/prepare", { kind: "stage-clear" }, token)).status, 403, "not approved yet");
     t.approve(id);
+    // Approved by the booth is not enough: the phone also needs this month's device code.
+    for (const [m, p] of [["POST", "/api/control/prepare"], ["POST", "/api/control/confirm"], ["GET", "/api/stage"], ["GET", "/api/messages"]]) {
+      const r = await fetch(t.base + p, { method: m, headers: { "Content-Type": "application/json", "x-refrain-device": token }, body: m === "POST" ? "{}" : undefined });
+      assert.equal(r.status, 403, `${p} needs the device code too`);
+      assert.equal((await r.json()).needsCode, true);
+    }
+    t.permit(id);
     const state = await (await fetch(`${t.base}/api/state`, { headers: { "x-refrain-device": token } })).json();
     assert.deepEqual(state.phone, { name: "Sam", canControl: true });
     const { confirmId, label } = await (await post("/api/control/prepare", { kind: "stage-clear" }, token)).json();
@@ -321,6 +330,7 @@ test("stage message and pager from a phone: presets only, codes upper-cased, two
     const id = Object.keys(t.reg().devices)[0];
     assert.equal((await fetch(`${t.base}/api/stage`, { headers: { "x-refrain-device": token } })).status, 403, "approved phones only");
     t.approve(id);
+    t.permit(id);
     const stage = await (await fetch(`${t.base}/api/stage`, { headers: { "x-refrain-device": token } })).json();
     assert.equal(stage.presets[0].id, "short");
 

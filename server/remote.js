@@ -12,7 +12,9 @@
  *   - report what's live, the last few slides, and service progress,
  *   - add a flag (a type, a note, a name) for one of those slides.
  * There is no route to Clear, Looks, Macros, settings or anything on the main
- * app. Three things reach ProPresenter, all narrow: pictures of the current
+ * app. Search and Alerts need the phone to have typed this month's device code
+ * (server/remote-live.js); a phone with only the PIN can flag and read. Three
+ * things reach ProPresenter, all narrow: pictures of the current
  * and next slide (cached); for a phone the booth approved by name, a stage
  * message or a pager code, each needing a second, confirming press; and, only
  * while the booth has switched "Let phones go live" on, one searched slide
@@ -261,6 +263,16 @@ export function createRemoteApp({
     if (!devices.approved(req.deviceId)) return res.status(403).json({ error: "The booth hasn't approved this phone for control." });
     next();
   };
+  // Search and alerts need this month's device code, the same permission going
+  // live needs (owner, 2026-10-11): a phone that has only today's PIN can flag
+  // and read, and nothing more. Without it any phone on the Wi-Fi could fill the
+  // stage with messages or keep the booth's search busy. The booth's "Let phones
+  // go live" switch is separate: it only decides whether going live is possible.
+  const permitted = (req, res, next) => {
+    if (!pinOn()) return res.status(403).json({ error: "Search and alerts from a phone need phone PINs turned on." });
+    if (!golive.allowed(req.deviceId)) return res.status(403).json({ error: "This phone needs this month's device code first.", needsCode: true });
+    next();
+  };
   const confirmer = createConfirmer();
   const cooldown = createCooldown(1200);
 
@@ -364,11 +376,15 @@ export function createRemoteApp({
   });
 
   // --- Search, History, and the flags list: read-only -----------------------
-  const allowSearch = rateLimiter({ max: 120, windowMs: 60_000 });
-  app.get("/api/search", (req, res) => {
+  // A person typing searches a handful of times a minute, so one phone gets 40;
+  // and every phone together gets 150, since a search runs on the same thread
+  // that watches ProPresenter and answers the booth.
+  const allowSearch = rateLimiter({ max: 40, windowMs: 60_000 });
+  const allowSearchAll = rateLimiter({ max: 150, windowMs: 60_000 });
+  app.get("/api/search", permitted, (req, res) => {
     const q = req.query.q;
     if (typeof q !== "string") return res.status(400).json({ error: "Send what to search for, once, as text." });
-    if (!allowSearch(req.deviceId ?? req.ip)) return res.status(429).json({ error: "That's a lot of searches. Wait a moment." });
+    if (!allowSearch(req.deviceId) || !allowSearchAll("all")) return res.status(429).json({ error: "That's a lot of searches. Wait a moment." });
     const text = q.trim().slice(0, 100);
     if (text.length < 2) return res.json({ results: [], more: false });
     const found = search(text);
@@ -415,15 +431,18 @@ export function createRemoteApp({
     next();
   };
 
+  // `allowed` is the phone's monthly permission (search, alerts and going live);
+  // `enabled` is only whether the booth lets phones go live.
   app.get("/api/golive/status", (req, res) => {
-    const enabled = pinOn() && Boolean(golive.enabled());
-    if (!enabled) return res.json({ enabled: false });
+    if (!pinOn()) return res.json({ pin: false, enabled: false, allowed: false });
     const allowed = Boolean(golive.allowed(req.deviceId));
-    res.json({ enabled: true, allowed, until: allowed ? new Date(endOfMonth()).toISOString() : null, lockedMs: liveGate.lockedMs(req.deviceId, Date.now()) });
+    res.json({ pin: true, enabled: Boolean(golive.enabled()), allowed, until: allowed ? new Date(endOfMonth()).toISOString() : null, lockedMs: liveGate.lockedMs(req.deviceId, Date.now()) });
   });
 
+  const needPin = (req, res, next) => (pinOn() ? next() : res.status(403).json({ error: "A phone's permission needs phone PINs turned on." }));
+
   /** The device code, once a month per phone. */
-  app.post("/api/golive/allow", liveOn, (req, res) => {
+  app.post("/api/golive/allow", needPin, (req, res) => {
     const locked = liveGate.lockedMs(req.deviceId, Date.now());
     if (locked) return res.status(429).json({ error: lockedSentence(locked) });
     if (golive.guard?.blocked()) return res.status(429).json({ error: "Too many wrong device codes today, so no phone can be allowed until tomorrow." });
@@ -476,7 +495,7 @@ export function createRemoteApp({
 
   // The stage message (handoff section 44): presets only from a phone, so a
   // phone can't put a typo in front of whoever is speaking.
-  app.get("/api/stage", approvedOnly, async (_req, res) => {
+  app.get("/api/stage", approvedOnly, permitted, async (_req, res) => {
     res.json(await stage());
   });
 
@@ -487,7 +506,7 @@ export function createRemoteApp({
     if (!messagesCache.list || Date.now() - messagesCache.at > 10_000) messagesCache = { at: Date.now(), list: await messages() };
     return messagesCache.list;
   };
-  app.get("/api/messages", approvedOnly, async (_req, res) => {
+  app.get("/api/messages", approvedOnly, permitted, async (_req, res) => {
     try {
       res.json({ messages: await messageList() });
     } catch {
@@ -499,7 +518,7 @@ export function createRemoteApp({
    * Step one of a control press: says what it will do and hands back a
    * one-time id. Nothing happens until the same phone confirms it.
    */
-  app.post("/api/control/prepare", approvedOnly, async (req, res) => {
+  app.post("/api/control/prepare", approvedOnly, permitted, async (req, res) => {
     const { kind } = req.body ?? {};
     let action = null;
     if (kind === "stage") {
@@ -534,7 +553,7 @@ export function createRemoteApp({
   });
 
   /** Step two: the confirm press. Performs it, once, for this phone only. */
-  app.post("/api/control/confirm", approvedOnly, async (req, res) => {
+  app.post("/api/control/confirm", approvedOnly, permitted, async (req, res) => {
     if (!cooldown.ready(req.deviceId)) return res.status(429).json({ error: "Wait a moment between presses, then tap again." });
     const action = confirmer.take(req.deviceId, String(req.body?.confirmId ?? ""));
     if (!action) return res.status(409).json({ error: "That press timed out. Press it again." });

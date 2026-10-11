@@ -7,7 +7,11 @@
  *  1. **The booth's switch** (`networkModule.phoneGoLive`). Off unless a person
  *     at this Mac turns it on, and turning it off stops every phone at once,
  *     because the switch is read on every request.
- *  2. **The device code**, once a month per phone. Four digits derived from the
+ *  2. **The device code**, once a month per phone. It is the phone's permission
+ *     for the things beyond flagging and reading: Search, Alerts (which also need
+ *     the booth's approval by name) and going live (owner, 2026-10-11: any phone
+ *     with the PIN could otherwise fill the stage or keep the booth's search
+ *     busy). Four digits derived from the
  *     phone secret and the calendar month, shown only at the booth. A phone
  *     that has typed it is allowed until the month ends; a new month, Forget
  *     all phones, or removing the phone locks it again.
