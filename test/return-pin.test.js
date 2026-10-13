@@ -45,3 +45,14 @@ test("a failed fetch is not remembered and the next call asks again", async () =
   assert.deepEqual(await loadReturnPin(), { n: 3 });
   assert.equal(calls(), 1);
 });
+
+test("a caller that needs a fresh answer is not handed a request sent before it", async () => {
+  const calls = fakeFetch([{ n: 1 }, { n: 2 }]);
+  const older = loadReturnPin();
+  const newer = loadReturnPin({ fresh: true });
+  assert.deepEqual(await newer, { n: 2 });
+  await older;
+  assert.equal(calls(), 2);
+  // the older answer, landing later or earlier, does not replace the newer one
+  assert.deepEqual(await loadReturnPin({ maxAgeMs: 3500 }), { n: 2 });
+});

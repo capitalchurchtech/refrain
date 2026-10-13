@@ -5,23 +5,32 @@
  *
  * `maxAgeMs` is how old an answer the caller will accept: the bar passes 0 (it
  * is the one that keeps the answer fresh), the flyout accepts what the bar just
- * fetched. A request already in flight is joined, not repeated.
+ * fetched. A request already in flight is joined, not repeated, unless the
+ * caller needs an answer from after something it just did (`fresh`: the bar
+ * right after a jump, which must not be handed a request sent before it).
  */
 
 let inFlight = null;
 let last = null; // { at, data }
+let seq = 0; // requests started
+let storedSeq = 0; // the newest request whose answer is kept, so a slow old one cannot overwrite a newer one
 
-export function loadReturnPin({ maxAgeMs = 0, now = Date.now() } = {}) {
-  if (maxAgeMs > 0 && last && now - last.at <= maxAgeMs) return Promise.resolve(last.data);
-  if (inFlight) return inFlight;
-  inFlight = fetch("/api/return-pin")
+export function loadReturnPin({ maxAgeMs = 0, fresh = false, now = Date.now() } = {}) {
+  if (!fresh && maxAgeMs > 0 && last && now - last.at <= maxAgeMs) return Promise.resolve(last.data);
+  if (!fresh && inFlight) return inFlight;
+  const mine = ++seq;
+  const request = fetch("/api/return-pin")
     .then((r) => r.json())
     .then((data) => {
-      last = { at: Date.now(), data };
+      if (mine > storedSeq) {
+        storedSeq = mine;
+        last = { at: Date.now(), data };
+      }
       return data;
     })
     .finally(() => {
-      inFlight = null;
+      if (inFlight === request) inFlight = null;
     });
-  return inFlight;
+  inFlight = request;
+  return request;
 }
