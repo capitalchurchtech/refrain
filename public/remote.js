@@ -434,7 +434,7 @@ async function addFlagNow() {
   const name = store.get("refrain.remote.name", "");
   // The slide it means travels with it, so a flag that waits (no signal) still
   // lands on the right slide; the server checks it against the index.
-  const item = { id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`, ref: null, slide: { presentationId: target.presentationId, slideIndex: target.slideIndex, at: new Date().toISOString() }, type: s.type, note: s.note, name };
+  const item = { id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`, ref: null, slide: { presentationId: target.presentationId, slideIndex: target.slideIndex, live: !s.pick, at: new Date().toISOString() }, type: s.type, note: s.note, name };
   s.busy = true;
   s.fault = "";
   renderSheet();

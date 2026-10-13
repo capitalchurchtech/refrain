@@ -145,6 +145,8 @@ export function buildStatus({ live, mod, consoleId, appVersion, seq, now }) {
         presentationName: live.slide.presentationName ?? null,
         arrangementName: live.slide.arrangementName ?? null,
         slideIndex: live.slide.slideIndex ?? null,
+        // What a person sees on ProPresenter's screens: the API index plus one.
+        slideNumber: Number.isInteger(live.slide.slideIndex) ? live.slide.slideIndex + 1 : null,
         slideCount: live.slide.slideCount ?? null,
         ...(mod?.includeSlideText ? { text: live.slide.text ?? null } : {}),
         ...(mod?.includeSlideImage && live.slide.presentationId != null ? { imageKey: imageKeyOf(live.slide) } : {}),

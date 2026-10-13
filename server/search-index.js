@@ -307,6 +307,80 @@ function indexHeader({ currentIndex, plan, startedAt, libraryFolderIssues, crawl
   };
 }
 
+/**
+ * Puts what a read of a presentation says into its index entry: the slides of
+ * the arrangement Refrain indexes, what that arrangement skips (for Deep
+ * Search), and which arrangement ProPresenter has selected. Shared by the full
+ * and incremental crawl and by refreshIndexEntries, so they cannot drift apart.
+ */
+function applyDocToEntry(entry, doc, preferredArrangements) {
+  // Record which arrangement produced these indices, so the UI can show
+  // it and the trigger path can tell when the live one has since changed.
+  const resolved = resolveArrangement(doc, preferredArrangements);
+  entry.slides = flattenGroups(resolved.groups);
+  entry.groupSequence = resolved.groups.map((g) => g.name ?? "Untitled");
+  // What the chosen arrangement skips, for Deep Search. Built from this same
+  // read, so it costs ProPresenter nothing.
+  entry.otherSlides = otherArrangementSlides(doc, resolved);
+  entry.arrangementName = resolved.arrangementName;
+  entry.arrangementId = resolved.arrangementId;
+  entry.arrangementSource = resolved.source;
+  // Which arrangement ProPresenter has selected, which the resolved one
+  // above may not be (a preferred FS wins over it). Recorded so Health's
+  // "FS not selected" list can answer from the index instead of reading
+  // every candidate through ProPresenter again.
+  const selectedId = doc?.presentation?.current_arrangement || null;
+  entry.selectedArrangementId = selectedId;
+  entry.selectedArrangementName = (doc?.presentation?.arrangements ?? []).find((a) => a.id?.uuid === selectedId)?.id?.name ?? null;
+}
+
+/**
+ * A light refresh of some presentations already in the index (the items of the
+ * playlist that is running, while the church's delimiter item has been on the
+ * screens a while): each is read once, politely, and its entry updated in place
+ * and saved, so the arrangements Refrain knows match what ProPresenter has now.
+ *
+ * Built to stop: `shouldStop` is asked before every read, and a read already
+ * started is allowed to finish, so ending it never cuts a call off. Nothing
+ * here starts a rebuild or adds a presentation; one not in the index is skipped.
+ *
+ * @returns {{read: number, changed: number, failed: number, skipped: number, stopped: boolean}}
+ */
+export async function refreshIndexEntries(client, ids, preferredArrangements = [], { shouldStop, pacingMs = 800, retryDelayMs } = {}) {
+  const out = { read: 0, changed: 0, failed: 0, skipped: 0, stopped: false };
+  for (const id of ids ?? []) {
+    const entry = currentIndex.presentations?.[id];
+    if (!entry) {
+      out.skipped += 1;
+      continue;
+    }
+    if (shouldStop?.()) {
+      out.stopped = true;
+      break;
+    }
+    try {
+      const doc = await readPresentationOnce(client, id, { shouldStop, delayMs: retryDelayMs });
+      const before = JSON.stringify([entry.selectedArrangementId, entry.slides?.length, entry.arrangementId]);
+      applyDocToEntry(entry, doc, preferredArrangements);
+      if (client.isLocalHost && entry.presentationPath) entry.fingerprint = (await readFingerprint(entry.presentationPath)) ?? entry.fingerprint;
+      out.read += 1;
+      if (before !== JSON.stringify([entry.selectedArrangementId, entry.slides?.length, entry.arrangementId])) out.changed += 1;
+    } catch {
+      out.failed += 1;
+    }
+    await pause(pacingMs);
+  }
+  if (out.read > 0) {
+    // The words search matched against were derived from the old entries.
+    derived = new Map();
+    vocab = null;
+    // Not while a rebuild is running: it writes the same file, and two writers of
+    // one temporary file can leave a mixed one. It saves the whole index itself.
+    if (!rebuildInFlight) await persistIndex(currentIndex).catch(() => {});
+  }
+  return out;
+}
+
 async function persistIndex(index) {
   await mkdir(CACHE_DIR, { recursive: true });
   const tmpPath = `${CACHE_PATH}.tmp`;
@@ -555,22 +629,7 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
     });
     // Record which arrangement produced these indices, so the UI can show
     // it and the trigger path can tell when the live one has since changed.
-    const resolved = resolveArrangement(doc, preferredArrangements);
-    presentations[id].slides = flattenGroups(resolved.groups);
-    presentations[id].groupSequence = resolved.groups.map((g) => g.name ?? "Untitled");
-    // What the chosen arrangement skips, for Deep Search. Built from this same
-    // read, so it costs ProPresenter nothing.
-    presentations[id].otherSlides = otherArrangementSlides(doc, resolved);
-    presentations[id].arrangementName = resolved.arrangementName;
-    presentations[id].arrangementId = resolved.arrangementId;
-    presentations[id].arrangementSource = resolved.source;
-    // Which arrangement ProPresenter has selected, which the resolved one
-    // above may not be (a preferred FS wins over it). Recorded so Health's
-    // "FS not selected" list can answer from the index instead of reading
-    // every candidate through ProPresenter again.
-    const selectedId = doc?.presentation?.current_arrangement || null;
-    presentations[id].selectedArrangementId = selectedId;
-    presentations[id].selectedArrangementName = (doc?.presentation?.arrangements ?? []).find((a) => a.id?.uuid === selectedId)?.id?.name ?? null;
+    applyDocToEntry(presentations[id], doc, preferredArrangements);
     const presentationPath = doc?.presentation?.presentation_path ?? null;
     const { createdDate, modifiedDate } = await client.getFileDates(presentationPath);
     presentations[id].createdDate = createdDate;
@@ -812,6 +871,9 @@ export function getIndexedSlide(presentationId, slideIndex) {
   return {
     presentationName: entry.name ?? null,
     arrangementName: entry.arrangementName ?? null,
+    // Which arrangement ProPresenter has selected, as last read: the index's slide
+    // numbers match the live ones only when this is the arrangement it indexed.
+    selectedArrangementName: entry.selectedArrangementName ?? null,
     folder: entry.folder ?? null,
     text: slide?.text ?? null,
     slideCount: entry.slides?.length ?? null,

@@ -73,12 +73,26 @@ truth.
   "history": {
     "graceMs": 300000,
     "items": [
-      { "id": "mgx1k2-0", "name": "Amazing Grace", "startedAt": "2026-10-04T15:01:50.000Z", "endedAt": null, "current": true, "blank": false },
-      { "id": "mgx0ab-1", "name": "Welcome Loop", "startedAt": "2026-10-04T14:55:00.000Z", "endedAt": "2026-10-04T15:01:50.000Z", "current": false, "blank": false }
+      { "id": "mgx1k2-0", "name": "Amazing Grace", "kind": "item", "startedAt": "2026-10-04T15:01:50.000Z", "endedAt": null, "current": true, "blank": false },
+      { "id": "mgx0ab-1", "name": "Scrolling Slides", "kind": "delimiter", "startedAt": "2026-10-04T14:55:00.000Z", "endedAt": "2026-10-04T15:01:50.000Z", "current": false, "blank": false }
     ]
   }
 }
 ```
+
+### Which slide, and in which arrangement (2026-10-13; `v` stays 1)
+
+`slide.slideIndex`, `slide.slideCount`, `slide.arrangementName` and, if the church
+sends words, `slide.text` all describe the arrangement that is **playing**: the
+one selected in ProPresenter, read from the live presentation. Before this they
+came from Refrain's own index, which holds the arrangement it prefers (FS), so for
+a "[ T ]" presentation the slide and its count were often wrong (slide 21 of 29
+instead of slide 21 of 27, with another slide's words).
+
+- `slideIndex` is ProPresenter's zero-based index. **`slideNumber` (new) is the
+  number a person sees on ProPresenter's screens** (`slideIndex + 1`): show this one.
+- When the live presentation cannot be read, the slide's text, `slideCount` and
+  `arrangementName` are null rather than guessed from the index.
 
 ### Item history in `/status` (added 2026-10-11; `v` stays 1)
 
@@ -104,6 +118,12 @@ History page.
   `endedAt` is when the item went off, which is when the screens went blank if
   they did before the next item came up. A blank gap needs no entry of its own:
   it is the time between one item's `endedAt` and the next item's `startedAt`.
+- `kind` (added 2026-10-13) is `"delimiter"` for the church's pre-service,
+  post-service or intermission item (named by the church in
+  `liveModule.delimiterItems`, for example "Scrolling Slides"), else `"item"`.
+  The same field is on the `item` lines in the day log. A console with no
+  delimiter listed marks every item `"item"`, and an older console sends no
+  `kind`: treat a missing one as `"item"`.
 - `blank` is true only on the open item, while the screens are empty and the
   gap is still being forgiven. Do not call it live then.
 - Elapsed time is not sent (it would change every second). For the open item it

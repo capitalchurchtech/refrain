@@ -73,6 +73,7 @@ import {
   suggestQuery,
   searchOtherArrangements,
   otherSlidesCoverage,
+  refreshIndexEntries,
 } from "./search-index.js";
 import { startLibraryWatch, fullRebuildSuggestion,
   indexStaleness,
@@ -113,6 +114,8 @@ import QRCode from "qrcode";
 import { emptyRegistry, seeDevice, setApproved, removeDevice, isApproved, isRemoved, deviceList, loadRegistry, saveRegistry, setLiveMonth, isLiveAllowed } from "./remote-devices.js";
 import { monthKey, deviceCode, appendTakeover } from "./remote-live.js";
 import { noteItem, splitsView, feedItems, itemLines, leftOpenLines } from "./item-splits.js";
+import { playingFromDoc, playingStale, liveSlideDetails } from "./playing-slide.js";
+import { delimiterNames, isDelimiterName, delimiterOnScreen, rescanDue } from "./delimiter.js";
 import { saveFlagPicture, readFlagPicture, listFlagPictureIds } from "./flag-pictures.js";
 import { previewTargets, createThumbCache } from "./slide-preview.js";
 import { createThumbStore, slideKey as pictureKey } from "./thumb-store.js";
@@ -1717,12 +1720,82 @@ function currentSlides() {
   }
   const count = Math.min(Math.max(known, slide.slideIndex + 1), 300);
   const slides = [];
-  for (let i = 0; i < count; i++) slides.push({ slideIndex: i, text: getIndexedSlide(slide.presentationId, i)?.text ?? null });
+  for (let i = 0; i < count; i++) slides.push({ slideIndex: i, text: liveSlideText(slide.presentationId, i) });
   return { presentationId: slide.presentationId, presentationName: slide.presentationName ?? slide.name ?? null, currentIndex: slide.slideIndex, slides };
 }
 
 function currentPreview() {
-  return previewTargets(liveState.live ? liveState.slide : null, (pid, idx) => getIndexedSlide(pid, idx)?.text ?? null);
+  return previewTargets(liveState.live ? liveState.slide : null, (pid, idx) => liveSlideText(pid, idx));
+}
+
+// --- The slide that is really playing (server/playing-slide.js) -----------------
+// ProPresenter's live index counts in the arrangement selected in the app; the
+// search index holds the one Refrain prefers. Words, count and arrangement of
+// the live slide come from the live presentation itself.
+const playingCache = new Map(); // presentationId -> { ...playingFromDoc, at }
+let playingInFlight = null;
+/** Reads the active presentation once, keeping it only if it is the one that was asked about. */
+function readPlaying(presentationId) {
+  if (playingInFlight) return playingInFlight;
+  playingInFlight = client
+    .getActivePresentation({ timeoutMs: 2500 })
+    .then((doc) => {
+      const p = playingFromDoc(doc);
+      if (p && p.presentationId === presentationId) playingCache.set(presentationId, { ...p, at: Date.now() });
+    })
+    .catch(() => {}) // not answering: the index is used only where it is known to agree
+    .finally(() => {
+      playingInFlight = null;
+      if (playingCache.size > 40) playingCache.delete(playingCache.keys().next().value);
+    });
+  return playingInFlight;
+}
+// --- The delimiter item (server/delimiter.js) -----------------------------------
+// While the church's delimiter (pre/post-service, intermission) has been on the
+// screens for five minutes, the items of the running playlist are read once,
+// lightly, so the arrangements Refrain knows match ProPresenter's. Performance
+// mode stays armed throughout; this is not a reindex. It ends between reads the
+// moment the delimiter is not on the screens, and never starts again for that stay.
+let delimiterRescan = { running: false, doneFor: null };
+const delimiterRefreshedAt = new Map(); // presentationId -> when it was last refreshed here
+const DELIMITER_REFRESH_AGAIN_MS = 30 * 60_000;
+/** The presentations in the playlist that is running, from ProPresenter, else from today's service playlist. */
+async function runningPlaylistPresentationIds(now) {
+  const active = await client.getActivePlaylist().catch(() => null);
+  const playlist = active?.presentation?.playlist ?? active?.announcements?.playlist ?? null;
+  const uuid = playlist?.id?.uuid ?? playlist?.uuid ?? null;
+  if (uuid) return (await client.getPlaylistItems(uuid)).items.map((i) => ({ id: i.id, name: i.name }));
+  const service = serviceModuleOn() ? activeServices(serviceState(now), now, serviceOptions().windows).find((s) => s.playlist?.items?.length) : null;
+  return (service?.playlist?.items ?? []).filter((i) => i.presentationId).map((i) => ({ id: i.presentationId, name: i.name }));
+}
+function maybeRescanDelimiter(now) {
+  const names = config.liveModule?.delimiterItems;
+  if (!delimiterNames(names).length || delimiterRescan.running) return;
+  const open = itemSplits[0];
+  if (!rescanDue(open, now, delimiterRescan.doneFor)) return;
+  if (protectOn() || !liveState.connected || getRebuildProgress().inProgress) return;
+  delimiterRescan = { running: true, doneFor: open.id };
+  const stillOnScreen = () => itemSplits[0]?.id === open.id && delimiterOnScreen(itemSplits[0]) && liveState.connected;
+  (async () => {
+    try {
+      const items = (await runningPlaylistPresentationIds(now)).filter((i) => !isDelimiterName(i.name, names));
+      // A presentation read a moment ago (the pre-service stay, then the intermission) is not read again.
+      const ids = [...new Set(items.map((i) => i.id))].filter((id) => now - (delimiterRefreshedAt.get(id) ?? 0) > DELIMITER_REFRESH_AGAIN_MS);
+      for (const id of ids) delimiterRefreshedAt.set(id, now);
+      if (!ids.length) return diag("delimiter-rescan", { items: 0, note: "no running playlist known" });
+      const out = await refreshIndexEntries(client, ids, preferredArrangements(), { shouldStop: () => !stillOnScreen(), pacingMs: 800 });
+      diag("delimiter-rescan", { items: ids.length, ...out });
+      console.log(`Delimiter on the screens: refreshed ${out.read} of ${ids.length} playlist item(s)${out.changed ? `, ${out.changed} had changed` : ""}${out.stopped ? "; stopped because the delimiter went off" : ""}.`);
+    } catch (err) {
+      diag("delimiter-rescan", { error: err.message });
+    } finally {
+      delimiterRescan.running = false;
+    }
+  })();
+}
+/** The words of slide `idx` of a presentation, as the live arrangement plays it, or null. */
+function liveSlideText(pid, idx) {
+  return liveSlideDetails({ playing: playingCache.get(pid) ?? null, slideIndex: idx, indexed: getIndexedSlide(pid, idx) }).text;
 }
 
 /**
@@ -1990,8 +2063,22 @@ async function heartbeat() {
 
   const now = Date.now();
   const connected = layers !== null;
+  // Which arrangement is playing: read when a presentation goes live (waited for
+  // briefly, so its first beat already has the right words) and now and then
+  // after; during performance mode only on a new presentation or a slide past
+  // what was read. Never from the editor: this is the active presentation.
+  if (current && layers && isLive(layers) && playingStale(playingCache.get(current.presentationId), current.slideIndex, now, { quiet: performance.armed })) {
+    const asked = readPlaying(current.presentationId);
+    if (!playingCache.has(current.presentationId)) await Promise.race([asked, new Promise((r) => setTimeout(r, 900))]);
+  }
+  const indexed = current ? (getIndexedSlide(current.presentationId, current.slideIndex) ?? null) : null;
   const enriched = current
-    ? { ...current, ...(getIndexedSlide(current.presentationId, current.slideIndex) ?? {}) }
+    ? {
+        ...current,
+        ...(indexed ?? {}),
+        // Words, count and arrangement of the PLAYING arrangement, not the indexed one.
+        ...liveSlideDetails({ playing: playingCache.get(current.presentationId) ?? null, slideIndex: current.slideIndex, indexed }),
+      }
     : null;
 
   // Elapsed time is measured from when THIS slide appeared, so it survives
@@ -2012,9 +2099,11 @@ async function heartbeat() {
   // Only while ProPresenter answers: "can't see" is not "the screens were cleared".
   if (connected) {
     const before = itemSplits;
-    itemSplits = noteItem(itemSplits, liveState.live && enriched ? { presentationId: enriched.presentationId, name: enriched.presentationName ?? enriched.name ?? null } : null, now);
+    const itemName = enriched ? (enriched.presentationName ?? enriched.name ?? null) : null;
+    itemSplits = noteItem(itemSplits, liveState.live && enriched ? { presentationId: enriched.presentationId, name: itemName, delimiter: isDelimiterName(itemName, config.liveModule?.delimiterItems) } : null, now);
     // When an item opens and when it closes, into the day's log (docs/service-feed.md).
     for (const line of itemLines(before, itemSplits, STATION_TZ)) diag("item", line);
+    maybeRescanDelimiter(now);
   }
 
   // The service timeline: what goes live, when, and in which service. It reads
