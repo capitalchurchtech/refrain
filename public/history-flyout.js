@@ -1,5 +1,6 @@
 import { showFailure } from "./notice.js";
 import { escapeHtml } from "./slide-tools.js";
+import { loadReturnPin } from "./return-pin.js";
 
 /**
  * The History key and its flyout (owner, 2026-10-07).
@@ -24,6 +25,8 @@ import { escapeHtml } from "./slide-tools.js";
  */
 
 const POLL_MS = 4000;
+/** An answer the Return bar fetched this recently is used as is (public/return-pin.js). */
+const SHARED_MAX_AGE_MS = 3500;
 
 /** "now", "2 min ago", "1 h ago": when an item went up, to the nearest minute. */
 export function agoText(iso, now = Date.now()) {
@@ -165,7 +168,7 @@ export function initHistoryFlyout() {
 
   async function load() {
     try {
-      const data = await fetch("/api/return-pin").then((r) => r.json());
+      const data = await loadReturnPin({ maxAgeMs: SHARED_MAX_AGE_MS });
       history = Array.isArray(data.history) ? data.history : [];
       splits = Array.isArray(data.splits) ? data.splits : [];
       splitsAt = Date.now();

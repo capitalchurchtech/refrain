@@ -1,4 +1,5 @@
 import { showFailure } from "./notice.js";
+import { loadReturnPin } from "./return-pin.js";
 
 /**
  * App-wide "Return", and the history behind it.
@@ -106,7 +107,7 @@ export function initReturnBar() {
 
   async function load() {
     try {
-      const data = await fetch("/api/return-pin").then((r) => r.json());
+      const data = await loadReturnPin();
       pin = data.pin ?? null;
       history = Array.isArray(data.history) ? data.history : pin ? [pin] : [];
       paint();
