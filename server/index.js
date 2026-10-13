@@ -1688,36 +1688,15 @@ app.get("/api/slide-pictures/status", (_req, res) => {
   res.json({ show: picturesOn(), run: picturesRun, last: slidePicturesStatus });
 });
 
-/**
- * How many slides a presentation has, for one the index doesn't know (not in
- * a searched library). Asked of ProPresenter once per presentation, then
- * remembered; until it answers, the slides up to the live one are listed.
- */
-const slideCountCache = new Map();
-// One document read at a time, whatever the phones ask for: it's the heaviest
-// call Refrain makes during a service, so a deck change with several phones
-// open costs one read, not one per phone.
-let slideCountInFlight = false;
-function learnSlideCount(presentationId) {
-  if (protectOn() || slideCountCache.has(presentationId) || slideCountInFlight) return;
-  slideCountInFlight = true;
-  slideCountCache.set(presentationId, null);
-  client
-    .getPresentation(presentationId)
-    .then((doc) => slideCountCache.set(presentationId, flattenGroups(resolveArrangement(doc, []).groups).length))
-    .catch(() => slideCountCache.delete(presentationId))
-    .finally(() => (slideCountInFlight = false));
-}
-
 /** Every slide of the presentation on the screens, words from the index. At most 300. */
 function currentSlides() {
   const slide = liveState.live ? liveState.slide : null;
   if (!slide?.presentationId || !Number.isInteger(slide.slideIndex)) return null;
-  let known = Number.isInteger(slide.slideCount) ? slide.slideCount : slideCountCache.get(slide.presentationId);
-  if (!Number.isInteger(known)) {
-    learnSlideCount(slide.presentationId);
-    known = slide.slideIndex + 1;
-  }
+  // The count comes from the live read of the playing presentation (the heartbeat
+  // makes it, and retries each beat until it answers); until then, the slides up
+  // to the live one are listed. No second whole-document read for the same thing.
+  const playedCount = playingCache.get(slide.presentationId)?.count;
+  const known = Number.isInteger(slide.slideCount) ? slide.slideCount : Number.isInteger(playedCount) ? playedCount : slide.slideIndex + 1;
   const count = Math.min(Math.max(known, slide.slideIndex + 1), 300);
   const slides = [];
   for (let i = 0; i < count; i++) slides.push({ slideIndex: i, text: liveSlideText(slide.presentationId, i) });

@@ -1,4 +1,5 @@
 import { showFailure } from "./notice.js";
+import { loadReturnPin } from "./return-pin.js";
 
 /**
  * App-wide "Return", and the history behind it.
@@ -97,16 +98,16 @@ export function initReturnBar() {
         pin = null; // returning always stands the bar down
         paint();
       } else {
-        await load();
+        await load(true);
       }
     } finally {
       btn.disabled = false;
     }
   }
 
-  async function load() {
+  async function load(fresh = false) {
     try {
-      const data = await fetch("/api/return-pin").then((r) => r.json());
+      const data = await loadReturnPin({ fresh });
       pin = data.pin ?? null;
       history = Array.isArray(data.history) ? data.history : pin ? [pin] : [];
       paint();
@@ -124,7 +125,7 @@ export function initReturnBar() {
 
   // Let Go Live handlers ask for an immediate refresh instead of waiting on
   // the poll, so the bar appears the moment they jump.
-  window.refreshReturnBar = load;
+  window.refreshReturnBar = () => load(true);
 
   load();
   setInterval(load, POLL_MS);
