@@ -227,6 +227,11 @@ export class ProPresenterClient {
     return this.#get("/v1/playlists");
   }
 
+  /** The playlists the live presentation and the announcements layer came from, or nulls. */
+  async getActivePlaylist() {
+    return this.#get("/v1/playlist/active");
+  }
+
   /** A single playlist's items — filters to actual presentations. */
   async getPlaylistItems(playlistId) {
     const playlist = await this.#get(`/v1/playlist/${seg(playlistId)}`);
@@ -339,6 +344,16 @@ export class ProPresenterClient {
     const index = pi?.index;
     if (!uuid || typeof index !== "number" || index < 0) return null;
     return { presentationId: uuid, slideIndex: index, name: pi.presentation_id.name ?? null };
+  }
+
+  /**
+   * The presentation that is active (live) right now, as its full document, or
+   * null when nothing is. Its `current_arrangement` is the one the live slide
+   * index counts in (see server/playing-slide.js).
+   */
+  async getActivePresentation({ timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
+    const data = await this.#get("/v1/presentation/active", { timeoutMs });
+    return data?.presentation ? data : null;
   }
 
   // --- Live output controls (the "Live" page) ---

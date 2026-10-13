@@ -361,3 +361,10 @@ test("a history change is a change worth sending; the clock is not", () => {
   assert.equal(statusFingerprint(mk(hist(2), 1)), statusFingerprint(mk(hist(2), 99_999)));
   assert.notEqual(statusFingerprint(mk(hist(2), 1)), statusFingerprint(mk(hist(3), 1)));
 });
+
+test("the status carries the slide number a person sees beside the API's zero-based index", () => {
+  const s = buildStatus({ live: live(), mod: good, consoleId: "c1", appVersion: "1", seq: 1, now: 0 });
+  assert.deepEqual([s.slide.slideIndex, s.slide.slideNumber], [2, 3]);
+  const none = buildStatus({ live: live({ slide: { slideIndex: null } }), mod: good, consoleId: "c1", appVersion: "1", seq: 1, now: 0 });
+  assert.equal(none.slide.slideNumber, null);
+});

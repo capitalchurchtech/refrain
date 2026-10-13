@@ -576,15 +576,24 @@ export function createRemoteApp({
     // meant; that's accepted only if the slide really is in the index, and
     // the text recorded is the index's, never the phone's.
     if (!entry && slide && typeof slide.presentationId === "string" && Number.isInteger(slide.slideIndex)) {
-      const indexed = knownSlide(slide.presentationId, slide.slideIndex);
+      // A slide picked from the list of the presentation on screen is numbered
+      // in the arrangement that is playing, which is not the one the index holds
+      // (server/playing-slide.js): its words are the booth's live copy, tried
+      // first. A slide found in Search is numbered by the index, so it is not.
+      const d = slide.live === true ? currentSlides() : null;
+      const own = d?.presentationId === slide.presentationId ? d.slides.find((x) => x.slideIndex === slide.slideIndex) : null;
+      if (own) entry = { presentationId: d.presentationId, presentationName: d.presentationName, slideIndex: own.slideIndex, text: own.text ?? "", at: Date.now() };
+      const indexed = entry ? null : knownSlide(slide.presentationId, slide.slideIndex);
       const seenAt = Date.parse(slide.at);
       if (indexed) entry = { ...indexed, presentationId: slide.presentationId, slideIndex: slide.slideIndex, at: Number.isFinite(seenAt) ? seenAt : Date.now() };
       // Or any slide of the presentation on screen, picked from the tray:
       // a slide with no words (a graphic) is never in the index. What's
       // recorded is the booth's own copy of it, never the phone's.
-      const d = entry ? null : currentSlides();
-      const own = d?.presentationId === slide.presentationId ? d.slides.find((x) => x.slideIndex === slide.slideIndex) : null;
-      if (own) entry = { presentationId: d.presentationId, presentationName: d.presentationName, slideIndex: own.slideIndex, text: own.text ?? "", at: Date.now() };
+      if (!entry) {
+        const d2 = currentSlides();
+        const own2 = d2?.presentationId === slide.presentationId ? d2.slides.find((x) => x.slideIndex === slide.slideIndex) : null;
+        if (own2) entry = { presentationId: d2.presentationId, presentationName: d2.presentationName, slideIndex: own2.slideIndex, text: own2.text ?? "", at: Date.now() };
+      }
     }
     if (!entry) return res.status(404).json({ error: "That slide has scrolled out of the recent list. Pick it again." });
     const types = flagTypes().map((t) => t.label);

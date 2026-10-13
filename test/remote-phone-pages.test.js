@@ -22,6 +22,7 @@ function start({ approved = true, permitted = true, captured = "pic.png", contro
     captureFlagPicture: async (id) => (captured ? `${id}.png` : null),
     openFlags: async () => [{ id: FLAG_ID, presentationName: "Amazing Grace", slideNumber: 4, type: "Typo or spelling", note: "wretch", by: "Sam", at: "2026-10-09T10:52:01.123Z", picture: `${FLAG_ID}.png` }, { id: "2026-10-09T10-53-01-123Z-0a1b2c3e", picture: null }],
     flagPicture: async (id) => (id === FLAG_ID ? { type: "image/png", bytes: Buffer.from([137, 80, 78, 71]) } : null),
+    currentSlides: () => ({ presentationId: "P1", presentationName: "Amazing Grace", currentIndex: 3, slides: [{ slideIndex: 3, text: "Words as the playing arrangement has them" }] }),
     stageControl: controls,
     control: async (action) => (controls.push(action), { label: action.label }),
   });
@@ -165,5 +166,16 @@ test("one phone is held to 40 searches a minute, and all phones together to 150"
       for (let j = 0; j < 40; j++) if ((await get(base, other, "/api/search?q=grace")).status === 429) { refused = true; break; }
     }
     assert.equal(refused, true, "and the phones together are held to a total too");
+  } finally { server.close(); }
+});
+
+test("a flag on the slide picked from the on-screen list records the live words; one found in Search records the index's", async () => {
+  const { server, base, saved } = await start();
+  try {
+    const t = tok();
+    await post(base, t, "/api/flag", { slide: { presentationId: "P1", slideIndex: 3, live: true }, type: "Typo or spelling" });
+    assert.equal(saved[0].text, "Words as the playing arrangement has them", "numbered in the playing arrangement, so its words come from the live copy");
+    await post(base, t, "/api/flag", { slide: { presentationId: "P1", slideIndex: 3 }, type: "Typo or spelling" });
+    assert.equal(saved[1].text, "Was blind, but now I see", "numbered by the index, so its words come from the index");
   } finally { server.close(); }
 });
