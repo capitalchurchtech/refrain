@@ -1515,6 +1515,11 @@ setInterval(() => thumbStore.prune().catch(() => {}), 3_600_000).unref();
 // (rendered the day before, say). The disk store works either way. It stops the moment either changes. Sunday morning
 // is usually live from the first slide, so in practice this runs the day
 // before or between services, which is when the work belongs.
+// Paused (owner, 2026-10-29): Refrain draws no pictures on its own for now,
+// whatever `slidePictures.prerender` says, while ProPresenter 22 beta is slow
+// on rich slides. Update pictures (Service › Day) still draws them when asked.
+// The setting is kept, so un-pausing is this one line.
+const PRERENDER_PAUSED = true;
 const PRERENDER_CHECK_MS = 5 * 60_000;
 const PRERENDER_PACING_MS = 100;
 let prerenderCheckedAt = 0;
@@ -1650,7 +1655,7 @@ async function refreshPictures({ operator = false } = {}) {
 async function maybePrerender(now = Date.now()) {
   if (now - prerenderCheckedAt < PRERENDER_CHECK_MS) return;
   prerenderCheckedAt = now;
-  if (protectOn() || !picturesOn() || config.slidePictures?.prerender !== true || picturesRun?.running || !quietForPictures(now) || !client.isLocalHost) return;
+  if (PRERENDER_PAUSED || protectOn() || !picturesOn() || config.slidePictures?.prerender !== true || picturesRun?.running || !quietForPictures(now) || !client.isLocalHost) return;
   const readyFor = await propresenterReadyForMs();
   if (readyFor == null || readyFor < WATCH_SETTLE_MS) return;
   await refreshPictures();
@@ -5311,6 +5316,7 @@ app.post("/api/slide-pictures", async (req, res) => {
     if (v !== undefined && typeof v !== "boolean") return res.status(400).json({ error: `${name} must be true or false` });
   }
   if (prerender === undefined && show === undefined && quickSlides === undefined) return res.status(400).json({ error: "Send show, prerender and/or quickSlides." });
+  if (prerender === true && PRERENDER_PAUSED) return res.status(409).json({ error: "Drawing ahead is paused for now. To draw today's pictures, press Update pictures on Service › Day." });
   const change = Object.fromEntries(Object.entries({ prerender, show, quickSlides }).filter(([, v]) => v !== undefined));
   try {
     await updateConfig((c) => ({ ...c, slidePictures: { playlists: [], ...c.slidePictures, ...change } }));
@@ -6440,7 +6446,7 @@ app.get("/api/health", async (_req, res) => {
   // is the thing to watch on a long service day, and only this machine sees it.
   propresenter.process = propresenterSamples.at(-1) ?? null;
   propresenter.load = propresenterLoad;
-  propresenter.slidePictures = { ...slidePicturesStatus, show: picturesOn(), quickSlides: quickSlidePicturesOn(), prerender: config.slidePictures?.prerender === true, onThisMac: client.isLocalHost };
+  propresenter.slidePictures = { ...slidePicturesStatus, show: picturesOn(), quickSlides: quickSlidePicturesOn(), prerender: config.slidePictures?.prerender === true, prerenderPaused: PRERENDER_PAUSED, onThisMac: client.isLocalHost };
   res.json({
     version,
     role: config.role ?? null,
