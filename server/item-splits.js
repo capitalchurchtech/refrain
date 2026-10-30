@@ -65,7 +65,7 @@ export function noteItem(log, item, now = Date.now(), max = MAX_SPLITS, graceMs 
     // stayed blank past the grace (then it ended when they went blank).
     next = [{ ...forgiven(open), endMs: endedAt, reason: gone ? "blank-timeout" : "moved" }, ...list.slice(1)];
   }
-  if (pid) next = [{ id: `${now.toString(36)}-${next.length}`, presentationId: pid, name: item.name ?? null, startMs: now, endMs: null, ...(item.delimiter ? { delimiter: true } : {}) }, ...next];
+  if (pid) next = [{ id: `${now.toString(36)}-${next.length}`, presentationId: pid, name: item.name ?? null, startMs: now, endMs: null }, ...next];
   return next.slice(0, max);
 }
 
@@ -101,8 +101,6 @@ export function feedItems(log, max = FEED_ITEMS_MAX) {
     endedAt: e.endMs == null ? null : new Date(e.endMs).toISOString(),
     current: e.endMs == null,
     blank: e.endMs == null && e.blankSince != null,
-    // The church's delimiter item (pre/post-service, intermission): server/delimiter.js.
-    kind: e.delimiter ? "delimiter" : "item",
   }));
 }
 
@@ -124,7 +122,6 @@ export function itemLines(prev, next, tz) {
       startedAt: new Date(e.startMs).toISOString(),
       endedAt: e.endMs == null ? null : new Date(e.endMs).toISOString(),
       reason: e.endMs == null ? null : (e.reason ?? "moved"),
-      kind: e.delimiter ? "delimiter" : "item",
       tz,
     });
   }
@@ -154,5 +151,5 @@ export function leftOpenLines(text, before, tz) {
   }
   return [...latest.values()]
     .filter((l) => l.endedAt == null)
-    .map((l) => ({ id: l.id, name: l.name, startedAt: l.startedAt, endedAt: lastT, reason: "restart", kind: l.kind ?? "item", tz: l.tz ?? tz }));
+    .map((l) => ({ id: l.id, name: l.name, startedAt: l.startedAt, endedAt: lastT, reason: "restart", tz: l.tz ?? tz }));
 }
