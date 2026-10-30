@@ -120,6 +120,26 @@ export function getImageCropModuleStatus(config) {
 }
 
 /**
+ * The ProPresenter files module (Bundles): reading, comparing and checking
+ * .pro and .probundle files. File work only; it never calls ProPresenter.
+ * "misconfigured" until a packs folder is set and exists, because that is
+ * where a church's own templates will live (never in this repo).
+ * @returns {"off" | "misconfigured" | "active"}
+ */
+export function getProbundleModuleStatus(config) {
+  if (!featureOn(config, "probundle")) return "off";
+  return probundleModuleProblems(config).length ? "misconfigured" : "active";
+}
+
+/** Why the module is not ready, one sentence each, for Health and the module's own screen. */
+export function probundleModuleProblems(config) {
+  const dir = config.probundleModule?.packsDir;
+  if (!dir) return ["No packs folder is set yet."];
+  if (!existsSync(dir)) return [`The packs folder ${dir} does not exist.`];
+  return [];
+}
+
+/**
  * Which .env values matter for the *current* config, and whether each
  * is actually set — drives the Health screen's "Environment Variables"
  * card so editing .env is only ever presented when it would do

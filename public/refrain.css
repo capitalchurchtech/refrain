@@ -2465,6 +2465,12 @@ html.blackroom .rf-preset + .rf-preset {
 #view-live .rf-tile.rf-tile-current .rf-tile-label {
   font-weight: 700;
 }
+/* Bundles: the open file the hero is showing, among the files opened.
+   Same printed edge as Now's current Look; applied from probundle.js. */
+#view-probundle .rf-tile.rf-tile-current {
+  box-shadow: inset 0 0 0 2px var(--rf-plum);
+  font-weight: 700;
+}
 #view-live #live-looks-count .rf-looks-current {
   font-family: var(--rf-sans);
   text-transform: none;

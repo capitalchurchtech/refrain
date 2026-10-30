@@ -28,7 +28,7 @@
   "_searchLibrariesOff": "Search's own choices, set on the Search screen and kept on this machine. searchLibrariesOff is the libraries switched off there (a library added later is searched); searchDateField is which date the Date filter uses, modified or created. The date range itself is never kept.",
   "searchLibrariesOff": [],
   "searchDateField": "modified",
-  "_features": "Settings › Features: which screens and tools are on. Search and Quality Control (with its date checks) are always on. Leave a feature out to get its default; true or false is a choice and wins. Defaults: slide-flags, service and messages on; safe-slides, requests (staff requests from the announcement app), macros, looks, qr-code, image-crop, arrangement, lyrics-assist and scripture off, so the Prep key appears only once a prep tool is on. Off hides the screen and its routes answer \"switched off\". messages covers Now's ProPresenter messages and stage messages, and the phone's Alert tab; slide-flags covers the phone's Flag tab. The older arrangementModule.enabled, imageCropModule.enabled and serviceModule.enabled are no longer read.",
+  "_features": "Settings › Features: which screens and tools are on. Search and Quality Control (with its date checks) are always on. Leave a feature out to get its default; true or false is a choice and wins. Defaults: slide-flags, service and messages on; safe-slides, requests (staff requests from the announcement app), macros, looks, qr-code, image-crop, arrangement, lyrics-assist, scripture and probundle (Bundles) off, so the Prep key appears only once a prep tool is on. Off hides the screen and its routes answer \"switched off\". messages covers Now's ProPresenter messages and stage messages, and the phone's Alert tab; slide-flags covers the phone's Flag tab. The older arrangementModule.enabled, imageCropModule.enabled and serviceModule.enabled are no longer read.",
   "features": {},
   "librarySync": {
     "folders": null,
@@ -39,6 +39,10 @@
     "storageBackend": "local-folder",
     "folders": null,
     "planningCenterServiceTypeId": null
+  },
+  "_probundleModule": "Bundles (Settings › Features › Bundles): packsDir is the folder for your church's own templates, under ./data (the default ./data/probundle-packs) or outside Refrain's folder, never elsewhere in it. The screen is misconfigured until it is set and exists.",
+  "probundleModule": {
+    "packsDir": null
   },
   "imageCropModule": {
     "inputFolder": null,

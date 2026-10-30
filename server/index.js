@@ -24,6 +24,8 @@ import {
   isConfigComplete,
   getArrangementModuleStatus,
   getImageCropModuleStatus,
+  getProbundleModuleStatus,
+  probundleModuleProblems,
   getLibrarySyncModuleStatus,
   getServiceModuleStatus,
   getEnvRequirements,
@@ -185,6 +187,7 @@ import { autoEndSettings, autoEndPlan, autoEndNote, withAutoNote } from "./auto-
 import { installAsyncErrorCatching, routeErrorHandler } from "./async-routes.js";
 import { THEMES, DEFAULT_THEME } from "../public/themes.js";
 import { moduleFeatures, featureDefaults, featureForPath } from "./features.js";
+import { probundleRouter } from "./probundle.js";
 
 const { version } = JSON.parse(readFileSync("./package.json", "utf-8"));
 
@@ -6211,6 +6214,30 @@ app.delete("/api/qr/history", async (_req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// --- Bundles: ProPresenter files, read only (server/probundle.js) ---------------
+// File work only; never calls ProPresenter. Behind its feature switch like any
+// module (the gate above answers "switched off" for /api/probundle).
+app.use(
+  "/api/probundle",
+  probundleRouter({
+    getConfig: () => config,
+    updateConfig,
+    getStatus: getProbundleModuleStatus,
+    getProblems: probundleModuleProblems,
+    getIndex,
+    // Performance mode armed only because ProPresenter is not answering
+    // ("unknown") does not hold this back: these are files, read off the main
+    // thread, and a church without ProPresenter on this machine (or with it
+    // closed) should still be able to open one.
+    busyReason: () =>
+      performance.armed && performance.source !== "unknown"
+        ? "Performance mode is on, so Refrain is holding still. Open files when nothing is live."
+        : liveState.live
+          ? "Something is on the screens. Open files when nothing is live."
+          : null,
+  })
+);
+
 
 // --- First-run setup (Section 6) ---
 
@@ -6526,6 +6553,7 @@ app.get("/api/health", async (_req, res) => {
     reportModule: getReportModuleStatus(config),
     protectProPresenter: protectOn(),
     features: featureStates(),
+    probundleModule: { status: getProbundleModuleStatus(config), problems: probundleModuleProblems(config) },
     serviceFeedModule: {
       ...getServiceFeedModuleStatus(config),
       ...serviceFeed.state(),
