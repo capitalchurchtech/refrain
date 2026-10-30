@@ -2315,7 +2315,10 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
           <button type="button" role="radio" class="rf-tab" data-quick-pictures="false" aria-checked="${pictures.quickSlides === false}"><span>Names</span></button>
         </div>
         <div class="rf-subhead mt-2">Draw ahead of time</div>
-        <p class="text-sm rf-measure">Phones and the Now screen only show pictures drawn before the service. Turn this on to draw today's service playlists while nothing is on the screens.</p>
+        ${
+          pictures.prerenderPaused
+            ? `<p class="text-sm rf-measure">Paused for now: Refrain doesn't draw pictures on its own. To draw today's, press Update pictures on Service › Day.</p>`
+            : `<p class="text-sm rf-measure">Phones and the Now screen only show pictures drawn before the service. Turn this on to draw today's service playlists while nothing is on the screens.</p>
         <p class="text-xs opacity-70 rf-measure">ProPresenter holds on to memory for each picture it draws until it restarts, so restart ProPresenter after the pictures are drawn and before the service. The pictures are kept.</p>
         <div class="rf-tabs" role="radiogroup" aria-label="Slide pictures ahead of time" style="margin-bottom:0">
           <button type="button" role="radio" class="rf-tab" data-prerender="true" aria-checked="${picturesOn}" ${pictures.show === true ? "" : "disabled"}><span>On</span></button>
@@ -2331,7 +2334,8 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
                 ? `${pictures.ready} ready for today's playlists (checked ${new Date(pictures.lastRunAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}${pictures.stopped ? `; stopped: ${escapeHtml(pictures.stopReason ?? "something went live")}` : ""}).`
                 : "Waits until nothing is on the screens and no service is near, then starts. Needs today's services set up on Service › Day."
               : "Off."
-        }</div>
+        }</div>`
+        }
       </div>
     </div>`;
 
