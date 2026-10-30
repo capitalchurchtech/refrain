@@ -9,17 +9,20 @@
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
     "lint": "eslint .",
-    "test": "node --test"
+    "test": "node --test",
+    "mcp": "node server/mcp/index.js"
   },
   "engines": {
     "node": ">=20.0.0"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "chokidar": "^5.0.0",
     "dictionary-en": "^4.0.0",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "nspell": "^2.1.5",
+    "propresenter-bundle": "github:capitalchurchtech/propresenter-bundle#v0.1.1",
     "qrcode": "^1.5.4",
     "sharp": "^0.32.6",
     "smartcrop-sharp": "^2.0.8"

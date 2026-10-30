@@ -75,6 +75,8 @@ Built, but not proven end to end (read this before relying on them):
 - **Staff requests.** Refrain's side is built and tested against a fake announcement server: the polling, the card on Now, the 8-minute limit, approve and decline. Two things are not done: the announcement app has no sender or request list yet (the contract for it is in `docs/service-feed.md`), and posting an approved request into a real ProPresenter message has not been run, only the same message path the poster already uses.
 - **Deep Search** and the group names on results need a full refresh of the library once; until then the screen says how many songs it could read.
 - **Changed songs** only sees the arrangement the index reads, and only learns songs from the day it is switched on.
+- **The script builder for assistants** (`npm run mcp`, under Bundles) builds a bundle from a script and your church's own pack. Its output matched the existing builder's exactly on one church's real script, but no show has run from it yet, and a reused verse or logo slide is not placed for you.
+- **Bundles** (read only; Settings › Features, off by default) is new and has been run only on invented sample files, not on a real library. It uses the `propresenter-bundle` package, which `npm install` fetches from GitHub (see below), and its fit and line checks are a rough guess until there is a font table for your church's fonts.
 
 Wired up but not finished (the interface exists, the methods currently refuse to run):
 
@@ -278,6 +280,24 @@ You can also set a **default QR size** (`qrCodeModule.defaultSize`, on the same 
 Every code you download is saved to a **Recent codes** strip at the bottom of the screen. Click any one to bring back its type, content, and appearance so you can re-download it or tweak it, no retyping. A large uploaded logo isn't kept (it would bloat the history), so restoring one of those brings back everything except the logo, which you re-add. Clear the whole strip any time with the Clear button. How many to keep is up to you: set `qrCodeModule.recentLimit` on the Health screen's Configuration form (or in `config.json`), from 0 (turn the strip off) up to 100, defaulting to 20.
 
 It all happens on your machine, and that's the point rather than a technical footnote. A lot of "free" online QR generators encode a link back through their own domain instead of your actual content, which leaves them able to expire the code, throttle it, add tracking, or start charging later. That can quietly break a code you already printed on 500 bulletins. A code made here holds your content directly, with nobody in the middle.
+
+## Bundles (ProPresenter files)
+
+Open a presentation (`.pro`) or a bundle (`.probundle`) and read what is on every slide: each group, each slide's label, its boxes with their position, words or picture, and its media and macros. **Check** lists what will go wrong on import: media the bundle leaves out, fields ProPresenter wrote that the reader can't understand, capitals that stop short of the words, and text predicted to overflow its box or end on one word. **Compare** two versions, such as a file as it was imported and the same file after someone fixed it by hand, and see every box that moved, every word that changed and every slide added.
+
+Open from the library by name (anything Refrain has indexed) or from a file on this computer. It works with ProPresenter closed or not installed at all, since it only reads files; the library list needs Refrain's search index, which needs ProPresenter. It never writes a file and never talks to ProPresenter, refuses while something is on the screens or performance mode is on (except the precaution Refrain takes when it simply can't reach ProPresenter), and reads each file off Refrain's main thread with a 30-second limit, so a large bundle can't hold up anything live.
+
+It asks for a **packs folder** first (default `./data/probundle-packs`). That is where your church's own templates will go when editing arrives; it must be under `./data` or outside Refrain's folder, so a template can't be committed by accident. Editing is not built yet.
+
+The reading and checking are the [`propresenter-bundle`](https://github.com/capitalchurchtech/propresenter-bundle) package (MIT), installed from its GitHub tag rather than npm, which this module loads only when used: if it's missing, Bundles says so and everything else is unaffected. It uses the community ProPresenter schema, is not supported by Renewed Vision, and a ProPresenter update can change what these files hold.
+
+### The script builder, for an assistant (MCP)
+
+`npm run mcp` starts an MCP server over stdio, for Claude or another assistant on the computer that holds your files. It turns a play's script (a skit, a kids' service, a camp night) into a ProPresenter bundle made from your booth's own slides: one slide for each line, labelled with who says it in their colour; one Scene Notes slide for each stage direction; a slide for each picture, background, video and sound; and a cue slide before anything the sound desk has to do, called VIDEO or AUDIO. Lights go into a slide's notes as a Vista cue rather than on a slide of their own.
+
+The tools are `list_script_types`, `parse_script`, `preview_script` (the script read back like a play, with the booth's checklist: sounds and videos to add and test, lights to cue, pictures to find, macros on and after each picture slide, timing), `update_script_draft` (colours, reused slides, corrections by slide number) and `build_script_bundle`. A build waits until a person has chosen the label colours (ProPresenter's own swatches are offered) and said whether the show reuses a title, verse or logo slide. Drafts and bundles go to `./data/probundle-staging`; nothing is written into ProPresenter's library, and a bundle is never written over another.
+
+It is on only when Bundles is on and the packs folder is set, and it needs a **pack** for each kind of show: `packs/<your church>/scripts/<kind>/` holding `template.pro`, a presentation your booth built with one slide of each kind (speaker, Scene Notes, picture, background, lights, and optionally sound, video and RESET), and a `recipe.json` naming those slides, the cast colours, how long Scene Notes stay up (1 second unless you say otherwise) and your workspace's path. Refrain ships no pack: they are your church's own. A reused title slide is placed for you; a reused verse or logo slide is not yet, and the checklist says where to put it by hand. It has been run on one church's real scripts and templates, but not yet against a show on the night.
 
 ## Quality control
 

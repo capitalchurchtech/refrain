@@ -1897,6 +1897,7 @@ export function summarizeModules(health) {
     { name: "Phone flags", status: health.networkModule?.status },
     { name: "Summary sending", status: health.reportModule?.status },
     { name: "Service feed", status: health.serviceFeedModule?.status },
+    { name: "Bundles", status: health.probundleModule?.status },
   ].filter((m) => m.status);
   const rank = { misconfigured: 0, active: 1, off: 2 };
   mods.sort((a, b) => (rank[a.status] ?? 3) - (rank[b.status] ?? 3));
