@@ -75,7 +75,6 @@ import {
   suggestQuery,
   searchOtherArrangements,
   otherSlidesCoverage,
-  refreshIndexEntries,
 } from "./search-index.js";
 import { startLibraryWatch, fullRebuildSuggestion,
   indexStaleness,
@@ -117,7 +116,6 @@ import { emptyRegistry, seeDevice, setApproved, removeDevice, isApproved, isRemo
 import { monthKey, deviceCode, appendTakeover } from "./remote-live.js";
 import { noteItem, splitsView, feedItems, itemLines, leftOpenLines } from "./item-splits.js";
 import { playingFromDoc, playingStale, liveSlideDetails } from "./playing-slide.js";
-import { delimiterNames, isDelimiterName, delimiterOnScreen, rescanDue } from "./delimiter.js";
 import { saveFlagPicture, readFlagPicture, listFlagPictureIds } from "./flag-pictures.js";
 import { previewTargets, createThumbCache } from "./slide-preview.js";
 import { createThumbStore, slideKey as pictureKey } from "./thumb-store.js";
@@ -1732,49 +1730,6 @@ function readPlaying(presentationId) {
     });
   return playingInFlight;
 }
-// --- The delimiter item (server/delimiter.js) -----------------------------------
-// While the church's delimiter (pre/post-service, intermission) has been on the
-// screens for five minutes, the items of the running playlist are read once,
-// lightly, so the arrangements Refrain knows match ProPresenter's. Performance
-// mode stays armed throughout; this is not a reindex. It ends between reads the
-// moment the delimiter is not on the screens, and never starts again for that stay.
-let delimiterRescan = { running: false, doneFor: null };
-const delimiterRefreshedAt = new Map(); // presentationId -> when it was last refreshed here
-const DELIMITER_REFRESH_AGAIN_MS = 30 * 60_000;
-/** The presentations in the playlist that is running, from ProPresenter, else from today's service playlist. */
-async function runningPlaylistPresentationIds(now) {
-  const active = await client.getActivePlaylist().catch(() => null);
-  const playlist = active?.presentation?.playlist ?? active?.announcements?.playlist ?? null;
-  const uuid = playlist?.id?.uuid ?? playlist?.uuid ?? null;
-  if (uuid) return (await client.getPlaylistItems(uuid)).items.map((i) => ({ id: i.id, name: i.name }));
-  const service = serviceModuleOn() ? activeServices(serviceState(now), now, serviceOptions().windows).find((s) => s.playlist?.items?.length) : null;
-  return (service?.playlist?.items ?? []).filter((i) => i.presentationId).map((i) => ({ id: i.presentationId, name: i.name }));
-}
-function maybeRescanDelimiter(now) {
-  const names = config.liveModule?.delimiterItems;
-  if (!delimiterNames(names).length || delimiterRescan.running) return;
-  const open = itemSplits[0];
-  if (!rescanDue(open, now, delimiterRescan.doneFor)) return;
-  if (protectOn() || !liveState.connected || getRebuildProgress().inProgress) return;
-  delimiterRescan = { running: true, doneFor: open.id };
-  const stillOnScreen = () => itemSplits[0]?.id === open.id && delimiterOnScreen(itemSplits[0]) && liveState.connected;
-  (async () => {
-    try {
-      const items = (await runningPlaylistPresentationIds(now)).filter((i) => !isDelimiterName(i.name, names));
-      // A presentation read a moment ago (the pre-service stay, then the intermission) is not read again.
-      const ids = [...new Set(items.map((i) => i.id))].filter((id) => now - (delimiterRefreshedAt.get(id) ?? 0) > DELIMITER_REFRESH_AGAIN_MS);
-      for (const id of ids) delimiterRefreshedAt.set(id, now);
-      if (!ids.length) return diag("delimiter-rescan", { items: 0, note: "no running playlist known" });
-      const out = await refreshIndexEntries(client, ids, preferredArrangements(), { shouldStop: () => !stillOnScreen(), pacingMs: 800 });
-      diag("delimiter-rescan", { items: ids.length, ...out });
-      console.log(`Delimiter on the screens: refreshed ${out.read} of ${ids.length} playlist item(s)${out.changed ? `, ${out.changed} had changed` : ""}${out.stopped ? "; stopped because the delimiter went off" : ""}.`);
-    } catch (err) {
-      diag("delimiter-rescan", { error: err.message });
-    } finally {
-      delimiterRescan.running = false;
-    }
-  })();
-}
 /** The words of slide `idx` of a presentation, as the live arrangement plays it, or null. */
 function liveSlideText(pid, idx) {
   return liveSlideDetails({ playing: playingCache.get(pid) ?? null, slideIndex: idx, indexed: getIndexedSlide(pid, idx) }).text;
@@ -2082,10 +2037,9 @@ async function heartbeat() {
   if (connected) {
     const before = itemSplits;
     const itemName = enriched ? (enriched.presentationName ?? enriched.name ?? null) : null;
-    itemSplits = noteItem(itemSplits, liveState.live && enriched ? { presentationId: enriched.presentationId, name: itemName, delimiter: isDelimiterName(itemName, config.liveModule?.delimiterItems) } : null, now);
+    itemSplits = noteItem(itemSplits, liveState.live && enriched ? { presentationId: enriched.presentationId, name: itemName } : null, now);
     // When an item opens and when it closes, into the day's log (docs/service-feed.md).
     for (const line of itemLines(before, itemSplits, STATION_TZ)) diag("item", line);
-    maybeRescanDelimiter(now);
   }
 
   // The service timeline: what goes live, when, and in which service. It reads

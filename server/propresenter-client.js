@@ -227,11 +227,6 @@ export class ProPresenterClient {
     return this.#get("/v1/playlists");
   }
 
-  /** The playlists the live presentation and the announcements layer came from, or nulls. */
-  async getActivePlaylist() {
-    return this.#get("/v1/playlist/active");
-  }
-
   /** A single playlist's items — filters to actual presentations. */
   async getPlaylistItems(playlistId) {
     const playlist = await this.#get(`/v1/playlist/${seg(playlistId)}`);

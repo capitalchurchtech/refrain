@@ -93,8 +93,7 @@ test("the history snapshot is newest first, capped, names trimmed, UTC times, an
   const items = feedItems(log);
   assert.equal(items.length, FEED_ITEMS_MAX);
   assert.equal(items[0].name.length, FEED_NAME_MAX);
-  assert.deepEqual(Object.keys(items[0]).sort(), ["blank", "current", "endedAt", "id", "kind", "name", "startedAt"]);
-  assert.equal(items[0].kind, "item");
+  assert.deepEqual(Object.keys(items[0]).sort(), ["blank", "current", "endedAt", "id", "name", "startedAt"]);
   assert.deepEqual([items[0].current, items[0].endedAt], [true, null]);
   assert.equal(items[1].endedAt, new Date(44 * 60_000).toISOString(), "UTC ISO, closed when the next came up");
   assert.doesNotMatch(JSON.stringify(items), /Was blind|presentationId|P44/);
@@ -140,7 +139,7 @@ test("an item open when Refrain restarts is closed at the last moment the old ru
     { t: "2026-10-11T16:00:30.000Z", event: "item", id: "new-1", name: "Sermon", startedAt: "2026-10-11T16:00:30.000Z", endedAt: null, reason: null, tz: TZ },
   ].map((l) => JSON.stringify(l)).join("\n") + "\nnot json\n";
   const lines = leftOpenLines(text, BOOT, TZ);
-  assert.deepEqual(lines, [{ id: "old-1", name: "Sermon", startedAt: "2026-10-11T15:30:00.000Z", endedAt: "2026-10-11T15:55:00.000Z", reason: "restart", kind: "item", tz: TZ }]);
+  assert.deepEqual(lines, [{ id: "old-1", name: "Sermon", startedAt: "2026-10-11T15:30:00.000Z", endedAt: "2026-10-11T15:55:00.000Z", reason: "restart", tz: TZ }]);
   assert.deepEqual(leftOpenLines("", BOOT, TZ), []);
   // The run that comes back opens its items with new ids.
   const reopened = noteItem([], a, Date.parse(BOOT) + 40_000);
@@ -152,16 +151,4 @@ test("no slide words appear in the snapshot or the item lines, whatever the item
   const next = noteItem(log, { ...b, text: SECRET }, 9000);
   const out = JSON.stringify([feedItems(next), itemLines(log, next, TZ), splitsView(next)]);
   assert.doesNotMatch(out, /Was blind/);
-});
-
-test("a delimiter item is marked in the snapshot and in its open and close lines, and an ordinary one is not", () => {
-  const delim = { presentationId: "S", name: "Scrolling Slides", delimiter: true };
-  let log = noteItem([], delim, 0);
-  const open = itemLines([], log, TZ);
-  assert.equal(open[0].kind, "delimiter");
-  assert.equal(feedItems(log)[0].kind, "delimiter");
-  const next = noteItem(log, a, 60_000);
-  const close = itemLines(log, next, TZ);
-  assert.deepEqual([close[0].kind, close[0].reason, close.at(-1).kind], ["delimiter", "moved", "item"]);
-  assert.deepEqual(feedItems(next).map((i) => i.kind), ["item", "delimiter"]);
 });

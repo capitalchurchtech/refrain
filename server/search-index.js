@@ -311,7 +311,7 @@ function indexHeader({ currentIndex, plan, startedAt, libraryFolderIssues, crawl
  * Puts what a read of a presentation says into its index entry: the slides of
  * the arrangement Refrain indexes, what that arrangement skips (for Deep
  * Search), and which arrangement ProPresenter has selected. Shared by the full
- * and incremental crawl and by refreshIndexEntries, so they cannot drift apart.
+ * and incremental crawl, so they cannot drift apart.
  */
 function applyDocToEntry(entry, doc, preferredArrangements) {
   // Record which arrangement produced these indices, so the UI can show
@@ -332,53 +332,6 @@ function applyDocToEntry(entry, doc, preferredArrangements) {
   const selectedId = doc?.presentation?.current_arrangement || null;
   entry.selectedArrangementId = selectedId;
   entry.selectedArrangementName = (doc?.presentation?.arrangements ?? []).find((a) => a.id?.uuid === selectedId)?.id?.name ?? null;
-}
-
-/**
- * A light refresh of some presentations already in the index (the items of the
- * playlist that is running, while the church's delimiter item has been on the
- * screens a while): each is read once, politely, and its entry updated in place
- * and saved, so the arrangements Refrain knows match what ProPresenter has now.
- *
- * Built to stop: `shouldStop` is asked before every read, and a read already
- * started is allowed to finish, so ending it never cuts a call off. Nothing
- * here starts a rebuild or adds a presentation; one not in the index is skipped.
- *
- * @returns {{read: number, changed: number, failed: number, skipped: number, stopped: boolean}}
- */
-export async function refreshIndexEntries(client, ids, preferredArrangements = [], { shouldStop, pacingMs = 800, retryDelayMs } = {}) {
-  const out = { read: 0, changed: 0, failed: 0, skipped: 0, stopped: false };
-  for (const id of ids ?? []) {
-    const entry = currentIndex.presentations?.[id];
-    if (!entry) {
-      out.skipped += 1;
-      continue;
-    }
-    if (shouldStop?.()) {
-      out.stopped = true;
-      break;
-    }
-    try {
-      const doc = await readPresentationOnce(client, id, { shouldStop, delayMs: retryDelayMs });
-      const before = JSON.stringify([entry.selectedArrangementId, entry.slides?.length, entry.arrangementId]);
-      applyDocToEntry(entry, doc, preferredArrangements);
-      if (client.isLocalHost && entry.presentationPath) entry.fingerprint = (await readFingerprint(entry.presentationPath)) ?? entry.fingerprint;
-      out.read += 1;
-      if (before !== JSON.stringify([entry.selectedArrangementId, entry.slides?.length, entry.arrangementId])) out.changed += 1;
-    } catch {
-      out.failed += 1;
-    }
-    await pause(pacingMs);
-  }
-  if (out.read > 0) {
-    // The words search matched against were derived from the old entries.
-    derived = new Map();
-    vocab = null;
-    // Not while a rebuild is running: it writes the same file, and two writers of
-    // one temporary file can leave a mixed one. It saves the whole index itself.
-    if (!rebuildInFlight) await persistIndex(currentIndex).catch(() => {});
-  }
-  return out;
 }
 
 async function persistIndex(index) {

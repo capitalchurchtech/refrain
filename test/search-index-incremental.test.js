@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { rebuildIndex, getIndex, lastCrawlAbort, refreshIndexEntries } from "../server/search-index.js";
+import { rebuildIndex, getIndex, lastCrawlAbort } from "../server/search-index.js";
 import { readFingerprint } from "../server/index-fingerprint.js";
 
 /**
@@ -496,52 +496,5 @@ test("a long crawl saves its progress as it goes, and a stopped one doesn't pass
     assert.equal(again.fetched.length, 40);
     assert.equal(done.partial, undefined);
     assert.ok(done.builtAt);
-  });
-});
-
-test("a light refresh updates only the listed entries, picks up a changed arrangement, and stops between reads when told", async () => {
-  await withTempCwd(async (dir) => {
-    const songs = await makeSongs(dir, {
-      a: { name: "Song A", text: "alpha", body: "AAA" },
-      b: { name: "Song B", text: "bravo", body: "BBB" },
-      c: { name: "Song C", text: "charlie", body: "CCC" },
-    });
-    const client = fakeProPresenter(songs);
-    await rebuildIndex(client, {}, ["FS"]);
-    assert.equal(getIndex().presentations.a.selectedArrangementName, null);
-    // ProPresenter now has an arrangement selected on A, and B has two slides.
-    const read = client.getPresentation.bind(client);
-    client.getPresentation = async (id) => {
-      const doc = await read(id);
-      if (id === "a") Object.assign(doc.presentation, { arrangements: [{ id: { uuid: "arr1", name: "T" }, groups: ["a-g1"] }], current_arrangement: "arr1" });
-      if (id === "b") doc.presentation.groups[0].slides.push({ enabled: true, text: "bravo two" });
-      return doc;
-    };
-    client.fetched.length = 0;
-    const out = await refreshIndexEntries(client, ["a", "b", "not-indexed"], ["FS"], { pacingMs: 0 });
-    assert.deepEqual(out, { read: 2, changed: 2, failed: 0, skipped: 1, stopped: false });
-    assert.deepEqual(client.fetched, ["a", "b"], "c was not asked for");
-    assert.equal(getIndex().presentations.a.selectedArrangementName, "T");
-    assert.equal(getIndex().presentations.b.slides.length, 2);
-    assert.equal(JSON.parse(await readFile(path.join(dir, "cache", "search-index.json"), "utf-8")).presentations.b.slides.length, 2, "and it was saved");
-
-    // Told to stop after the first read: the second is never started.
-    client.fetched.length = 0;
-    let asked = 0;
-    const stopped = await refreshIndexEntries(client, ["a", "b", "c"], ["FS"], { pacingMs: 0, shouldStop: () => ++asked > 1 });
-    assert.deepEqual([stopped.read, stopped.stopped], [1, true]);
-    assert.deepEqual(client.fetched, ["a"]);
-  });
-});
-
-test("a read that fails is counted and leaves the entry as it was", async () => {
-  await withTempCwd(async (dir) => {
-    const songs = await makeSongs(dir, { a: { name: "Song A", text: "alpha", body: "AAA" } });
-    const client = fakeProPresenter(songs);
-    await rebuildIndex(client, {}, ["FS"]);
-    client.getPresentation = async () => { throw new Error("busy"); };
-    const out = await refreshIndexEntries(client, ["a"], ["FS"], { pacingMs: 0, retryDelayMs: 0 });
-    assert.deepEqual([out.read, out.failed], [0, 1]);
-    assert.equal(getIndex().presentations.a.slides[0].text, "alpha");
   });
 });
