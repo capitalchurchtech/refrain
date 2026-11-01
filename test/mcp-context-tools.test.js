@@ -202,6 +202,7 @@ test("slide actions: read in plain words, added by name from the workspace (copy
   assert.deepEqual(raw.prop.identification.parent_collection?.parameter_name, "Bugs");
 
   await assert.rejects(call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 1, add_action: [{ kind: "look", name: "Nope" }] }] }), /No Look called "Nope"/);
+  await assert.rejects(call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 1, add_action: [{ kind: "stage layout", name: "Sermon Notes", screens: ["Front"] }] }] }), /"Front" is an audience screen.*Confidence/);
   await assert.rejects(call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 1, add_action: [{ kind: "macro", name: "x" }] }] }), /media and macros have their own fields/);
   const gone = await call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 1, remove_action: [{ kind: "timer" }, { kind: "stage layout", name: "sermon notes" }] }] });
   assert.deepEqual(gone.slides[0].changed.actions_removed.map((x) => x.count), [1, 1]);

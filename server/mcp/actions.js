@@ -17,7 +17,16 @@ const CLEAR = ["all", "audio", "background", "live_video", "prop", "slide", "log
 const TIMER = ["start", "stop", "reset", "reset_and_start", "stop_and_reset", "increment"];
 const KIND_NAMES = { audience_look: "look", clear_group: "clear group", stage: "stage layout", slide_destination: "slide destination" };
 const ce = (x) => x?.parameter_name ?? null;
-const enumIndex = (v, list) => (typeof v === "number" ? v : Math.max(0, list.findIndex((n) => String(v ?? "").toLowerCase().endsWith(n))));
+// An enum as decoded (a number) or spelled out ("ACTION_RESET_AND_START"): the longest name it ends with, so
+// RESET_AND_START is not read as START.
+const enumIndex = (v, list) => {
+  if (typeof v === "number") return v;
+  const s = String(v ?? "").toLowerCase();
+  let best = -1;
+  list.forEach((n, i) => { if ((s === n || s.endsWith(`_${n}`)) && (best < 0 || n.length > list[best].length)) best = i; });
+  return Math.max(0, best);
+};
+const LAYERS = ["background", "foreground", "fill", "input"];
 
 /** What one action does, in plain words. The slide's own action is not one a person adds, so it is null. */
 export function describeAction(a) {
@@ -25,7 +34,7 @@ export function describeAction(a) {
   const on = a.isEnabled === false ? { off: true } : {};
   if (a.media) {
     const file = (a.media.element?.url?.local?.path ?? a.media.element?.url?.absolute_string ?? "").split("/").pop().replace(/%20/g, " ");
-    return { kind: "media", file, layer: a.media.element?.audio && !a.media.element?.video ? "sound" : (a.media.layer_type ?? 0) === 1 ? "foreground" : "background", ...on };
+    return { kind: "media", file, layer: a.media.element?.audio && !a.media.element?.video ? "sound" : LAYERS[enumIndex(a.media.layer_type ?? 0, LAYERS)] ?? "background", ...on };
   }
   if (a.macro) return { kind: "macro", name: ce(a.macro.identification), ...on };
   if (a.clear) return { kind: "clear", what: CLEAR[enumIndex(a.clear.target_layer, CLEAR)] ?? "all", ...on };
@@ -136,7 +145,12 @@ export function buildAction(kind, spec, index, { uuid, freshCopy }) {
       const layout = need(index?.layouts ?? new Map(), "stage layout");
       // The screens named, else every stage screen ProPresenter has.
       const screens = spec.screens?.length
-        ? spec.screens.map((n) => { const s = index.screens.get(String(n).toLowerCase()); if (!s) throw new Error(`No screen called "${n}" in ProPresenter's workspace.`); return s; })
+        ? spec.screens.map((n) => {
+          const s = index.screens.get(String(n).toLowerCase());
+          if (!s) throw new Error(`No screen called "${n}" in ProPresenter's workspace.`);
+          if (s.screen_type !== 2) throw new Error(`"${n}" is an audience screen; a stage layout goes on a stage screen (${index.stageScreens.map((x) => x.name).join(", ") || "there are none"}).`);
+          return s;
+        })
         : index.stageScreens;
       if (!screens.length) throw new Error("ProPresenter's workspace has no stage screens to put the layout on.");
       const a = start("stage");
