@@ -285,3 +285,34 @@ test("media: added as background, foreground or a box, carried in the bundle, sw
   const proCopy = await call("refrain_make_copy", { path: path.join(FIX, "sample-fixed.pro") });
   await assert.rejects(call("refrain_edit_slides", { copy_id: proCopy.copy_id, changes: [{ slide: 1, add_media: [{ file: picture }] }] }), /Only a bundle carries its pictures/);
 });
+
+test("a playlist opens with its items, and a presentation inside it can be read and copied with its media", { skip: lib?.readPlaylistFile ? false : "propresenter-bundle with playlists is not installed" }, async () => {
+  const { call, root } = await setup();
+  const uid = (n) => ({ string: `00000000-0000-4000-8000-${String(n).padStart(12, "0")}` });
+  const T = lib.loadSchema().root.lookupType("rv.data.Playlist");
+  const data = Buffer.from(T.encode(T.fromObject({ uuid: uid(1), name: "PLAYLIST", type: 1, playlists: { playlists: [{ uuid: uid(2), name: "Sunday", type: 1, items: { items: [
+    { uuid: uid(3), name: "Opening", header: {} },
+    { uuid: uid(4), name: "Example Sunday", presentation: { document_path: { local: { root: 2, path: "Example Sunday.pro" } }, arrangement_name: "Full" } },
+  ] } }] } })).finish());
+  const ws = "/Users/example/Library/Application Support/RenewedVision/ProPresenter/UserWorkspaces/Example";
+  const file = path.join(root, "Sunday.proplaylist");
+  fs.writeFileSync(file, await lib.writeBundle([
+    { name: "data", data }, { name: "Example Sunday.pro", data: fs.readFileSync(path.join(FIX, "sample-fixed.pro")) },
+    { name: `${ws}/Media/Assets/example-qr.png`.slice(1), data: fs.readFileSync(path.join(FIX, "dot.png")) },
+  ]));
+
+  const o = await call("refrain_open", { path: file });
+  assert.deepEqual([o.kind, o.name, o.can_change, o.presentations], ["proplaylist", "Sunday", false, ["Example Sunday.pro"]]);
+  assert.deepEqual(o.playlists[0].items.map((i) => [i.kind, i.arrangement_name ?? null]), [["header", null], ["presentation", "Full"]]);
+  await assert.rejects(call("refrain_read_slide", { path: file, slide: 1 }), /This is a playlist\. Name a presentation in it with inside: Example Sunday\.pro/);
+
+  const inside = await call("refrain_open", { path: file, inside: "Example Sunday" });
+  assert.deepEqual([inside.kind, inside.slide_count], ["probundle", 5]);
+  const copy = await call("refrain_make_copy", { path: file, inside: "Example Sunday.pro" });
+  assert.equal(path.basename(copy.file), "Example Sunday (edited).probundle");
+  const entries = lib.readBundle(fs.readFileSync(copy.file)).map((e) => e.name);
+  assert.ok(entries.some((n) => n.endsWith("example-qr.png")), "the picture the presentation uses came with it");
+  await call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 1, label: "Changed" }] });
+  await assert.rejects(call("refrain_make_copy", { path: file }), /A playlist is read, not changed/);
+  await assert.rejects(call("refrain_open", { path: file, inside: "Nope" }), /No presentation Nope in this playlist/);
+});

@@ -22,7 +22,7 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "nspell": "^2.1.5",
-    "propresenter-bundle": "github:capitalchurchtech/propresenter-bundle#v0.2.0",
+    "propresenter-bundle": "github:capitalchurchtech/propresenter-bundle#v0.3.0",
     "qrcode": "^1.5.4",
     "sharp": "^0.32.6",
     "smartcrop-sharp": "^2.0.8"
