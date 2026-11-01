@@ -1,0 +1,142 @@
+// Context for the assistant (server/mcp/context-tools.js), through the SDK client: a ProPresenter workspace
+// read where it lives or from the church folder's copy, never from the database beside it; and the church's
+// skills, saved with their history kept, their reference files filed beside them, and offered as prompts.
+// Workspaces here are invented, made with the package's schema.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { createRequire } from "node:module";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { createMcpServer } from "../server/mcp/server.js";
+
+const lib = await import("propresenter-bundle").catch(() => null);
+const skip = lib?.readWorkspacePart ? false : "propresenter-bundle with workspace support is not installed";
+const require = createRequire(import.meta.url);
+
+function encode(type, obj) {
+  const T = lib.loadSchema().root.lookupType(type);
+  return Buffer.from(T.encode(T.fromObject(obj)).finish());
+}
+const uid = (n) => ({ string: `00000000-0000-4000-8000-${String(n).padStart(12, "0")}` });
+
+/** A workspace's content folder, as ProPresenter lays one out, with invented macros and playlists. */
+function makeWorkspace(dir) {
+  fs.mkdirSync(path.join(dir, "Configuration"), { recursive: true });
+  fs.mkdirSync(path.join(dir, "Playlists"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "Configuration", "Macros"), encode("rv.data.MacrosDocument", {
+    macros: [{ uuid: uid(1), name: "Lower Thirds", color: { red: 1, green: 0, blue: 0, alpha: 1 } }, { uuid: uid(2), name: "Clear All" }],
+    macro_collections: [{ uuid: uid(3), name: "Service", items: [{ macro_id: uid(1) }] }],
+  }));
+  fs.writeFileSync(path.join(dir, "Configuration", "Labels"), encode("rv.data.ProLabelsDocument", { labels: [{ text: "Verse" }, { text: "Chorus" }] }));
+  fs.writeFileSync(path.join(dir, "Playlists", "Library"), encode("rv.data.PlaylistDocument", {
+    root_node: { uuid: uid(10), name: "root", playlists: { playlists: [
+      { uuid: uid(11), name: "Sundays", playlists: { playlists: [
+        { uuid: uid(12), name: "Example Sunday", items: { items: [
+          { uuid: uid(13), name: "Welcome", header: { color: { red: 1, alpha: 1 } } },
+          { uuid: uid(14), name: "Example Song", presentation: { document_path: { local: { root: 1, path: "Libraries/Default/Example Song.pro" } }, arrangement: uid(15) } },
+        ] } },
+      ] } },
+    ] } },
+  }));
+}
+
+async function connect({ config = {}, userWorkspaces } = {}) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "refrain-ctx-"));
+  const server = createMcpServer({ root, staging: path.join(root, "staging"), getConfig: () => config, userWorkspaces: userWorkspaces ?? path.join(root, "no-propresenter") });
+  const client = new Client({ name: "test", version: "1" });
+  const [a, b] = InMemoryTransport.createLinkedPair();
+  await Promise.all([server.connect(a), client.connect(b)]);
+  await client.listTools();
+  const call = async (name, args = {}) => {
+    const r = await client.callTool({ name, arguments: args });
+    if (r.isError) throw new Error(r.content.map((c) => c.text).join(" "));
+    return r.structuredContent;
+  };
+  return { root, client, call };
+}
+
+test("the workspace is read where ProPresenter keeps it, part by part, one playlist at a time", { skip }, async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "refrain-pp-"));
+  const user = path.join(home, "RenewedVision", "ProPresenter", "UserWorkspaces");
+  makeWorkspace(path.join(user, "Main"));
+  const { call } = await connect({ userWorkspaces: user });
+
+  const all = await call("refrain_read_workspace");
+  assert.deepEqual([all.workspace.name, all.workspace.source], ["Main", "ProPresenter on this computer"]);
+  assert.deepEqual(all.parts.macros, { macros: 2, collections: 1 });
+  assert.deepEqual(all.parts.playlists, { playlists: 1 });
+  assert.equal(all.parts.looks, null, "a part this workspace lacks is null, not an error");
+
+  const macros = await call("refrain_read_workspace", { part: "macros" });
+  assert.deepEqual(macros.macros.map((m) => [m.name, m.color]), [["Lower Thirds", "#ff0000"], ["Clear All", null]]);
+  assert.deepEqual(macros.collections, [{ name: "Service", id: uid(3).string, macros: ["Lower Thirds"] }]);
+
+  const top = await call("refrain_read_workspace", { part: "playlists" });
+  assert.deepEqual(top.playlists, [{ kind: "folder", name: "Sundays", playlists: 1 }], "a level at a time");
+  const folder = await call("refrain_read_workspace", { part: "playlists", folder: "sundays" });
+  assert.deepEqual(folder.playlists, [{ kind: "playlist", name: "Example Sunday", items: 2 }]);
+  await assert.rejects(call("refrain_read_workspace", { part: "playlists", folder: "Nope" }), /No playlist folder Nope/);
+  const one = await call("refrain_read_workspace", { part: "playlists", playlist: "example sunday" });
+  assert.deepEqual(one.playlist.items.map((i) => [i.kind, i.name, i.file ?? null]), [["header", "Welcome", null], ["presentation", "Example Song", "Example Song.pro"]]);
+
+  const status = await call("refrain_setup_status");
+  assert.deepEqual(status.context.workspace, { name: "Main", source: "ProPresenter on this computer" });
+});
+
+test("never the database: a workspace that leads into ProPresenter's state folder is refused", { skip }, async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "refrain-pp-"));
+  const pp = path.join(home, "RenewedVision", "ProPresenter");
+  const state = path.join(pp, "Workspaces", "Main-123");
+  makeWorkspace(state);
+  fs.mkdirSync(path.join(state, "Database"));
+  fs.mkdirSync(path.join(pp, "UserWorkspaces"), { recursive: true });
+  fs.symlinkSync(state, path.join(pp, "UserWorkspaces", "Sneaky"));
+  const { call } = await connect({ userWorkspaces: path.join(pp, "UserWorkspaces") });
+  await assert.rejects(call("refrain_read_workspace"), /Workspaces folder.*never reads ProPresenter's database/);
+});
+
+test("without ProPresenter: the church folder's copy, or a plain message saying where to put one", { skip }, async () => {
+  const bare = await connect();
+  await assert.rejects(bare.call("refrain_read_workspace"), /ProPresenter isn't installed on this computer.*copy a workspace's Configuration and Playlists folders/);
+  assert.match((await bare.call("refrain_setup_status")).context.note, /still read any file given/);
+
+  const church = fs.mkdtempSync(path.join(os.tmpdir(), "refrain-church-"));
+  makeWorkspace(path.join(church, "workspace"));
+  const { call } = await connect({ config: { probundleModule: { packsDir: church } } });
+  const w = await call("refrain_read_workspace", { part: "labels" });
+  assert.equal(w.workspace.source, "copy in the church folder");
+  assert.deepEqual(w.labels.map((l) => l.text), ["Verse", "Chorus"]);
+});
+
+test("skills: saved with the old version kept, files filed without replacing, offered as prompts", { skip }, async () => {
+  const church = fs.mkdtempSync(path.join(os.tmpdir(), "refrain-church-"));
+  const { call, client, root } = await connect({ config: { probundleModule: { packsDir: church } } });
+  assert.deepEqual((await call("refrain_list_skills")).skills, []);
+  await assert.rejects(call("refrain_save_skill", { skill: "Sermon Slides", description: "x", instructions: "y" }), /lower case letters, numbers and hyphens/);
+
+  const saved = await call("refrain_save_skill", { skill: "sermon-slides", description: "Sermon slides from last week's bundle.", instructions: "Copy the point slides.\nOne point per slide." });
+  assert.equal(saved.previous_version, null);
+  const again = await call("refrain_save_skill", { skill: "sermon-slides", description: "Sermon slides,\n from last week's bundle.", instructions: "One point per slide." });
+  assert.ok(fs.existsSync(again.previous_version), "the first version is kept");
+  assert.match(fs.readFileSync(again.previous_version, "utf8"), /Copy the point slides/);
+
+  const theme = path.join(root, "Message.protheme");
+  fs.copyFileSync(path.join(path.dirname(require.resolve("propresenter-bundle/package.json")), "test", "fixtures", "sample.protheme"), theme);
+  const f1 = await call("refrain_file_away", { path: theme, skill: "sermon-slides" });
+  const f2 = await call("refrain_file_away", { path: theme, skill: "sermon-slides" });
+  assert.deepEqual([path.basename(f1.file), path.basename(f2.file)], ["Message.protheme", "Message 2.protheme"]);
+  assert.ok(fs.existsSync(theme), "the original stays where it was");
+  await assert.rejects(call("refrain_file_away", { path: theme, skill: "no-such-skill" }), /Save it with refrain_save_skill first/);
+
+  const read = await call("refrain_read_skill", { skill: "sermon-slides" });
+  assert.deepEqual([read.description, read.instructions], ["Sermon slides, from last week's bundle.", "One point per slide."]);
+  assert.deepEqual(read.files.map((f) => f.name), ["Message 2.protheme", "Message.protheme"]);
+
+  const { prompts } = await client.listPrompts();
+  assert.deepEqual(prompts, [{ name: "sermon-slides", description: "Sermon slides, from last week's bundle." }]);
+  const prompt = await client.getPrompt({ name: "sermon-slides" });
+  assert.match(prompt.messages[0].content.text, /Use the sermon-slides skill\.\n\nOne point per slide\.\n\nReference files.*Message\.protheme/s);
+});
