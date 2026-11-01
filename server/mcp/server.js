@@ -113,7 +113,7 @@ const GENERAL = [
   {
     name: "refrain_read_slide",
     title: "Read one slide in full",
-    description: "One slide in full: every box with its id, name, kind, role, position and size, font, type size, capitals, picture and all its words; the slide's macros, media and actions. slide is its number from refrain_open, or its id.",
+    description: "One slide in full: every box with its id, name, kind, role, position and size, font, type size, capitals, picture and all its words; the slide's macros and media, and every action it fires, in plain words. slide is its number from refrain_open, or its id.",
     inputSchema: { type: "object", required: ["slide"], properties: { ...FROM, slide: { type: ["integer", "string"] } } },
     outputSchema: { type: "object", required: ["file", "kind", "slide"], properties: { file: { type: "string" }, kind: { type: "string" }, slide: SLIDE } },
     annotations: READ,
@@ -175,7 +175,7 @@ const GENERAL = [
   {
     name: "refrain_edit_slides",
     title: "Change slides",
-    description: "Change whole slides on a working copy: a list of changes, each with the slide (its number when the copy was opened, or its id) and only what should change: label, label_color, enabled, background (#rrggbb or none), group (moves it, making the group if new), move (up, down, first, last, duplicate, delete, within its group), add_macro and remove_macro (by name, from ProPresenter's workspace or another slide in the file), add_media (a picture, video or sound file as a background or foreground media action, or a picture or video as a box; on a bundle, which carries the file) and remove_media (by file name). Also groups ({ name, rename, color }) and the presentation's name. All checked together: if one is wrong, none is saved. Changes only the copy.",
+    description: "Change whole slides on a working copy: a list of changes, each with the slide (its number when the copy was opened, or its id) and only what should change: label, label_color, enabled, background (#rrggbb or none), group (moves it, making the group if new), move (up, down, first, last, duplicate, delete, within its group), add_macro and remove_macro (by name, from ProPresenter's workspace or another slide in the file), add_media (a picture, video or sound file as a background or foreground media action, or a picture or video as a box; on a bundle, which carries the file) and remove_media (by file name), add_action (clear a layer, a Look, prop, message, timer, clear group or stage layout, by its name in ProPresenter's workspace) and remove_action (by kind, and name). Also groups ({ name, rename, color }) and the presentation's name. All checked together: if one is wrong, none is saved. Changes only the copy.",
     inputSchema: {
       type: "object", required: ["copy_id"],
       properties: {
@@ -193,6 +193,19 @@ const GENERAL = [
                 items: { type: "object", required: ["file"], properties: { file: { type: "string", description: "Full path of a picture, video or sound" }, as: { enum: ["background", "foreground", "box"] }, name: { type: "string" }, x: { type: "number" }, y: { type: "number" }, width: { type: "number" }, height: { type: "number" } } },
               },
               remove_media: { type: ["string", "array"], items: { type: "string" }, description: "A media file's name, as a media action or a picture box" },
+              add_action: {
+                type: "array",
+                items: {
+                  type: "object", required: ["kind"],
+                  properties: {
+                    kind: { enum: ["clear", "look", "prop", "message", "timer", "clear group", "stage layout"] }, name: { type: "string" },
+                    what: { enum: ["all", "audio", "background", "live_video", "prop", "slide", "logo", "messages", "audio_effects"], description: "For clear" },
+                    do: { enum: ["start", "stop", "reset", "reset_and_start", "stop_and_reset", "increment"], description: "For timer" },
+                    screens: { type: "array", items: { type: "string" }, description: "For stage layout; default every stage screen" },
+                  },
+                },
+              },
+              remove_action: { type: "array", items: { type: "object", required: ["kind"], properties: { kind: { type: "string" }, name: { type: "string" } } } },
             },
           },
         },

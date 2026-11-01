@@ -9,11 +9,12 @@
  * ProPresenter's database. A document with fields the reader does not understand can be read but not copied
  * for changing, so nothing in it is quietly lost.
  */
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { writeFile, rename, readFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { openablePath, mediaPath } from "./paths.js";
+import { openablePath, mediaPath, forbiddenReason } from "./paths.js";
+import { describeAction, buildAction, matchesAction, workspaceIndex } from "./actions.js";
 
 const lib = () => import("propresenter-bundle");
 const COPY_ID = /^[a-f0-9-]{36}$/;
@@ -99,13 +100,16 @@ function slidesOf(d, { full = false } = {}) {
   if (d.kind === "proplaylist") throw new Error(`This is a playlist. Name a presentation in it with inside: ${d.playlist.presentations.join(", ") || "(it holds none)"}.`);
   const box = (e) => ({ id: e.uuid, name: e.name, kind: e.kind, words: full ? e.text : short(e.text), ...(e.links?.length ? { linked_to: e.links } : {}),
     ...(full ? { role: e.role, bounds: e.bounds, font: e.fontName, font_family: e.fontFamily, size: e.fontSize, caps: e.caps, picture: e.media } : {}) });
+  // Every action the slide fires besides showing itself, in plain words.
+  const actions = (list) => (list ?? []).map(describeAction).filter(Boolean);
   if (d.kind === "protheme") {
     return d.theme.slides.map((s, i) => ({ number: i + 1, id: s.uuid, name: s.name, boxes: s.elements.map(box), macros: s.macros.map((m) => m.name),
-      ...(full ? { size: s.size, actions: s.actionOrder } : {}) }));
+      ...(full ? { size: s.size, actions: actions(d.doc.slides[i]?.actions) } : {}) }));
   }
+  const cueById = full ? new Map((d.doc.cues ?? []).map((c) => [c.uuid?.string, c])) : null;
   let n = 0;
   return d.model.groups.flatMap((g) => g.slides.map((s) => ({ number: ++n, id: s.uuid, group: g.name, label: s.label, enabled: s.enabled,
-    boxes: s.elements.map(box), macros: s.macros.map((m) => m.name), ...(full ? { media: s.media, actions: s.actionOrder } : {}) })));
+    boxes: s.elements.map(box), macros: s.macros.map((m) => m.name), ...(full ? { media: s.media, actions: actions(cueById.get(s.uuid)?.actions) } : {}) })));
 }
 
 const describe = (src) => (src.copy ? { copy_id: src.copy.id, file: src.where } : { file: src.where });
@@ -456,6 +460,16 @@ function likeMedia(p, d, kind) {
 }
 const mediaFile = (m) => (m?.url?.local?.path ?? m?.url?.absolute_string ?? "").split("/").pop().replace(/%20/g, " ");
 
+/** ProPresenter's workspace on this computer, read for action names and its macros' examples; null without one. */
+async function actionIndex(p, env) {
+  const ctx = await import("./context-tools.js");
+  const w = ctx.findWorkspaces(env).find((x) => x.source === "ProPresenter on this computer") ?? ctx.findWorkspaces(env)[0];
+  if (!w) return { value: null };
+  const real = realpathSync(w.folder);
+  if (forbiddenReason(real)) throw new Error(`Not read: ${forbiddenReason(real)}. This never reads ProPresenter's database.`);
+  return { value: workspaceIndex(p, real) };
+}
+
 const MOVES = ["up", "down", "first", "last", "duplicate", "delete"];
 
 /**
@@ -481,6 +495,7 @@ export async function editSlidesTool(args, env) {
     return { c, at: `Change ${i + 1} (slide ${s.number})`, item, number: s.number };
   });
   const groupOf = (cue) => (d.doc.cue_groups ?? []).find((g) => (g.cue_identifiers ?? []).some((u) => u.string === cue.uuid?.string));
+  let index = null; // ProPresenter's workspace names, read once, only if an action is added
   const slideAction = (cue) => (cue.actions ?? []).find((a) => a.slide);
   const base = (item) => (theme ? item.base_slide : slideAction(item)?.slide?.presentation?.base_slide);
 
@@ -522,6 +537,19 @@ export async function editSlidesTool(args, env) {
       const identification = await macroByName(name, d, env).catch((err) => say(`${at}: ${err.message}`));
       item.actions = [...(item.actions ?? []), { uuid: p.uuid(), isEnabled: true, type: 23, macro: { identification } }];
       (changed.macros_added ??= []).push(identification.parameter_name);
+    }
+    for (const spec of [].concat(c.add_action ?? [])) {
+      if (theme) say(`${at}: put actions on presentation slides, not theme slides.`);
+      index ??= await actionIndex(p, env);
+      try { item.actions = [...(item.actions ?? []), buildAction(String(spec?.kind ?? "").toLowerCase(), spec ?? {}, index.value, p)]; } catch (err) { say(`${at}: ${err.message}`); }
+      (changed.actions_added ??= []).push(describeAction(item.actions.at(-1)));
+    }
+    for (const spec of [].concat(c.remove_action ?? [])) {
+      const kind = String(spec?.kind ?? "").toLowerCase();
+      const before = (item.actions ?? []).length;
+      item.actions = (item.actions ?? []).filter((a) => !matchesAction(a, kind, spec?.name));
+      if (item.actions.length === before) say(`${at}: no ${kind}${spec?.name ? ` "${spec.name}"` : ""} action on this slide.`);
+      (changed.actions_removed ??= []).push({ kind, ...(spec?.name ? { name: spec.name } : {}), count: before - item.actions.length });
     }
     for (const name of [].concat(c.remove_macro ?? [])) {
       const before = (item.actions ?? []).length;
