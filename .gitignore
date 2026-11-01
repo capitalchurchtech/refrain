@@ -24,6 +24,8 @@ firestore-service-account*.json
 
 # Claude Code local session state
 .claude/settings.local.json
+# An assistant's MCP setup: it holds this machine's paths, and this repo is public
+.mcp.json
 .claude/scheduled_tasks.lock
 
 # OS/editor cruft

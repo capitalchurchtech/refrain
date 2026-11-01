@@ -2932,6 +2932,71 @@ is the 340px mock the owner reviewed over several rounds (Artifact "Refrain at
 **Not built here:** the rail width stays 56px (48px means renaming w-14/ml-14 in
 eight places, see CLAUDE.md); the announce app's form and endpoint.
 
+## 30. FEATURE — A general ProPresenter MCP, with skills for the specific jobs (owner, 2026-11-01)
+
+**Goal.** Claude, on the computer Refrain runs on, can open, read, check, edit and build any
+ProPresenter file: a theme, a presentation, a bundle. Specific jobs (a skit, a sermon, a theme
+clean-up, whatever comes next) are **skills**: written instructions plus reference files, which a
+person changes without anyone touching code. Code stays only for jobs that are the same every week
+(the announcements exporter). Technical users first; volunteers later, so every step speaks plainly,
+shows a preview before import, and can't lose work.
+
+**Fixed decisions.**
+- Local only: stdio, the Refrain computer. No HTTP server, no phone or browser access for now.
+- **No ProPresenter needed** (owner, 2026-11-01). The MCP works on files only and never talks to the
+  ProPresenter app, so it must run on a computer without ProPresenter installed. Refrain's other
+  features need ProPresenter; this does not.
+- Every write is a new file in `./data/probundle-staging`, never over an existing one, never into
+  ProPresenter's library or its installed themes (ProPresenter overwrites files edited under it).
+- Nothing of any church's goes into this repo or the package: themes, bundles, skills and reference
+  files live in the church folder (the existing packs folder setting), on that computer.
+- A file the reader can't fully read is opened read-only and never written back.
+
+**Not in this work.** Renaming or tidying the church's theme elements is a job for the finished MCP,
+run by the owner on the Refrain computer. Do not do it here, and do not propose names.
+
+**Checked already (2026-11-01, on an older copy of the church's sermon theme, kept local).** The
+theme decodes as `ThemeDocument`: 35 theme slides, no fields the schema lacks, and it re-encodes
+byte-identical. Last week's sermon bundle opens (105 slides, FS and T). Element names are untidy in
+both, which is the first job the owner wants the finished MCP to do.
+
+### A. Tool basics (first, small)
+- Names prefixed `refrain_`. Annotations on every tool (`readOnlyHint`, `destructiveHint`).
+- `structuredContent` with an `outputSchema`, not JSON in a text block.
+- `refrain_setup_status`: what is set, what is missing, and the exact setting to change. Every setup
+  error names that setting.
+- Split the gate: general tools need only the package; tools that use the church folder need it set.
+- `.mcp.json` in `.gitignore` (it holds a local path, and this repo is public).
+
+### B. Themes in the package
+- Open a `.protheme` (the package refuses them today): theme slides, elements, names, fonts, media.
+- Edit and write a copy: rename an element, change its properties, tidy. Same safety as presentations.
+
+### C. General tools
+- Open any `.pro`, `.probundle` or `.protheme`; list slides; read one slide in full; check.
+- Edit: rename, set text, set picture, tidy (the package already has these for presentations).
+- Build a new presentation from existing slides with new words (what the skit builder does
+  internally, made general). Write a bundle.
+- File an incoming file under a job in the church folder ("keep this as the sermon reference"), so
+  nobody copies files by hand.
+
+### D. Skills
+- In the church folder, one folder per job: instructions plus its reference files. The MCP lists the
+  jobs and serves their instructions.
+- First skills: theme clean-up, sermon, skit. The coded skit tools are retired from the MCP once the
+  skit skill does the same job; the package keeps its code.
+
+### E. Preview
+- Draw slides from the file in the Bundles screen, following the package's `docs/RENDERING.md`, and
+  show Claude's draft there as it changes. In the Claude window as well, if the app supports it.
+- An earlier session built a prototype renderer; its code is not on this Mac. If it turns up, start
+  from it.
+
+Order: A, B, C, D, E. Each ships on its own.
+
+**Later, not this work:** a controller MCP that also drives the ProPresenter app and Refrain's live
+features (owner, 2026-11-01: "could be later").
+
 ## Status log
 
 `YYYY-MM-DD · <item> · done | partial | blocked · <one line>`
@@ -3639,3 +3704,13 @@ eight places, see CLAUDE.md); the announce app's form and endpoint.
 - 2026-10-29 — (same branch) **`propresenter-bundle` published** at github.com/capitalchurchtech/propresenter-bundle (public, MIT; v0.1.0, then v0.1.1 to ship its invented fixtures so the MCP tests here can use them, each with a release page). Refrain now depends on `github:capitalchurchtech/propresenter-bundle#v0.1.1`, so `npm install` on the deploy box and in CI fetches it over HTTPS (checked with SSH disabled and an empty cache); the "local `file:` dependency" note above no longer holds. The org name is kept out of the package's own files because the privacy guard's list includes it. The announcements exporter still points at `file:../propresenter-bundle`; switching it is that project's call.
 - 2026-10-29 — (branch remove-delimiter) **Delimiter item removed** (owner: scrapped for safety; Sunday mornings are a scramble and nothing should add load on ProPresenter then, and v22 beta already hangs on Scrolling Slides). Gone: `server/delimiter.js`, the five-minute light refresh of the running playlist and `refreshIndexEntries` in search-index.js (used only by it), the `delimiter` mark on history items, and `kind` on `/status` history items and the day log's `item` lines (docs/service-feed.md says when it was sent and that it no longer is). A console config that still lists `liveModule.delimiterItems` is ignored; the booth's can drop it.
 - 2026-10-29 — (branch manual-slide-pictures) **Drawing slide pictures ahead is paused** (owner: off unless asked for, while ProPresenter 22 beta is slow on rich slides and ProPresenter keeps memory for every slide it draws). `PRERENDER_PAUSED` in server/index.js: the automatic run never starts whatever `slidePictures.prerender` says, `POST /api/slide-pictures` refuses to turn it on (409, pointing at Update pictures), and Settings › Phones › Slide pictures shows "Paused for now" in place of the On/Off switch. Update pictures on Service › Day still draws when pressed. Un-pausing is that one constant.
+- 2026-11-01 — (branch mcp-general) **Section 30 step A: MCP tool basics.** Tools now named `refrain_…`; each carries annotations (read-only or not, destructive or not, nothing outside this computer) and an `outputSchema`, and answers with `structuredContent` as well as text. New `refrain_setup_status`: package installed and version, Bundles off / misconfigured / active, packs folder, kinds of show, and each problem with the exact setting that fixes it; the pack tools refuse with that same sentence. The package now loads only when a tool uses it, so a missing package is reported instead of stopping the server. Tools moved to `server/mcp/server.js` (`createMcpServer`), `index.js` only connects stdio. `.mcp.json` ignored. Tested through the SDK client over an in-memory link (it checks every result against its schema; confirmed it rejects a broken one), and over real stdio from another folder.
+- 2026-11-01 — (package branch `themes`, uncommitted) **Section 30 step B: themes in the package.** `readThemeFile` opens a `.protheme` (theme slides, boxes with their uuids, macros, Assets); `renameElement` renames a box by uuid in a theme or a presentation; `writeTheme` writes a changed copy with every other entry byte-identical, after the presentation check, and refuses a theme with fields the schema lacks. New invented fixture `sample.protheme`; 66 package tests pass, privacy guard ran. Checked locally on the owner's older sermon theme (not kept): 35 slides, 100 boxes (49 unnamed), one rename written and re-read with only that name changed and all 5 pictures identical. **Not checked:** importing a changed theme into ProPresenter, and whether a renamed box keeps its link to the presentations that use the theme.
+- 2026-11-01 — (branch mcp-general, uncommitted) **Section 30 step C: general tools.** `refrain_open`, `refrain_read_slide`, `refrain_check`, `refrain_make_copy`, `refrain_rename_boxes`, `refrain_set_words`, `refrain_build_from` (server/mcp/file-tools.js); they need only the package, not Bundles and not ProPresenter. Changes only ever on a working copy in staging, each checked before it is saved; a file with fields the reader lacks is read but never copied or built from. **ProPresenter's database is never touched** (owner: "never under any circumstance"): server/mcp/paths.js opens only .pro/.probundle/.protheme, refuses anything under RenewedVision/ProPresenter/Workspaces or a folder named Database, and checks the path again after following links; tested with a link into a fake Database. `refrain_setup_status` now reports general tools and script builder apart. Checked locally on the owner's Desktop theme and sermon bundle (not kept): theme 49 unnamed boxes and 7 shared names found, a rename saved; the 105-slide bundle opens in 0.1 s; a 2-slide build carried both its pictures and passed the check. Needs package 0.2.0 (themes, box ids): this worktree links the local package for now. **Not in C:** playlists and read-only workspace files (macros, Looks, labels), and filing a file into the church folder; both belong with step D.
+- 2026-11-01 — (branch mcp-general, uncommitted) **Section 30 step D: skills and workspace context.** Owner: general purpose, flexible; skills hold the specific jobs; as much context as there is (ProPresenter installed: read it; not: use files). `refrain_rename_boxes` and `refrain_set_words` became one `refrain_edit_boxes` (name, words, type size, x/y/width/height; all checked, saved together or not at all). Skills in the church folder (packs folder, default ./data/probundle-packs): `skills/<name>/SKILL.md` + `files/`; `refrain_list_skills`, `refrain_read_skill`, `refrain_save_skill` (old version kept in .history), `refrain_file_away` (never replaces); also served as MCP prompts. `refrain_read_workspace`, read only: macros, Looks/screens, labels, groups, props, messages, timers, stage layouts, clear groups, playlists a level at a time (package `readWorkspacePart`); ProPresenter's UserWorkspaces when installed (most recently used, others listed), else the church folder's `workspace` copy; refused if it leads into the Workspaces state folder. CCLI file deliberately not read. Checked on this Mac's ProPresenter 21.3 workspace: every part read (Looks has 2 fields the schema lacks, counted); playlist library 725 playlists / 7215 items, so read by level (top 1.1k chars, a folder 0.6k). 17 tools over stdio. No skills written: the church writes its own (element names are the owner's job on the Refrain computer). **Not checked:** ProPresenter 22 beta's workspace (cloud sync may change it; unknown fields are counted, not fatal).
+- 2026-11-01 — (branch mcp-general, uncommitted) **Linked boxes** (owner: "a general purpose MCP should be able to handle linked text"). Package: `linksOf` names every data link on a box in plain words (slide label, next slide's label, timer, clock, group name, CCLI details, another slide's words…), and a box linked to its own slide's label reads as the label in the model, since that is what shows (Bundles' Inspect and Compare get this too). MCP: boxes carry `linked_to`; `refrain_edit_boxes` words on a label-linked box set the slide's label (and the box's saved words), and are refused for any other link that supplies words, naming where they come from; `refrain_build_from` the same, refusing a label and linked-box words that differ. Fixed on the way: build_from ran labels through the file-name cleaner, turning "Romans 13:1" into "Romans 13 1". Checked on the owner's sermon bundle (local): 60 slides with a label-linked box, all now read as their labels (the saved words differed on all 60); an edit on a copy changed the label and passed the check.
+- 2026-11-01 — (branch mcp-general, uncommitted) **The slide editor, through two tools** (owner: general purpose means every slide-editing feature; keep usage low). Package `format.js`: text colour (RTF colortbl + expandedcolortbl as csgenericrgb, \cf2, and text_solid_fill), alignment (paragraph_style + \q on each \pard; left writes neither, as ProPresenter does), vertical alignment, fit (scale_behavior), capitals, font (fonttbl + every range font + attributes.font; family needed, shown now as fontFamily), box fill/outline/shadow/rotation/opacity/hidden/locked, arrange front/back/forward/backward/duplicate/delete (keeps element_build_order). MCP: all as fields on `refrain_edit_boxes`; new `refrain_edit_slides` (label, label colour, enabled, background colour, group, move up/down/first/last/duplicate/delete, add/remove macro by name from the workspace or another slide in the file; group rename/colour; presentation name). 18 tools, tool list 13.5k chars (+2.3k for the editor). Checked on a copy of the owner's sermon bundle: edits saved and the copy passes the check. **Nothing in the editor has been imported into ProPresenter yet.** **Not done yet:** slide notes, transitions, media and other actions, builds, arrangements, hot keys, auto-advance, line spacing/kerning/gradients, theme slide to presentation slide. **Next:** move the schema to upstream's autogen-proto (ProPresenter 21.4, auto-updated, MIT) and re-check every real file; then `.proplaylist` (owner's spec: zip of `data` = rv.data.Playlist, the .pro files, media; arrangement_name is field 5, absent from 19beta).
+- 2026-11-01 — (package branch `themes`, uncommitted) **Schema moved to ProPresenter 21.4**: proto/ is now greyshirtguy's autogen-proto (generated from ProPresenter 21.4, auto-updated upstream, MIT), compiled by the new `npm run schema` (scripts/compile-schema.js). Field-by-field against the old schema: renamed only AdvertisementGroup.id→uuid and our own Media.Metadata._unknown_6→color_format (unused); removed only two feature flags and the registration (licensing) types; CustomAttribute field 12, now named original_font, is kept as `_unknown_12` raw bytes so font ranges read and write as before (NOTICE says so). All 76 package and 783 Refrain tests pass unchanged. Real files: the Looks file's 2 unknown fields and the CCLI file's 1 are gone; sermon bundle, theme and the first 400 library presentations have none. ProPresenter 22 (owner's target, beta): fields it adds are counted and such a file is read but not changed until upstream updates; then copy autogen-proto and `npm run schema`.
+- 2026-11-01 — **Decision (owner): the MCP never writes to a ProPresenter workspace**, not even with ProPresenter closed ("bad experience editing the workspace at all since rocks db wouldn't know and things can corrupt"). Stage layouts, props, Looks, macros, messages, timers and playlists in the workspace stay read-only; the MCP can report what is untidy in a stage layout, and a person makes the change in ProPresenter. Do not build a swap-in. The church reuses its existing macros rather than editing them, and puts one-off media actions on slides directly.
+- 2026-11-01 — (branch mcp-general, uncommitted) **Media on slides.** Package `media.js`: `mediaInfo` (picture/video/sound, ProPresenter's format name, a picture's size from its PNG/JPEG/GIF header), `mediaAction` (background layer 0, which stays; foreground 1, which ends at the next slide; a sound has none), `mediaBox` (a picture or video box), `workspaceOf` (the workspace a file's media already points into), `mediaEntryName`. A new item copies one of its kind already in the file when there is one, so ProPresenter's own settings (a video's transport) carry over; else it is built bare and ProPresenter reads a video's size and a clip's length when it loads it. Format names as ProPresenter 21 writes them, checked on the owner's bundle: "JPG" in capitals, png/webp/h264 not (the owner's pasted spec says lower case; real files say otherwise). MCP: `refrain_edit_slides` add_media (as background, foreground or box) and remove_media; `refrain_edit_boxes` picture (swap a picture box's picture). Only a bundle copy takes new media (a .pro can't carry the file); media paths go through the same database guard. **Not yet imported into ProPresenter.**
+- 2026-11-01 — **Decision (owner): only ProPresenter's own import and export.** Everything the MCP makes reaches ProPresenter by File > Import (a .probundle, a .protheme); nothing is written into ProPresenter's folders. For what ProPresenter can't import (a stage layout, a prop), the workaround is a carrier presentation: the MCP builds a presentation holding the cleaned-up layout as a slide, the person imports it and copies the boxes into ProPresenter's stage layout or prop editor. Not built yet.

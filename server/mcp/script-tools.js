@@ -4,7 +4,7 @@
  *
  * TWO QUESTIONS BEFORE ANY BUILD, because a person has to answer them: the cast's label
  * colours, from ProPresenter's own swatches, and whether the show reuses slides (a title, verse or logo slide).
- * build_script_bundle refuses until both are answered on the draft, so an assistant cannot skip asking.
+ * refrain_build_script_bundle refuses until both are answered on the draft, so an assistant cannot skip asking.
  *
  * WHERE THINGS LIVE. The kinds of show come from the church's packs (packsDir/<pack>/scripts/<kind>/, a
  * template.pro and a recipe.json; Refrain ships none, they are each church's own). A draft is a JSON file in
@@ -58,7 +58,7 @@ const draftPath = (staging, id) => {
 };
 async function loadDraft(staging, id) {
   const p = draftPath(staging, id);
-  if (!existsSync(p)) throw new Error(`No draft ${id}. Read the script again with parse_script.`);
+  if (!existsSync(p)) throw new Error(`No draft ${id}. Read the script again with refrain_parse_script.`);
   return JSON.parse(await readFile(p, "utf8"));
 }
 /** Temp file, then rename: a draft is never half written. */
@@ -88,7 +88,7 @@ function summary(draft, type) {
   };
 }
 
-/** parse_script: read a pasted script into a draft. */
+/** refrain_parse_script: read a pasted script into a draft. */
 export async function parseScriptTool({ text, type: typeId, name }, { packsDir, staging }) {
   if (typeof text !== "string" || !text.trim()) throw new Error("Paste the script's text.");
   const type = findType(packsDir, typeId);
@@ -101,7 +101,7 @@ export async function parseScriptTool({ text, type: typeId, name }, { packsDir, 
   return { ...summary(draft, type), script: playScript(beats), checklist: checklist(beats, type) };
 }
 
-/** preview_script: the draft read back as a play's script, with the booth's checklist. */
+/** refrain_preview_script: the draft read back as a play's script, with the booth's checklist. */
 export async function previewScriptTool({ draft_id }, { packsDir, staging }) {
   const draft = await loadDraft(staging, draft_id);
   const type = findType(packsDir, draft.type);
@@ -112,7 +112,7 @@ export async function previewScriptTool({ draft_id }, { packsDir, staging }) {
 const cleanName = (s) => (typeof s === "string" ? fileName(s).slice(0, 80) : "");
 
 /**
- * update_script_draft: the person's answers and corrections. `cast` confirms the colours (every speaker, as
+ * refrain_update_script_draft: the person's answers and corrections. `cast` confirms the colours (every speaker, as
  * #rrggbb); `reused` answers the reused-slides question; `edits` correct the beats list, which is where the
  * reader's mistakes are fixed.
  */
@@ -173,7 +173,7 @@ function cleanBeat(b, old) {
 }
 
 /**
- * build_script_bundle: the draft as a .probundle in the staging folder. Refuses while a question is open.
+ * refrain_build_script_bundle: the draft as a .probundle in the staging folder. Refuses while a question is open.
  * Never overwrites: a name already there gets a number.
  */
 export async function buildTool({ draft_id }, { packsDir, staging }) {
@@ -181,7 +181,7 @@ export async function buildTool({ draft_id }, { packsDir, staging }) {
   const type = findType(packsDir, draft.type);
   const open = openQuestions(draft);
   if (open.length) {
-    return { built: false, reason: "Ask the person first, then record the answers with update_script_draft.", ask_before_building: open };
+    return { built: false, reason: "Ask the person first, then record the answers with refrain_update_script_draft.", ask_before_building: open };
   }
   const payload = readPayload({ type: "x", name: draft.name, beats: draft.beats, cast: draft.cast, titleSlide: draft.titleSlide ?? undefined }, [{ key: "x", label: type.label }]);
   if (payload.error) throw new Error(payload.error);
