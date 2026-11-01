@@ -167,3 +167,52 @@ test("stage layouts and props come out as an ordinary presentation, links and al
   await assert.rejects(call("refrain_workspace_to_presentation", { part: "stage_layouts", names: ["Nope"] }), /No stage layout called nope.*There are: Lyrics, Sermon/);
   await assert.rejects(call("refrain_workspace_to_presentation", { part: "macros" }), /stage_layouts or props/);
 });
+
+test("slide actions: read in plain words, added by name from the workspace (copying the macros' own example), removed", { skip }, async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "refrain-pp-"));
+  const ws = path.join(home, "RenewedVision", "ProPresenter", "UserWorkspaces", "Main");
+  makeWorkspace(ws);
+  const conf = (f, type, obj) => fs.writeFileSync(path.join(ws, "Configuration", f), encode(type, obj));
+  conf("Workspace", "rv.data.ProPresenterWorkspace", { pro_screens: [{ uuid: uid(40), name: "Front", screen_type: 1 }, { uuid: uid(41), name: "Confidence", screen_type: 2 }], audience_looks: [{ uuid: uid(42), name: "Lower Third" }] });
+  conf("Stage", "rv.data.Stage.Document", { layouts: [{ uuid: uid(43), name: "Sermon Notes", slide: { uuid: uid(44) } }] });
+  conf("Props", "rv.data.PropDocument", { cues: [{ uuid: uid(45), name: "Logo bug" }], prop_collections: [{ uuid: uid(46), name: "Bugs", items: [{ prop_cue_uuid: uid(45) }] }] });
+  conf("Messages", "rv.data.MessageDocument", { messages: [{ uuid: uid(47), title: "Nursery" }] });
+  conf("Timers", "rv.data.TimersDocument", { timers: [{ uuid: uid(48), name: "Countdown", configuration: { countdown: { duration: 300 } } }] });
+  conf("ClearGroups", "rv.data.ClearGroupsDocument", { groups: [{ uuid: uid(49), name: "Clear to logo" }] });
+  // The church's macros: a prop action carrying ProPresenter's auto-clear setting, which a new prop action copies.
+  conf("Macros", "rv.data.MacrosDocument", { macros: [{ uuid: uid(50), name: "Bug on", actions: [{ uuid: uid(51), isEnabled: true, type: 6, prop: { identification: { parameter_uuid: uid(99), parameter_name: "Old" }, trigger: { auto_clear_enabled: true } } }] }] });
+  const { call } = await connect({ userWorkspaces: path.dirname(ws) });
+  const fix = path.join(path.dirname(require.resolve("propresenter-bundle/package.json")), "test", "fixtures");
+  const copy = await call("refrain_make_copy", { path: path.join(fix, "sample-fixed.pro") });
+
+  const r = await call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 1, add_action: [
+    { kind: "clear", what: "messages" }, { kind: "look", name: "lower third" }, { kind: "prop", name: "Logo bug" }, { kind: "message", name: "Nursery" },
+    { kind: "timer", name: "Countdown", do: "reset_and_start" }, { kind: "clear group", name: "Clear to logo" }, { kind: "stage layout", name: "Sermon Notes" },
+  ] }] });
+  assert.deepEqual(r.slides[0].changed.actions_added.map((a) => a.kind), ["clear", "look", "prop", "message", "timer", "clear group", "stage layout"]);
+  const actions = (await call("refrain_read_slide", { copy_id: copy.copy_id, slide: 1 })).slide.actions;
+  assert.deepEqual(actions.filter((a) => a.kind !== "media"), [
+    { kind: "clear", what: "messages" }, { kind: "look", name: "Lower Third" }, { kind: "prop", name: "Logo bug" }, { kind: "message", name: "Nursery" },
+    { kind: "timer", name: "Countdown", do: "reset_and_start" }, { kind: "clear group", name: "Clear to logo" },
+    { kind: "stage layout", screens: [{ screen: "Confidence", layout: "Sermon Notes" }] },
+  ], "the stage layout goes to every stage screen, not the audience one");
+
+  const raw = lib.decodePresentation(fs.readFileSync(copy.file)).doc.cues[0].actions.find((a) => a.prop);
+  assert.equal(raw.prop.trigger?.auto_clear_enabled, true, "the macros' example setting came along");
+  assert.deepEqual(raw.prop.identification.parent_collection?.parameter_name, "Bugs");
+
+  await assert.rejects(call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 1, add_action: [{ kind: "look", name: "Nope" }] }] }), /No Look called "Nope"/);
+  await assert.rejects(call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 1, add_action: [{ kind: "macro", name: "x" }] }] }), /media and macros have their own fields/);
+  const gone = await call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 1, remove_action: [{ kind: "timer" }, { kind: "stage layout", name: "sermon notes" }] }] });
+  assert.deepEqual(gone.slides[0].changed.actions_removed.map((x) => x.count), [1, 1]);
+  await assert.rejects(call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 1, remove_action: [{ kind: "timer" }] }] }), /no timer action on this slide/);
+});
+
+test("without a workspace, a clear can still be added, and a named action says where it would look", { skip }, async () => {
+  const { call } = await connect();
+  const fix = path.join(path.dirname(require.resolve("propresenter-bundle/package.json")), "test", "fixtures");
+  const copy = await call("refrain_make_copy", { path: path.join(fix, "sample-fixed.pro") });
+  await call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 2, add_action: [{ kind: "clear", what: "slide" }] }] });
+  assert.ok((await call("refrain_read_slide", { copy_id: copy.copy_id, slide: 2 })).slide.actions.some((a) => a.kind === "clear" && a.what === "slide"));
+  await assert.rejects(call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 2, add_action: [{ kind: "prop", name: "Logo bug" }] }] }), /no ProPresenter workspace on this computer/);
+});
