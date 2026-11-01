@@ -140,3 +140,30 @@ test("skills: saved with the old version kept, files filed without replacing, of
   const prompt = await client.getPrompt({ name: "sermon-slides" });
   assert.match(prompt.messages[0].content.text, /Use the sermon-slides skill\.\n\nOne point per slide\.\n\nReference files.*Message\.protheme/s);
 });
+
+test("stage layouts and props come out as an ordinary presentation, links and all, to import and copy from", { skip }, async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "refrain-pp-"));
+  const ws = path.join(home, "RenewedVision", "ProPresenter", "UserWorkspaces", "Main");
+  makeWorkspace(ws);
+  const box = (n, name, link) => ({ element: { uuid: uid(n), name, bounds: { origin: { x: 0, y: 0 }, size: { width: 800, height: 200 } } }, ...(link ? { data_links: [link] } : {}) });
+  fs.writeFileSync(path.join(ws, "Configuration", "Stage"), encode("rv.data.Stage.Document", { layouts: [
+    { uuid: uid(20), name: "Lyrics", slide: { uuid: uid(21), size: { width: 1920, height: 1080 }, elements: [box(22, "Current", { slide_text: {} }), box(23, "Clock", { clock_text: {} })] } },
+    { uuid: uid(24), name: "Sermon", slide: { uuid: uid(25), elements: [box(26, "Notes", { presentation_notes: {} })] } },
+  ] }));
+  fs.writeFileSync(path.join(ws, "Configuration", "Props"), encode("rv.data.PropDocument", { cues: [
+    { uuid: uid(30), name: "Logo bug", actions: [{ uuid: uid(31), type: 11, slide: { prop: { base_slide: { uuid: uid(32), elements: [box(33, "Logo")] } } } }] },
+  ] }));
+  const { call } = await connect({ userWorkspaces: path.dirname(ws) });
+
+  const stage = await call("refrain_workspace_to_presentation", { part: "stage_layouts" });
+  assert.deepEqual([stage.slides, stage.names], [2, ["Lyrics", "Sermon"]]);
+  const opened = await call("refrain_open", { path: stage.file, boxes: true });
+  assert.deepEqual(opened.slides.map((s) => [s.group, s.label]), [["Stage layouts", "Lyrics"], ["Stage layouts", "Sermon"]]);
+  assert.deepEqual(opened.slides[0].boxes.map((b) => [b.name, b.linked_to]), [["Current", ["another slide's words"]], ["Clock", ["clock"]]], "the links come with the boxes");
+  assert.notEqual(opened.slides[0].boxes[0].id, uid(22).string, "fresh ids, so pasting doesn't collide");
+
+  const one = await call("refrain_workspace_to_presentation", { part: "props", names: ["logo BUG"], name: "Props to tidy" });
+  assert.deepEqual([one.slides, one.names, path.basename(one.file)], [1, ["Logo bug"], "Props to tidy.probundle"]);
+  await assert.rejects(call("refrain_workspace_to_presentation", { part: "stage_layouts", names: ["Nope"] }), /No stage layout called nope.*There are: Lyrics, Sermon/);
+  await assert.rejects(call("refrain_workspace_to_presentation", { part: "macros" }), /stage_layouts or props/);
+});

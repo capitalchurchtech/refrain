@@ -55,12 +55,36 @@ async function source(args, staging) {
     return { bytes: await readFile(file), where: file, copy: { id: args.copy_id, dir, meta } };
   }
   const file = openablePath(args.path);
-  return { bytes: await readFile(file), where: file, copy: null };
+  const bytes = await readFile(file);
+  if (args.inside === undefined) return { bytes, where: file, copy: null };
+  return { bytes: await fromPlaylist(bytes, args.inside, file), where: `${file} › ${args.inside}`, copy: null };
+}
+
+const isPlaylist = (p, bytes) => p.isZip(bytes) && p.readBundle(bytes).some((e) => e.name === "data");
+
+/**
+ * One presentation inside a playlist file, as a bundle of its own with the media it uses from the playlist,
+ * so it can be read, copied and changed like any other.
+ */
+async function fromPlaylist(bytes, inside, file) {
+  const p = await lib();
+  if (!isPlaylist(p, bytes)) throw new Error(`${path.basename(file)} is not a playlist, so there is nothing inside it to open.`);
+  const r = p.readPlaylistFile(bytes);
+  const pro = r.entries.find((e) => e.name === inside || e.name.toLowerCase() === `${String(inside).toLowerCase().replace(/\.pro$/, "")}.pro`);
+  if (!pro) throw new Error(`No presentation ${inside} in this playlist. It holds: ${r.presentations.join(", ") || "none"}.`);
+  const { doc } = p.decodePresentation(pro.data);
+  const used = new Set((doc.cues ?? []).flatMap(p.mediaFilesOf));
+  const media = r.entries.filter((e) => r.media.includes(e.name) && used.has(e.name.split("/").pop()));
+  return p.writeBundle([{ name: pro.name, data: pro.data }, ...media]);
 }
 
 /** A document decoded, whatever its kind, with what writing it back needs. */
 async function decode(bytes) {
   const p = await lib();
+  if (isPlaylist(p, bytes)) {
+    const r = p.readPlaylistFile(bytes);
+    return { kind: "proplaylist", name: r.playlists[0]?.name ?? "", unknown: Array(r.unknown).fill(null), playlist: r };
+  }
   if (p.isZip(bytes) && p.readBundle(bytes).some((e) => /(^|\/)Theme$/.test(e.name))) {
     const t = p.readThemeFile(bytes);
     return { kind: "protheme", name: t.file.name ?? "", doc: t.doc, schema: t.schema, unknown: t.unknown, file: t.file, theme: t.model };
@@ -72,6 +96,7 @@ async function decode(bytes) {
 
 /** Every slide, numbered from 1 in the order ProPresenter shows them, in one shape for both kinds. */
 function slidesOf(d, { full = false } = {}) {
+  if (d.kind === "proplaylist") throw new Error(`This is a playlist. Name a presentation in it with inside: ${d.playlist.presentations.join(", ") || "(it holds none)"}.`);
   const box = (e) => ({ id: e.uuid, name: e.name, kind: e.kind, words: full ? e.text : short(e.text), ...(e.links?.length ? { linked_to: e.links } : {}),
     ...(full ? { role: e.role, bounds: e.bounds, font: e.fontName, font_family: e.fontFamily, size: e.fontSize, caps: e.caps, picture: e.media } : {}) });
   if (d.kind === "protheme") {
@@ -101,6 +126,14 @@ const brief = (s) => {
 export async function openTool(args, { staging }) {
   const src = await source(args, staging);
   const d = await decode(src.bytes);
+  if (d.kind === "proplaylist") {
+    const pl = d.playlist;
+    return {
+      ...describe(src), kind: d.kind, name: d.name, slide_count: 0, can_change: false, unreadable_fields: d.unknown.length,
+      playlists: pl.playlists, presentations: pl.presentations, media: pl.media.length, slides: [],
+      next: "Open a presentation in it with inside: its file name (refrain_open, refrain_read_slide, refrain_check, refrain_make_copy). A playlist itself is read, not changed.",
+    };
+  }
   const slides = args.boxes === true ? slidesOf(d) : slidesOf(d).map(brief);
   return {
     ...describe(src), kind: d.kind, name: d.name, slide_count: slides.length,
@@ -150,14 +183,16 @@ export async function checkTool(args, { staging }) {
 
 export async function makeCopyTool(args, { staging }) {
   const file = openablePath(args.path);
-  const bytes = await readFile(file);
+  const bytes = args.inside === undefined ? await readFile(file) : await fromPlaylist(await readFile(file), args.inside, file);
   const d = await decode(bytes);
+  if (d.kind === "proplaylist") throw new Error("A playlist is read, not changed. Copy a presentation in it with inside: its file name.");
   if (d.unknown.length) throw new Error(`${path.basename(file)} holds ${d.unknown.length} field(s) this reader does not understand, so it is not copied for changing: something in it could be lost. It can still be opened and read.`);
   const id = randomUUID();
   const dir = path.join(staging, "copies", id);
   mkdirSync(dir, { recursive: true });
-  const ext = path.extname(file);
-  const name = cleanName(args.name) || `${path.basename(file, ext)} (edited)`;
+  // A presentation from inside a playlist becomes a bundle of its own, carrying its media.
+  const ext = args.inside === undefined ? path.extname(file) : ".probundle";
+  const name = cleanName(args.name) || `${args.inside === undefined ? path.basename(file, path.extname(file)) : path.basename(String(args.inside), ".pro")} (edited)`;
   await atomicWrite(path.join(dir, `${name}${ext}`), bytes);
   await atomicWrite(path.join(dir, "copy.json"), JSON.stringify({ source: file, file: `${name}${ext}`, kind: d.kind, made: new Date().toISOString() }));
   return { copy_id: id, file: path.join(dir, `${name}${ext}`), kind: d.kind, name, from: file };

@@ -4,7 +4,7 @@
  * NEVER PROPRESENTER'S DATABASE (owner, 2026-11-01: "never under any circumstance"). ProPresenter keeps its
  * state in a RocksDB store at Workspaces/<name>-<id>/Database, under an exclusive lock, and a damaged one is
  * what stops ProPresenter starting at all (server/propresenter-doctor.js). Three guards, any one enough:
- *   - only ProPresenter's own document types open (.pro, .probundle, .protheme); a RocksDB store is none;
+ *   - only ProPresenter's own document types open (.pro, .probundle, .protheme, .proplaylist); a RocksDB store is none;
  *   - nothing under ProPresenter's Workspaces folder (the state folders: the Database and its thumbnails),
  *     and nothing in any folder named Database, wherever it is;
  *   - both checked on the path as given and on where it really leads, so a link can't reach around them.
@@ -16,7 +16,7 @@ import { realpathSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-export const OPENABLE = [".pro", ".probundle", ".protheme"];
+export const OPENABLE = [".pro", ".probundle", ".protheme", ".proplaylist"];
 const MAX_BYTES = 1.5 * 1024 ** 3;
 
 /** Why this path is ProPresenter's state rather than a document, or null. */

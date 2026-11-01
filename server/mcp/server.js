@@ -91,7 +91,8 @@ const READ = { readOnlyHint: true, openWorldHint: false };
 
 // Where a tool reads from: a document by its path, or a working copy by its id.
 const FROM = {
-  path: { type: "string", description: "Full path of a .pro, .probundle or .protheme on this computer" },
+  path: { type: "string", description: "Full path of a .pro, .probundle, .protheme or .proplaylist on this computer" },
+  inside: { type: "string", description: "With a .proplaylist path: the presentation in it, by file name" },
   copy_id: { type: "string", description: "A working copy from refrain_make_copy, instead of a path" },
 };
 const SLIDE = { type: "object", properties: { number: { type: "integer" }, id: { type: ["string", "null"] }, words: { type: "string" }, boxes: { type: ["array", "integer"], items: { type: "object" } } } };
@@ -102,9 +103,9 @@ const GENERAL = [
   {
     name: "refrain_open",
     title: "Open a ProPresenter file",
-    description: "Open a presentation (.pro), bundle (.probundle) or theme (.protheme) and list every slide, numbered from 1, in brief: its label or name, the start of its words, how many boxes, its macros. With boxes: true, every box on every slide (id, name, kind, the start of its words), as a whole-file job like renaming needs; for one slide, refrain_read_slide is lighter. Read only: the file is not changed. ProPresenter's database is never opened.",
+    description: "Open a presentation (.pro), bundle (.probundle), theme (.protheme) or playlist (.proplaylist: its items, arrangement names and the presentations it carries; open one of those with inside) and list every slide, numbered from 1, in brief: its label or name, the start of its words, how many boxes, its macros. With boxes: true, every box on every slide (id, name, kind, the start of its words), as a whole-file job like renaming needs; for one slide, refrain_read_slide is lighter. Read only: the file is not changed. ProPresenter's database is never opened.",
     inputSchema: { type: "object", properties: { ...FROM, boxes: { type: "boolean", description: "List every box on every slide (larger)" } } },
-    outputSchema: { type: "object", required: ["file", "kind", "slide_count", "slides", "can_change"], properties: { file: { type: "string" }, copy_id: { type: "string" }, kind: { type: "string", enum: ["pro", "probundle", "protheme"] }, name: { type: "string" }, slide_count: { type: "integer" }, can_change: { type: "boolean" }, unreadable_fields: { type: "integer" }, slides: { type: "array", items: SLIDE } } },
+    outputSchema: { type: "object", required: ["file", "kind", "slide_count", "slides", "can_change"], properties: { file: { type: "string" }, copy_id: { type: "string" }, kind: { type: "string", enum: ["pro", "probundle", "protheme", "proplaylist"] }, name: { type: "string" }, slide_count: { type: "integer" }, can_change: { type: "boolean" }, unreadable_fields: { type: "integer" }, slides: { type: "array", items: SLIDE } } },
     annotations: READ,
     needs: "package",
     run: async (args, env) => (await fileTools()).openTool(args, env),
@@ -133,7 +134,7 @@ const GENERAL = [
     name: "refrain_make_copy",
     title: "Make a working copy",
     description: "Copy a file into Refrain's staging folder to change it. Every change is made on the copy; the original is never touched. Refused for a file holding fields the reader can't understand, so nothing in it is lost. Returns the copy_id the change tools take.",
-    inputSchema: { type: "object", required: ["path"], properties: { path: FROM.path, name: { type: "string", description: "Name for the copy; default: the original's name plus (edited)" } } },
+    inputSchema: { type: "object", required: ["path"], properties: { path: FROM.path, inside: FROM.inside, name: { type: "string", description: "Name for the copy; default: the original's name plus (edited)" } } },
     outputSchema: { type: "object", required: ["copy_id", "file", "kind"], properties: { copy_id: { type: "string" }, file: { type: "string" }, kind: { type: "string" }, name: { type: "string" }, from: { type: "string" } } },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     needs: "package",
@@ -241,6 +242,16 @@ const CONTEXT = [
     annotations: READ,
     needs: "package",
     run: async (args, env) => (await contextTools()).readWorkspaceTool(args, env),
+  },
+  {
+    name: "refrain_workspace_to_presentation",
+    title: "Stage layouts or props as a presentation",
+    description: "ProPresenter can't import a stage layout or a prop, and the workspace is never written here. This makes them an ordinary presentation instead: one slide per stage layout or prop (all, or those named), every box as it is, links to the current slide, clock and timers included, with the pictures they use. The person imports it, can tidy it first with refrain_make_copy and refrain_edit_boxes, and copies the boxes into ProPresenter's stage layout or prop editor. Writes a new .probundle in Refrain's staging folder.",
+    inputSchema: { type: "object", required: ["part"], properties: { part: { enum: ["stage_layouts", "props"] }, names: { type: "array", items: { type: "string" } }, name: { type: "string" }, workspace: { type: "string" } } },
+    outputSchema: { type: "object", required: ["file", "slides"], properties: { file: { type: "string" }, slides: { type: "integer" }, from: { type: "object" }, names: { type: "array" }, media_included: { type: "array" }, media_not_found: { type: "array" }, next: { type: "string" } } },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    needs: "package",
+    run: async (args, env) => (await contextTools()).workspaceToPresentationTool(args, env),
   },
   {
     name: "refrain_list_skills",

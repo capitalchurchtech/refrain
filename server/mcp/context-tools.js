@@ -201,3 +201,83 @@ export async function skillPrompt(name, env) {
   const files = s.files.length ? `\n\nReference files (open them with refrain_open):\n${s.files.map((f) => `- ${f.path}`).join("\n")}` : "";
   return { description: s.description, messages: [{ role: "user", content: { type: "text", text: `Use the ${s.skill} skill.\n\n${s.instructions}${files}` } }] };
 }
+
+// --- Stage layouts and props, as a presentation -----------------------------------------------------------
+// ProPresenter imports neither a stage layout nor a prop, and its workspace is never written here. So they
+// come out as an ordinary presentation: one slide each, every box as it is (links to the current slide,
+// the clock, a timer and so on included). The person imports it, changes it with the box tools if wanted,
+// and copies the boxes into ProPresenter's stage layout or prop editor, which ProPresenter's own copy and
+// paste does.
+
+const CARRY = {
+  stage_layouts: { type: "rv.data.Stage.Document", list: (doc) => doc.layouts ?? [], name: (x) => x.name ?? "", slide: (x) => x.slide },
+  props: { type: "rv.data.PropDocument", list: (doc) => doc.cues ?? [], name: (x) => x.name ?? "", slide: (x) => (x.actions ?? []).find((a) => a.slide?.prop)?.slide.prop.base_slide },
+};
+
+export async function workspaceToPresentationTool(args, env) {
+  const p = await lib();
+  const kind = CARRY[args.part];
+  if (!kind) throw new Error("part is stage_layouts or props.");
+  const { w } = pickWorkspace(env, args.workspace);
+  const folder = safeFolder(w.folder);
+  const file = path.join(folder, p.WORKSPACE_PARTS[args.part]);
+  if (!existsSync(file)) throw new Error(`This workspace has no ${args.part} file.`);
+  const real = realpathSync(file);
+  if (forbiddenReason(real)) throw new Error(`Not read: ${forbiddenReason(real)}. This never reads ProPresenter's database.`);
+  const schema = p.loadSchema();
+  const T = schema.root.lookupType(kind.type);
+  const buf = readFileSync(real);
+  if (p.findUnknownFields(T, buf).length) throw new Error(`The ${args.part} file holds fields this reader does not understand (a newer ProPresenter?), so nothing is copied out of it: something could be lost.`);
+  const doc = T.toObject(T.decode(buf), { longs: String, enums: Number, bytes: Buffer, defaults: false });
+
+  const wanted = (args.names ?? []).map((n) => String(n).toLowerCase());
+  const all = kind.list(doc).filter((x) => kind.slide(x));
+  const chosen = wanted.length ? all.filter((x) => wanted.includes(kind.name(x).toLowerCase())) : all;
+  const missing = wanted.filter((n) => !all.some((x) => kind.name(x).toLowerCase() === n));
+  if (missing.length) throw new Error(`No ${args.part === "props" ? "prop" : "stage layout"} called ${missing.join(", ")}. There are: ${all.map(kind.name).join(", ")}.`);
+  if (!chosen.length) throw new Error(`This workspace has no ${args.part === "props" ? "props" : "stage layouts"}.`);
+
+  const cues = chosen.map((x) => {
+    const label = kind.name(x);
+    return { uuid: p.uuid(), name: label, isEnabled: true, actions: [{ uuid: p.uuid(), isEnabled: true, type: 11, label: { text: label }, slide: { presentation: { base_slide: p.freshCopy(kind.slide(x)) } } }] };
+  });
+  const title = (typeof args.name === "string" && args.name.trim() ? args.name.trim() : `${args.part === "props" ? "Props" : "Stage layouts"} from ${w.name}`).replace(/[/\\:*?"<>|]/g, " ").slice(0, 80);
+  const presentation = {
+    uuid: p.uuid(), name: title, ...(doc.application_info ? { application_info: doc.application_info } : {}), cues,
+    cue_groups: [{ group: { uuid: p.uuid(), name: args.part === "props" ? "Props" : "Stage layouts" }, cue_identifiers: cues.map((c) => ({ string: c.uuid.string })) }],
+  };
+  const pro = p.encodePresentation(schema, presentation);
+  const check = p.checkPresentationBytes(pro);
+  if (!check.ok) throw new Error(`The presentation did not pass the check (${check.error ?? "unstable on re-read"}); nothing was written.`);
+
+  // The pictures those slides use, from ProPresenter's own media on this computer. A URL under the library
+  // root (10) is relative to the workspace, which is where they are when the absolute path is another Mac's.
+  // Each goes into the bundle under the name its URL gives, which is how ProPresenter matches them on import.
+  const used = new Map();
+  const walk = (v) => {
+    if (!v || typeof v !== "object" || v instanceof Uint8Array) return;
+    if (v.url?.absolute_string?.startsWith("file://")) used.set(decodeURI(v.url.absolute_string.slice(7)), v.url);
+    for (const x of Array.isArray(v) ? v : Object.values(v)) walk(x);
+  };
+  walk(cues);
+  const media = [], notFound = [];
+  const usable = (f) => f && !forbiddenReason(f) && existsSync(f) && statSync(f).isFile();
+  for (const [abs, url] of used) {
+    const here = url.local?.root === 10 && url.local.path ? path.join(folder, url.local.path) : null;
+    const from = usable(here) ? here : usable(abs) ? abs : null;
+    if (from) media.push({ name: abs, data: readFileSync(from) });
+    else notFound.push(path.basename(abs));
+  }
+  const out = await p.writeBundle([{ name: `${title}.pro`, data: pro }, ...media]);
+  const dir = path.join(env.staging, "built");
+  mkdirSync(dir, { recursive: true });
+  let to = path.join(dir, `${title}.probundle`);
+  for (let n = 2; existsSync(to); n++) to = path.join(dir, `${title} ${n}.probundle`);
+  await writeFile(`${to}.tmp-${process.pid}`, out);
+  await rename(`${to}.tmp-${process.pid}`, to);
+  return {
+    file: to, slides: cues.length, from: { workspace: w.name, part: args.part }, names: cues.map((c) => c.name),
+    media_included: media.map((m) => path.basename(m.name)), media_not_found: notFound,
+    next: `Import it into ProPresenter (File > Import), then copy the boxes from each slide into the ${args.part === "props" ? "prop" : "stage layout"} editor. Change it first with refrain_make_copy and refrain_edit_boxes if it needs tidying.`,
+  };
+}
