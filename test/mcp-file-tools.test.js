@@ -378,3 +378,17 @@ test("transitions: copied by effect name from a slide that has one, timed, remov
   await assert.rejects(call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 1, transition: "Swirl" }] }), /No slide in this file uses the "Swirl" transition yet/);
   await assert.rejects(call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 1, transition_seconds: 2 }] }), /no transition to time/);
 });
+
+test("text outline, text shadow, feather and margins through the box tool, read back on the slide", { skip: lib?.setTextOutline ? false : "propresenter-bundle with text effects is not installed" }, async () => {
+  const { call } = await setup();
+  const copy = await call("refrain_make_copy", { path: path.join(FIX, "sample-fixed.pro") });
+  const box = (await call("refrain_read_slide", { copy_id: copy.copy_id, slide: 1 })).slide.boxes.find((b) => b.kind === "text");
+  const r = await call("refrain_edit_boxes", { copy_id: copy.copy_id, changes: [{ box: box.id, text_outline: { width: 2, color: "#ffffff" }, text_shadow: true, feather: 0.3, margins: { left: 40, right: 40 } }] });
+  assert.deepEqual(Object.keys(r.changes[0].changed).sort(), ["feather", "margins", "text_outline", "text_shadow"]);
+  const b = (await call("refrain_read_slide", { copy_id: copy.copy_id, slide: 1 })).slide.boxes.find((x) => x.id === box.id);
+  assert.deepEqual([b.text_outline, b.text_shadow?.radius, b.feather, b.margins?.left], [{ width: 2, color: "#ffffff" }, 5, 0.3, 40]);
+  await call("refrain_edit_boxes", { copy_id: copy.copy_id, changes: [{ box: box.id, text_outline: "none", feather: "none" }] });
+  const after = (await call("refrain_read_slide", { copy_id: copy.copy_id, slide: 1 })).slide.boxes.find((x) => x.id === box.id);
+  assert.deepEqual([after.text_outline, after.feather], [undefined, undefined]);
+  assert.deepEqual((await call("refrain_check", { copy_id: copy.copy_id })).findings.filter((f) => f.severity === "problem"), []);
+});

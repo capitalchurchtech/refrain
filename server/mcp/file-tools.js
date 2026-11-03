@@ -108,7 +108,12 @@ const notesOf = (cue) => (notesReader && cue ? notesReader((cue.actions ?? []).f
 function slidesOf(d, { full = false } = {}) {
   if (d.kind === "proplaylist") throw new Error(`This is a playlist. Name a presentation in it with inside: ${d.playlist.presentations.join(", ") || "(it holds none)"}.`);
   const box = (e) => ({ id: e.uuid, name: e.name, kind: e.kind, words: full ? e.text : short(e.text), ...(e.links?.length ? { linked_to: e.links } : {}),
-    ...(full ? { role: e.role, bounds: e.bounds, font: e.fontName, font_family: e.fontFamily, size: e.fontSize, caps: e.caps, picture: e.media } : {}) });
+    ...(full ? {
+      role: e.role, bounds: e.bounds, font: e.fontName, font_family: e.fontFamily, size: e.fontSize, caps: e.caps, picture: e.media,
+      // Effects only when set, so an ordinary box stays short.
+      ...(e.list ? { list: e.list } : {}), ...(e.textOutline ? { text_outline: e.textOutline } : {}), ...(e.textShadow ? { text_shadow: e.textShadow } : {}),
+      ...(e.feather ? { feather: e.feather } : {}), ...(e.margins ? { margins: e.margins } : {}), ...(e.shape ? { shape: e.shape } : {}),
+    } : {}) });
   // Every action the slide fires besides showing itself, in plain words.
   const actions = (list) => (list ?? []).map(describeAction).filter(Boolean);
   if (d.kind === "protheme") {
@@ -335,6 +340,10 @@ export async function editBoxesTool(args, env) {
       text("fit", (v) => p.setTextFit(hit.wrapper, v));
       text("capitals", (v) => p.setCapitals(hit.wrapper, v));
       text("line_spacing", (v) => p.setLineSpacing(hit.wrapper, v));
+      text("text_outline", (v) => p.setTextOutline(hit.wrapper, v));
+      text("text_shadow", (v) => p.setTextShadow(hit.wrapper, v));
+      text("margins", (v) => p.setMargins(hit.wrapper, v));
+      if (c.feather !== undefined) { p.setFeather(hit.wrapper, c.feather); changed.feather = c.feather; }
       text("font", (v) => p.setFont(hit.wrapper, { name: v, family: c.font_family ?? familyOf(d, v) }));
       const look = Object.fromEntries(["fill", "outline", "outline_width", "shadow", "rotation", "opacity", "hidden", "locked"].filter((k) => c[k] !== undefined).map((k) => [k, c[k]]));
       if (Object.keys(look).length) { p.setBoxStyle(hit.wrapper, look); Object.assign(changed, look); }

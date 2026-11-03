@@ -143,7 +143,7 @@ const GENERAL = [
   {
     name: "refrain_edit_boxes",
     title: "Change boxes",
-    description: "Change boxes on a working copy, by box id, as ProPresenter's editor would: a list of changes, each with the box and only what should change. Words keep the box's font and capitals (**double asterisks** for bold); line_spacing is a multiple of single (1.2); a box linked to its slide's label sets the label, and one linked to anything else (a timer, the clock) has no words of its own. Position and size are slide pixels. arrange: front, back, forward, backward, duplicate or delete. picture: a new picture or video in a picture box (bundles). A font not used in the file needs font_family. Colours are #rrggbb, or none. All checked together: if one is wrong, none is saved. Changes only the copy.",
+    description: "Change boxes on a working copy, by box id, as ProPresenter's editor would: a list of changes, each with the box and only what should change. Words keep the box's font and capitals (**double asterisks** for bold); line_spacing is a multiple of single (1.2); text_outline goes round the letters, text_shadow behind them; feather softens the box's edge; a box linked to its slide's label sets the label, and one linked to anything else (a timer, the clock) has no words of its own. Position and size are slide pixels. arrange: front, back, forward, backward, duplicate or delete. picture: a new picture or video in a picture box (bundles). A font not used in the file needs font_family. Colours are #rrggbb, or none. All checked together: if one is wrong, none is saved. Changes only the copy.",
     inputSchema: {
       type: "object", required: ["copy_id", "changes"],
       properties: {
@@ -158,6 +158,9 @@ const GENERAL = [
               align: { enum: ["left", "center", "right", "justify"] }, vertical_align: { enum: ["top", "middle", "bottom"] },
               fit: { enum: ["none", "grow_box", "shrink_text", "grow_text", "fit_text"] }, capitals: { enum: ["none", "all", "small", "title", "start"] },
               line_spacing: { type: "number", description: "A multiple of single spacing, e.g. 1.2" },
+              text_outline: { type: ["object", "string"], properties: { width: { type: "number" }, color: { type: "string" } }, description: "An outline round the letters, { width, color }, or none" },
+              text_shadow: { type: "boolean" }, feather: { type: ["number", "string"], description: "A soft edge, 0 to 1, or none" },
+              margins: { type: ["number", "object"], properties: { left: { type: "number" }, right: { type: "number" }, top: { type: "number" }, bottom: { type: "number" } } },
               x: { type: "number" }, y: { type: "number" }, width: { type: "number" }, height: { type: "number" }, rotation: { type: "number" },
               fill: { type: "string" }, outline: { type: "string" }, outline_width: { type: "number" }, shadow: { type: "boolean" },
               opacity: { type: "number" }, hidden: { type: "boolean" }, locked: { type: "boolean" },
