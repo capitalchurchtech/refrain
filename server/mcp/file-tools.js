@@ -9,7 +9,7 @@
  * ProPresenter's database. A document with fields the reader does not understand can be read but not copied
  * for changing, so nothing in it is quietly lost.
  */
-import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { writeFile, rename, readFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -98,6 +98,10 @@ async function decode(bytes) {
 
 /** A presentation slide's notes as text, read with the package once it is loaded (decode loads it first). */
 let notesReader = null;
+const transitionOf = (cue) => {
+  const t = (cue?.actions ?? []).find((a) => a.slide)?.slide?.presentation?.transition;
+  return t ? { name: t.effect?.name ?? null, seconds: t.duration ?? null } : null;
+};
 const notesOf = (cue) => (notesReader && cue ? notesReader((cue.actions ?? []).find((a) => a.slide)) : "");
 
 /** Every slide, numbered from 1 in the order ProPresenter shows them, in one shape for both kinds. */
@@ -115,7 +119,7 @@ function slidesOf(d, { full = false } = {}) {
   let n = 0;
   return d.model.groups.flatMap((g) => g.slides.map((s) => ({ number: ++n, id: s.uuid, group: g.name, label: s.label, enabled: s.enabled,
     boxes: s.elements.map(box), macros: s.macros.map((m) => m.name),
-    ...(full ? { media: s.media, actions: actions(cueById.get(s.uuid)?.actions), notes: notesOf(cueById.get(s.uuid)) } : {}) })));
+    ...(full ? { media: s.media, actions: actions(cueById.get(s.uuid)?.actions), notes: notesOf(cueById.get(s.uuid)), transition: transitionOf(cueById.get(s.uuid)) } : {}) })));
 }
 
 const describe = (src) => (src.copy ? { copy_id: src.copy.id, file: src.where } : { file: src.where });
@@ -510,6 +514,33 @@ async function actionIndex(p, env) {
   return { value: workspaceIndex(p, real) };
 }
 
+/**
+ * A slide transition, by its effect's name. A transition points at one of ProPresenter's effect presets by
+ * id, so it is copied from a slide that already uses that effect: in this file, else in ProPresenter's
+ * library on this computer (read only, stopping at the first one found).
+ */
+async function transitionByName(p, d, env, name) {
+  const want = String(name ?? "").trim().toLowerCase();
+  const find = (doc) => (doc.cues ?? []).flatMap((c) => c.actions ?? []).map((a) => a.slide?.presentation?.transition).find((t) => t?.effect?.name?.toLowerCase() === want);
+  const here = find(d.doc);
+  if (here) return structuredClone(here);
+  const ctx = await import("./context-tools.js");
+  const w = ctx.findWorkspaces(env).find((x) => x.source === "ProPresenter on this computer");
+  const libraries = w ? path.join(w.folder, "Libraries") : null;
+  if (libraries && existsSync(libraries)) {
+    const files = readdirSync(libraries, { recursive: true }).filter((f) => String(f).endsWith(".pro")).slice(0, 1000);
+    for (const f of files) {
+      const real = path.join(libraries, String(f));
+      if (forbiddenReason(real)) continue;
+      try {
+        const t = find(p.decodePresentation(readFileSync(real)).doc);
+        if (t) return t;
+      } catch { /* a file that can't be read is skipped */ }
+    }
+  }
+  throw new Error(`No slide in this file${libraries ? " or ProPresenter's library" : ""} uses the "${name}" transition yet. Set it on one slide in ProPresenter once, and it can be copied from there.`);
+}
+
 const MOVES = ["up", "down", "first", "last", "duplicate", "delete"];
 
 /**
@@ -558,6 +589,21 @@ export async function editSlidesTool(args, env) {
       a.label = { ...(a.label ?? {}), ...(col ? { color: col } : {}) };
       if (!col) delete a.label.color;
       changed.label_color = c.label_color;
+    }
+    if (c.transition !== undefined || c.transition_seconds !== undefined) {
+      if (theme) say(`${at}: set transitions on presentation slides.`);
+      const pres = slideAction(item)?.slide?.presentation;
+      if (!pres) say(`${at}: this slide has no slide of its own.`);
+      if (c.transition === "none") delete pres.transition;
+      else {
+        if (c.transition !== undefined) pres.transition = await transitionByName(p, d, env, c.transition).catch((err) => say(`${at}: ${err.message}`));
+        if (c.transition_seconds !== undefined) {
+          if (!pres.transition) say(`${at}: this slide has no transition to time; give transition too.`);
+          if (!(typeof c.transition_seconds === "number" && c.transition_seconds >= 0 && c.transition_seconds <= 60)) say(`${at}: transition_seconds is 0 to 60.`);
+          pres.transition.duration = c.transition_seconds;
+        }
+      }
+      changed.transition = pres.transition ? { name: pres.transition.effect?.name ?? null, seconds: pres.transition.duration ?? null } : "none";
     }
     if (c.notes !== undefined) {
       if (theme) say(`${at}: a theme slide has no notes.`);

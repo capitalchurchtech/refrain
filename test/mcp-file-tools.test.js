@@ -21,7 +21,8 @@ async function setup() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "refrain-files-"));
   const staging = path.join(root, "staging");
   // Bundles off: the general tools must not need it.
-  const server = createMcpServer({ root, staging, getConfig: () => ({ features: { probundle: false } }) });
+  // No ProPresenter workspace: these tests must not read this computer's.
+  const server = createMcpServer({ root, staging, getConfig: () => ({ features: { probundle: false } }), userWorkspaces: path.join(root, "no-propresenter") });
   const client = new Client({ name: "test", version: "1" });
   const [a, b] = InMemoryTransport.createLinkedPair();
   await Promise.all([server.connect(a), client.connect(b)]);
@@ -357,4 +358,23 @@ test("a new presentation from a theme's slides: its boxes, new words, and the th
   assert.deepEqual(s1.boxes.map((b) => b.words), ["", "Do not be conformed", "Romans 12:2"]);
   assert.equal(s1.boxes[0].picture, "example-bg.png");
   assert.deepEqual((await call("refrain_check", { path: built.file })).findings.filter((f) => f.severity === "problem"), [], "the picture is in the bundle");
+});
+
+test("transitions: copied by effect name from a slide that has one, timed, removed; an unknown one says how to get it", { skip }, async () => {
+  const { call, root } = await setup();
+  const uid = (n) => ({ string: `00000000-0000-4000-8000-${String(n).padStart(12, "0")}` });
+  const { Presentation } = lib.loadSchema();
+  const slide = (n, label, transition) => ({ uuid: uid(n), name: label, actions: [{ uuid: uid(n + 50), type: 11, label: { text: label }, slide: { presentation: { base_slide: { uuid: uid(n + 80) }, ...(transition ? { transition } : {}) } } }] });
+  const dissolve = { duration: 0.6, effect: { uuid: uid(99), name: "Dissolve", render_id: "dissolve", category: "Transitions" } };
+  const file = path.join(root, "T.pro");
+  fs.writeFileSync(file, Presentation.encode(Presentation.fromObject({ uuid: uid(1), name: "T", cues: [slide(2, "One", dissolve), slide(3, "Two")], cue_groups: [{ group: { uuid: uid(9), name: "G" }, cue_identifiers: [uid(2), uid(3)] }] })).finish());
+  const copy = await call("refrain_make_copy", { path: file });
+  const r = await call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 2, transition: "dissolve", transition_seconds: 1.5 }] });
+  assert.deepEqual(r.slides[0].changed.transition, { name: "Dissolve", seconds: 1.5 });
+  assert.deepEqual((await call("refrain_read_slide", { copy_id: copy.copy_id, slide: 2 })).slide.transition, { name: "Dissolve", seconds: 1.5 });
+  assert.deepEqual((await call("refrain_read_slide", { copy_id: copy.copy_id, slide: 1 })).slide.transition, { name: "Dissolve", seconds: 0.6 }, "the one copied from is unchanged");
+  await call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 1, transition: "none" }] });
+  assert.equal((await call("refrain_read_slide", { copy_id: copy.copy_id, slide: 1 })).slide.transition, null);
+  await assert.rejects(call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 1, transition: "Swirl" }] }), /No slide in this file uses the "Swirl" transition yet/);
+  await assert.rejects(call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 1, transition_seconds: 2 }] }), /no transition to time/);
 });

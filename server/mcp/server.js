@@ -176,7 +176,7 @@ const GENERAL = [
   {
     name: "refrain_edit_slides",
     title: "Change slides",
-    description: "Change whole slides on a working copy: a list of changes, each with the slide (its number when the copy was opened, or its id) and only what should change: label, label_color, enabled, background (#rrggbb or none), group (moves it, making the group if new), move (up, down, first, last, duplicate, delete, within its group), add_macro and remove_macro (by name, from ProPresenter's workspace or another slide in the file), add_media (a picture, video or sound file as a background or foreground media action, or a picture or video as a box; on a bundle, which carries the file) and remove_media (by file name), add_action (clear a layer, a Look, prop, message, timer, clear group or stage layout, by its name in ProPresenter's workspace) and remove_action (by kind, and name). Also groups ({ name, rename, color }), arrangements ({ name, groups in play order, rename, delete }), play_arrangement, and the presentation's name. notes sets a slide's notes. All checked together: if one is wrong, none is saved. Changes only the copy.",
+    description: "Change whole slides on a working copy: a list of changes, each with the slide (its number when the copy was opened, or its id) and only what should change: label, label_color, enabled, background (#rrggbb or none), group (moves it, making the group if new), move (up, down, first, last, duplicate, delete, within its group), add_macro and remove_macro (by name, from ProPresenter's workspace or another slide in the file), add_media (a picture, video or sound file as a background or foreground media action, or a picture or video as a box; on a bundle, which carries the file) and remove_media (by file name), add_action (clear a layer, a Look, prop, message, timer, clear group or stage layout, by its name in ProPresenter's workspace) and remove_action (by kind, and name). Also groups ({ name, rename, color }), arrangements ({ name, groups in play order, rename, delete }), play_arrangement, and the presentation's name. notes sets a slide's notes; transition (an effect's name, copied from a slide that already uses it, in this file or ProPresenter's library) and transition_seconds its transition. All checked together: if one is wrong, none is saved. Changes only the copy.",
     inputSchema: {
       type: "object", required: ["copy_id"],
       properties: {
@@ -186,7 +186,7 @@ const GENERAL = [
           items: {
             type: "object", required: ["slide"],
             properties: {
-              slide: { type: ["integer", "string"] }, label: { type: "string" }, label_color: { type: "string" }, enabled: { type: "boolean" }, notes: { type: "string", description: "The slide's notes; empty removes them" },
+              slide: { type: ["integer", "string"] }, label: { type: "string" }, label_color: { type: "string" }, enabled: { type: "boolean" }, notes: { type: "string", description: "The slide's notes; empty removes them" }, transition: { type: "string", description: "An effect's name (Dissolve, Cut…) or none" }, transition_seconds: { type: "number" },
               background: { type: "string" }, group: { type: "string" }, move: { enum: ["up", "down", "first", "last", "duplicate", "delete"] },
               add_macro: { type: ["string", "array"], items: { type: "string" } }, remove_macro: { type: ["string", "array"], items: { type: "string" } },
               add_media: {
