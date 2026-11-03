@@ -82,6 +82,7 @@ async function fromPlaylist(bytes, inside, file) {
 /** A document decoded, whatever its kind, with what writing it back needs. */
 async function decode(bytes) {
   const p = await lib();
+  notesReader ??= p.notesOf;
   if (isPlaylist(p, bytes)) {
     const r = p.readPlaylistFile(bytes);
     return { kind: "proplaylist", name: r.playlists[0]?.name ?? "", unknown: Array(r.unknown).fill(null), playlist: r };
@@ -94,6 +95,10 @@ async function decode(bytes) {
   const { doc, unknown, schema } = p.decodePresentation(file.pro);
   return { kind: file.kind, name: doc.name ?? "", doc, schema, unknown, file, model: p.toModel(doc) };
 }
+
+/** A presentation slide's notes as text, read with the package once it is loaded (decode loads it first). */
+let notesReader = null;
+const notesOf = (cue) => (notesReader && cue ? notesReader((cue.actions ?? []).find((a) => a.slide)) : "");
 
 /** Every slide, numbered from 1 in the order ProPresenter shows them, in one shape for both kinds. */
 function slidesOf(d, { full = false } = {}) {
@@ -109,7 +114,8 @@ function slidesOf(d, { full = false } = {}) {
   const cueById = full ? new Map((d.doc.cues ?? []).map((c) => [c.uuid?.string, c])) : null;
   let n = 0;
   return d.model.groups.flatMap((g) => g.slides.map((s) => ({ number: ++n, id: s.uuid, group: g.name, label: s.label, enabled: s.enabled,
-    boxes: s.elements.map(box), macros: s.macros.map((m) => m.name), ...(full ? { media: s.media, actions: actions(cueById.get(s.uuid)?.actions) } : {}) })));
+    boxes: s.elements.map(box), macros: s.macros.map((m) => m.name),
+    ...(full ? { media: s.media, actions: actions(cueById.get(s.uuid)?.actions), notes: notesOf(cueById.get(s.uuid)) } : {}) })));
 }
 
 const describe = (src) => (src.copy ? { copy_id: src.copy.id, file: src.where } : { file: src.where });
@@ -141,7 +147,10 @@ export async function openTool(args, { staging }) {
   const slides = args.boxes === true ? slidesOf(d) : slidesOf(d).map(brief);
   return {
     ...describe(src), kind: d.kind, name: d.name, slide_count: slides.length,
-    ...(d.kind === "protheme" ? { pictures: d.file.assets.map((a) => a.file) } : { arrangements: d.model.arrangements, media: d.model.media }),
+    ...(d.kind === "protheme" ? { pictures: d.file.assets.map((a) => a.file) } : {
+      arrangements: d.model.arrangements, media: d.model.media,
+      playing_arrangement: (d.doc.arrangements ?? []).find((a) => a.uuid?.string === d.doc.selected_arrangement?.string)?.name ?? null,
+    }),
     unreadable_fields: d.unknown.length,
     can_change: d.unknown.length === 0,
     slides,
@@ -312,6 +321,7 @@ export async function editBoxesTool(args, env) {
       text("vertical_align", (v) => p.setVerticalAlignment(hit.wrapper, v));
       text("fit", (v) => p.setTextFit(hit.wrapper, v));
       text("capitals", (v) => p.setCapitals(hit.wrapper, v));
+      text("line_spacing", (v) => p.setLineSpacing(hit.wrapper, v));
       text("font", (v) => p.setFont(hit.wrapper, { name: v, family: c.font_family ?? familyOf(d, v) }));
       const look = Object.fromEntries(["fill", "outline", "outline_width", "shadow", "rotation", "opacity", "hidden", "locked"].filter((k) => c[k] !== undefined).map((k) => [k, c[k]]));
       if (Object.keys(look).length) { p.setBoxStyle(hit.wrapper, look); Object.assign(changed, look); }
@@ -519,6 +529,12 @@ export async function editSlidesTool(args, env) {
       if (!col) delete a.label.color;
       changed.label_color = c.label_color;
     }
+    if (c.notes !== undefined) {
+      if (theme) say(`${at}: a theme slide has no notes.`);
+      const a = slideAction(item);
+      try { p.setNotes(a, c.notes); } catch (err) { say(`${at}: ${err.message}`); }
+      changed.notes = p.notesOf(a);
+    }
     if (c.enabled !== undefined) {
       if (theme) say(`${at}: a theme slide can't be switched off.`);
       item.isEnabled = Boolean(c.enabled);
@@ -629,13 +645,54 @@ export async function editSlidesTool(args, env) {
     if (g.color !== undefined) { const col = p.parseColor(g.color); if (col) found.group.color = col; else delete found.group.color; }
     groupChanges.push({ group: g.name, ...(g.rename !== undefined ? { rename: found.group.name } : {}), ...(g.color !== undefined ? { color: g.color } : {}) });
   }
+  // Arrangements: the order groups play in. Created or replaced with { name, groups }, renamed, deleted; and
+  // which one plays when the presentation is opened.
+  const arrangementChanges = [];
+  const groupByName = (n) => (d.doc.cue_groups ?? []).find((g) => g.group?.name === n);
+  for (const [i, a] of (args.arrangements ?? []).entries()) {
+    if (theme) say("A theme has no arrangements.");
+    const at = `Arrangement change ${i + 1}`;
+    const name = cleanLabel(a?.name);
+    if (!name) say(`${at}: give the arrangement's name.`);
+    d.doc.arrangements ??= [];
+    let found = d.doc.arrangements.find((x) => x.name === name);
+    if (a.delete === true) {
+      if (!found) say(`${at}: no arrangement "${name}".`);
+      d.doc.arrangements = d.doc.arrangements.filter((x) => x !== found);
+      if (d.doc.selected_arrangement?.string === found.uuid?.string) delete d.doc.selected_arrangement;
+      arrangementChanges.push({ arrangement: name, deleted: true });
+      continue;
+    }
+    if (a.groups !== undefined) {
+      if (!Array.isArray(a.groups) || !a.groups.length) say(`${at}: groups is the list of group names, in the order they play.`);
+      const ids = a.groups.map((g) => { const found = groupByName(cleanLabel(g)); if (!found) say(`${at}: no group "${g}" in this presentation.`); return { string: found.group.uuid.string }; });
+      if (!found) { found = { uuid: p.uuid(), name, group_identifiers: [] }; d.doc.arrangements.push(found); }
+      found.group_identifiers = ids;
+    } else if (!found) say(`${at}: no arrangement "${name}"; to make one, give its groups.`);
+    if (a.rename !== undefined) { const n = cleanLabel(a.rename); if (!n) say(`${at}: give the new name.`); found.name = n; }
+    arrangementChanges.push({ arrangement: found.name, groups: (found.group_identifiers ?? []).map((u) => (d.doc.cue_groups ?? []).find((g) => g.group?.uuid?.string === u.string)?.group.name ?? "(missing group)") });
+  }
+  if (args.play_arrangement !== undefined) {
+    if (theme) say("A theme has no arrangements.");
+    if (args.play_arrangement === "none" || args.play_arrangement === null) delete d.doc.selected_arrangement;
+    else {
+      const a = (d.doc.arrangements ?? []).find((x) => x.name === cleanLabel(args.play_arrangement));
+      if (!a) say(`No arrangement "${args.play_arrangement}" to play.`);
+      d.doc.selected_arrangement = { string: a.uuid.string };
+    }
+  }
   if (args.name !== undefined) {
     if (theme) say("A theme's name is its file's; rename the file instead.");
     const n = cleanLabel(args.name);
     if (!n) say("Give the presentation's new name.");
     d.doc.name = n;
   }
-  if (!done.length && !groupChanges.length && args.name === undefined) throw new Error("Nothing to change: give changes (to slides), groups, or name.");
+  if (!done.length && !groupChanges.length && !arrangementChanges.length && args.play_arrangement === undefined && args.name === undefined) throw new Error("Nothing to change: give changes (to slides), groups, arrangements, play_arrangement or name.");
   await saveCopy(src, d);
-  return { copy_id: args.copy_id, file: src.where, slides: done, groups: groupChanges, ...(args.name !== undefined ? { name: d.doc.name } : {}), ...(notes.length ? { notes } : {}) };
+  return {
+    copy_id: args.copy_id, file: src.where, slides: done, groups: groupChanges,
+    ...(arrangementChanges.length ? { arrangements: arrangementChanges } : {}),
+    ...(args.play_arrangement !== undefined ? { playing_arrangement: (d.doc.arrangements ?? []).find((a) => a.uuid?.string === d.doc.selected_arrangement?.string)?.name ?? null } : {}),
+    ...(args.name !== undefined ? { name: d.doc.name } : {}), ...(notes.length ? { notes } : {}),
+  };
 }

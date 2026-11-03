@@ -316,3 +316,28 @@ test("a playlist opens with its items, and a presentation inside it can be read 
   await assert.rejects(call("refrain_make_copy", { path: file }), /A playlist is read, not changed/);
   await assert.rejects(call("refrain_open", { path: file, inside: "Nope" }), /No presentation Nope in this playlist/);
 });
+
+test("notes, line spacing, and arrangements: made, changed, renamed, chosen to play, deleted", { skip: lib?.setNotes ? false : "propresenter-bundle with notes is not installed" }, async () => {
+  const { call } = await setup();
+  const copy = await call("refrain_make_copy", { path: path.join(FIX, "sample-fixed.pro") });
+  const r = await call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 1, notes: "Lights: 139,1\nBand ready" }],
+    arrangements: [{ name: "Short", groups: ["Announcements"] }, { name: "Full", rename: "Everything" }], play_arrangement: "Short" });
+  assert.equal(r.slides[0].changed.notes, "Lights: 139,1\nBand ready");
+  assert.deepEqual(r.arrangements, [{ arrangement: "Short", groups: ["Announcements"] }, { arrangement: "Everything", groups: ["Opening", "Announcements"] }]);
+  assert.equal(r.playing_arrangement, "Short");
+  const o = await call("refrain_open", { copy_id: copy.copy_id });
+  assert.deepEqual([o.arrangements.map((a) => a.name), o.playing_arrangement], [["Everything", "Short"], "Short"]);
+  assert.equal((await call("refrain_read_slide", { copy_id: copy.copy_id, slide: 1 })).slide.notes, "Lights: 139,1\nBand ready");
+
+  const box = (await call("refrain_read_slide", { copy_id: copy.copy_id, slide: 1 })).slide.boxes.find((b) => b.kind === "text");
+  await call("refrain_edit_boxes", { copy_id: copy.copy_id, changes: [{ box: box.id, line_spacing: 1.2 }] });
+  assert.deepEqual((await call("refrain_check", { copy_id: copy.copy_id })).findings.filter((f) => f.severity === "problem"), []);
+
+  const del = await call("refrain_edit_slides", { copy_id: copy.copy_id, arrangements: [{ name: "Short", delete: true }] });
+  assert.deepEqual(del.arrangements, [{ arrangement: "Short", deleted: true }]);
+  assert.equal((await call("refrain_open", { copy_id: copy.copy_id })).playing_arrangement, null, "deleting the one that played leaves none chosen");
+  await assert.rejects(call("refrain_edit_slides", { copy_id: copy.copy_id, arrangements: [{ name: "X", groups: ["Nope"] }] }), /no group "Nope"/);
+  await assert.rejects(call("refrain_edit_slides", { copy_id: copy.copy_id, arrangements: [{ name: "Missing" }] }), /to make one, give its groups/);
+  await assert.rejects(call("refrain_edit_slides", { copy_id: copy.copy_id, play_arrangement: "Nope" }), /No arrangement "Nope"/);
+  await assert.rejects(call("refrain_edit_boxes", { copy_id: copy.copy_id, changes: [{ box: box.id, line_spacing: 20 }] }), /0\.1 to 5/);
+});
