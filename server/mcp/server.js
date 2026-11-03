@@ -158,7 +158,7 @@ const GENERAL = [
               align: { enum: ["left", "center", "right", "justify"] }, vertical_align: { enum: ["top", "middle", "bottom"] },
               fit: { enum: ["none", "grow_box", "shrink_text", "grow_text", "fit_text"] }, capitals: { enum: ["none", "all", "small", "title", "start"] },
               line_spacing: { type: "number", description: "A multiple of single spacing, e.g. 1.2" },
-              text_outline: { type: ["object", "string"], properties: { width: { type: "number" }, color: { type: "string" } }, description: "An outline round the letters, { width, color }, or none" },
+              text_outline: { type: ["object", "string"], properties: { width: { type: "number" }, color: { type: "string" } }, description: "An outline round the letters, { width, color }, width as ProPresenter shows it (a percent of the type size), or none" },
               list: { type: ["string", "object"], properties: { style: { type: "string" }, start: { type: "number" } }, description: "A list style like disc or 1., or { style, start }, or none" },
               text_shadow: { type: "boolean" }, feather: { type: ["number", "string"], description: "A soft edge, 0 to 1, or none" },
               margins: { type: ["number", "object"], properties: { left: { type: "number" }, right: { type: "number" }, top: { type: "number" }, bottom: { type: "number" } } },

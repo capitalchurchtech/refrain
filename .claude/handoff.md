@@ -2989,8 +2989,44 @@ both, which is the first job the owner wants the finished MCP to do.
 ### E. Preview
 - Draw slides from the file in the Bundles screen, following the package's `docs/RENDERING.md`, and
   show Claude's draft there as it changes. In the Claude window as well, if the app supports it.
-- An earlier session built a prototype renderer; its code is not on this Mac. If it turns up, start
-  from it.
+- **The prototype turned up (2026-11-03).** It was built in the MCP session on 2026-10-25 and A/B
+  scored against ProPresenter (library set mean 3.82 / median 2.44, live set 6.13 / 3.51; see that
+  session's log in `~/.claude/handoffs/refrain-probundle.md`). Its files had been cleared from /tmp;
+  they were rebuilt by replaying every edit from the session transcript, checked line for line
+  against all six recorded reads (316 of 316 lines match), and kept in `data/render-prototype/`
+  (gitignored: local paths, and it was run on the church's files). Start from it.
+
+**Plan (owner: "start step E", 2026-11-03).** The owner's direction from 2026-10-25 stands: Refrain
+is the preview palette. Every slide in a grid with a zoom slider; a slide opened large with its
+notes, its layers and a rough-out; empty until there is something to show. Mockup:
+`.claude/mockups/bundles-palette.html` (invented content, untracked). Desk surface, so the creative
+direction's desk rules apply: full width, warm-zone copy, the palette's tokens, no third text step.
+
+- **E1. The renderer moves into the package.** `src/draw.js`: a slide (base slide plus its actions)
+  to HTML, pure (no fs, no sharp, no child processes), given a `picture(file)` that returns a URL or
+  null, plus the slide's label, timers and props. Returns the HTML, the pictures and the fonts it
+  used. `DRAW_CSS` and `fontFaces(names)` (local() faces by PostScript name). The browser pass
+  (`cocoa-lines.js`: line metrics, line masks, shrink to fit, tabs) ships as `browser/layout.js`, an
+  ES module with one `layoutSlide(root)`. Tests on the invented fixtures. Add what slides 16 and 17
+  show that the prototype lacks (text shadow, feather, box shadow), marked unverified until E4.
+- **E2. Bundles draws the open file.** The grid replaces Inspect's text list; Check and Compare stay.
+  Slides are drawn in the Bundles worker (never on the main thread), fetched as they scroll into
+  view, each in its own shadow root so neither the app's CSS nor the Tailwind JIT touches it.
+  Pictures are separate files, resized once with sharp (already a dependency) and cached under
+  `data/probundle-staging/pictures`; a video's first frame via ffmpeg or macOS qlmanage when one is
+  installed, else a marked placeholder (no new npm dependency). Refused during a service, as Bundles
+  already is. Never calls ProPresenter.
+- **E3. Claude's draft, as it changes.** The MCP's working copies (`data/probundle-staging/copies`)
+  are listed on Bundles; the open one is redrawn when its file changes (checked every 2 s while the
+  screen is showing). Each MCP save leaves a one-line note of what changed, shown above the grid. The
+  MCP's results say where to look in Refrain.
+- **E4. A/B on the owner's test sheet.** Slides 16 and 17 of "Better Together, Message 6 - PG"
+  against ProPresenter's own thumbnails (read only, when nothing is live), using the prototype's
+  scorer. RENDERING.md updated with what is learned.
+- **E5. In the Claude window**, if the app supports MCP UI resources. Find out first; not assumed.
+
+Each of E1 to E3 ships on its own. Open question for the owner: none blocking. Assumed: the palette
+direction of 2026-10-25 still holds, with skills (not the old "templates") on the empty screen.
 
 Order: A, B, C, D, E. Each ships on its own.
 
@@ -3726,3 +3762,4 @@ features (owner, 2026-11-01: "could be later").
 - 2026-11-03 — (branch notes-arrangements + package notes-spacing, committed locally, not pushed) **Lists are written.** `refrain_edit_boxes` `list`: a bullet (disc, circle, square, box, check, diamond, hyphen) or a number style (1. 1) (1) a. a) (a) A. A) (A) i. I.), with `start`, or none. Package `setList`/`listRtf` write it rather than copy it: on the owner's test sheet (slide 16), stripping each of the 14 list boxes and rebuilding it gives ProPresenter's RTF back character for character, list table, override, hanging indent (`\tx20\tx1600 … \li1600\fi-1600`, head_indent 80) and markers, including the bold markers that sheet uses. New words on a list box get their markers again; markers are no longer read as words. Real run through the MCP on a copy of that presentation: restyle, new words, list removed, list added from 5; check clean. Turning a list off removes the list table too (ProPresenter itself leaves one behind; both are valid RTF).
   - **Assumed:** the hanging indent defaults to 80 points, the only value on the sheet; a box that already has an indent keeps it. Question: do your list boxes use another indent at other sizes?
 
+- 2026-11-03 — (package branch notes-spacing, Refrain notes-arrangements; committed locally, not pushed) **Step E started: E1 done in the package.** The 2026-10-25 prototype renderer was recovered (see section 30 E) and ported to `propresenter-bundle`: `drawSlide`, `drawPresentation` (background media carried slide to slide, foreground ending at the next, clears), `DRAW_CSS`, `fontFaces`, and `propresenter-bundle/draw-layout` (`layoutSlide`, the browser pass: line metrics, shrink to fit, tabs, line masks cut at the box). Pure: no fs, no sharp, no processes; pictures come from a `picture(file, path)` callback. **Parity:** on 4,631 slides of this Mac's library the port draws the same HTML as the prototype, apart from the effects below. **Checked against ProPresenter's own thumbnails** of the owner's test sheet (slides 16 and 17, fetched read only, nothing live): lists match; dotted and dashed outlines (`stroke.style` 1 dots, 2 dashes, 3 long dashes, in multiples of the width) now match; full-width line masks no longer narrow the words (the prototype broke "MATTHEW" mid-word with a 61 px width offset); feather fades the fill, not the words, over about 2.2 x radius x the shorter side, close up to 0.35 and within about 0.3 above (ProPresenter's glow is not monotonic there). Text and box shadows drawn from the file. Rules added to RENDERING.md. 92 package tests. Also: the MCP describes an outline's width as ProPresenter shows it (a percent of the type size), not points. **Next:** E2, Bundles draws the open file.
