@@ -76,7 +76,7 @@ export function slidesView(o) {
  * Draw the slides as they come into view, and open one large on a click.
  * Returns a function that stops watching (call it before the tab is redrawn).
  */
-export function mountSlides(root, o, findings) {
+export function mountSlides(root, o, findings, { view = null, onView = () => {} } = {}) {
   const wrap = root.querySelector(".pb-slides");
   if (!wrap) return () => {};
   const slides = slidesOf(o);
@@ -158,6 +158,7 @@ export function mountSlides(root, o, findings) {
     const s = slides[n - 1];
     if (!s) return;
     current = n;
+    onView(n);
     const d = await drawn(n);
     const found = findings.filter((f) => f.slide === where(s));
     const acts = [
@@ -197,6 +198,7 @@ export function mountSlides(root, o, findings) {
   function close() {
     const last = wrap.querySelector(`.pb-card[data-n="${current}"]`);
     current = null;
+    onView(null);
     viewer.hidden = true;
     viewer.innerHTML = "";
     wrap.hidden = false;
@@ -215,6 +217,9 @@ export function mountSlides(root, o, findings) {
     else if (e.key === "Escape") { e.preventDefault(); close(); }
   };
   document.addEventListener("keydown", keys);
+
+  // A redraw (Claude changed the draft) comes back to the slide that was open large.
+  if (view && view <= slides.length) show(view);
 
   return () => {
     seen.disconnect();

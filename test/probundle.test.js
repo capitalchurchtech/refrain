@@ -251,3 +251,57 @@ test("a picture's source: only the cache by hash, or inside the workspace, never
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("Claude's drafts: listed newest first, opened by id, their version checked; never a path", { skip: lib?.drawPresentation ? false : "propresenter-bundle with drawing is not installed" }, async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "probundle-drafts-"));
+  const staging = path.join(dir, "data", "probundle-staging");
+  const copyId = "11111111-2222-4333-8444-555555555555";
+  fs.mkdirSync(path.join(staging, "copies", copyId), { recursive: true });
+  fs.mkdirSync(path.join(staging, "built"), { recursive: true });
+  const copyFile = path.join(staging, "copies", copyId, "Sunday (edited).pro");
+  fs.writeFileSync(copyFile, samplePro("Sunday", "First words"));
+  fs.writeFileSync(path.join(staging, "copies", copyId, "copy.json"), JSON.stringify({ file: "Sunday (edited).pro", kind: "pro", made: "2026-11-01T10:00:00Z", changed: "2026-11-01T10:05:00Z", note: "Changed slide 1 (words)" }));
+  fs.writeFileSync(path.join(staging, "built", "Skit.pro"), samplePro("Skit", "Built"));
+  fs.utimesSync(path.join(staging, "built", "Skit.pro"), new Date(2020, 0, 1), new Date(2020, 0, 1));
+  fs.writeFileSync(path.join(staging, "built", "notes.txt"), "not a presentation");
+  const deps = {
+    getConfig: () => ({ features: { probundle: true }, probundleModule: { packsDir: dir } }),
+    updateConfig: async () => {},
+    getStatus: getProbundleModuleStatus,
+    getProblems: probundleModuleProblems,
+    getIndex: () => ({ presentations: {} }),
+    busyReason: () => null,
+    appRoot: dir,
+    userWorkspaces: path.join(dir, "no-propresenter"),
+  };
+  try {
+    await withServer(deps, async (base) => {
+      const { drafts } = await fetch(`${base}/drafts`).then((r) => r.json());
+      assert.deepEqual(drafts.map((d) => [d.id, d.name, d.note]), [[`copy:${copyId}`, "Sunday (edited)", "Changed slide 1 (words)"], ["built:Skit.pro", "Skit", null]]);
+      assert.ok(drafts.every((d) => !("file" in d)), "no paths go to the page");
+
+      const post = (body) => fetch(`${base}/open/draft`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const opened = await post({ id: `copy:${copyId}` }).then((r) => r.json());
+      assert.equal(opened.draft.id, `copy:${copyId}`);
+      assert.equal(opened.model.groups[0].slides[0].text[0], "First words");
+      const v1 = (await fetch(`${base}/drafts/version?id=${encodeURIComponent(`copy:${copyId}`)}`).then((r) => r.json())).version;
+      assert.equal(v1, opened.draft.version);
+
+      // The assistant saves a change: the version moves, and opening again draws the new words.
+      fs.writeFileSync(copyFile, samplePro("Sunday", "Second words"));
+      fs.utimesSync(copyFile, new Date(), new Date(Date.now() + 5000));
+      const v2 = (await fetch(`${base}/drafts/version?id=${encodeURIComponent(`copy:${copyId}`)}`).then((r) => r.json())).version;
+      assert.notEqual(v2, v1);
+      const again = await post({ id: `copy:${copyId}` }).then((r) => r.json());
+      const { slides } = await fetch(`${base}/slides/${again.sourceId}`).then((r) => r.json());
+      assert.ok(slides[0].html.includes("Second words"));
+
+      for (const id of ["copy:../../etc", "built:../secret.pro", "built:.hidden.pro", "built:notes.txt", "/etc/passwd", "copy:not-a-uuid", `copy:${copyId}/../x`]) {
+        assert.equal((await post({ id })).status, 404, `${id} is refused`);
+        assert.equal((await fetch(`${base}/drafts/version?id=${encodeURIComponent(id)}`)).status, 404);
+      }
+    });
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

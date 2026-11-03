@@ -135,7 +135,7 @@ const GENERAL = [
     title: "Make a working copy",
     description: "Copy a file into Refrain's staging folder to change it. Every change is made on the copy; the original is never touched. Refused for a file holding fields the reader can't understand, so nothing in it is lost. Returns the copy_id the change tools take.",
     inputSchema: { type: "object", required: ["path"], properties: { path: FROM.path, inside: FROM.inside, name: { type: "string", description: "Name for the copy; default: the original's name plus (edited)" } } },
-    outputSchema: { type: "object", required: ["copy_id", "file", "kind"], properties: { copy_id: { type: "string" }, file: { type: "string" }, kind: { type: "string" }, name: { type: "string" }, from: { type: "string" } } },
+    outputSchema: { type: "object", required: ["copy_id", "file", "kind"], properties: { copy_id: { type: "string" }, file: { type: "string" }, kind: { type: "string" }, name: { type: "string" }, from: { type: "string" }, see_it: { type: "string" } } },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     needs: "package",
     run: async (args, env) => (await fileTools()).makeCopyTool(args, env),

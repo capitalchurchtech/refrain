@@ -395,3 +395,18 @@ test("lists, text outline, text shadow, feather and margins through the box tool
   assert.deepEqual([listed.list, listed.words], [{ style: "(a)", start: 2 }, "One\nTwo"], "a list reads back, and its markers are not words");
   assert.deepEqual((await call("refrain_check", { copy_id: copy.copy_id })).findings.filter((f) => f.severity === "problem"), []);
 });
+
+test("each save leaves a note of what changed in the copy, for Refrain to show beside the redrawn draft", async () => {
+  const { call, staging } = await setup();
+  const copy = await call("refrain_make_copy", { path: path.join(FIX, "sample-fixed.pro") });
+  const meta = () => JSON.parse(fs.readFileSync(path.join(staging, "copies", copy.copy_id, "copy.json"), "utf8"));
+  assert.equal(meta().note, undefined, "a fresh copy has no change yet");
+  const box = (await call("refrain_read_slide", { copy_id: copy.copy_id, slide: 1 })).slide.boxes.find((b) => b.kind === "text");
+  await call("refrain_edit_boxes", { copy_id: copy.copy_id, changes: [{ box: box.id, words: "Hello", text_color: "#ffcc00" }] });
+  const label = (await call("refrain_read_slide", { copy_id: copy.copy_id, slide: 1 })).slide.label;
+  assert.equal(meta().note, `Changed ${label} (words, text color)`);
+  assert.ok(Date.parse(meta().changed) > 0);
+  assert.equal(meta().file, copy.file.split(path.sep).pop(), "the rest of copy.json is kept");
+  await call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 2, label: "Two" }, { slide: 4, notes: "Hi" }], name: "Renamed" });
+  assert.equal(meta().note, "Changed slides 2, 4 (label, notes); the name");
+});

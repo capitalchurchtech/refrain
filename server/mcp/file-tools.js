@@ -40,6 +40,9 @@ function freshPath(dir, base, ext) {
   return file;
 }
 
+// Where a person can watch the work: Refrain draws working copies and built bundles as they change.
+const SEE_IT = "In Refrain, Prep › Bundles › From Claude draws it, and redraws it as it changes (Bundles has to be on).";
+
 const copyDir = (staging, id) => {
   if (!COPY_ID.test(id ?? "")) throw new Error("That is not a copy id. refrain_make_copy gives one.");
   const dir = path.join(staging, "copies", id);
@@ -226,11 +229,27 @@ export async function makeCopyTool(args, { staging }) {
   const name = cleanName(args.name) || `${args.inside === undefined ? path.basename(file, path.extname(file)) : path.basename(String(args.inside), ".pro")} (edited)`;
   await atomicWrite(path.join(dir, `${name}${ext}`), bytes);
   await atomicWrite(path.join(dir, "copy.json"), JSON.stringify({ source: file, file: `${name}${ext}`, kind: d.kind, made: new Date().toISOString() }));
-  return { copy_id: id, file: path.join(dir, `${name}${ext}`), kind: d.kind, name, from: file };
+  return { copy_id: id, file: path.join(dir, `${name}${ext}`), kind: d.kind, name, from: file, ...(d.kind === "protheme" ? {} : { see_it: SEE_IT }) };
 }
 
-/** A changed document back into the working copy, checked first. */
-async function saveCopy(src, d) {
+/**
+ * What a save changed, in one line for a person watching the draft in Refrain:
+ * "Changed slides 3, 5 (words, text color); groups".
+ */
+function changeNote(slides, fields, also = []) {
+  const nums = [...new Set(slides)];
+  // Slides by number ("slides 3, 5"), or by name when the tool knows them by name ("Harvest Supper").
+  const which = nums.every((n) => typeof n === "number") ? `slide${nums.length === 1 ? "" : "s"} ${nums.join(", ")}` : nums.join(", ");
+  const head = nums.length ? `${which}${fields.length ? ` (${[...new Set(fields)].map((k) => k.replace(/_/g, " ")).join(", ")})` : ""}` : null;
+  const parts = [head, ...also].filter(Boolean);
+  return parts.length ? `Changed ${parts.join("; ")}` : "Changed";
+}
+
+/**
+ * A changed document back into the working copy, checked first. The copy's copy.json then says when and
+ * what changed, which Refrain's Bundles screen shows above the redrawn slides.
+ */
+async function saveCopy(src, d, note) {
   const p = await lib();
   let out;
   if (d.kind === "protheme") out = await p.writeTheme(d.file, d.doc, d.schema);
@@ -243,6 +262,7 @@ async function saveCopy(src, d) {
     out = d.kind === "pro" ? pro : await p.writeBundle([...entries, ...(d.newMedia ?? []).filter((e) => !have.has(e.name))]);
   }
   await atomicWrite(src.where, out);
+  if (src.copy) await atomicWrite(path.join(src.copy.dir, "copy.json"), JSON.stringify({ ...src.copy.meta, changed: new Date().toISOString(), note: note || "Changed" }));
 }
 
 const changeable = (args) => {
@@ -366,7 +386,7 @@ export async function editBoxesTool(args, env) {
     if (!Object.keys(changed).length) throw new Error(`${at}: nothing to change for box ${c.box}. Nothing was saved.`);
     done.push({ box: c.box, slide: hit.slide, changed });
   }
-  await saveCopy(src, d);
+  await saveCopy(src, d, changeNote(done.map((x) => x.slide), done.flatMap((x) => Object.keys(x.changed))));
   return { copy_id: args.copy_id, file: src.where, changes: done };
 }
 
@@ -454,7 +474,7 @@ export async function buildFromTool(args, env) {
   await atomicWrite(file, out);
   const carried = new Set(media.map((e) => e.name.split("/").pop()));
   return { file, name, slides: cues.length, groups: groups.map((g) => g.name), media_included: [...carried], media_not_included: [...used].filter((f) => !carried.has(f)),
-    next: "Import the bundle into ProPresenter (File > Import). Nothing was written into ProPresenter's library." };
+    next: `Import the bundle into ProPresenter (File > Import). Nothing was written into ProPresenter's library. ${SEE_IT}` };
 }
 
 /**
@@ -774,7 +794,9 @@ export async function editSlidesTool(args, env) {
     d.doc.name = n;
   }
   if (!done.length && !groupChanges.length && !arrangementChanges.length && args.play_arrangement === undefined && args.name === undefined) throw new Error("Nothing to change: give changes (to slides), groups, arrangements, play_arrangement or name.");
-  await saveCopy(src, d);
+  await saveCopy(src, d, changeNote(done.map((x) => x.slide), done.flatMap((x) => Object.keys(x.changed)), [
+    groupChanges.length && "groups", (arrangementChanges.length || args.play_arrangement !== undefined) && "arrangements", args.name !== undefined && "the name",
+  ]));
   return {
     copy_id: args.copy_id, file: src.where, slides: done, groups: groupChanges,
     ...(arrangementChanges.length ? { arrangements: arrangementChanges } : {}),

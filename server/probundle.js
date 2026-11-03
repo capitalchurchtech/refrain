@@ -19,7 +19,7 @@
  */
 import express from "express";
 import { Worker } from "node:worker_threads";
-import { readFile, stat, mkdir } from "node:fs/promises";
+import { readFile, readdir, stat, mkdir } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -122,7 +122,8 @@ export function probundleRouter({ getConfig, updateConfig, getStatus, getProblem
   const router = express.Router();
   const store = createSourceStore();
   // Pictures for drawn slides: a bundle's media and the small copies shown (gitignored, under ./data).
-  const cacheDir = path.resolve(appRoot, "data", "probundle-staging", "pictures");
+  const staging = path.resolve(appRoot, "data", "probundle-staging");
+  const cacheDir = path.join(staging, "pictures");
   pruneCache(cacheDir);
 
   const refuseIfBusy = (res) => {
@@ -176,7 +177,7 @@ export function probundleRouter({ getConfig, updateConfig, getStatus, getProblem
 
   // One file at a time: each read can hold a few hundred MB, on the machine running the service.
   let reading = false;
-  async function openBytes(res, bytes, { name, from, workspace }) {
+  async function openBytes(res, bytes, { name, from, workspace, draft = null }) {
     const pkg = await packageReady();
     if (!pkg.ok) return res.status(409).json({ error: pkg.error });
     if (reading) return res.status(429).json({ error: "Another file is being read. Try again when it has opened." });
@@ -185,7 +186,7 @@ export function probundleRouter({ getConfig, updateConfig, getStatus, getProblem
       const out = await readInWorker(bytes, cacheDir, workspace);
       if (!out.model) return res.status(422).json({ error: out.findings[0]?.message ?? "This file could not be read.", findings: out.findings });
       const sourceId = store.add({ name, from, kind: out.file.kind, model: out.model, drawn: out.drawn, pictures: out.pictures ?? [], workspace });
-      res.json({ sourceId, name, from, kind: out.file.kind, media: out.file.media, model: out.model, findings: out.findings, predicted: out.predicted, drawnCount: out.drawn?.length ?? 0 });
+      res.json({ sourceId, name, from, kind: out.file.kind, media: out.file.media, model: out.model, findings: out.findings, predicted: out.predicted, drawnCount: out.drawn?.length ?? 0, ...(draft ? { draft } : {}) });
     } catch (err) {
       res.status(422).json({ error: err.message });
     } finally {
@@ -220,6 +221,62 @@ export function probundleRouter({ getConfig, updateConfig, getStatus, getProblem
     }
     // A file from disk takes its pictures from its bundle, else from this computer's ProPresenter.
     await openBytes(res, req.body, { name: name.slice(0, 200) || "Uploaded file", from: "Uploaded", workspace: localWorkspace(userWorkspaces) });
+  });
+
+  // CLAUDE'S DRAFTS: the MCP's working copies (data/probundle-staging/copies/<id>, changed in place as
+  // the assistant works) and the bundles it built (data/probundle-staging/built). Named by id, never a
+  // path; read only here. `version` is the file's modified time, which the page checks to redraw.
+  const DRAFT_ID = /^(copy|built):([a-f0-9-]{36}|[^/\\]{1,200}\.(?:pro|probundle))$/;
+  async function draftFile(id) {
+    const m = DRAFT_ID.exec(String(id ?? ""));
+    if (!m) return null;
+    try {
+      if (m[1] === "copy") {
+        const dir = path.join(staging, "copies", m[2]);
+        const meta = JSON.parse(await readFile(path.join(dir, "copy.json"), "utf8"));
+        const file = path.join(dir, path.basename(String(meta.file ?? "")));
+        if (!/\.(pro|probundle)$/i.test(file)) return null;
+        const st = await stat(file);
+        return { id, file, name: path.basename(file).replace(/\.(pro|probundle)$/i, ""), version: st.mtimeMs, note: meta.note ?? null, changed: meta.changed ?? meta.made ?? null, from: "Claude's working copy" };
+      }
+      if (m[2].startsWith(".")) return null;
+      const file = path.join(staging, "built", m[2]);
+      const st = await stat(file);
+      return { id, file, name: m[2].replace(/\.(pro|probundle)$/i, ""), version: st.mtimeMs, note: null, changed: new Date(st.mtimeMs).toISOString(), from: "Built by Claude" };
+    } catch {
+      return null;
+    }
+  }
+
+  router.get("/drafts", async (_req, res) => {
+    const ids = [];
+    for (const [kind, dir] of [["copy", "copies"], ["built", "built"]]) {
+      const names = await readdir(path.join(staging, dir)).catch(() => []);
+      for (const n of names) ids.push(`${kind}:${n}`);
+    }
+    const drafts = (await Promise.all(ids.map(draftFile))).filter(Boolean);
+    drafts.sort((a, b) => b.version - a.version);
+    res.json({ drafts: drafts.slice(0, 20).map(({ file: _f, ...d }) => d) });
+  });
+
+  router.get("/drafts/version", async (req, res) => {
+    const d = await draftFile(req.query.id);
+    if (!d) return res.status(404).json({ error: "That draft is gone." });
+    res.json({ version: d.version, note: d.note, changed: d.changed });
+  });
+
+  router.post("/open/draft", async (req, res) => {
+    if (refuseIfBusy(res)) return;
+    const d = await draftFile(req.body?.id);
+    if (!d) return res.status(404).json({ error: "That draft is gone." });
+    try {
+      const s = await stat(d.file);
+      if (s.size > PROBUNDLE_LIMITS.uploadBytes) return res.status(413).json({ error: `That file is more than ${PROBUNDLE_LIMITS.uploadBytes / 1024 / 1024} MB.` });
+      const bytes = await readFile(d.file);
+      await openBytes(res, bytes, { name: d.name, from: d.from, workspace: localWorkspace(userWorkspaces), draft: { id: d.id, version: d.version, note: d.note, changed: d.changed } });
+    } catch (err) {
+      res.status(404).json({ error: `Couldn't read that draft: ${err.code ?? err.message}` });
+    }
   });
 
   // DRAWN SLIDES, a few at a time as the page scrolls to them. The stylesheet and the font faces
