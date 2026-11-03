@@ -1,6 +1,8 @@
 /**
  * Bundles: open, inspect, compare and check ProPresenter files (.pro and
- * .probundle), read only for now. File work only, never ProPresenter's API.
+ * .probundle), read only for now: the files opened are never changed (a cache of
+ * the pictures shown is the only thing written, under ./data). File work only,
+ * never ProPresenter's API.
  * See server/probundle.js for the rules and the propresenter-bundle package
  * for the format.
  *
@@ -19,7 +21,7 @@ export default {
     default: false,
     label: "Bundles",
     summary: "Open and check ProPresenter files",
-    description: "Open, compare and check .pro and .probundle files: what is on each slide, what changed by hand, and what will go wrong on import. Never writes a file.",
+    description: "Open, compare and check .pro and .probundle files: every slide drawn, what changed by hand, and what will go wrong on import. Never changes a file you open.",
     apiPrefixes: ["/api/probundle"],
   },
 };
