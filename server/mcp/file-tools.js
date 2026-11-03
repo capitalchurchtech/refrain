@@ -340,6 +340,7 @@ export async function editBoxesTool(args, env) {
       text("fit", (v) => p.setTextFit(hit.wrapper, v));
       text("capitals", (v) => p.setCapitals(hit.wrapper, v));
       text("line_spacing", (v) => p.setLineSpacing(hit.wrapper, v));
+      text("list", (v) => p.setList(hit.wrapper, v));
       text("text_outline", (v) => p.setTextOutline(hit.wrapper, v));
       text("text_shadow", (v) => p.setTextShadow(hit.wrapper, v));
       text("margins", (v) => p.setMargins(hit.wrapper, v));
