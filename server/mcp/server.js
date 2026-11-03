@@ -224,7 +224,7 @@ const GENERAL = [
   {
     name: "refrain_build_from",
     title: "Build a presentation from existing slides",
-    description: "A new presentation made by copying slides of an existing presentation or bundle (last week's sermon, say): each slide as it is, with its macros, links and pictures, and new words in the boxes you name (a box linked to the slide label sets the label). slides: a list of { from: slide number or id, group: group name, label, words: { box id: new words } }. Writes a new .probundle in Refrain's staging folder, with the pictures those slides use; never over a file, never into ProPresenter's library. The source is only read.",
+    description: "A new presentation made by copying slides of an existing presentation or bundle (last week's sermon, say), or of a theme (its slides as masters, their pictures carried): each slide as it is, with its macros, links and pictures, and new words in the boxes you name (a box linked to the slide label sets the label). slides: a list of { from: slide number or id, group: group name, label, words: { box id: new words } }. Writes a new .probundle in Refrain's staging folder, with the pictures those slides use; never over a file, never into ProPresenter's library. The source is only read.",
     inputSchema: {
       type: "object", required: ["source", "name", "slides"],
       properties: {

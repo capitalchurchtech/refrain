@@ -157,11 +157,20 @@ export async function openTool(args, { staging }) {
   };
 }
 
-/** A slide by its number (from 1) or its id. */
+/** A slide by its number (from 1), its id, or its label or name when only one slide has it. */
 function pickSlide(slides, which) {
-  const s = typeof which === "number" || /^\d+$/.test(String(which)) ? slides[Number(which) - 1] : slides.find((x) => x.id === which);
-  if (!s) throw new Error(`No slide ${which}. This file has slides 1 to ${slides.length}.`);
-  return s;
+  if (typeof which === "number" || /^\d+$/.test(String(which))) {
+    const s = slides[Number(which) - 1];
+    if (!s) throw new Error(`No slide ${which}. This file has slides 1 to ${slides.length}.`);
+    return s;
+  }
+  const byId = slides.find((x) => x.id === which);
+  if (byId) return byId;
+  const want = String(which ?? "").trim().toLowerCase();
+  const named = slides.filter((x) => (x.label ?? x.name ?? "").trim().toLowerCase() === want);
+  if (named.length === 1) return named[0];
+  if (named.length > 1) throw new Error(`${named.length} slides are called "${which}" (${named.map((x) => x.number).join(", ")}): give its number.`);
+  throw new Error(`No slide ${which}. This file has slides 1 to ${slides.length}.`);
 }
 
 export async function readSlideTool(args, { staging }) {
@@ -348,15 +357,27 @@ export async function editBoxesTool(args, env) {
 }
 
 /**
- * A new presentation from slides of an existing one: each chosen slide copied with fresh ids (its macros
- * still pointing at the same macros), new words in the boxes named, under the group named. The source is
- * only read.
+ * A new presentation from slides of an existing one, or of a theme: each chosen slide copied with fresh ids
+ * (its macros still pointing at the same macros), new words in the boxes named, under the group named. A
+ * theme slide's own pictures are carried into the bundle and pointed at the workspace's media
+ * (themeSlideAsCue). The source is only read.
  */
-export async function buildFromTool(args, { staging }) {
+export async function buildFromTool(args, env) {
+  const { staging } = env;
   const p = await lib();
   const src = await source(args.source ?? {}, staging);
   const d = await decode(src.bytes);
-  if (d.kind === "protheme") throw new Error("Build from a presentation or a bundle. A theme's slides are not presentation slides.");
+  const theme = d.kind === "protheme";
+  let workspace = null;
+  if (theme) {
+    workspace = p.themeWorkspace(d.doc);
+    if (!workspace) {
+      const ctx = await import("./context-tools.js");
+      workspace = ctx.findWorkspaces(env).find((w) => w.source === "ProPresenter on this computer")?.folder ?? null;
+    }
+    if (!workspace) throw new Error("Neither the theme nor ProPresenter on this computer says which workspace its pictures belong under.");
+  }
+  const themeMedia = new Map();
   if (d.unknown.length) throw new Error(`${path.basename(src.where)} holds ${d.unknown.length} field(s) this reader does not understand, so nothing is built from it: something could be lost.`);
   const name = cleanName(args.name);
   if (!name) throw new Error("Give the new presentation a name.");
@@ -367,10 +388,19 @@ export async function buildFromTool(args, { staging }) {
   const groups = [];
   for (const [i, want] of args.slides.entries()) {
     const at = pickSlide(listed, want?.from);
-    const original = cueById.get(at.id);
-    const copy = p.freshCopy(original);
-    // freshCopy keeps the order of everything, so a box is found in the copy where it was in the original.
-    const before = p.elementsOf({ cues: [original] }), after = p.elementsOf({ cues: [copy] });
+    let copy, before;
+    if (theme) {
+      const made = p.themeSlideAsCue(d.file, d.doc, at.number - 1, { workspace });
+      for (const m of made.media) themeMedia.set(m.name, m);
+      copy = made.cue;
+      before = p.elementsOf({ slides: [d.doc.slides[at.number - 1]] });
+    } else {
+      const original = cueById.get(at.id);
+      copy = p.freshCopy(original);
+      before = p.elementsOf({ cues: [original] });
+    }
+    // Copies keep the order of everything, so a box is found in the copy where it was in the original.
+    const after = p.elementsOf({ cues: [copy] });
     let labelFromWords = null;
     for (const [boxId, words] of Object.entries(want.words ?? {})) {
       const k = before.findIndex((x) => x.element.uuid?.string === boxId);
@@ -395,7 +425,7 @@ export async function buildFromTool(args, { staging }) {
   }
   const color = new Map((d.doc.cue_groups ?? []).map((g) => [g.group?.name, g.group?.color]));
   const doc = {
-    ...d.doc, uuid: p.uuid(), name, cues,
+    ...(theme ? { application_info: d.doc.application_info } : d.doc), uuid: p.uuid(), name, cues,
     cue_groups: groups.map((g) => ({ group: { uuid: p.uuid(), name: g.name, ...(color.get(g.name) ? { color: color.get(g.name) } : {}) }, cue_identifiers: g.ids.map((s) => ({ string: s })) })),
     arrangements: [],
   };
@@ -404,7 +434,7 @@ export async function buildFromTool(args, { staging }) {
   const check = p.checkPresentationBytes(pro);
   if (!check.ok) throw new Error(`The new presentation did not pass the check (${check.error ?? "unstable on re-read"}); nothing was written.`);
   const used = new Set(cues.flatMap(p.mediaFilesOf));
-  const media = d.kind === "probundle" ? p.readBundle(src.bytes).filter((e) => e.name !== d.file.proName && used.has(e.name.split("/").pop())) : [];
+  const media = theme ? [...themeMedia.values()] : d.kind === "probundle" ? p.readBundle(src.bytes).filter((e) => e.name !== d.file.proName && used.has(e.name.split("/").pop())) : [];
   const out = await p.writeBundle([{ name: `${name}.pro`, data: pro }, ...media]);
   const file = freshPath(path.join(staging, "built"), name, ".probundle");
   await atomicWrite(file, out);

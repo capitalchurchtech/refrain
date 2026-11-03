@@ -139,7 +139,6 @@ test("words change on a copy; a new presentation is built from existing slides",
   assert.notEqual(again.slides[0].id, first.id, "copied slides get fresh ids");
   const second = await call("refrain_build_from", { source: { copy_id: copy.copy_id }, name: "Week Two", slides: [{ from: 1 }] });
   assert.equal(path.basename(second.file), "Week Two 2.probundle", "never over an existing file");
-  await assert.rejects(call("refrain_build_from", { source: { path: path.join(FIX, "sample.protheme") }, name: "X", slides: [{ from: 1 }] }), /theme's slides are not presentation slides/);
   await assert.rejects(call("refrain_build_from", { source: { copy_id: copy.copy_id }, name: "X", slides: [{ from: 99 }] }), /No slide 99/);
 });
 
@@ -340,4 +339,22 @@ test("notes, line spacing, and arrangements: made, changed, renamed, chosen to p
   await assert.rejects(call("refrain_edit_slides", { copy_id: copy.copy_id, arrangements: [{ name: "Missing" }] }), /to make one, give its groups/);
   await assert.rejects(call("refrain_edit_slides", { copy_id: copy.copy_id, play_arrangement: "Nope" }), /No arrangement "Nope"/);
   await assert.rejects(call("refrain_edit_boxes", { copy_id: copy.copy_id, changes: [{ box: box.id, line_spacing: 20 }] }), /0\.1 to 5/);
+});
+
+test("a new presentation from a theme's slides: its boxes, new words, and the theme's own pictures carried", { skip: lib?.themeSlideAsCue ? false : "propresenter-bundle with theme slides is not installed" }, async () => {
+  const { call } = await setup();
+  const themePath = path.join(FIX, "sample.protheme");
+  const slides = (await call("refrain_open", { path: themePath, boxes: true })).slides;
+  const verse = slides[0];
+  const built = await call("refrain_build_from", { source: { path: themePath }, name: "Sermon from theme", slides: [
+    { from: 1, group: "Message", label: "Romans 12:2", words: { [verse.boxes[1].id]: "Do not be conformed", [verse.boxes[2].id]: "Romans 12:2" } },
+    { from: "Quote", group: "Message" },
+  ] });
+  assert.deepEqual([built.slides, built.groups, built.media_included], [2, ["Message"], ["example-bg.png"]]);
+  const o = await call("refrain_open", { path: built.file });
+  assert.deepEqual(o.slides.map((s) => [s.group, s.label]), [["Message", "Romans 12:2"], ["Message", "Quote"]]);
+  const s1 = (await call("refrain_read_slide", { path: built.file, slide: 1 })).slide;
+  assert.deepEqual(s1.boxes.map((b) => b.words), ["", "Do not be conformed", "Romans 12:2"]);
+  assert.equal(s1.boxes[0].picture, "example-bg.png");
+  assert.deepEqual((await call("refrain_check", { path: built.file })).findings.filter((f) => f.severity === "problem"), [], "the picture is in the bundle");
 });
