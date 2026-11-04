@@ -208,7 +208,7 @@ export function initHealth() {
       <div class="flex flex-col gap-4 max-w-3xl">
         <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="menu" class="w-5 h-5"></i> Settings</h1>
         <div id="health-unfinished-day"></div>
-        ${renderHealth(health, configOptions, versionInfo, renderLibraryCard(libraryFolders, arrangementFolders), duplicateNames.groups ?? [], envData.entries ?? [])}
+        ${renderHealth(health, configOptions, versionInfo, renderLibraryCard(libraryFolders, arrangementFolders, { fromFiles: health.index?.indexFromFiles === true }), duplicateNames.groups ?? [], envData.entries ?? [])}
       </div>`;
 
     window.scrollTo(0, scrollY);
@@ -541,9 +541,9 @@ export function initHealth() {
     const feedWindows = document.getElementById("feed-windows");
     if (feedWindows) {
       const radio = (attr, val) => document.querySelector(`[${attr}][aria-checked="true"]`)?.getAttribute(attr) === val;
-      document.querySelectorAll("[data-feed-enabled], [data-feed-text], [data-feed-image]").forEach((key) =>
+      document.querySelectorAll("[data-feed-enabled], [data-feed-text], [data-feed-image], [data-feed-nightly]").forEach((key) =>
         key.addEventListener("click", () => {
-          const attr = ["data-feed-enabled", "data-feed-text", "data-feed-image"].find((a) => key.hasAttribute(a));
+          const attr = ["data-feed-enabled", "data-feed-text", "data-feed-image", "data-feed-nightly"].find((a) => key.hasAttribute(a));
           document.querySelectorAll(`[${attr}]`).forEach((k) => k.setAttribute("aria-checked", String(k === key)));
         })
       );
@@ -579,6 +579,8 @@ export function initHealth() {
           url: document.getElementById("feed-url").value,
           includeSlideText: radio("data-feed-text", "true"),
           includeSlideImage: radio("data-feed-image", "true"),
+          nightlyLog: radio("data-feed-nightly", "true"),
+          nightlyLogAt: document.getElementById("feed-nightly-at").value,
           windows,
         };
         try {
@@ -1245,7 +1247,7 @@ export function searchScopeSummary({ folders = [], selected = null, indexed = {}
   return `Searching ${selected.length}${of} ${selected.length === 1 && !of ? "library" : "libraries"} (${selected.join(", ")}): ${plural(total)}.`;
 }
 
-function renderLibraryCard({ folders = [], selected = null, indexed = {}, error }, arrangementFolders) {
+function renderLibraryCard({ folders = [], selected = null, indexed = {}, error }, arrangementFolders, { fromFiles = false } = {}) {
   const summary = `<div class="text-sm font-medium">${escapeHtml(searchScopeSummary({ folders, selected, indexed }))}</div>`;
   const count = (name) => indexed[name] ?? 0;
   if (error) {
@@ -1287,16 +1289,22 @@ function renderLibraryCard({ folders = [], selected = null, indexed = {}, error 
             )
             .join("")}
         </div>
-        <div class="alert alert-warning py-2 text-sm mt-2 items-start">
+        ${
+          // Read from ProPresenter's files, a reindex asks it only for its library lists: no warning
+          // to keep it free, and no "deep" run, which exists to retry the reads its API fails.
+          fromFiles
+            ? `<div class="text-sm opacity-70 mt-2 rf-measure"><strong>Saving starts a reindex.</strong> A library you switch on is read from ProPresenter's library files, about a minute for 700 presentations, asking ProPresenter only for its library lists.</div>`
+            : `<div class="alert alert-warning py-2 text-sm mt-2 items-start">
           <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
           <span><strong>Saving starts a reindex.</strong> A library you switch on is read in full, and
           ProPresenter can be slow or unresponsive for an hour or more. Save only when it's free for the
           next two hours.</span>
-        </div>
+        </div>`
+        }
         <div class="flex flex-wrap items-center gap-2 mt-1">
           <button id="save-library-folders-btn" class="btn btn-sm btn-outline w-fit">Save and rebuild</button>
-          <button id="save-library-folders-deep-btn" class="btn btn-sm btn-outline w-fit">Save and deep reindex (slower)</button>
-          ${infoIcon("Saves, then reads every presentation again, slowly, retrying the ones ProPresenter fails to answer. For when Deep Search says it could only read some of your presentations.")}
+          ${fromFiles ? "" : `<button id="save-library-folders-deep-btn" class="btn btn-sm btn-outline w-fit">Save and deep reindex (slower)</button>
+          ${infoIcon("Saves, then reads every presentation again, slowly, retrying the ones ProPresenter fails to answer. For when Deep Search says it could only read some of your presentations.")}`}
         </div>
 
         ${arrangementFolders ? renderArrangementFoldersSection(arrangementFolders) : ""}
@@ -1420,6 +1428,41 @@ function selectOptions(options, current) {
  * asked for Songs and this library has Song" is the entire answer and there
  * is no way to reach it from an empty result.
  */
+/**
+ * Where the index read its presentations, and what the two checks found
+ * (server/presentation-files.js). Reading the library's files writes nothing
+ * into ProPresenter's database; reading through its API does. One quiet line
+ * when all is well; a warning when a presentation wasn't on disk, the folder
+ * holds files the API didn't list, or the Go Live check found a difference.
+ * Pure, for tests.
+ */
+export function renderFileReading(index) {
+  const f = index.fileReading;
+  const check = index.fileCheck;
+  if (!f && !check) return "";
+  const notes = [];
+  if (f?.notOnDisk) notes.push(`${f.notOnDisk} presentation${f.notOnDisk === 1 ? "" : "s"} ProPresenter listed weren't found in its library folders${f.fromApi ? `; ${f.fromApi} of them read through ProPresenter instead` : ", so they kept what the last index had"}.`);
+  // Files ProPresenter doesn't list harm nothing (it doesn't show them, so search doesn't either):
+  // said quietly, beside the count, not as a warning.
+  const extra = (f?.libraries ?? []).filter((l) => l.notListed);
+  const quiet = extra.length ? ` On disk but not in ProPresenter's list, so not in search either: ${extra.map((l) => `${l.notListed} in ${escapeHtml(l.folder)}`).join(", ")}.` : "";
+  if (check?.differed) {
+    const l = check.last;
+    notes.push(`At Go Live, ${check.differed} of ${check.checked} presentation${check.checked === 1 ? "" : "s"} read from their files didn't match what ProPresenter played${l ? ` (the last: ${l.fileCount} slides from the file, ${l.liveCount} playing${l.firstDifference != null ? `, first different at slide ${l.firstDifference + 1}` : ""})` : ""}. Turn off reading from files (indexFromFiles: false) if search keeps finding the wrong slide.`);
+  }
+  // An incremental run reads only what changed; the rest is said too, or "0 presentations" reads as a failure.
+  const line = f
+    ? `Read from ProPresenter's library files: ${f.fromFiles} presentation${f.fromFiles === 1 ? "" : "s"}${f.unchanged ? ` (${f.unchanged} unchanged since the last read)` : ""}${f.fromApi ? `, ${f.fromApi} through ProPresenter` : ""}. Reading files asks nothing of ProPresenter.`
+    : "";
+  const checked = check && !check.differed ? ` Checked against ProPresenter at Go Live: ${check.checked} presentation${check.checked === 1 ? "" : "s"}, all the same.` : "";
+  const quietLine = `<div class="text-xs opacity-70 mt-2 rf-measure">${line}${quiet}${checked}</div>`;
+  if (!notes.length) return quietLine;
+  return `${quietLine}<div class="alert alert-warning py-2 text-sm mt-2 items-start">
+            <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
+            <span class="flex flex-col gap-1">${notes.map((n) => `<span>${n}</span>`).join("")}</span>
+          </div>`;
+}
+
 function renderIndexShortfall(index) {
   const issues = index.libraryFolderIssues;
   const aborted = index.crawlAborted;
@@ -2069,11 +2112,12 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
               : ""
         }
         ${renderIndexShortfall(index)}
+        ${renderFileReading(index)}
         <div id="index-run-host" class="mt-2" hidden></div>
         ${
           index.rebuild.inProgress
             ? ""
-            : health.protectProPresenter
+            : health.protectProPresenter && !index.indexFromFiles
               ? `<div class="text-sm mt-2 rf-measure">Search uses the index it already has. Refrain doesn't read the library from ProPresenter while <strong>Protect ProPresenter</strong> is on (Advanced, below), so nothing here reads it again.</div>`
               : (() => {
                 // The scary warning belongs to whichever button is actually
@@ -2081,7 +2125,11 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
                 // nothing to compare files against, so the only thing on offer
                 // IS the full crawl — offering a "quick and safe" reindex
                 // button that silently becomes one would be a trap.
-                const fullRebuildWarning = `
+                // Read from ProPresenter's files a rebuild takes a minute or two and asks it only for
+                // its library lists, so the warning and the slow "deep" run are for the API alone.
+                const fullRebuildWarning = index.indexFromFiles
+                  ? `<div class="text-sm opacity-70 mt-2 rf-measure">A rebuild reads every presentation again from ProPresenter's library files, about a minute for 700, and asks ProPresenter only for its library lists.</div>`
+                  : `
                   <div class="alert alert-warning py-2 text-sm mt-2 items-start">
                     <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
                     <span>
@@ -2096,10 +2144,10 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
                     <button id="health-rebuild-btn" class="btn btn-sm btn-outline w-fit"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> <span id="health-rebuild-btn-label">${index.builtAt ? "Rebuild everything" : "Build index"}</span></button>
                     ${infoIcon("Reads the whole library again. Only for a first build, or when reindexing hasn't fixed search.")}
                   </div>
-                  <div class="flex items-center gap-2 mt-1">
+                  ${index.indexFromFiles ? "" : `<div class="flex items-center gap-2 mt-1">
                     <button id="health-deep-rebuild-btn" class="btn btn-sm btn-outline w-fit"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> <span id="health-deep-rebuild-btn-label">Deep reindex (slower)</span></button>
                     ${infoIcon("Reads every presentation again, slowly, retrying the ones ProPresenter fails to answer. For when Deep Search says it could only read some of your presentations after a rebuild.")}
-                  </div>`;
+                  </div>`}`;
 
                 if (!index.builtAt) {
                   return `<div class="flex flex-col gap-2 mt-2">
@@ -2340,9 +2388,9 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
     </div>`;
 
   // Telemetry (owner, 2026-10-04): this station reporting to the church's own
-  // announcement server. Off until set up; talks only inside its windows.
+  // announcement server. Off until set up; the slide only inside its windows, the log once a night.
   const feed = health.serviceFeedModule ?? {};
-  const fs = feed.settings ?? { enabled: false, name: "", url: "", includeSlideText: false, windows: [], keySet: false };
+  const fs = feed.settings ?? { enabled: false, name: "", url: "", includeSlideText: false, nightlyLog: true, nightlyLogAt: "02:00", windows: [], keySet: false };
   const feedStatusLine = !fs.enabled
     ? "Off. Nothing is sent anywhere."
     : feed.status === "misconfigured"
@@ -2356,7 +2404,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
     <div class="card bg-base-200">
       <div class="card-body p-3 gap-3">
         <h2 class="card-title text-base"><i data-lucide="radio-tower" class="w-4 h-4 opacity-70"></i> This station</h2>
-        <p class="text-sm rf-measure">Lets your own announcement server see which slide this station is showing, and keep its log for review. It only talks to the address below, and only inside the windows below. Nothing goes to the Refrain project.</p>
+        <p class="text-sm rf-measure">Lets your own announcement server see which slide this station is showing, and keep its log for review. It only talks to the address below: the slide inside the windows below, the log once a night. Nothing goes to the Refrain project.</p>
         <div class="rf-tabs" role="radiogroup" aria-label="Telemetry" style="margin-bottom:0">
           <button type="button" role="radio" class="rf-tab" data-feed-enabled="true" aria-checked="${fs.enabled}"><span>On</span></button>
           <button type="button" role="radio" class="rf-tab" data-feed-enabled="false" aria-checked="${!fs.enabled}"><span>Off</span></button>
@@ -2370,9 +2418,20 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
           <span class="text-xs opacity-60">The console address from its admin page. The key for this station goes in Secrets as SERVICE_FEED_TOKEN${fs.keySet ? " (set)" : " (not set yet)"}. A key saved in Secrets takes effect when Refrain is restarted.</span>
         </label>
         <div class="flex flex-col gap-1">
-          <div class="text-sm">Send windows <span class="text-xs opacity-60">(this Mac's local time; nothing is sent outside them)</span></div>
+          <div class="text-sm">Send windows <span class="text-xs opacity-60">(this Mac's local time; no slide is sent outside them)</span></div>
           <div id="feed-windows" class="flex flex-col gap-2">${fs.windows.map(feedWindowRow).join("")}</div>
           <button type="button" id="feed-add-window" class="btn btn-outline btn-xs w-fit">Add a window</button>
+        </div>
+        <div class="flex flex-col gap-1">
+          <div class="text-sm">The log</div>
+          <div class="flex flex-wrap items-center gap-3">
+            <div class="rf-tabs" role="radiogroup" aria-label="Send the log each night" style="margin-bottom:0">
+              <button type="button" role="radio" class="rf-tab" data-feed-nightly="true" aria-checked="${fs.nightlyLog !== false}"><span>Each night</span></button>
+              <button type="button" role="radio" class="rf-tab" data-feed-nightly="false" aria-checked="${fs.nightlyLog === false}"><span>Only when I press Send log</span></button>
+            </div>
+            <label class="flex items-center gap-2 text-sm">at <input id="feed-nightly-at" type="time" class="input input-bordered input-sm" value="${escapeHtml(fs.nightlyLogAt ?? "02:00")}"></label>
+          </div>
+          <span class="text-xs opacity-60 rf-measure">Each night it sends the days your server doesn't have yet, so a night with nothing new sends nothing. Not during a send window or while performance mode is on; a computer asleep at that time sends when it wakes.${feed.lastNightly ? ` Last night's send: ${feed.lastNightly.error ? escapeHtml(`failed, ${feed.lastNightly.error}`) : `${feed.lastNightly.sent} day${feed.lastNightly.sent === 1 ? "" : "s"} sent at ${new Date(feed.lastNightly.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}.` : ""}</span>
         </div>
         <div class="flex flex-col gap-1">
           <div class="text-sm">Words on the slide</div>

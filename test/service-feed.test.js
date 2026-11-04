@@ -12,6 +12,7 @@ import {
   inWindow,
   isConfigFailure,
   logsToSend,
+  nightlyDue,
   serviceFeedProblems,
   statusFingerprint,
 } from "../server/service-feed.js";
@@ -128,10 +129,106 @@ test("a log is marked sent only after the server accepted it; a failure leaves i
   assert.equal((await r.feed.sendLogs()).sent, 0, "identical, so nothing goes again");
 });
 
-test("logs never go on their own, only when asked", async () => {
+test("status never carries the log; the log goes at night or when asked", async () => {
   const r = rig({ files: [{ name: "2026-10-02.jsonl", size: 12 }] });
   await r.feed.tickStatus();
   assert.equal(r.calls.every((c) => c.url.endsWith("/status")), true);
+});
+
+test("the nightly send is due once a night, after its time, unless switched off", () => {
+  const at = (iso) => new Date(iso); // local time
+  assert.equal(nightlyDue({}, at("2026-10-05T01:59:00"), null), false, "before 2 am");
+  assert.equal(nightlyDue({}, at("2026-10-05T02:00:00"), null), true);
+  assert.equal(nightlyDue({}, at("2026-10-05T07:30:00"), null), true, "asleep at 2, sends on waking");
+  assert.equal(nightlyDue({}, at("2026-10-05T07:30:00"), "2026-10-05"), false, "tonight's already done");
+  assert.equal(nightlyDue({}, at("2026-10-06T02:00:00"), "2026-10-05"), true, "the next night");
+  assert.equal(nightlyDue({ nightlyLog: false }, at("2026-10-05T03:00:00"), null), false);
+  assert.equal(nightlyDue({ nightlyLogAt: "23:30" }, at("2026-10-05T23:00:00"), null), false);
+  assert.equal(nightlyDue({ nightlyLogAt: "23:30" }, at("2026-10-05T23:30:00"), null), true);
+  assert.equal(nightlyDue({ nightlyLogAt: "bad" }, at("2026-10-05T02:00:00"), null), true, "a bad time means 2 am");
+});
+
+// A feed whose clock starts at a given local time, with its own module (rig() shares one).
+function nightRig({ start, mod = {}, responses = [], files = [{ name: "2026-10-04.jsonl", size: 12 }], frozen = () => false }) {
+  const calls = [];
+  let clock = new Date(start).getTime();
+  let saved = {};
+  const module = { ...good, ...mod };
+  const feed = createServiceFeed({
+    getModule: () => module, getLive: () => live(), isFrozen: frozen, appVersion: "1", env, now: () => clock,
+    fetchImpl: async (url, init) => {
+      calls.push({ url, init });
+      const status = responses.shift() ?? 204;
+      return { ok: status < 300, status };
+    },
+    listLogs: async () => files, readLog: async () => "x".repeat(12), loadSent: async () => saved, saveSent: async (s) => (saved = s),
+  });
+  return { feed, calls, files, advance: (ms) => (clock += ms) };
+}
+const MIN = 60_000;
+
+test("each night the log goes once, after its time, and a night with nothing new sends nothing", async () => {
+  const r = nightRig({ start: "2026-10-05T01:59:00" }); // Monday, outside the Sunday window
+  assert.equal(await r.feed.tickNightly(), false, "not yet");
+  r.advance(MIN);
+  assert.equal(await r.feed.tickNightly(), true);
+  assert.deepEqual(r.calls.map((c) => [c.init.method, c.url.split("/").pop()]), [["PUT", "2026-10-04.jsonl"]]);
+  assert.deepEqual([r.feed.state().lastNightly.sent, r.feed.state().lastNightly.error], [1, null]);
+  r.advance(MIN);
+  assert.equal(await r.feed.tickNightly(), false, "once a night");
+  r.advance(24 * 60 * MIN);
+  assert.equal(await r.feed.tickNightly(), true, "the next night runs");
+  assert.equal(r.calls.length, 1, "but sends nothing: the server has it all");
+  r.files.push({ name: "2026-10-05.jsonl", size: 12 });
+  r.advance(24 * 60 * MIN);
+  await r.feed.tickNightly();
+  assert.equal(r.calls.at(-1).url.split("/").pop(), "2026-10-05.jsonl", "a new day goes the night after");
+});
+
+test("the nightly send waits out a send window and performance mode, and can be switched off", async () => {
+  // Sunday after a restart at 10: today's run looks undone, but this is the service.
+  const inService = nightRig({ start: "2026-10-04T10:00:00" });
+  assert.equal(await inService.feed.tickNightly(), false);
+  inService.advance(4 * 60 * MIN + MIN); // 14:01, the window has closed
+  assert.equal(await inService.feed.tickNightly(), true);
+  let frozen = true;
+  const busy = nightRig({ start: "2026-10-05T02:00:00", frozen: () => frozen });
+  assert.equal(await busy.feed.tickNightly(), false);
+  assert.equal(busy.calls.length, 0);
+  frozen = false;
+  assert.equal(await busy.feed.tickNightly(), true);
+  const off = nightRig({ start: "2026-10-05T02:00:00", mod: { nightlyLog: false } });
+  assert.equal(await off.feed.tickNightly(), false);
+  const notOn = nightRig({ start: "2026-10-05T02:00:00", mod: { enabled: false } });
+  assert.equal(await notOn.feed.tickNightly(), false, "telemetry switched off sends nothing");
+  assert.equal(off.calls.length + notOn.calls.length, 0);
+});
+
+test("a nightly send that fails is tried twice more, ten minutes apart, then left for the next night", async () => {
+  const r = nightRig({ start: "2026-10-05T02:00:00", responses: [503, 503, 503] });
+  assert.equal(await r.feed.tickNightly(), true);
+  assert.match(r.feed.state().lastNightly.error, /503|server/i);
+  r.advance(5 * MIN);
+  assert.equal(await r.feed.tickNightly(), false, "not again for ten minutes");
+  r.advance(5 * MIN);
+  assert.equal(await r.feed.tickNightly(), true);
+  r.advance(10 * MIN);
+  assert.equal(await r.feed.tickNightly(), true);
+  r.advance(10 * MIN);
+  assert.equal(await r.feed.tickNightly(), false, "three tries, then the night is given up");
+  assert.equal(r.calls.length, 3);
+  assert.ok(r.feed.state().lastNightly.error, "the failure stays on show");
+  r.advance(24 * 60 * MIN);
+  assert.equal(await r.feed.tickNightly(), true, "the next night tries again");
+  assert.equal(r.feed.state().lastNightly.error, null);
+});
+
+test("a press during the nightly send waits for it instead of sending the same day twice", async () => {
+  const r = nightRig({ start: "2026-10-05T02:00:00" });
+  const [a, b] = await Promise.all([r.feed.tickNightly(), r.feed.sendLogs()]);
+  assert.equal(a, true);
+  assert.equal(b.sent, 1, "the press gets the nightly run's answer");
+  assert.equal(r.calls.length, 1);
 });
 
 test("a person can send the log outside the window, but not during performance mode", async () => {
@@ -161,7 +258,10 @@ test("settings from the tab are checked and tidied", () => {
   assert.equal(cleanServiceFeedSettings({ enabled: true, windows: [{ days: [], from: "09:00", until: "14:00" }] }).ok, false, "a window needs a day");
   assert.equal(cleanServiceFeedSettings({ enabled: true, windows: [{ days: ["sun"], from: "14:00", until: "09:00" }] }).ok, false, "start before end");
   const ok = cleanServiceFeedSettings({ enabled: true, name: "  FOH  ", url: " https://a.example ", windows: [{ days: ["sun", "fri"], from: "09:00", until: "14:00" }], extra: 1 });
-  assert.deepEqual(ok.value, { enabled: true, name: "FOH", url: "https://a.example", includeSlideText: false, includeSlideImage: false, windows: [{ days: ["sun", "fri"], from: "09:00", until: "14:00" }] });
+  assert.deepEqual(ok.value, { enabled: true, name: "FOH", url: "https://a.example", includeSlideText: false, includeSlideImage: false, nightlyLog: true, nightlyLogAt: "02:00", windows: [{ days: ["sun", "fri"], from: "09:00", until: "14:00" }] });
+  assert.deepEqual([cleanServiceFeedSettings({ enabled: true, nightlyLog: false, nightlyLogAt: "23:30" }).value.nightlyLog, cleanServiceFeedSettings({ enabled: true, nightlyLogAt: "23:30" }).value.nightlyLogAt], [false, "23:30"]);
+  assert.match(cleanServiceFeedSettings({ enabled: true, nightlyLogAt: "25:00" }).error, /time of day/);
+  assert.match(cleanServiceFeedSettings({ enabled: true, nightlyLog: "yes" }).error, /nightlyLog/);
 });
 
 test("outside the window no status is sent", async () => {
@@ -259,6 +359,12 @@ test("Send log shows only when telemetry is set up", () => {
   const active = renderLogSendHtml({ status: "active", lastLogOkAt: null });
   assert.match(active, /service-send-log-btn/);
   assert.match(active, /Not sent yet/);
+  assert.match(active, /when you press Send log/, "nightly switched off");
+  const nightly = renderLogSendHtml({ status: "active", lastLogOkAt: null, nightly: { at: "02:00", last: null } });
+  assert.match(nightly, /each night at 2:00/);
+  assert.doesNotMatch(nightly, /failed/);
+  const failed = renderLogSendHtml({ status: "active", lastLogOkAt: null, nightly: { at: "02:00", last: { at: 1, sent: 0, error: "The server said 503 <b>" } } });
+  assert.match(failed, /The last nightly send failed: The server said 503 &lt;b&gt;/);
 });
 
 const picRig = (extra = {}) => {

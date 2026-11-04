@@ -1,10 +1,11 @@
 import { showFailure } from "./notice.js";
 import { escapeHtml } from "./slide-tools.js";
+import { slidesView, mountSlides } from "./probundle-slides.js";
 
 /**
  * Bundles screen: open a ProPresenter presentation or bundle, read what is on
  * every slide, check it, and compare two versions. Read only: nothing here
- * writes a file or talks to ProPresenter (server/probundle.js).
+ * changes a file or talks to ProPresenter (server/probundle.js).
  *
  * The hero is the open file, since that is the work; opening is the entry.
  * Names from ProPresenter (presentations, groups, labels, box names) are shown
@@ -21,6 +22,8 @@ export function initProbundle() {
     compare: { before: null, after: null },
     busy: false,
     library: { q: "", items: [], total: 0 },
+    drafts: [], // Claude's working copies and built bundles (server/probundle.js)
+    view: null, // the slide open large, kept across a redraw
   };
 
   const byId = (id) => state.opened.find((o) => o.sourceId === id) ?? null;
@@ -28,6 +31,7 @@ export function initProbundle() {
   async function render() {
     try {
       state.status = await fetch("/api/probundle/status").then((r) => r.json());
+      state.drafts = (await fetch("/api/probundle/drafts").then((r) => r.json()).catch(() => ({ drafts: [] }))).drafts ?? [];
     } catch {
       container.innerHTML = `<p class="text-sm">Couldn't reach Refrain. Is it still running?</p>`;
       return;
@@ -35,19 +39,24 @@ export function initProbundle() {
     paint();
   }
 
+  let unmount = () => {};
   function paint() {
+    unmount();
+    unmount = () => {};
     const s = state.status ?? {};
     const ready = s.status === "active";
     container.innerHTML = `
       <div class="flex flex-col gap-6 max-w-5xl">
         <div class="flex flex-col gap-1">
           <h2 class="rf-page-sub">Bundles</h2>
-          <p class="text-sm opacity-70">Open a presentation or bundle to read every slide, check it before import, or compare two versions. Nothing is written.</p>
+          <p class="text-sm opacity-70">Open a presentation or bundle to see every slide, check it before import, or compare two versions. The file is never changed.</p>
         </div>
         ${ready ? openSection(s) + heroSection() : setupSection(s)}
       </div>`;
     wire();
     window.lucide?.createIcons?.();
+    const o = byId(state.current);
+    if (o && state.tab === "inspect") unmount = mountSlides(container, o, o.findings, { view: state.view, onView: (n) => (state.view = n) });
   }
 
   // --- Setup: the packs folder ------------------------------------------------
@@ -75,6 +84,10 @@ export function initProbundle() {
       <div class="flex flex-col gap-3">
         <h3 class="rf-subhead">Open</h3>
         ${s.busy ? `<p class="text-sm"><span class="rf-led mr-2"></span>${escapeHtml(s.busy)}</p>` : ""}
+        <div class="rf-field">
+          <label>From Claude</label>
+          <div id="pb-drafts">${draftsList(s)}</div>
+        </div>
         <div class="grid gap-4 md:grid-cols-2">
           <div class="rf-field">
             <label for="pb-lib-q">From the library</label>
@@ -91,6 +104,19 @@ export function initProbundle() {
         ${state.opened.length ? openedRow() : ""}
       </div>`;
   }
+
+  // Drafts an assistant is working on over Refrain's MCP, newest first. Opening one keeps it redrawn.
+  function draftsList(s = state.status ?? {}) {
+    if (!state.drafts.length) return `<p class="text-xs opacity-70">Nothing yet. When Claude makes a copy of a presentation to change, or builds one, it appears here and redraws as Claude works.</p>`;
+    const tile = (d) => `<button type="button" class="btn btn-sm rf-tile pb-draft" data-id="${escapeHtml(d.id)}" ${s.busy ? "disabled" : ""}>
+          <span class="pb-draft-name">${escapeHtml(d.name)}</span>
+          <span class="pb-draft-note">${escapeHtml(d.from)}${d.changed ? ` · ${escapeHtml(when(d.changed))}` : ""}${d.note ? ` · ${escapeHtml(d.note)}` : ""}</span>
+        </button>`;
+    // The newest few; older ones folded away, so the list never pushes the rest of the screen down.
+    const [recent, older] = [state.drafts.slice(0, 4), state.drafts.slice(4)];
+    return `<div class="pb-drafts">${recent.map(tile).join("")}${older.length ? `<details class="pb-older"><summary>${older.length} older</summary><div class="pb-drafts">${older.map(tile).join("")}</div></details>` : ""}</div>`;
+  }
+  const when = (iso) => new Date(iso).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
 
   function libraryList() {
     const { items, total, q } = state.library;
@@ -122,7 +148,7 @@ export function initProbundle() {
     const counts = { problem: 0, warning: 0, note: 0 };
     for (const f of o.findings) counts[f.severity]++;
     const tabs = [
-      ["inspect", `Inspect · ${o.model.slideCount} slide${o.model.slideCount === 1 ? "" : "s"}`],
+      ["inspect", `Slides · ${o.model.slideCount}`],
       ["check", `Check · ${counts.problem + counts.warning} to look at`],
       ["compare", "Compare"],
     ];
@@ -132,6 +158,7 @@ export function initProbundle() {
           <div class="flex flex-col gap-1">
             <div class="text-base font-medium">${escapeHtml(o.model.name || o.name)}</div>
             <div class="text-xs opacity-70">${escapeHtml(o.from)} · ${o.kind === "probundle" ? `bundle, ${o.media.length} media file${o.media.length === 1 ? "" : "s"}` : "presentation"}</div>
+            ${o.draft ? `<div class="pb-draft-live">${o.draft.changed ? `${escapeHtml(when(o.draft.changed))} · ` : ""}${escapeHtml(o.draft.note ?? "Redrawn as Claude changes it")}</div>` : ""}
           </div>
           <div role="tablist" class="tabs tabs-bordered">
             ${tabs.map(([id, label]) => `<button role="tab" type="button" class="tab pb-tab ${state.tab === id ? "tab-active" : ""}" data-tab="${id}">${escapeHtml(label)}</button>`).join("")}
@@ -147,49 +174,10 @@ export function initProbundle() {
       ? `<p class="text-xs opacity-70">Arrangements: ${m.arrangements.map((a) => `${escapeHtml(a.name)} (${a.groups.map(escapeHtml).join(", ")})`).join(" · ")}</p>`
       : "";
     return `
-      <div class="flex flex-col gap-6">
+      <div class="flex flex-col gap-3">
         ${arrangements}
-        ${m.groups
-          .map(
-            (g) => `
-          <section class="flex flex-col gap-2">
-            <h4 class="text-sm font-medium flex items-center gap-2">${g.color ? `<span class="inline-block w-3 h-3 rounded-sm" style="background:${escapeHtml(g.color)}"></span>` : ""}${escapeHtml(g.name)}</h4>
-            ${g.slides.map((s, i) => slideCard(s, i)).join("") || `<p class="text-xs opacity-70">No slides.</p>`}
-          </section>`
-          )
-          .join("")}
+        ${slidesView(o)}
       </div>`;
-  }
-
-  function slideCard(s, i) {
-    const extras = [
-      ...s.media.map((x) => `media ${escapeHtml(x.file ?? "?")}${x.layer != null ? ` (layer ${x.layer})` : ""}`),
-      ...s.macros.map((x) => `macro ${escapeHtml(x.collection ?? "?")} › ${escapeHtml(x.name ?? "?")}`),
-    ];
-    return `
-      <details class="bg-base-100 rounded p-2">
-        <summary class="cursor-pointer text-sm flex gap-3 items-baseline">
-          <span class="opacity-60 tabular-nums w-6 text-right shrink-0">${i + 1}</span>
-          <span class="font-medium shrink-0">${escapeHtml(s.label || "(no label)")}</span>
-          <span class="opacity-70 truncate">${escapeHtml(s.text.join(" / ").replace(/\n/g, " "))}</span>
-          ${s.enabled ? "" : `<span class="text-xs opacity-70 shrink-0">disabled</span>`}
-        </summary>
-        <div class="mt-2 flex flex-col gap-2 text-sm">
-          ${s.elements.length ? `<table class="table table-xs">
-            <thead><tr><th>Box</th><th>Job</th><th>Where</th><th>Words or picture</th></tr></thead>
-            <tbody>${s.elements
-              .map(
-                (e) => `<tr>
-                  <td>${escapeHtml(e.name || "(unnamed)")}</td>
-                  <td class="opacity-70">${escapeHtml(e.role)}</td>
-                  <td class="tabular-nums opacity-70">${e.bounds.x},${e.bounds.y} · ${e.bounds.w}×${e.bounds.h}</td>
-                  <td class="whitespace-pre-line">${escapeHtml(e.text || e.media || "")}${e.caps ? ` <span class="text-xs opacity-60">caps</span>` : ""}${e.fontSize ? ` <span class="text-xs opacity-60">${e.fontSize}pt</span>` : ""}</td>
-                </tr>`
-              )
-              .join("")}</tbody></table>` : `<p class="text-xs opacity-70">Nothing on this slide.</p>`}
-          ${extras.length ? `<p class="text-xs opacity-70">${extras.join(" · ")}</p>` : ""}
-        </div>
-      </details>`;
   }
 
   function checkView(o) {
@@ -269,8 +257,9 @@ export function initProbundle() {
     paint();
     try {
       const r = await promise;
-      state.opened = [...state.opened.filter((o) => o.sourceId !== r.sourceId), r].slice(-6);
+      state.opened = [...state.opened.filter((o) => o.sourceId !== r.sourceId && !(r.draft && o.draft?.id === r.draft.id)), r].slice(-6);
       state.current = r.sourceId;
+      state.view = null;
       state.tab = r.findings.some((f) => f.severity === "problem") ? "check" : "inspect";
       state.diff = null;
     } catch (err) {
@@ -311,7 +300,8 @@ export function initProbundle() {
       if (!file) return;
       open(file.arrayBuffer().then((buf) => post("/api/probundle/open/upload", buf, { "Content-Type": "application/octet-stream", "X-File-Name": encodeURIComponent(file.name) })));
     });
-    for (const b of container.querySelectorAll(".pb-show")) b.addEventListener("click", () => { state.current = b.dataset.id; state.diff = null; paint(); });
+    for (const b of container.querySelectorAll(".pb-show")) b.addEventListener("click", () => { state.current = b.dataset.id; state.diff = null; state.view = null; paint(); });
+    wireDrafts();
     for (const b of container.querySelectorAll(".pb-tab")) b.addEventListener("click", () => { state.tab = b.dataset.tab; paint(); });
     container.querySelector("#pb-before")?.addEventListener("change", (e) => (state.compare.before = e.target.value));
     container.querySelector("#pb-after")?.addEventListener("change", (e) => (state.compare.after = e.target.value));
@@ -326,6 +316,52 @@ export function initProbundle() {
       paint();
     });
   }
+
+  function wireDrafts() {
+    for (const b of container.querySelectorAll(".pb-draft")) b.addEventListener("click", () => open(post("/api/probundle/open/draft", { id: b.dataset.id })));
+  }
+
+  // WATCHING: while this screen is showing, the open draft is redrawn when its file changes, keeping
+  // the tab and the slide open large; the list of drafts is refreshed too. Nothing is checked while
+  // the screen is hidden or a file is being read.
+  let ticks = 0;
+  let redrawing = false;
+  setInterval(async () => {
+    if (document.visibilityState !== "visible" || !container.offsetParent || state.busy || redrawing) return;
+    if (state.status?.status !== "active") return;
+    const o = byId(state.current);
+    if (o?.draft) {
+      const v = await fetch(`/api/probundle/drafts/version?id=${encodeURIComponent(o.draft.id)}`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      if (v && v.version !== o.draft.version) {
+        redrawing = true;
+        try {
+          const r = await post("/api/probundle/open/draft", { id: o.draft.id });
+          const keep = { tab: state.tab, view: state.view };
+          state.opened = state.opened.map((x) => (x.sourceId === o.sourceId ? r : x));
+          if (state.current === o.sourceId) state.current = r.sourceId;
+          Object.assign(state, keep);
+          paint();
+        } catch {
+          /* tried again on the next tick */
+        } finally {
+          redrawing = false;
+        }
+      }
+    }
+    if (++ticks % 3 === 0) {
+      const list = (await fetch("/api/probundle/drafts").then((r) => r.json()).catch(() => null))?.drafts;
+      if (list && JSON.stringify(list) !== JSON.stringify(state.drafts)) {
+        state.drafts = list;
+        const el = container.querySelector("#pb-drafts");
+        if (el) {
+          const wasOpen = el.querySelector(".pb-older")?.open;
+          el.innerHTML = draftsList();
+          if (wasOpen) el.querySelector(".pb-older")?.setAttribute("open", "");
+          wireDrafts();
+        }
+      }
+    }
+  }, 2000);
 
   function wireLibrary() {
     for (const b of container.querySelectorAll(".pb-lib-item")) {

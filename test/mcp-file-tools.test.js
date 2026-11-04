@@ -21,7 +21,8 @@ async function setup() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "refrain-files-"));
   const staging = path.join(root, "staging");
   // Bundles off: the general tools must not need it.
-  const server = createMcpServer({ root, staging, getConfig: () => ({ features: { probundle: false } }) });
+  // No ProPresenter workspace: these tests must not read this computer's.
+  const server = createMcpServer({ root, staging, getConfig: () => ({ features: { probundle: false } }), userWorkspaces: path.join(root, "no-propresenter") });
   const client = new Client({ name: "test", version: "1" });
   const [a, b] = InMemoryTransport.createLinkedPair();
   await Promise.all([server.connect(a), client.connect(b)]);
@@ -139,7 +140,6 @@ test("words change on a copy; a new presentation is built from existing slides",
   assert.notEqual(again.slides[0].id, first.id, "copied slides get fresh ids");
   const second = await call("refrain_build_from", { source: { copy_id: copy.copy_id }, name: "Week Two", slides: [{ from: 1 }] });
   assert.equal(path.basename(second.file), "Week Two 2.probundle", "never over an existing file");
-  await assert.rejects(call("refrain_build_from", { source: { path: path.join(FIX, "sample.protheme") }, name: "X", slides: [{ from: 1 }] }), /theme's slides are not presentation slides/);
   await assert.rejects(call("refrain_build_from", { source: { copy_id: copy.copy_id }, name: "X", slides: [{ from: 99 }] }), /No slide 99/);
 });
 
@@ -315,4 +315,98 @@ test("a playlist opens with its items, and a presentation inside it can be read 
   await call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 1, label: "Changed" }] });
   await assert.rejects(call("refrain_make_copy", { path: file }), /A playlist is read, not changed/);
   await assert.rejects(call("refrain_open", { path: file, inside: "Nope" }), /No presentation Nope in this playlist/);
+});
+
+test("notes, line spacing, and arrangements: made, changed, renamed, chosen to play, deleted", { skip: lib?.setNotes ? false : "propresenter-bundle with notes is not installed" }, async () => {
+  const { call } = await setup();
+  const copy = await call("refrain_make_copy", { path: path.join(FIX, "sample-fixed.pro") });
+  const r = await call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 1, notes: "Lights: 139,1\nBand ready" }],
+    arrangements: [{ name: "Short", groups: ["Announcements"] }, { name: "Full", rename: "Everything" }], play_arrangement: "Short" });
+  assert.equal(r.slides[0].changed.notes, "Lights: 139,1\nBand ready");
+  assert.deepEqual(r.arrangements, [{ arrangement: "Short", groups: ["Announcements"] }, { arrangement: "Everything", groups: ["Opening", "Announcements"] }]);
+  assert.equal(r.playing_arrangement, "Short");
+  const o = await call("refrain_open", { copy_id: copy.copy_id });
+  assert.deepEqual([o.arrangements.map((a) => a.name), o.playing_arrangement], [["Everything", "Short"], "Short"]);
+  assert.equal((await call("refrain_read_slide", { copy_id: copy.copy_id, slide: 1 })).slide.notes, "Lights: 139,1\nBand ready");
+
+  const box = (await call("refrain_read_slide", { copy_id: copy.copy_id, slide: 1 })).slide.boxes.find((b) => b.kind === "text");
+  await call("refrain_edit_boxes", { copy_id: copy.copy_id, changes: [{ box: box.id, line_spacing: 1.2 }] });
+  assert.deepEqual((await call("refrain_check", { copy_id: copy.copy_id })).findings.filter((f) => f.severity === "problem"), []);
+
+  const del = await call("refrain_edit_slides", { copy_id: copy.copy_id, arrangements: [{ name: "Short", delete: true }] });
+  assert.deepEqual(del.arrangements, [{ arrangement: "Short", deleted: true }]);
+  assert.equal((await call("refrain_open", { copy_id: copy.copy_id })).playing_arrangement, null, "deleting the one that played leaves none chosen");
+  await assert.rejects(call("refrain_edit_slides", { copy_id: copy.copy_id, arrangements: [{ name: "X", groups: ["Nope"] }] }), /no group "Nope"/);
+  await assert.rejects(call("refrain_edit_slides", { copy_id: copy.copy_id, arrangements: [{ name: "Missing" }] }), /to make one, give its groups/);
+  await assert.rejects(call("refrain_edit_slides", { copy_id: copy.copy_id, play_arrangement: "Nope" }), /No arrangement "Nope"/);
+  await assert.rejects(call("refrain_edit_boxes", { copy_id: copy.copy_id, changes: [{ box: box.id, line_spacing: 20 }] }), /0\.1 to 5/);
+});
+
+test("a new presentation from a theme's slides: its boxes, new words, and the theme's own pictures carried", { skip: lib?.themeSlideAsCue ? false : "propresenter-bundle with theme slides is not installed" }, async () => {
+  const { call } = await setup();
+  const themePath = path.join(FIX, "sample.protheme");
+  const slides = (await call("refrain_open", { path: themePath, boxes: true })).slides;
+  const verse = slides[0];
+  const built = await call("refrain_build_from", { source: { path: themePath }, name: "Sermon from theme", slides: [
+    { from: 1, group: "Message", label: "Romans 12:2", words: { [verse.boxes[1].id]: "Do not be conformed", [verse.boxes[2].id]: "Romans 12:2" } },
+    { from: "Quote", group: "Message" },
+  ] });
+  assert.deepEqual([built.slides, built.groups, built.media_included], [2, ["Message"], ["example-bg.png"]]);
+  const o = await call("refrain_open", { path: built.file });
+  assert.deepEqual(o.slides.map((s) => [s.group, s.label]), [["Message", "Romans 12:2"], ["Message", "Quote"]]);
+  const s1 = (await call("refrain_read_slide", { path: built.file, slide: 1 })).slide;
+  assert.deepEqual(s1.boxes.map((b) => b.words), ["", "Do not be conformed", "Romans 12:2"]);
+  assert.equal(s1.boxes[0].picture, "example-bg.png");
+  assert.deepEqual((await call("refrain_check", { path: built.file })).findings.filter((f) => f.severity === "problem"), [], "the picture is in the bundle");
+});
+
+test("transitions: copied by effect name from a slide that has one, timed, removed; an unknown one says how to get it", { skip }, async () => {
+  const { call, root } = await setup();
+  const uid = (n) => ({ string: `00000000-0000-4000-8000-${String(n).padStart(12, "0")}` });
+  const { Presentation } = lib.loadSchema();
+  const slide = (n, label, transition) => ({ uuid: uid(n), name: label, actions: [{ uuid: uid(n + 50), type: 11, label: { text: label }, slide: { presentation: { base_slide: { uuid: uid(n + 80) }, ...(transition ? { transition } : {}) } } }] });
+  const dissolve = { duration: 0.6, effect: { uuid: uid(99), name: "Dissolve", render_id: "dissolve", category: "Transitions" } };
+  const file = path.join(root, "T.pro");
+  fs.writeFileSync(file, Presentation.encode(Presentation.fromObject({ uuid: uid(1), name: "T", cues: [slide(2, "One", dissolve), slide(3, "Two")], cue_groups: [{ group: { uuid: uid(9), name: "G" }, cue_identifiers: [uid(2), uid(3)] }] })).finish());
+  const copy = await call("refrain_make_copy", { path: file });
+  const r = await call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 2, transition: "dissolve", transition_seconds: 1.5 }] });
+  assert.deepEqual(r.slides[0].changed.transition, { name: "Dissolve", seconds: 1.5 });
+  assert.deepEqual((await call("refrain_read_slide", { copy_id: copy.copy_id, slide: 2 })).slide.transition, { name: "Dissolve", seconds: 1.5 });
+  assert.deepEqual((await call("refrain_read_slide", { copy_id: copy.copy_id, slide: 1 })).slide.transition, { name: "Dissolve", seconds: 0.6 }, "the one copied from is unchanged");
+  await call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 1, transition: "none" }] });
+  assert.equal((await call("refrain_read_slide", { copy_id: copy.copy_id, slide: 1 })).slide.transition, null);
+  await assert.rejects(call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 1, transition: "Swirl" }] }), /No slide in this file uses the "Swirl" transition yet/);
+  await assert.rejects(call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 1, transition_seconds: 2 }] }), /no transition to time/);
+});
+
+test("lists, text outline, text shadow, feather and margins through the box tool, read back on the slide", { skip: lib?.setTextOutline ? false : "propresenter-bundle with text effects is not installed" }, async () => {
+  const { call } = await setup();
+  const copy = await call("refrain_make_copy", { path: path.join(FIX, "sample-fixed.pro") });
+  const box = (await call("refrain_read_slide", { copy_id: copy.copy_id, slide: 1 })).slide.boxes.find((b) => b.kind === "text");
+  const r = await call("refrain_edit_boxes", { copy_id: copy.copy_id, changes: [{ box: box.id, text_outline: { width: 2, color: "#ffffff" }, text_shadow: true, feather: 0.3, margins: { left: 40, right: 40 } }] });
+  assert.deepEqual(Object.keys(r.changes[0].changed).sort(), ["feather", "margins", "text_outline", "text_shadow"]);
+  const b = (await call("refrain_read_slide", { copy_id: copy.copy_id, slide: 1 })).slide.boxes.find((x) => x.id === box.id);
+  assert.deepEqual([b.text_outline, b.text_shadow?.radius, b.feather, b.margins?.left], [{ width: 2, color: "#ffffff" }, 5, 0.3, 40]);
+  await call("refrain_edit_boxes", { copy_id: copy.copy_id, changes: [{ box: box.id, text_outline: "none", feather: "none" }] });
+  const after = (await call("refrain_read_slide", { copy_id: copy.copy_id, slide: 1 })).slide.boxes.find((x) => x.id === box.id);
+  assert.deepEqual([after.text_outline, after.feather], [undefined, undefined]);
+  await call("refrain_edit_boxes", { copy_id: copy.copy_id, changes: [{ box: box.id, words: "One\nTwo", list: { style: "(a)", start: 2 } }] });
+  const listed = (await call("refrain_read_slide", { copy_id: copy.copy_id, slide: 1 })).slide.boxes.find((x) => x.id === box.id);
+  assert.deepEqual([listed.list, listed.words], [{ style: "(a)", start: 2 }, "One\nTwo"], "a list reads back, and its markers are not words");
+  assert.deepEqual((await call("refrain_check", { copy_id: copy.copy_id })).findings.filter((f) => f.severity === "problem"), []);
+});
+
+test("each save leaves a note of what changed in the copy, for Refrain to show beside the redrawn draft", async () => {
+  const { call, staging } = await setup();
+  const copy = await call("refrain_make_copy", { path: path.join(FIX, "sample-fixed.pro") });
+  const meta = () => JSON.parse(fs.readFileSync(path.join(staging, "copies", copy.copy_id, "copy.json"), "utf8"));
+  assert.equal(meta().note, undefined, "a fresh copy has no change yet");
+  const box = (await call("refrain_read_slide", { copy_id: copy.copy_id, slide: 1 })).slide.boxes.find((b) => b.kind === "text");
+  await call("refrain_edit_boxes", { copy_id: copy.copy_id, changes: [{ box: box.id, words: "Hello", text_color: "#ffcc00" }] });
+  const label = (await call("refrain_read_slide", { copy_id: copy.copy_id, slide: 1 })).slide.label;
+  assert.equal(meta().note, `Changed ${label} (words, text color)`);
+  assert.ok(Date.parse(meta().changed) > 0);
+  assert.equal(meta().file, copy.file.split(path.sep).pop(), "the rest of copy.json is kept");
+  await call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 2, label: "Two" }, { slide: 4, notes: "Hi" }], name: "Renamed" });
+  assert.equal(meta().note, "Changed slides 2, 4 (label, notes); the name");
 });

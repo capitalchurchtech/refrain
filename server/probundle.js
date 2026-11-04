@@ -6,7 +6,8 @@
  * Rules this keeps:
  *  - File work only. Nothing here calls ProPresenter's API.
  *  - A file comes from the search index (by presentation id, never a path a
- *    caller typed) or is uploaded from the page. Nothing is written.
+ *    caller typed) or is uploaded from the page. It is never written; the only
+ *    files written are the pictures shown (probundle-pictures.js), under ./data.
  *  - Never during a service: refused while performance mode is on or
  *    something is on the screens, and each read runs in a worker thread with a
  *    time limit, so the main thread (heartbeat, Go Live, phones) never waits.
@@ -18,9 +19,11 @@
  */
 import express from "express";
 import { Worker } from "node:worker_threads";
-import { readFile, stat, mkdir } from "node:fs/promises";
+import { readFile, readdir, stat, mkdir } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { workspaceOfLibraryFile, localWorkspace, pictureSource, shownCopy, pruneCache } from "./probundle-pictures.js";
 
 export const PROBUNDLE_LIMITS = {
   libraryFileBytes: 64 * 1024 * 1024, // a .pro from the library
@@ -45,12 +48,12 @@ async function packageReady() {
   return packageState;
 }
 
-/** Reads and checks bytes in a worker, with a time limit. */
-function readInWorker(bytes) {
+/** Reads, checks and draws bytes in a worker, with a time limit. */
+function readInWorker(bytes, cacheDir, workspace) {
   return new Promise((resolve, reject) => {
     const copy = new Uint8Array(bytes); // its own buffer, so it can be handed over
     const worker = new Worker(new URL("./probundle-worker.js", import.meta.url), {
-      workerData: { bytes: copy, maxEntryBytes: PROBUNDLE_LIMITS.entryBytes },
+      workerData: { bytes: copy, maxEntryBytes: PROBUNDLE_LIMITS.entryBytes, cacheDir, workspace },
       transferList: [copy.buffer],
       resourceLimits: { maxOldGenerationSizeMb: 1024 },
     });
@@ -115,9 +118,13 @@ export function packsDirProblem(dir, appRoot = process.cwd()) {
  * The routes, mounted at /api/probundle. `deps` is what index.js knows:
  * the config (live), a way to save it, the search index, and why not now.
  */
-export function probundleRouter({ getConfig, updateConfig, getStatus, getProblems, getIndex, busyReason, appRoot = process.cwd() }) {
+export function probundleRouter({ getConfig, updateConfig, getStatus, getProblems, getIndex, busyReason, appRoot = process.cwd(), userWorkspaces }) {
   const router = express.Router();
   const store = createSourceStore();
+  // Pictures for drawn slides: a bundle's media and the small copies shown (gitignored, under ./data).
+  const staging = path.resolve(appRoot, "data", "probundle-staging");
+  const cacheDir = path.join(staging, "pictures");
+  pruneCache(cacheDir);
 
   const refuseIfBusy = (res) => {
     const why = busyReason();
@@ -170,16 +177,16 @@ export function probundleRouter({ getConfig, updateConfig, getStatus, getProblem
 
   // One file at a time: each read can hold a few hundred MB, on the machine running the service.
   let reading = false;
-  async function openBytes(res, bytes, { name, from }) {
+  async function openBytes(res, bytes, { name, from, workspace, draft = null }) {
     const pkg = await packageReady();
     if (!pkg.ok) return res.status(409).json({ error: pkg.error });
     if (reading) return res.status(429).json({ error: "Another file is being read. Try again when it has opened." });
     reading = true;
     try {
-      const out = await readInWorker(bytes);
+      const out = await readInWorker(bytes, cacheDir, workspace);
       if (!out.model) return res.status(422).json({ error: out.findings[0]?.message ?? "This file could not be read.", findings: out.findings });
-      const sourceId = store.add({ name, from, kind: out.file.kind, model: out.model });
-      res.json({ sourceId, name, from, kind: out.file.kind, media: out.file.media, model: out.model, findings: out.findings, predicted: out.predicted });
+      const sourceId = store.add({ name, from, kind: out.file.kind, model: out.model, drawn: out.drawn, pictures: out.pictures ?? [], workspace });
+      res.json({ sourceId, name, from, kind: out.file.kind, media: out.file.media, model: out.model, findings: out.findings, predicted: out.predicted, drawnCount: out.drawn?.length ?? 0, ...(draft ? { draft } : {}) });
     } catch (err) {
       res.status(422).json({ error: err.message });
     } finally {
@@ -196,7 +203,7 @@ export function probundleRouter({ getConfig, updateConfig, getStatus, getProblem
       const s = await stat(entry.presentationPath);
       if (s.size > PROBUNDLE_LIMITS.libraryFileBytes) return res.status(413).json({ error: `That file is ${Math.round(s.size / 1024 / 1024)} MB, more than the ${PROBUNDLE_LIMITS.libraryFileBytes / 1024 / 1024} MB this reads.` });
       const bytes = await readFile(entry.presentationPath);
-      await openBytes(res, bytes, { name: entry.name ?? path.basename(entry.presentationPath), from: entry.folder ? `Library: ${entry.folder}` : "Library" });
+      await openBytes(res, bytes, { name: entry.name ?? path.basename(entry.presentationPath), from: entry.folder ? `Library: ${entry.folder}` : "Library", workspace: workspaceOfLibraryFile(entry.presentationPath) });
     } catch (err) {
       res.status(404).json({ error: `Couldn't read that presentation's file: ${err.code ?? err.message}` });
     }
@@ -212,7 +219,104 @@ export function probundleRouter({ getConfig, updateConfig, getStatus, getProblem
     } catch {
       /* not encoded as the page sends it: shown as it arrived */
     }
-    await openBytes(res, req.body, { name: name.slice(0, 200) || "Uploaded file", from: "Uploaded" });
+    // A file from disk takes its pictures from its bundle, else from this computer's ProPresenter.
+    await openBytes(res, req.body, { name: name.slice(0, 200) || "Uploaded file", from: "Uploaded", workspace: localWorkspace(userWorkspaces) });
+  });
+
+  // CLAUDE'S DRAFTS: the MCP's working copies (data/probundle-staging/copies/<id>, changed in place as
+  // the assistant works) and the bundles it built (data/probundle-staging/built). Named by id, never a
+  // path; read only here. `version` is the file's modified time, which the page checks to redraw.
+  const DRAFT_ID = /^(copy|built):([a-f0-9-]{36}|[^/\\]{1,200}\.(?:pro|probundle))$/;
+  async function draftFile(id) {
+    const m = DRAFT_ID.exec(String(id ?? ""));
+    if (!m) return null;
+    try {
+      if (m[1] === "copy") {
+        const dir = path.join(staging, "copies", m[2]);
+        const meta = JSON.parse(await readFile(path.join(dir, "copy.json"), "utf8"));
+        const file = path.join(dir, path.basename(String(meta.file ?? "")));
+        if (!/\.(pro|probundle)$/i.test(file)) return null;
+        const st = await stat(file);
+        return { id, file, name: path.basename(file).replace(/\.(pro|probundle)$/i, ""), version: st.mtimeMs, note: meta.note ?? null, changed: meta.changed ?? meta.made ?? null, from: "Claude's working copy" };
+      }
+      if (m[2].startsWith(".")) return null;
+      const file = path.join(staging, "built", m[2]);
+      const st = await stat(file);
+      return { id, file, name: m[2].replace(/\.(pro|probundle)$/i, ""), version: st.mtimeMs, note: null, changed: new Date(st.mtimeMs).toISOString(), from: "Built by Claude" };
+    } catch {
+      return null;
+    }
+  }
+
+  router.get("/drafts", async (_req, res) => {
+    const ids = [];
+    for (const [kind, dir] of [["copy", "copies"], ["built", "built"]]) {
+      const names = await readdir(path.join(staging, dir)).catch(() => []);
+      for (const n of names) ids.push(`${kind}:${n}`);
+    }
+    const drafts = (await Promise.all(ids.map(draftFile))).filter(Boolean);
+    drafts.sort((a, b) => b.version - a.version);
+    res.json({ drafts: drafts.slice(0, 20).map(({ file: _f, ...d }) => d) });
+  });
+
+  router.get("/drafts/version", async (req, res) => {
+    const d = await draftFile(req.query.id);
+    if (!d) return res.status(404).json({ error: "That draft is gone." });
+    res.json({ version: d.version, note: d.note, changed: d.changed });
+  });
+
+  router.post("/open/draft", async (req, res) => {
+    if (refuseIfBusy(res)) return;
+    const d = await draftFile(req.body?.id);
+    if (!d) return res.status(404).json({ error: "That draft is gone." });
+    try {
+      const s = await stat(d.file);
+      if (s.size > PROBUNDLE_LIMITS.uploadBytes) return res.status(413).json({ error: `That file is more than ${PROBUNDLE_LIMITS.uploadBytes / 1024 / 1024} MB.` });
+      const bytes = await readFile(d.file);
+      await openBytes(res, bytes, { name: d.name, from: d.from, workspace: localWorkspace(userWorkspaces), draft: { id: d.id, version: d.version, note: d.note, changed: d.changed } });
+    } catch (err) {
+      res.status(404).json({ error: `Couldn't read that draft: ${err.code ?? err.message}` });
+    }
+  });
+
+  // DRAWN SLIDES, a few at a time as the page scrolls to them. The stylesheet and the font faces
+  // come with each batch; @font-face has to go in the page itself, as a shadow root ignores it.
+  router.get("/slides/:sourceId", async (req, res) => {
+    const s = store.get(req.params.sourceId);
+    if (!s?.drawn) return res.status(404).json({ error: "Open the file again; Refrain keeps the last few for an hour." });
+    const from = Math.max(0, Number.parseInt(req.query.from, 10) || 0);
+    const count = Math.min(48, Math.max(1, Number.parseInt(req.query.count, 10) || 24));
+    const lib = await import("propresenter-bundle");
+    const slides = s.drawn.slice(from, from + count).map((d, i) => ({
+      n: from + i + 1, id: d.id, group: d.group, label: d.label, enabled: d.enabled, notes: d.notes,
+      html: d.html.replaceAll("/api/probundle/picture/__SRC__/", `/api/probundle/picture/${encodeURIComponent(req.params.sourceId)}/`),
+    }));
+    res.json({ total: s.drawn.length, from, slides, css: lib.DRAW_CSS, fontCss: lib.fontFaces(s.drawn.slice(from, from + count).flatMap((d) => d.fonts)) });
+  });
+
+  // A picture a drawn slide shows, by its number in that file. Small copies are made once and kept.
+  router.get("/picture/:sourceId/:n", async (req, res) => {
+    if (refuseIfBusy(res)) return;
+    const s = store.get(req.params.sourceId);
+    const pic = s?.pictures?.[Number.parseInt(req.params.n, 10)];
+    const src = pic ? pictureSource(pic, { cacheDir, workspace: s.workspace }) : null;
+    if (!src) return res.status(404).end();
+    try {
+      const shown = await shownCopy(src, cacheDir);
+      if (!shown) return res.status(404).end();
+      res.set("Cache-Control", "private, max-age=3600").type(shown.type).sendFile(shown.file);
+    } catch {
+      res.status(404).end();
+    }
+  });
+
+  // The browser half of the drawing (the package's draw-layout.js), served from the installed package.
+  router.get("/draw-layout.js", async (_req, res) => {
+    try {
+      res.type("text/javascript").sendFile(fileURLToPath(import.meta.resolve("propresenter-bundle/draw-layout")));
+    } catch {
+      res.status(404).end();
+    }
   });
 
   router.post("/diff", async (req, res) => {
