@@ -1,4 +1,5 @@
 import { mountLiveFlagSummary, refreshLiveSummaryOnNewFlags } from "./slide-flags.js";
+import { drawInto } from "./slide-drawing.js";
 
 /**
  * Live page — big, obvious controls for the operator during a service.
@@ -860,17 +861,14 @@ export function initLive() {
         )
         .join("") + `<button type="button" class="btn btn-chip live-safe-clear col-span-full">Remove all</button>`;
     } else {
-      // The slide itself: its picture when pictures are on, its words when
-      // they are off (they are off by default for now), so what each key does
-      // is on the key.
+      // The slide itself when safe-slide pictures are on, its words when they
+      // are off, so what each key does is on the key. The words show until the
+      // picture is in, so a key is never empty.
       grid.innerHTML = safeList
         .slice(0, SAFE_SHOWN)
         .map((sl) => {
-          const pic =
-            safePictures && sl.presentationId != null
-              ? `<img src="/api/preview/image/${encodeURIComponent(sl.presentationId)}/${sl.slideIndex}" alt="" loading="lazy" />`
-              : `<span class="rf-safe-words">${escapeHtml((sl.slideText ?? "").trim() || sl.label)}</span>`;
-          return `<button type="button" class="rf-safe-key live-safe-key" data-safe="${escapeHtml(sl.id)}" title="${escapeHtml(sl.presentationName ?? "")}, slide ${sl.slideIndex + 1}"><span class="rf-safe-pic">${pic}</span><span class="rf-safe-label">${escapeHtml(sl.label)}</span></button>`;
+          const drawn = safePictures && sl.presentationId != null;
+          return `<button type="button" class="rf-safe-key live-safe-key" data-safe="${escapeHtml(sl.id)}" title="${escapeHtml(sl.presentationName ?? "")}, slide ${sl.slideIndex + 1}"><span class="rf-safe-pic"${drawn ? ` data-pid="${escapeHtml(sl.presentationId)}" data-idx="${sl.slideIndex}"` : ""}><span class="rf-safe-words">${escapeHtml((sl.slideText ?? "").trim() || sl.label)}</span></span><span class="rf-safe-label">${escapeHtml(sl.label)}</span></button>`;
         })
         .join("") + keepTile();
     }
@@ -886,17 +884,29 @@ export function initLive() {
         setStatus(`Kept as a safe slide: ${answer.added.label}.`);
       }
     });
-    // A picture that will not load (ProPresenter not answering, nothing drawn
-    // yet) falls back to the slide's words, never a broken image.
-    grid.querySelectorAll(".rf-safe-pic img").forEach((img) =>
-      img.addEventListener("error", () => {
-        const sl = safeList.find((x) => x.id === img.closest(".live-safe-key")?.dataset.safe);
-        const words = document.createElement("span");
-        words.className = "rf-safe-words";
-        words.textContent = (sl?.slideText ?? "").trim() || sl?.label || "";
-        img.replaceWith(words);
-      })
-    );
+    // Each key's picture: drawn from the presentation's file (handoff section
+    // 30, E6), which asks nothing of ProPresenter; else ProPresenter's stored
+    // picture; else the words stay. Never a broken image.
+    grid.querySelectorAll(".rf-safe-pic[data-pid]").forEach(async (frame) => {
+      const { pid, idx } = frame.dataset;
+      const words = frame.querySelector(".rf-safe-words");
+      const host = document.createElement("span");
+      host.className = "rf-safe-draw";
+      frame.appendChild(host);
+      if (await drawInto(host, `/api/preview/drawn/${encodeURIComponent(pid)}/${idx}`)) return words?.remove();
+      host.remove();
+      if (!frame.isConnected) return;
+      const img = document.createElement("img");
+      img.alt = "";
+      img.hidden = true;
+      img.addEventListener("load", () => {
+        img.hidden = false;
+        words?.remove();
+      });
+      img.addEventListener("error", () => img.remove());
+      img.src = `/api/preview/image/${encodeURIComponent(pid)}/${idx}`;
+      frame.appendChild(img);
+    });
     grid.querySelectorAll(".live-safe-key").forEach((btn) => {
       const sl = safeList.find((x) => x.id === btn.dataset.safe);
       btn.addEventListener("click", async () => {
