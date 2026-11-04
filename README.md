@@ -116,20 +116,33 @@ Everything else (a church management integration, shared storage, image cropping
 
 ## When Refrain indexes, and why ProPresenter has to be open
 
-Refrain has no separate copy of your library. It reads every presentation
-**through ProPresenter's own API**, which means two things that are easy to get
-backwards:
+Refrain has no separate copy of your library. When ProPresenter runs on the same
+computer, Refrain asks ProPresenter **which presentations each library has**,
+then reads each one **from its own `.pro` file** in ProPresenter's library. It
+never writes to those files. Reading through ProPresenter's API instead makes
+ProPresenter write to its own workspace database for every presentation (about
+13 KB each, measured), and a library-sized crawl preceded a "Bootstrap failure"
+on one church's machine; reading the file writes nothing. On this Mac's library
+of 763 presentations, the words, slides, groups and arrangements read from the
+files matched what ProPresenter's API gave, except a box showing a running timer.
+When ProPresenter runs on another computer, or the `propresenter-bundle` package
+is missing, or `indexFromFiles` is `false` in config.json, every presentation is
+read through the API as before. Two things are easy to get backwards:
 
-- **ProPresenter has to be open for indexing to happen at all.** Closing it
-  stops a build. Refrain never touches your presentation files directly; the
-  only thing it reads off disk is each file's size and timestamp, to work out
-  which ones changed.
+- **ProPresenter has to be open for indexing to happen at all.** It says which
+  presentations each library has. Closing it stops a build.
 - **What stops Refrain working is something being live, not ProPresenter being
   open.** That is performance mode: while anything is on the screens, Refrain
   does nothing of its own accord. ProPresenter open with clear screens is the
   ideal moment to index, not a problem.
 
 Indexing is reads only. Nothing is ever sent to the screens by a build.
+
+Two checks keep the files honest. Each build compares what ProPresenter lists
+with what is on disk, library by library (a presentation it lists that isn't on
+disk, a file it doesn't list). And when a presentation goes live, the words and
+slide count ProPresenter is playing are compared with the same presentation read
+from its file; a difference shows on Settings › Search beside the index.
 
 ### What needs ProPresenter open, and the one thing that needs it closed
 
@@ -159,7 +172,7 @@ what it had.
 
 ## Large libraries
 
-**Never rebuild the index near a service.** A rebuild reads every presentation in your library one at a time, and on a real library that means anything from several minutes to well over an hour. For the whole time it runs, ProPresenter itself gets sluggish and can stop answering at all, which means Go Live, Clear, and macros may not respond. Measured on a real setup: sermon-length presentations took ten to fifteen seconds each to read, and ProPresenter stopped reacting to slide triggers entirely while it was being crawled. Only start a rebuild when you are sure nothing crucial is happening for the next hour or two, and then let it finish rather than killing it partway.
+**Never rebuild the index near a service** when it reads through ProPresenter's API (ProPresenter on another computer, or `indexFromFiles` off). Read from files, as it is when ProPresenter is on the same computer, a rebuild asks ProPresenter only for its library lists and takes about a minute for 763 presentations. Through the API, a rebuild reads every presentation in your library one at a time, and on a real library that means anything from several minutes to well over an hour. For the whole time it runs, ProPresenter itself gets sluggish and can stop answering at all, which means Go Live, Clear, and macros may not respond. Measured on a real setup: sermon-length presentations took ten to fifteen seconds each to read, and ProPresenter stopped reacting to slide triggers entirely while it was being crawled. Only start a rebuild when you are sure nothing crucial is happening for the next hour or two, and then let it finish rather than killing it partway.
 
 **Performance mode.** While it is on, Refrain does nothing of its own accord: no indexing, no reindexing, no update checks. It keeps one small heartbeat running, every few seconds, so the link indicator and the live readout stay honest. Knowing whether ProPresenter is still answering matters more during a service, not less. Everything you press still works You are in charge; it just stops acting on its own. There is a switch on the Live screen, and it also turns itself on once something has been on the screens for a couple of minutes, and off again about twenty minutes after they go clear. Turning it on by hand keeps it on until you turn it off by hand; a timer should not overrule a person who knows a service starts in ten minutes.
 
@@ -454,7 +467,7 @@ If you'd rather not have a Terminal window sitting open at all, run Refrain as a
 
 The easiest way is the **Start at login** card on the Health screen: turn it on, and that is the whole job. Turning it off removes it completely and changes nothing else. If you would rather set it up before anyone opens the app, double-click `scripts/install-launchagent.command` instead — it does exactly the same thing, and `scripts/uninstall-launchagent.command` undoes it. Either way Refrain's output goes to `logs/refrain.out.log` and `logs/refrain.err.log` in the Refrain folder if you ever need to check on it.
 
-**Protect ProPresenter (on by default).** Refrain doesn't read presentations from ProPresenter in bulk while this is on: no index runs of any kind (automatic or pressed), no Quality Control scans, pre-service checks or Update pictures. Search keeps working from the index it already has, and Go Live, Now and Clear work as always. A whole-library read is the heaviest thing Refrain asks of ProPresenter, so it's off unless someone turns protection off in Settings › Search › Advanced, on a machine where that's safe, away from a service, and restarts ProPresenter afterwards.
+**Protect ProPresenter (on by default).** Refrain doesn't read presentations from ProPresenter in bulk while this is on: no Quality Control scans, pre-service checks or Update pictures, and the index runs only from ProPresenter's library files (above), never through its API. Where the files can't be read (ProPresenter on another computer), no index runs at all. Search keeps working from the index it already has, and Go Live, Now and Clear work as always. A whole-library read is the heaviest thing Refrain asks of ProPresenter, so it's off unless someone turns protection off in Settings › Search › Advanced, on a machine where that's safe, away from a service, and restarts ProPresenter afterwards.
 
 **While it indexes.** A glowing bar along the bottom of every screen fills block by block, with the count and time left, whatever started the run; it says when the index is ready, when a run stopped part-way, or why one can't start (something on the screens).
 

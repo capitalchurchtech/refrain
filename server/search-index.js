@@ -8,6 +8,7 @@ import path from "node:path";
 import { normalizeText } from "./propresenter-client.js";
 import { noteRead, noteName, readEta } from "./rebuild-eta.js";
 import { resolveArrangement, flattenGroups, otherArrangementSlides } from "./arrangements.js";
+import { loadFileReader, createFileReading } from "./presentation-files.js";
 import {
   readFingerprint,
   readFingerprintUnchangedSince,
@@ -478,6 +479,33 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
       }
     }
 
+    // FROM FILES (presentation-files.js): each presentation is read from its
+    // .pro file when ProPresenter is on this computer, which writes nothing into
+    // ProPresenter's database; the API is asked only for what the files can't
+    // give. `filesOnly` (Protect ProPresenter is on) never asks the API for a
+    // presentation: one not found on disk keeps what the previous index had.
+    let fileReading = null;
+    let fromApi = 0;
+    if (options.fromFiles === true && client.isLocalHost) {
+      const lib = await loadFileReader();
+      if (lib) {
+        const knownPaths = Object.fromEntries(Object.entries(previousPresentations).filter(([, e]) => e?.presentationPath).map(([id, e]) => [id, e.presentationPath]));
+        fileReading = await createFileReading({
+          lib,
+          items: (library ?? []).filter((item) => item.id).map((item) => ({ id: item.id, name: item.name ?? "", folder: item.folder ?? null })),
+          knownPaths,
+          // With no previous index, one presentation read through the API says
+          // which workspace is ProPresenter's (a cloned one beside it has the same ids).
+          askPath: async (id) => (await client.getPresentation(id))?.presentation?.presentation_path ?? null,
+        });
+        if (!fileReading.workspace) fileReading = null;
+      }
+    }
+    if (options.filesOnly && !fileReading) {
+      throw Object.assign(new Error("Protect ProPresenter is on, and this computer can't read ProPresenter's library files, so the index isn't read."), { protected: true });
+    }
+    if (fileReading) console.log(`Reading presentations from ProPresenter's library files (workspace ${path.basename(fileReading.workspace)}), not through its API.`);
+
     // Work out what actually has to be re-read. Everything else keeps the
     // slides the previous build already paid for.
     const skeletonIds = Object.keys(presentations).filter((id) => presentations[id].slides.length === 0);
@@ -574,12 +602,17 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
     async function readAndStore(id) {
       const fetchStartedAt = Date.now();
   try {
-    const doc = await readPresentationOnce(client, id, {
-      shouldStop: options.shouldStop,
-      // Injectable so the tests can exercise the retry without paying the
-      // real pause 20 times over.
-      delayMs: options.retryDelayMs,
-    });
+    const fromFile = fileReading ? await fileReading.read(id) : null;
+    if (!fromFile && options.filesOnly) return "absent";
+    if (!fromFile) fromApi += 1;
+    const doc =
+      fromFile ??
+      (await readPresentationOnce(client, id, {
+        shouldStop: options.shouldStop,
+        // Injectable so the tests can exercise the retry without paying the
+        // real pause 20 times over.
+        delayMs: options.retryDelayMs,
+      }));
     // Record which arrangement produced these indices, so the UI can show
     // it and the trigger path can tell when the live one has since changed.
     applyDocToEntry(presentations[id], doc, preferredArrangements);
@@ -597,7 +630,7 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
     presentations[id].fingerprint =
       carriedFingerprints[id] ??
       (client.isLocalHost ? await readFingerprintUnchangedSince(presentationPath, fetchStartedAt) : null);
-      return true;
+      return fromFile ? "file" : "api";
       } catch {
         return false;
       }
@@ -632,7 +665,13 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
       // while we were reading it" for presentations we had no prior path for.
       const readOk = await readAndStore(id);
       pending.delete(id);
-      if (readOk) {
+      if (readOk === "absent") {
+        // Protect is on and the file isn't on disk: the API is not asked, and
+        // this is not ProPresenter failing, so it neither counts toward the
+        // abort nor waits for the sweep. The previous entry stays.
+        const prev = previousPresentations[id];
+        if (prev) Object.assign(presentations[id], carriedEntryFields(prev));
+      } else if (readOk) {
         consecutiveFailures = 0;
       } else {
         // The presentation may have been deleted since the library listing was
@@ -679,8 +718,9 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
       // wrote it, plus the two before it. Held in memory only, never logged.
       rebuildProgress.recentNames = noteName(rebuildProgress.recentNames, presentations[id]?.name);
       // Breathe between documents so ProPresenter stays responsive to the
-      // operator while this runs. Injectable only so tests needn't wait.
-      await pause(options.pacingMs ?? FETCH_PACING_MS);
+      // operator while this runs. Injectable only so tests needn't wait. A file
+      // read asked nothing of ProPresenter, so it only yields to the heartbeat.
+      await pause(readOk === "file" || readOk === "absent" ? 0 : (options.pacingMs ?? FETCH_PACING_MS));
       if (fetched % 50 === 0 || fetched === idsNeedingSlides.length) {
         const secs = (Date.now() - rebuildProgress.startedAt) / 1000;
         const eta = readEta({ ...rebuildProgress, total: idsNeedingSlides.length }).etaMs;
@@ -759,6 +799,10 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
        * contradicted each other, and the reassuring one was the lie.
        */
       reindexCounts: plan.counts ?? null,
+      // The per-library check: what the API listed, what was read from files,
+      // what wasn't on disk, files on disk the API didn't list, and how many
+      // were read through the API instead. Null when the API read everything.
+      fileReading: fileReading ? { ...(await fileReading.summary()), fromApi } : null,
       reindexAttempted: idsNeedingSlides.length,
       reindexCompleted: crawlAborted ? fetched : idsNeedingSlides.length,
       presentations,

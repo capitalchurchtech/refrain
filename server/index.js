@@ -38,7 +38,7 @@ import {
   cleanFolderSetting,
   ensureMachineId,
   readConfigFileRaw, featureOn, registerFeatureDefaults } from "./config.js";
-import { ProPresenterClient, onProPresenterCall } from "./propresenter-client.js";
+import { ProPresenterClient, onProPresenterCall, normalizeText } from "./propresenter-client.js";
 import { classifyCall, createCallStats, createAskedCounter, parseProPresenterPs, propresenterLoadNotice, formatServiceLine } from "./service-log.js";
 import { scanForProPresenter } from "./propresenter-scan.js";
 import {
@@ -76,6 +76,7 @@ import {
   searchOtherArrangements,
   otherSlidesCoverage,
 } from "./search-index.js";
+import { loadFileReader, readPresentationFile, compareWithLive } from "./presentation-files.js";
 import { startLibraryWatch, fullRebuildSuggestion,
   indexStaleness,
   WATCH_DEFAULTS,
@@ -1074,10 +1075,22 @@ const PROTECT_REFUSAL =
   "Protect ProPresenter is on, so Refrain doesn't read presentations from ProPresenter in bulk. Search uses the index it already has. To run this, turn protection off in Settings › Search › Advanced.";
 
 const DEEP_PACING_MS = 500;
+
+// THE INDEX FROM FILES (server/presentation-files.js): with ProPresenter on this
+// computer and the propresenter-bundle package installed, the index reads each
+// presentation from its .pro file, which writes nothing into ProPresenter's
+// database (an API read writes about 13 KB; handoff section 33). Such a run asks
+// ProPresenter only for its library listings, so Protect ProPresenter lets it go
+// ahead, files only. `indexFromFiles: false` in config.json goes back to the API.
+let fileReaderReady = false;
+loadFileReader().then((lib) => (fileReaderReady = Boolean(lib)));
+const indexFromFiles = () => config.indexFromFiles !== false && client.isLocalHost && fileReaderReady;
+/** Whether Protect ProPresenter holds the index back: only when it would have to read through the API. */
+const protectBlocksIndex = () => protectOn() && !indexFromFiles();
 const DEEP_RETRY_DELAY_MS = 2000;
 function startRebuild({ incremental = false, operatorInitiated = false, deep = false } = {}) {
   // The one door every index run goes through, so no caller can forget.
-  if (protectOn()) {
+  if (protectBlocksIndex()) {
     indexWorkDeferred = "Protect ProPresenter is on: the index isn't read from ProPresenter";
     return Promise.reject(Object.assign(new Error(PROTECT_REFUSAL), { status: 409, protected: true }));
   }
@@ -1086,6 +1099,9 @@ function startRebuild({ incremental = false, operatorInitiated = false, deep = f
   diag("index-start", { incremental, operatorInitiated, deep, performance: { armed: performance.armed, source: performance.source } });
   const run = rebuildIndex(client, config.librarySync, preferredArrangements(), {
     incremental,
+    fromFiles: indexFromFiles(),
+    // Protect on: presentations come from files only, never one by one from ProPresenter.
+    filesOnly: protectOn(),
     // Deep reindex: every presentation, read slowly and retried patiently, for a
     // ProPresenter that answers some reads with an error under a faster crawl.
     ...(deep ? { pacingMs: DEEP_PACING_MS, retryDelayMs: DEEP_RETRY_DELAY_MS } : {}),
@@ -1119,7 +1135,7 @@ function startRebuild({ incremental = false, operatorInitiated = false, deep = f
  * sent back after a wasted press.
  */
 function indexRunHeldReason() {
-  if (protectOn()) return PROTECT_REFUSAL;
+  if (protectBlocksIndex()) return PROTECT_REFUSAL;
   if (performance.armed && performance.source !== "unknown") {
     return `Performance mode is on: ${describePerformance(performance)} The index won't run now; it catches up on its own after an hour with nothing on the screens.`;
   }
@@ -1169,7 +1185,7 @@ let catchUpNotBefore = 0;
 // older-schema index was always caught up at boot whatever that says, and this
 // is where that now happens.
 async function maybeCatchUpIndex(now = Date.now()) {
-  if (protectOn() || now - catchUpCheckedAt < 60_000 || now < catchUpNotBefore) return;
+  if (protectBlocksIndex() || now - catchUpCheckedAt < 60_000 || now < catchUpNotBefore) return;
   catchUpCheckedAt = now;
   if (frozen() || liveState.live || holdHeartbeatPace(now) || getRebuildProgress().inProgress) return;
   if (performanceOffSince == null || now - performanceOffSince < QUIET_CATCHUP_MS) return;
@@ -1726,7 +1742,10 @@ function readPlaying(presentationId) {
     .getActivePresentation({ timeoutMs: 2500 })
     .then((doc) => {
       const p = playingFromDoc(doc);
-      if (p && p.presentationId === presentationId) playingCache.set(presentationId, { ...p, at: Date.now() });
+      if (p && p.presentationId === presentationId) {
+        playingCache.set(presentationId, { ...p, at: Date.now() });
+        checkAgainstFile(doc).catch(() => {});
+      }
     })
     .catch(() => {}) // not answering: the index is used only where it is known to agree
     .finally(() => {
@@ -1735,6 +1754,36 @@ function readPlaying(presentationId) {
     });
   return playingInFlight;
 }
+// THE GO LIVE CHECK: when a presentation goes live, the read above is ProPresenter's
+// own account of it. The same presentation read from its file, in the same
+// arrangement, should say the same: the same number of slides and the same words.
+// It costs ProPresenter nothing more, and runs after the read, off the path to
+// the screens. Counts only, and the presentation's id; never its words.
+const fileCheck = { checked: 0, differed: 0, last: null };
+const fileCheckedAt = new Map(); // presentation + arrangement -> when; once an hour each
+async function checkAgainstFile(liveDoc) {
+  if (!indexFromFiles()) return;
+  const live = liveDoc?.presentation;
+  const pid = live?.id?.uuid;
+  const filePath = pid ? getIndex()?.presentations?.[pid]?.presentationPath : null;
+  const key = `${pid}:${live?.current_arrangement ?? ""}`;
+  if (!filePath || Date.now() - (fileCheckedAt.get(key) ?? 0) < 3_600_000) return;
+  fileCheckedAt.set(key, Date.now());
+  if (fileCheckedAt.size > 200) fileCheckedAt.delete(fileCheckedAt.keys().next().value);
+  const lib = await loadFileReader();
+  const fromFile = lib ? await readPresentationFile(lib, filePath) : null;
+  if (fromFile?.presentation?.id?.uuid !== pid) return;
+  fromFile.presentation.current_arrangement = live.current_arrangement ?? null; // the arrangement that is playing
+  const slidesOf = (doc) => resolveArrangement(doc, []).groups.flatMap((g) => (g.slides ?? []).map((s) => ({ text: normalizeText(s.text), liveWords: Boolean(s.liveWords) })));
+  const result = compareWithLive({ liveSlides: slidesOf(liveDoc), fileSlides: slidesOf(fromFile) });
+  fileCheck.checked += 1;
+  if (!result.match) {
+    fileCheck.differed += 1;
+    fileCheck.last = { at: new Date().toISOString(), presentationId: pid, ...result };
+  }
+  diag("index-file-check", { presentationId: pid, ...result });
+}
+
 /** The words of slide `idx` of a presentation, as the live arrangement plays it, or null. */
 function liveSlideText(pid, idx) {
   return liveSlideDetails({ playing: playingCache.get(pid) ?? null, slideIndex: idx, indexed: getIndexedSlide(pid, idx) }).text;
@@ -2519,7 +2568,7 @@ function autoReindexEnabled() {
 function startWatching() {
   libraryWatch?.stop();
   libraryWatch = null;
-  if (!autoReindexEnabled() || protectOn()) return;
+  if (!autoReindexEnabled() || protectBlocksIndex()) return;
   const dirs = getIndexedLibraryDirs();
   if (dirs.length === 0) return;
   libraryWatch = startLibraryWatch({
@@ -2652,6 +2701,11 @@ function indexStatusPayload() {
     // Either way the index is short by a whole folder and search misses every
     // song in it, which nothing used to say out loud.
     libraryFolderIssues: lastLibraryFolderIssues(),
+    // Where the index read its presentations (the per-library check), and the
+    // Go Live check's tally. Null fileReading: everything went through the API.
+    fileReading: index.fileReading ?? null,
+    indexFromFiles: indexFromFiles(),
+    fileCheck: fileCheck.checked ? fileCheck : null,
     autoReindex: autoReindexEnabled()
       ? (libraryWatch?.status() ?? { watching: 0, outcome: "not started", pending: null })
       : null,
@@ -3227,7 +3281,7 @@ let preServiceReindexRunning = false;
 async function preServiceReindex(now = Date.now()) {
   // Not once a service's lead time has begun (see the watcher's `held`): a
   // console started late is left alone rather than crawled at the last minute.
-  if (protectOn() || !serviceModuleOn() || preServiceReindexRunning || performance.armed || !liveState.connected || holdHeartbeatPace(now)) return;
+  if (protectBlocksIndex() || !serviceModuleOn() || preServiceReindexRunning || performance.armed || !liveState.connected || holdHeartbeatPace(now)) return;
   const due = serviceState(now).services.find(
     (s) => s.startsAt && s.startsAt - now > 0 && s.startsAt - now <= 60 * 60_000 && !s.endedAt && !preServiceReindexed.has(s.serviceId)
   );

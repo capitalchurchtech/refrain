@@ -1422,6 +1422,37 @@ function selectOptions(options, current) {
  * asked for Songs and this library has Song" is the entire answer and there
  * is no way to reach it from an empty result.
  */
+/**
+ * Where the index read its presentations, and what the two checks found
+ * (server/presentation-files.js). Reading the library's files writes nothing
+ * into ProPresenter's database; reading through its API does. One quiet line
+ * when all is well; a warning when a presentation wasn't on disk, the folder
+ * holds files the API didn't list, or the Go Live check found a difference.
+ * Pure, for tests.
+ */
+export function renderFileReading(index) {
+  const f = index.fileReading;
+  const check = index.fileCheck;
+  if (!f && !check) return "";
+  const notes = [];
+  if (f?.notOnDisk) notes.push(`${f.notOnDisk} presentation${f.notOnDisk === 1 ? "" : "s"} ProPresenter listed weren't found in its library folders${f.fromApi ? `; ${f.fromApi} of them read through ProPresenter instead` : ", so they kept what the last index had"}.`);
+  const extra = (f?.libraries ?? []).filter((l) => l.notListed);
+  if (extra.length) notes.push(`On disk but not in ProPresenter's list: ${extra.map((l) => `${l.notListed} in ${escapeHtml(l.folder)}`).join(", ")}. ProPresenter doesn't show those, so search doesn't either.`);
+  if (check?.differed) {
+    const l = check.last;
+    notes.push(`At Go Live, ${check.differed} of ${check.checked} presentation${check.checked === 1 ? "" : "s"} read from their files didn't match what ProPresenter played${l ? ` (the last: ${l.fileCount} slides from the file, ${l.liveCount} playing${l.firstDifference != null ? `, first different at slide ${l.firstDifference + 1}` : ""})` : ""}. Turn off reading from files (indexFromFiles: false) if search keeps finding the wrong slide.`);
+  }
+  const line = f
+    ? `Read from ProPresenter's library files: ${f.fromFiles} presentation${f.fromFiles === 1 ? "" : "s"}${f.fromApi ? `, ${f.fromApi} through ProPresenter` : ""}. Reading files asks nothing of ProPresenter.`
+    : "";
+  const checked = check && !check.differed ? ` Checked against ProPresenter at Go Live: ${check.checked} presentation${check.checked === 1 ? "" : "s"}, all the same.` : "";
+  if (!notes.length) return `<div class="text-xs opacity-70 mt-2 rf-measure">${line}${checked}</div>`;
+  return `<div class="alert alert-warning py-2 text-sm mt-2 items-start">
+            <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
+            <span class="flex flex-col gap-1">${line ? `<span>${line}</span>` : ""}${notes.map((n) => `<span>${n}</span>`).join("")}</span>
+          </div>`;
+}
+
 function renderIndexShortfall(index) {
   const issues = index.libraryFolderIssues;
   const aborted = index.crawlAborted;
@@ -2071,11 +2102,12 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
               : ""
         }
         ${renderIndexShortfall(index)}
+        ${renderFileReading(index)}
         <div id="index-run-host" class="mt-2" hidden></div>
         ${
           index.rebuild.inProgress
             ? ""
-            : health.protectProPresenter
+            : health.protectProPresenter && !index.indexFromFiles
               ? `<div class="text-sm mt-2 rf-measure">Search uses the index it already has. Refrain doesn't read the library from ProPresenter while <strong>Protect ProPresenter</strong> is on (Advanced, below), so nothing here reads it again.</div>`
               : (() => {
                 // The scary warning belongs to whichever button is actually
