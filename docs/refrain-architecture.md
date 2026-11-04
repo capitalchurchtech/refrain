@@ -34,6 +34,7 @@ public/            the front end, one file per screen
 docs/              this doc
 scripts/           double click launchers for Mac and Windows
 mac/Refrain/       Refrain.app, an optional native macOS window onto the same front end (Swift; built per Mac by scripts/build-mac-app.command)
+mac/icon/          make-icon.swift, which draws the app's icon from Archivo at build time
 ```
 
 ## Config and secrets

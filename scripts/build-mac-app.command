@@ -58,14 +58,17 @@ xcrun swiftc -O -swift-version 5 \
 sed -e "s|__VERSION__|$VERSION|g" -e "s|__URL__|$URL|g" mac/Refrain/Info.plist > "$APP/Contents/Info.plist"
 /usr/bin/plutil -lint -s "$APP/Contents/Info.plist"
 
-# The Dock icon, from the same artwork the web app uses.
+# The Dock icon, drawn by mac/icon/make-icon.swift with the app's own Archivo,
+# in the macOS icon shape, then scaled to every size the Dock and Finder use.
+xcrun swiftc -O -swift-version 5 -target "$(uname -m)-apple-macos12.0" mac/icon/make-icon.swift -o "$OUT/make-icon"
+"$OUT/make-icon" public/vendor/fonts/archivo-latin.woff2 "$OUT/icon-1024.png"
 ICONSET="$OUT/Refrain.iconset"
 rm -rf "$ICONSET"
 mkdir -p "$ICONSET"
 for size in 16 32 128 256 512; do
-  sips -s format png -z "$size" "$size" public/img/icon-1000.jpg --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
+  sips -z "$size" "$size" "$OUT/icon-1024.png" --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
   double=$((size * 2))
-  sips -s format png -z "$double" "$double" public/img/icon-1000.jpg --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
+  sips -z "$double" "$double" "$OUT/icon-1024.png" --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
 done
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/Refrain.icns"
 rm -rf "$ICONSET"
