@@ -18,6 +18,7 @@ The project uses auto discovery, not central registries. Dropping a file in the 
 | Storage backend | `storage/your-name.js` | `storage/local-folder.js` | `storage/base.js` |
 | Lyrics splitter | `slide-splitters/your-name.js` | `slide-splitters/blank-line-delimited.js` | `slide-splitters/base.js` |
 | A whole new nav feature | `modules/your-feature/module.js` plus `server/your-feature.js` plus `public/your-feature.js` | `modules/image-crop/`, `modules/qr-code/` | none |
+| Native macOS window behaviour | `mac/Refrain/` (Swift, built by `scripts/build-mac-app.command`) | `WebController.swift` | none. It only shows the front end, so a feature still goes in `modules/`, never only here. |
 
 CONTRIBUTING.md has the exact method signatures for each.
 

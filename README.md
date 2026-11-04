@@ -72,6 +72,8 @@ Working today:
 
 Built, but not proven end to end (read this before relying on them):
 
+- **Refrain.app** (macOS, `scripts/build-mac-app.command`) is new. Checked on one Mac: it builds with only the Command Line Tools, loads every screen, answers `confirm()` prompts, keeps its title bar in step with the light and dark themes, sends outside links to the browser, and shows a "Refrain isn't answering" page that recovers on its own. Not yet tried by hand: downloading a QR code, picking a file in Bundles, the Copy buttons, and a full service docked beside ProPresenter.
+
 - **Staff requests.** Refrain's side is built and tested against a fake announcement server: the polling, the card on Now, the 8-minute limit, approve and decline. Two things are not done: the announcement app has no sender or request list yet (the contract for it is in `docs/service-feed.md`), and posting an approved request into a real ProPresenter message has not been run, only the same message path the poster already uses.
 - **Deep Search** and the group names on results need a full refresh of the library once; until then the screen says how many songs it could read.
 - **Changed songs** only sees the arrangement the index reads, and only learns songs from the day it is switched on.
@@ -460,6 +462,28 @@ open -na "Google Chrome" --args --app=http://localhost:9999
 
 Both give the same window. The installed version keeps its icon and reopens from
 the Dock; the command is a one-off.
+
+#### On a Mac: Refrain.app instead of Chrome
+
+On macOS you can use a small native app in place of the Chrome window. It shows
+exactly the same screens, without needing Chrome, and it can stay on top of
+ProPresenter while docked (Window › Keep on Top, ⌥⌘T). It's only the window:
+the server still runs on its own, so keep **Start at login** on, or start
+Refrain with `start.command` as before. If the server isn't answering, the app
+says so, offers to start it through Start at login, and comes back by itself
+once Refrain is up.
+
+Double-click `scripts/build-mac-app.command`. It builds the app on this Mac and
+puts it in `~/Applications`, and you run it again after an update. Building
+needs Apple's free Command Line Tools; if they're missing, the script tells you
+the one command to install them (`xcode-select --install`). No Apple Developer
+account is involved: an app built on the Mac it runs on opens without
+Gatekeeper warnings. **Build it on each Mac. Don't copy the built app to
+another one**, because macOS refuses an unsigned app that arrives by AirDrop
+or download.
+
+The app shows only Refrain. Links to other sites, such as Bible Gateway, open
+in your normal browser, and downloads go to Downloads.
 
 ### Running it with no Terminal window (macOS)
 

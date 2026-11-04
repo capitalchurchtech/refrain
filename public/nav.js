@@ -41,6 +41,14 @@ export function applyTheme(theme) {
         : theme;
   document.documentElement.dataset.theme = resolved;
   document.documentElement.classList.toggle("blackroom", blackroom);
+  // The window's title bar (Chrome's app window, Refrain.app) is drawn from
+  // theme-color, so it follows the page instead of staying dark.
+  // The body's colour, or the page's when the body has none yet.
+  const meta = document.querySelector('meta[name="theme-color"]');
+  const color = [document.body, document.documentElement]
+    .map((el) => (el ? getComputedStyle(el).backgroundColor : ""))
+    .find((c) => c && c !== "transparent" && c !== "rgba(0, 0, 0, 0)");
+  if (meta && color) meta.content = color;
 }
 
 /**

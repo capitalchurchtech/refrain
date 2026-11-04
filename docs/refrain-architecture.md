@@ -33,6 +33,7 @@ modules/           nav level features (search, lyrics-assist, arrangement, image
 public/            the front end, one file per screen
 docs/              this doc
 scripts/           double click launchers for Mac and Windows
+mac/Refrain/       Refrain.app, an optional native macOS window onto the same front end (Swift; built per Mac by scripts/build-mac-app.command)
 ```
 
 ## Config and secrets
