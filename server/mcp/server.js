@@ -135,7 +135,7 @@ const GENERAL = [
     title: "Make a working copy",
     description: "Copy a file into Refrain's staging folder to change it. Every change is made on the copy; the original is never touched. Refused for a file holding fields the reader can't understand, so nothing in it is lost. Returns the copy_id the change tools take.",
     inputSchema: { type: "object", required: ["path"], properties: { path: FROM.path, inside: FROM.inside, name: { type: "string", description: "Name for the copy; default: the original's name plus (edited)" } } },
-    outputSchema: { type: "object", required: ["copy_id", "file", "kind"], properties: { copy_id: { type: "string" }, file: { type: "string" }, kind: { type: "string" }, name: { type: "string" }, from: { type: "string" } } },
+    outputSchema: { type: "object", required: ["copy_id", "file", "kind"], properties: { copy_id: { type: "string" }, file: { type: "string" }, kind: { type: "string" }, name: { type: "string" }, from: { type: "string" }, see_it: { type: "string" } } },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     needs: "package",
     run: async (args, env) => (await fileTools()).makeCopyTool(args, env),
@@ -143,7 +143,7 @@ const GENERAL = [
   {
     name: "refrain_edit_boxes",
     title: "Change boxes",
-    description: "Change boxes on a working copy, by box id, as ProPresenter's editor would: a list of changes, each with the box and only what should change. Words keep the box's font and capitals (**double asterisks** for bold); a box linked to its slide's label sets the label, and one linked to anything else (a timer, the clock) has no words of its own. Position and size are slide pixels. arrange: front, back, forward, backward, duplicate or delete. picture: a new picture or video in a picture box (bundles). A font not used in the file needs font_family. Colours are #rrggbb, or none. All checked together: if one is wrong, none is saved. Changes only the copy.",
+    description: "Change boxes on a working copy, by box id, as ProPresenter's editor would: a list of changes, each with the box and only what should change. Words keep the box's font and capitals (**double asterisks** for bold); line_spacing is a multiple of single (1.2); list is a bullet (disc, circle, square, box, check, diamond, hyphen) or a number style (1. 1) (1) a. A. i. I.), with start, or none; text_outline goes round the letters, text_shadow behind them; feather softens the box's edge; a box linked to its slide's label sets the label, and one linked to anything else (a timer, the clock) has no words of its own. Position and size are slide pixels. arrange: front, back, forward, backward, duplicate or delete. picture: a new picture or video in a picture box (bundles). A font not used in the file needs font_family. Colours are #rrggbb, or none. All checked together: if one is wrong, none is saved. Changes only the copy.",
     inputSchema: {
       type: "object", required: ["copy_id", "changes"],
       properties: {
@@ -157,6 +157,11 @@ const GENERAL = [
               font: { type: "string" }, font_family: { type: "string" }, text_color: { type: "string" },
               align: { enum: ["left", "center", "right", "justify"] }, vertical_align: { enum: ["top", "middle", "bottom"] },
               fit: { enum: ["none", "grow_box", "shrink_text", "grow_text", "fit_text"] }, capitals: { enum: ["none", "all", "small", "title", "start"] },
+              line_spacing: { type: "number", description: "A multiple of single spacing, e.g. 1.2" },
+              text_outline: { type: ["object", "string"], properties: { width: { type: "number" }, color: { type: "string" } }, description: "An outline round the letters, { width, color }, width as ProPresenter shows it (a percent of the type size), or none" },
+              list: { type: ["string", "object"], properties: { style: { type: "string" }, start: { type: "number" } }, description: "A list style like disc or 1., or { style, start }, or none" },
+              text_shadow: { type: "boolean" }, feather: { type: ["number", "string"], description: "A soft edge, 0 to 1, or none" },
+              margins: { type: ["number", "object"], properties: { left: { type: "number" }, right: { type: "number" }, top: { type: "number" }, bottom: { type: "number" } } },
               x: { type: "number" }, y: { type: "number" }, width: { type: "number" }, height: { type: "number" }, rotation: { type: "number" },
               fill: { type: "string" }, outline: { type: "string" }, outline_width: { type: "number" }, shadow: { type: "boolean" },
               opacity: { type: "number" }, hidden: { type: "boolean" }, locked: { type: "boolean" },
@@ -175,7 +180,7 @@ const GENERAL = [
   {
     name: "refrain_edit_slides",
     title: "Change slides",
-    description: "Change whole slides on a working copy: a list of changes, each with the slide (its number when the copy was opened, or its id) and only what should change: label, label_color, enabled, background (#rrggbb or none), group (moves it, making the group if new), move (up, down, first, last, duplicate, delete, within its group), add_macro and remove_macro (by name, from ProPresenter's workspace or another slide in the file), add_media (a picture, video or sound file as a background or foreground media action, or a picture or video as a box; on a bundle, which carries the file) and remove_media (by file name), add_action (clear a layer, a Look, prop, message, timer, clear group or stage layout, by its name in ProPresenter's workspace) and remove_action (by kind, and name). Also groups ({ name, rename, color }) and the presentation's name. All checked together: if one is wrong, none is saved. Changes only the copy.",
+    description: "Change whole slides on a working copy: a list of changes, each with the slide (its number when the copy was opened, or its id) and only what should change: label, label_color, enabled, background (#rrggbb or none), group (moves it, making the group if new), move (up, down, first, last, duplicate, delete, within its group), add_macro and remove_macro (by name, from ProPresenter's workspace or another slide in the file), add_media (a picture, video or sound file as a background or foreground media action, or a picture or video as a box; on a bundle, which carries the file) and remove_media (by file name), add_action (clear a layer, a Look, prop, message, timer, clear group or stage layout, by its name in ProPresenter's workspace) and remove_action (by kind, and name). Also groups ({ name, rename, color }), arrangements ({ name, groups in play order, rename, delete }), play_arrangement, and the presentation's name. notes sets a slide's notes; transition (an effect's name, copied from a slide that already uses it, in this file or ProPresenter's library) and transition_seconds its transition. All checked together: if one is wrong, none is saved. Changes only the copy.",
     inputSchema: {
       type: "object", required: ["copy_id"],
       properties: {
@@ -185,7 +190,7 @@ const GENERAL = [
           items: {
             type: "object", required: ["slide"],
             properties: {
-              slide: { type: ["integer", "string"] }, label: { type: "string" }, label_color: { type: "string" }, enabled: { type: "boolean" },
+              slide: { type: ["integer", "string"] }, label: { type: "string" }, label_color: { type: "string" }, enabled: { type: "boolean" }, notes: { type: "string", description: "The slide's notes; empty removes them" }, transition: { type: "string", description: "An effect's name (Dissolve, Cut…) or none" }, transition_seconds: { type: "number" },
               background: { type: "string" }, group: { type: "string" }, move: { enum: ["up", "down", "first", "last", "duplicate", "delete"] },
               add_macro: { type: ["string", "array"], items: { type: "string" } }, remove_macro: { type: ["string", "array"], items: { type: "string" } },
               add_media: {
@@ -210,6 +215,8 @@ const GENERAL = [
           },
         },
         groups: { type: "array", items: { type: "object", required: ["name"], properties: { name: { type: "string" }, rename: { type: "string" }, color: { type: "string" } } } },
+        arrangements: { type: "array", items: { type: "object", required: ["name"], properties: { name: { type: "string" }, groups: { type: "array", items: { type: "string" }, description: "Group names in the order they play (makes the arrangement if new)" }, rename: { type: "string" }, delete: { type: "boolean" } } } },
+        play_arrangement: { type: "string", description: "The arrangement that plays when the presentation opens, or none" },
         name: { type: "string" },
       },
     },
@@ -221,7 +228,7 @@ const GENERAL = [
   {
     name: "refrain_build_from",
     title: "Build a presentation from existing slides",
-    description: "A new presentation made by copying slides of an existing presentation or bundle (last week's sermon, say): each slide as it is, with its macros, links and pictures, and new words in the boxes you name (a box linked to the slide label sets the label). slides: a list of { from: slide number or id, group: group name, label, words: { box id: new words } }. Writes a new .probundle in Refrain's staging folder, with the pictures those slides use; never over a file, never into ProPresenter's library. The source is only read.",
+    description: "A new presentation made by copying slides of an existing presentation or bundle (last week's sermon, say), or of a theme (its slides as masters, their pictures carried): each slide as it is, with its macros, links and pictures, and new words in the boxes you name (a box linked to the slide label sets the label). slides: a list of { from: slide number or id, group: group name, label, words: { box id: new words } }. Writes a new .probundle in Refrain's staging folder, with the pictures those slides use; never over a file, never into ProPresenter's library. The source is only read.",
     inputSchema: {
       type: "object", required: ["source", "name", "slides"],
       properties: {

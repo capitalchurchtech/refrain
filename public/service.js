@@ -241,14 +241,27 @@ export function renderSendHtml(report) {
     ${last}`;
 }
 
-/** Send log: only when Telemetry is set up. A person presses it, after the service. */
+/** "02:00" as this machine says a time of day ("2:00 AM"). */
+const timeOfDay = (hhmm) => {
+  const [h, m] = String(hhmm).split(":").map(Number);
+  return new Date(2000, 0, 1, h, m).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+};
+
+/**
+ * Send log: only when Telemetry is set up. It goes each night on its own (unless
+ * switched off in Settings), and a person can press it to send now. A nightly
+ * send that failed says so here, where the person who would fix it looks.
+ */
 export function renderLogSendHtml(telemetry) {
   if (!telemetry || telemetry.status === "off") return "";
   if (telemetry.status !== "active") return `<div class="text-xs opacity-70">Sending the log isn't set up. See Settings &gt; Telemetry.</div>`;
   const last = telemetry.lastLogOkAt ? `Last sent at ${escapeHtml(formatClock(telemetry.lastLogOkAt, { seconds: false }))}.` : "Not sent yet.";
+  const n = telemetry.nightly;
+  const when = n ? `each night at ${escapeHtml(timeOfDay(n.at))}` : "when you press Send log";
+  const failed = n?.last?.error ? ` <span class="text-warning">The last nightly send failed: ${escapeHtml(n.last.error)}</span>` : "";
   return `
     <div class="flex items-center justify-between gap-3 flex-wrap">
-      <div class="text-xs opacity-70">Sends this station's log to your announcement server so the service can be reviewed. ${last}</div>
+      <div class="text-xs opacity-70">Sends this station's log to your announcement server ${when}, so the service can be reviewed. ${last}${failed}</div>
       <button type="button" id="service-send-log-btn" class="btn btn-outline btn-sm">Send log</button>
     </div>`;
 }

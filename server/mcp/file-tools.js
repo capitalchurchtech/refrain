@@ -9,7 +9,7 @@
  * ProPresenter's database. A document with fields the reader does not understand can be read but not copied
  * for changing, so nothing in it is quietly lost.
  */
-import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { writeFile, rename, readFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -39,6 +39,9 @@ function freshPath(dir, base, ext) {
   for (let n = 2; existsSync(file); n++) file = path.join(dir, `${base} ${n}${ext}`);
   return file;
 }
+
+// Where a person can watch the work: Refrain draws working copies and built bundles as they change.
+const SEE_IT = "In Refrain, Prep › Bundles › From Claude draws it, and redraws it as it changes (Bundles has to be on).";
 
 const copyDir = (staging, id) => {
   if (!COPY_ID.test(id ?? "")) throw new Error("That is not a copy id. refrain_make_copy gives one.");
@@ -82,6 +85,7 @@ async function fromPlaylist(bytes, inside, file) {
 /** A document decoded, whatever its kind, with what writing it back needs. */
 async function decode(bytes) {
   const p = await lib();
+  notesReader ??= p.notesOf;
   if (isPlaylist(p, bytes)) {
     const r = p.readPlaylistFile(bytes);
     return { kind: "proplaylist", name: r.playlists[0]?.name ?? "", unknown: Array(r.unknown).fill(null), playlist: r };
@@ -95,11 +99,24 @@ async function decode(bytes) {
   return { kind: file.kind, name: doc.name ?? "", doc, schema, unknown, file, model: p.toModel(doc) };
 }
 
+/** A presentation slide's notes as text, read with the package once it is loaded (decode loads it first). */
+let notesReader = null;
+const transitionOf = (cue) => {
+  const t = (cue?.actions ?? []).find((a) => a.slide)?.slide?.presentation?.transition;
+  return t ? { name: t.effect?.name ?? null, seconds: t.duration ?? null } : null;
+};
+const notesOf = (cue) => (notesReader && cue ? notesReader((cue.actions ?? []).find((a) => a.slide)) : "");
+
 /** Every slide, numbered from 1 in the order ProPresenter shows them, in one shape for both kinds. */
 function slidesOf(d, { full = false } = {}) {
   if (d.kind === "proplaylist") throw new Error(`This is a playlist. Name a presentation in it with inside: ${d.playlist.presentations.join(", ") || "(it holds none)"}.`);
   const box = (e) => ({ id: e.uuid, name: e.name, kind: e.kind, words: full ? e.text : short(e.text), ...(e.links?.length ? { linked_to: e.links } : {}),
-    ...(full ? { role: e.role, bounds: e.bounds, font: e.fontName, font_family: e.fontFamily, size: e.fontSize, caps: e.caps, picture: e.media } : {}) });
+    ...(full ? {
+      role: e.role, bounds: e.bounds, font: e.fontName, font_family: e.fontFamily, size: e.fontSize, caps: e.caps, picture: e.media,
+      // Effects only when set, so an ordinary box stays short.
+      ...(e.list ? { list: e.list } : {}), ...(e.textOutline ? { text_outline: e.textOutline } : {}), ...(e.textShadow ? { text_shadow: e.textShadow } : {}),
+      ...(e.feather ? { feather: e.feather } : {}), ...(e.margins ? { margins: e.margins } : {}), ...(e.shape ? { shape: e.shape } : {}),
+    } : {}) });
   // Every action the slide fires besides showing itself, in plain words.
   const actions = (list) => (list ?? []).map(describeAction).filter(Boolean);
   if (d.kind === "protheme") {
@@ -109,7 +126,8 @@ function slidesOf(d, { full = false } = {}) {
   const cueById = full ? new Map((d.doc.cues ?? []).map((c) => [c.uuid?.string, c])) : null;
   let n = 0;
   return d.model.groups.flatMap((g) => g.slides.map((s) => ({ number: ++n, id: s.uuid, group: g.name, label: s.label, enabled: s.enabled,
-    boxes: s.elements.map(box), macros: s.macros.map((m) => m.name), ...(full ? { media: s.media, actions: actions(cueById.get(s.uuid)?.actions) } : {}) })));
+    boxes: s.elements.map(box), macros: s.macros.map((m) => m.name),
+    ...(full ? { media: s.media, actions: actions(cueById.get(s.uuid)?.actions), notes: notesOf(cueById.get(s.uuid)), transition: transitionOf(cueById.get(s.uuid)) } : {}) })));
 }
 
 const describe = (src) => (src.copy ? { copy_id: src.copy.id, file: src.where } : { file: src.where });
@@ -141,18 +159,30 @@ export async function openTool(args, { staging }) {
   const slides = args.boxes === true ? slidesOf(d) : slidesOf(d).map(brief);
   return {
     ...describe(src), kind: d.kind, name: d.name, slide_count: slides.length,
-    ...(d.kind === "protheme" ? { pictures: d.file.assets.map((a) => a.file) } : { arrangements: d.model.arrangements, media: d.model.media }),
+    ...(d.kind === "protheme" ? { pictures: d.file.assets.map((a) => a.file) } : {
+      arrangements: d.model.arrangements, media: d.model.media,
+      playing_arrangement: (d.doc.arrangements ?? []).find((a) => a.uuid?.string === d.doc.selected_arrangement?.string)?.name ?? null,
+    }),
     unreadable_fields: d.unknown.length,
     can_change: d.unknown.length === 0,
     slides,
   };
 }
 
-/** A slide by its number (from 1) or its id. */
+/** A slide by its number (from 1), its id, or its label or name when only one slide has it. */
 function pickSlide(slides, which) {
-  const s = typeof which === "number" || /^\d+$/.test(String(which)) ? slides[Number(which) - 1] : slides.find((x) => x.id === which);
-  if (!s) throw new Error(`No slide ${which}. This file has slides 1 to ${slides.length}.`);
-  return s;
+  if (typeof which === "number" || /^\d+$/.test(String(which))) {
+    const s = slides[Number(which) - 1];
+    if (!s) throw new Error(`No slide ${which}. This file has slides 1 to ${slides.length}.`);
+    return s;
+  }
+  const byId = slides.find((x) => x.id === which);
+  if (byId) return byId;
+  const want = String(which ?? "").trim().toLowerCase();
+  const named = slides.filter((x) => (x.label ?? x.name ?? "").trim().toLowerCase() === want);
+  if (named.length === 1) return named[0];
+  if (named.length > 1) throw new Error(`${named.length} slides are called "${which}" (${named.map((x) => x.number).join(", ")}): give its number.`);
+  throw new Error(`No slide ${which}. This file has slides 1 to ${slides.length}.`);
 }
 
 export async function readSlideTool(args, { staging }) {
@@ -199,11 +229,27 @@ export async function makeCopyTool(args, { staging }) {
   const name = cleanName(args.name) || `${args.inside === undefined ? path.basename(file, path.extname(file)) : path.basename(String(args.inside), ".pro")} (edited)`;
   await atomicWrite(path.join(dir, `${name}${ext}`), bytes);
   await atomicWrite(path.join(dir, "copy.json"), JSON.stringify({ source: file, file: `${name}${ext}`, kind: d.kind, made: new Date().toISOString() }));
-  return { copy_id: id, file: path.join(dir, `${name}${ext}`), kind: d.kind, name, from: file };
+  return { copy_id: id, file: path.join(dir, `${name}${ext}`), kind: d.kind, name, from: file, ...(d.kind === "protheme" ? {} : { see_it: SEE_IT }) };
 }
 
-/** A changed document back into the working copy, checked first. */
-async function saveCopy(src, d) {
+/**
+ * What a save changed, in one line for a person watching the draft in Refrain:
+ * "Changed slides 3, 5 (words, text color); groups".
+ */
+function changeNote(slides, fields, also = []) {
+  const nums = [...new Set(slides)];
+  // Slides by number ("slides 3, 5"), or by name when the tool knows them by name ("Harvest Supper").
+  const which = nums.every((n) => typeof n === "number") ? `slide${nums.length === 1 ? "" : "s"} ${nums.join(", ")}` : nums.join(", ");
+  const head = nums.length ? `${which}${fields.length ? ` (${[...new Set(fields)].map((k) => k.replace(/_/g, " ")).join(", ")})` : ""}` : null;
+  const parts = [head, ...also].filter(Boolean);
+  return parts.length ? `Changed ${parts.join("; ")}` : "Changed";
+}
+
+/**
+ * A changed document back into the working copy, checked first. The copy's copy.json then says when and
+ * what changed, which Refrain's Bundles screen shows above the redrawn slides.
+ */
+async function saveCopy(src, d, note) {
   const p = await lib();
   let out;
   if (d.kind === "protheme") out = await p.writeTheme(d.file, d.doc, d.schema);
@@ -216,6 +262,7 @@ async function saveCopy(src, d) {
     out = d.kind === "pro" ? pro : await p.writeBundle([...entries, ...(d.newMedia ?? []).filter((e) => !have.has(e.name))]);
   }
   await atomicWrite(src.where, out);
+  if (src.copy) await atomicWrite(path.join(src.copy.dir, "copy.json"), JSON.stringify({ ...src.copy.meta, changed: new Date().toISOString(), note: note || "Changed" }));
 }
 
 const changeable = (args) => {
@@ -312,6 +359,12 @@ export async function editBoxesTool(args, env) {
       text("vertical_align", (v) => p.setVerticalAlignment(hit.wrapper, v));
       text("fit", (v) => p.setTextFit(hit.wrapper, v));
       text("capitals", (v) => p.setCapitals(hit.wrapper, v));
+      text("line_spacing", (v) => p.setLineSpacing(hit.wrapper, v));
+      text("list", (v) => p.setList(hit.wrapper, v));
+      text("text_outline", (v) => p.setTextOutline(hit.wrapper, v));
+      text("text_shadow", (v) => p.setTextShadow(hit.wrapper, v));
+      text("margins", (v) => p.setMargins(hit.wrapper, v));
+      if (c.feather !== undefined) { p.setFeather(hit.wrapper, c.feather); changed.feather = c.feather; }
       text("font", (v) => p.setFont(hit.wrapper, { name: v, family: c.font_family ?? familyOf(d, v) }));
       const look = Object.fromEntries(["fill", "outline", "outline_width", "shadow", "rotation", "opacity", "hidden", "locked"].filter((k) => c[k] !== undefined).map((k) => [k, c[k]]));
       if (Object.keys(look).length) { p.setBoxStyle(hit.wrapper, look); Object.assign(changed, look); }
@@ -333,20 +386,32 @@ export async function editBoxesTool(args, env) {
     if (!Object.keys(changed).length) throw new Error(`${at}: nothing to change for box ${c.box}. Nothing was saved.`);
     done.push({ box: c.box, slide: hit.slide, changed });
   }
-  await saveCopy(src, d);
+  await saveCopy(src, d, changeNote(done.map((x) => x.slide), done.flatMap((x) => Object.keys(x.changed))));
   return { copy_id: args.copy_id, file: src.where, changes: done };
 }
 
 /**
- * A new presentation from slides of an existing one: each chosen slide copied with fresh ids (its macros
- * still pointing at the same macros), new words in the boxes named, under the group named. The source is
- * only read.
+ * A new presentation from slides of an existing one, or of a theme: each chosen slide copied with fresh ids
+ * (its macros still pointing at the same macros), new words in the boxes named, under the group named. A
+ * theme slide's own pictures are carried into the bundle and pointed at the workspace's media
+ * (themeSlideAsCue). The source is only read.
  */
-export async function buildFromTool(args, { staging }) {
+export async function buildFromTool(args, env) {
+  const { staging } = env;
   const p = await lib();
   const src = await source(args.source ?? {}, staging);
   const d = await decode(src.bytes);
-  if (d.kind === "protheme") throw new Error("Build from a presentation or a bundle. A theme's slides are not presentation slides.");
+  const theme = d.kind === "protheme";
+  let workspace = null;
+  if (theme) {
+    workspace = p.themeWorkspace(d.doc);
+    if (!workspace) {
+      const ctx = await import("./context-tools.js");
+      workspace = ctx.findWorkspaces(env).find((w) => w.source === "ProPresenter on this computer")?.folder ?? null;
+    }
+    if (!workspace) throw new Error("Neither the theme nor ProPresenter on this computer says which workspace its pictures belong under.");
+  }
+  const themeMedia = new Map();
   if (d.unknown.length) throw new Error(`${path.basename(src.where)} holds ${d.unknown.length} field(s) this reader does not understand, so nothing is built from it: something could be lost.`);
   const name = cleanName(args.name);
   if (!name) throw new Error("Give the new presentation a name.");
@@ -357,10 +422,19 @@ export async function buildFromTool(args, { staging }) {
   const groups = [];
   for (const [i, want] of args.slides.entries()) {
     const at = pickSlide(listed, want?.from);
-    const original = cueById.get(at.id);
-    const copy = p.freshCopy(original);
-    // freshCopy keeps the order of everything, so a box is found in the copy where it was in the original.
-    const before = p.elementsOf({ cues: [original] }), after = p.elementsOf({ cues: [copy] });
+    let copy, before;
+    if (theme) {
+      const made = p.themeSlideAsCue(d.file, d.doc, at.number - 1, { workspace });
+      for (const m of made.media) themeMedia.set(m.name, m);
+      copy = made.cue;
+      before = p.elementsOf({ slides: [d.doc.slides[at.number - 1]] });
+    } else {
+      const original = cueById.get(at.id);
+      copy = p.freshCopy(original);
+      before = p.elementsOf({ cues: [original] });
+    }
+    // Copies keep the order of everything, so a box is found in the copy where it was in the original.
+    const after = p.elementsOf({ cues: [copy] });
     let labelFromWords = null;
     for (const [boxId, words] of Object.entries(want.words ?? {})) {
       const k = before.findIndex((x) => x.element.uuid?.string === boxId);
@@ -385,7 +459,7 @@ export async function buildFromTool(args, { staging }) {
   }
   const color = new Map((d.doc.cue_groups ?? []).map((g) => [g.group?.name, g.group?.color]));
   const doc = {
-    ...d.doc, uuid: p.uuid(), name, cues,
+    ...(theme ? { application_info: d.doc.application_info } : d.doc), uuid: p.uuid(), name, cues,
     cue_groups: groups.map((g) => ({ group: { uuid: p.uuid(), name: g.name, ...(color.get(g.name) ? { color: color.get(g.name) } : {}) }, cue_identifiers: g.ids.map((s) => ({ string: s })) })),
     arrangements: [],
   };
@@ -394,13 +468,13 @@ export async function buildFromTool(args, { staging }) {
   const check = p.checkPresentationBytes(pro);
   if (!check.ok) throw new Error(`The new presentation did not pass the check (${check.error ?? "unstable on re-read"}); nothing was written.`);
   const used = new Set(cues.flatMap(p.mediaFilesOf));
-  const media = d.kind === "probundle" ? p.readBundle(src.bytes).filter((e) => e.name !== d.file.proName && used.has(e.name.split("/").pop())) : [];
+  const media = theme ? [...themeMedia.values()] : d.kind === "probundle" ? p.readBundle(src.bytes).filter((e) => e.name !== d.file.proName && used.has(e.name.split("/").pop())) : [];
   const out = await p.writeBundle([{ name: `${name}.pro`, data: pro }, ...media]);
   const file = freshPath(path.join(staging, "built"), name, ".probundle");
   await atomicWrite(file, out);
   const carried = new Set(media.map((e) => e.name.split("/").pop()));
   return { file, name, slides: cues.length, groups: groups.map((g) => g.name), media_included: [...carried], media_not_included: [...used].filter((f) => !carried.has(f)),
-    next: "Import the bundle into ProPresenter (File > Import). Nothing was written into ProPresenter's library." };
+    next: `Import the bundle into ProPresenter (File > Import). Nothing was written into ProPresenter's library. ${SEE_IT}` };
 }
 
 /**
@@ -470,6 +544,33 @@ async function actionIndex(p, env) {
   return { value: workspaceIndex(p, real) };
 }
 
+/**
+ * A slide transition, by its effect's name. A transition points at one of ProPresenter's effect presets by
+ * id, so it is copied from a slide that already uses that effect: in this file, else in ProPresenter's
+ * library on this computer (read only, stopping at the first one found).
+ */
+async function transitionByName(p, d, env, name) {
+  const want = String(name ?? "").trim().toLowerCase();
+  const find = (doc) => (doc.cues ?? []).flatMap((c) => c.actions ?? []).map((a) => a.slide?.presentation?.transition).find((t) => t?.effect?.name?.toLowerCase() === want);
+  const here = find(d.doc);
+  if (here) return structuredClone(here);
+  const ctx = await import("./context-tools.js");
+  const w = ctx.findWorkspaces(env).find((x) => x.source === "ProPresenter on this computer");
+  const libraries = w ? path.join(w.folder, "Libraries") : null;
+  if (libraries && existsSync(libraries)) {
+    const files = readdirSync(libraries, { recursive: true }).filter((f) => String(f).endsWith(".pro")).slice(0, 1000);
+    for (const f of files) {
+      const real = path.join(libraries, String(f));
+      if (forbiddenReason(real)) continue;
+      try {
+        const t = find(p.decodePresentation(readFileSync(real)).doc);
+        if (t) return t;
+      } catch { /* a file that can't be read is skipped */ }
+    }
+  }
+  throw new Error(`No slide in this file${libraries ? " or ProPresenter's library" : ""} uses the "${name}" transition yet. Set it on one slide in ProPresenter once, and it can be copied from there.`);
+}
+
 const MOVES = ["up", "down", "first", "last", "duplicate", "delete"];
 
 /**
@@ -518,6 +619,27 @@ export async function editSlidesTool(args, env) {
       a.label = { ...(a.label ?? {}), ...(col ? { color: col } : {}) };
       if (!col) delete a.label.color;
       changed.label_color = c.label_color;
+    }
+    if (c.transition !== undefined || c.transition_seconds !== undefined) {
+      if (theme) say(`${at}: set transitions on presentation slides.`);
+      const pres = slideAction(item)?.slide?.presentation;
+      if (!pres) say(`${at}: this slide has no slide of its own.`);
+      if (c.transition === "none") delete pres.transition;
+      else {
+        if (c.transition !== undefined) pres.transition = await transitionByName(p, d, env, c.transition).catch((err) => say(`${at}: ${err.message}`));
+        if (c.transition_seconds !== undefined) {
+          if (!pres.transition) say(`${at}: this slide has no transition to time; give transition too.`);
+          if (!(typeof c.transition_seconds === "number" && c.transition_seconds >= 0 && c.transition_seconds <= 60)) say(`${at}: transition_seconds is 0 to 60.`);
+          pres.transition.duration = c.transition_seconds;
+        }
+      }
+      changed.transition = pres.transition ? { name: pres.transition.effect?.name ?? null, seconds: pres.transition.duration ?? null } : "none";
+    }
+    if (c.notes !== undefined) {
+      if (theme) say(`${at}: a theme slide has no notes.`);
+      const a = slideAction(item);
+      try { p.setNotes(a, c.notes); } catch (err) { say(`${at}: ${err.message}`); }
+      changed.notes = p.notesOf(a);
     }
     if (c.enabled !== undefined) {
       if (theme) say(`${at}: a theme slide can't be switched off.`);
@@ -629,13 +751,56 @@ export async function editSlidesTool(args, env) {
     if (g.color !== undefined) { const col = p.parseColor(g.color); if (col) found.group.color = col; else delete found.group.color; }
     groupChanges.push({ group: g.name, ...(g.rename !== undefined ? { rename: found.group.name } : {}), ...(g.color !== undefined ? { color: g.color } : {}) });
   }
+  // Arrangements: the order groups play in. Created or replaced with { name, groups }, renamed, deleted; and
+  // which one plays when the presentation is opened.
+  const arrangementChanges = [];
+  const groupByName = (n) => (d.doc.cue_groups ?? []).find((g) => g.group?.name === n);
+  for (const [i, a] of (args.arrangements ?? []).entries()) {
+    if (theme) say("A theme has no arrangements.");
+    const at = `Arrangement change ${i + 1}`;
+    const name = cleanLabel(a?.name);
+    if (!name) say(`${at}: give the arrangement's name.`);
+    d.doc.arrangements ??= [];
+    let found = d.doc.arrangements.find((x) => x.name === name);
+    if (a.delete === true) {
+      if (!found) say(`${at}: no arrangement "${name}".`);
+      d.doc.arrangements = d.doc.arrangements.filter((x) => x !== found);
+      if (d.doc.selected_arrangement?.string === found.uuid?.string) delete d.doc.selected_arrangement;
+      arrangementChanges.push({ arrangement: name, deleted: true });
+      continue;
+    }
+    if (a.groups !== undefined) {
+      if (!Array.isArray(a.groups) || !a.groups.length) say(`${at}: groups is the list of group names, in the order they play.`);
+      const ids = a.groups.map((g) => { const found = groupByName(cleanLabel(g)); if (!found) say(`${at}: no group "${g}" in this presentation.`); return { string: found.group.uuid.string }; });
+      if (!found) { found = { uuid: p.uuid(), name, group_identifiers: [] }; d.doc.arrangements.push(found); }
+      found.group_identifiers = ids;
+    } else if (!found) say(`${at}: no arrangement "${name}"; to make one, give its groups.`);
+    if (a.rename !== undefined) { const n = cleanLabel(a.rename); if (!n) say(`${at}: give the new name.`); found.name = n; }
+    arrangementChanges.push({ arrangement: found.name, groups: (found.group_identifiers ?? []).map((u) => (d.doc.cue_groups ?? []).find((g) => g.group?.uuid?.string === u.string)?.group.name ?? "(missing group)") });
+  }
+  if (args.play_arrangement !== undefined) {
+    if (theme) say("A theme has no arrangements.");
+    if (args.play_arrangement === "none" || args.play_arrangement === null) delete d.doc.selected_arrangement;
+    else {
+      const a = (d.doc.arrangements ?? []).find((x) => x.name === cleanLabel(args.play_arrangement));
+      if (!a) say(`No arrangement "${args.play_arrangement}" to play.`);
+      d.doc.selected_arrangement = { string: a.uuid.string };
+    }
+  }
   if (args.name !== undefined) {
     if (theme) say("A theme's name is its file's; rename the file instead.");
     const n = cleanLabel(args.name);
     if (!n) say("Give the presentation's new name.");
     d.doc.name = n;
   }
-  if (!done.length && !groupChanges.length && args.name === undefined) throw new Error("Nothing to change: give changes (to slides), groups, or name.");
-  await saveCopy(src, d);
-  return { copy_id: args.copy_id, file: src.where, slides: done, groups: groupChanges, ...(args.name !== undefined ? { name: d.doc.name } : {}), ...(notes.length ? { notes } : {}) };
+  if (!done.length && !groupChanges.length && !arrangementChanges.length && args.play_arrangement === undefined && args.name === undefined) throw new Error("Nothing to change: give changes (to slides), groups, arrangements, play_arrangement or name.");
+  await saveCopy(src, d, changeNote(done.map((x) => x.slide), done.flatMap((x) => Object.keys(x.changed)), [
+    groupChanges.length && "groups", (arrangementChanges.length || args.play_arrangement !== undefined) && "arrangements", args.name !== undefined && "the name",
+  ]));
+  return {
+    copy_id: args.copy_id, file: src.where, slides: done, groups: groupChanges,
+    ...(arrangementChanges.length ? { arrangements: arrangementChanges } : {}),
+    ...(args.play_arrangement !== undefined ? { playing_arrangement: (d.doc.arrangements ?? []).find((a) => a.uuid?.string === d.doc.selected_arrangement?.string)?.name ?? null } : {}),
+    ...(args.name !== undefined ? { name: d.doc.name } : {}), ...(notes.length ? { notes } : {}),
+  };
 }

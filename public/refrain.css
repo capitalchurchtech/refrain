@@ -5349,3 +5349,60 @@ html:is([data-theme="dark"], .blackroom) #view-live#view-live #live-message-post
 .rf-tabs .rf-tab-dot::after { position: absolute; top: -3px; right: -9px; margin: 0; }
 /* Five names have to fit 268px: a tighter gap for the top row. */
 html:is([data-theme="dark"], .blackroom) #settings-tabs#settings-tabs { gap: 8px; }
+
+/* ============================================================
+   BUNDLES › SLIDES, DRAWN (step E, 2026-11-03)
+
+   Every slide of the open file in a grid, and one large. Desk surface. The
+   slides themselves live in shadow roots (probundle-slides.js), so nothing
+   here reaches inside them; these rules are the frames around them. Borders
+   come from currentColor so both themes get a hairline without a token that
+   only the dark theme defines.
+   ============================================================ */
+.pb-slides { --pb-cols: 4; display: flex; flex-direction: column; gap: 8px; }
+.pb-slides[hidden], .pb-viewer[hidden] { display: none; }
+.pb-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.pb-size { display: inline-flex; align-items: center; gap: 8px; font: 600 9px/1 var(--rf-mono); letter-spacing: 0.15em; text-transform: uppercase; color: var(--rf-muted); }
+.pb-size input { width: 120px; accent-color: var(--rf-plum); }
+.pb-note { font-size: 12px; color: var(--rf-muted); }
+.pb-group { display: flex; align-items: center; gap: 8px; margin: 12px 0 0; font: 600 9px/1.4 var(--rf-mono); letter-spacing: 0.15em; text-transform: uppercase; color: var(--rf-muted); }
+.pb-group i { width: 10px; height: 10px; border-radius: 2px; }
+.pb-grid { display: grid; grid-template-columns: repeat(var(--pb-cols), minmax(0, 1fr)); gap: 12px; }
+.pb-card { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 0; border: 0; background: none; color: inherit; text-align: left; cursor: zoom-in; }
+.pb-frame { position: relative; display: block; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 3px; background: #000; box-shadow: 0 0 0 1px color-mix(in oklab, currentColor 18%, transparent); }
+.pb-card:hover .pb-frame { box-shadow: 0 0 0 2px var(--rf-plum); }
+.pb-card:focus-visible { outline: none; }
+.pb-card:focus-visible .pb-frame { box-shadow: 0 0 0 2px var(--rf-plum-lit); }
+.pb-host { position: absolute; inset: 0; display: block; }
+.pb-cap { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: 12px; }
+.pb-num { flex: none; font: 500 10px/1 var(--rf-mono); color: var(--rf-muted); }
+.pb-lbl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pb-offtag { flex: none; font: 600 9px/1 var(--rf-mono); letter-spacing: 0.15em; text-transform: uppercase; color: var(--rf-muted); }
+.pb-off .pb-frame { opacity: 0.45; }
+
+.pb-viewer { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
+.pb-vmain { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.pb-vtop { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pb-vwhere { font: 500 10px/1 var(--rf-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--rf-muted); }
+.pb-vname { font-weight: 600; }
+.pb-grow { flex: 1; }
+.pb-vframe { position: relative; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 3px; background: #000; box-shadow: 0 0 0 1px color-mix(in oklab, currentColor 18%, transparent); }
+.pb-vside { display: flex; flex-direction: column; gap: 16px; min-width: 0; font-size: 13px; }
+.pb-vside section { display: flex; flex-direction: column; gap: 4px; }
+.pb-vlist { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.pb-layers li { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; }
+.pb-lname { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pb-lrole { font: 500 10px/1.6 var(--rf-mono); color: var(--rf-muted); }
+.pb-lwhat { grid-column: 1 / -1; color: var(--rf-muted); white-space: pre-line; overflow-wrap: anywhere; }
+.pb-sev { margin-right: 6px; font: 600 9px/1 var(--rf-mono); letter-spacing: 0.15em; text-transform: uppercase; }
+.pb-notes { margin: 0; white-space: pre-line; }
+.pb-none { margin: 0; color: var(--rf-muted); }
+@media (max-width: 900px) { .pb-viewer { grid-template-columns: minmax(0, 1fr); } }
+/* Claude's drafts, newest first: name, then where it came from, when, and what last changed. */
+.pb-drafts { display: flex; flex-direction: column; gap: 6px; }
+.pb-draft { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; height: auto; min-height: 40px; padding: 6px 10px; text-align: left; text-transform: none; }
+.pb-draft-name { font-weight: 600; }
+.pb-draft-note { font-size: 12px; font-weight: 400; color: var(--rf-muted); }
+.pb-draft-live { font-size: 12px; color: var(--rf-muted); }
+.pb-older > summary { cursor: pointer; padding: 4px 0; font: 600 9px/1.4 var(--rf-mono); letter-spacing: 0.15em; text-transform: uppercase; color: var(--rf-muted); }
+.pb-older[open] > summary { margin-bottom: 6px; }
