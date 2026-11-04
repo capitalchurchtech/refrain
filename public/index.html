@@ -455,17 +455,19 @@
           <div id="index-status" class="rf-search-strip-status"></div>
           <div id="search-pending" class="rf-silkscreen"></div>
           <div class="rf-chip-row hidden" id="library-filter-wrap">
-            <button id="library-filter-toggle" class="btn btn-chip" aria-expanded="false" aria-controls="library-filter-panel">
-              <svg class="rf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z"/></svg> <span id="library-filter-label">Filter</span>
+            <!-- An icon cap like Flag beside it (owner, 2026-11-04); its name is
+                 the aria-label and tooltip. The empty span carries the narrowed dot. -->
+            <button id="library-filter-toggle" class="btn btn-chip" aria-label="Filter" title="Filter" aria-expanded="false" aria-controls="library-filter-panel">
+              <svg class="rf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z"/></svg><span id="library-filter-label" aria-hidden="true"></span>
             </button>
           </div>
           <div id="search-flag"></div>
         </div>
         <div id="search-flag-status" class="rf-flag-status hidden" role="status" aria-live="polite"></div>
 
-        <!-- Which libraries to search. Tucked behind the Libraries chip above
+        <!-- Which libraries to search. Tucked behind the Filter cap above
              and opened only by pressing it (owner, 2026-10-08, as designed); the
-             chip says when it's narrowed. -->
+             cap's corner dot says when it's narrowed. -->
         <div id="library-filter-panel" class="rf-lib-panel hidden" role="group" aria-labelledby="library-filter-head">
           <div class="rf-lib-head">
             <h2 id="library-filter-head" class="rf-subhead">Libraries</h2>

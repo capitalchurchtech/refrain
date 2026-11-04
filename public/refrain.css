@@ -5180,12 +5180,17 @@ html:is([data-theme="dark"], .blackroom) #results#results .rf-slide-acts .go-liv
 html:is([data-theme="dark"], .blackroom) #results#results .rf-slide-acts .btn:is(:hover, :focus-visible) { filter: brightness(1.12); }
 html:is([data-theme="dark"], .blackroom) #results#results .rf-slide-acts .btn:active { transform: translateY(1px); }
 
-/* The strip: "445 songs · updated 7:02" fills the line; Libraries and the
-   Flag icon are 28px caps at its end. */
+/* The strip: "445 songs · updated 7:02" fills the line; the Filter and Flag
+   icons are 28px caps at its end. */
 .rf-search-strip { min-height: 28px; flex-wrap: nowrap; gap: 8px; }
 .rf-search-strip-status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-wrap: nowrap; }
 .rf-search-strip .btn-chip { height: 28px; min-height: 28px; }
 #search-flag#search-flag .slide-flag-btn { box-sizing: border-box; width: 28px; height: 28px; min-height: 28px; padding: 0; justify-content: center; }
+/* Filter is the same 28px icon cap as Flag (owner, 2026-11-04: no word). The
+   narrowed dot moves from after the word to the cap's top-right corner. */
+#library-filter-toggle#library-filter-toggle { box-sizing: border-box; position: relative; width: 28px; height: 28px; min-height: 28px; padding: 0; gap: 0; justify-content: center; }
+#library-filter-toggle#library-filter-toggle > svg { width: 12px; height: 12px; }
+#library-filter-label.rf-tab-dot::after { position: absolute; top: 2px; right: 2px; margin: 0; }
 #results .rf-card-slides > .rf-slide-row { border-radius: 0; }
 #search-flag > div { display: contents; }
 #search-flag#search-flag .slide-flag-btn svg { width: 12px; height: 12px; }
