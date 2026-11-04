@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key>
+  <string>Refrain</string>
+  <key>CFBundleDisplayName</key>
+  <string>Refrain</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.capitalchurchtech.refrain</string>
+  <key>CFBundleExecutable</key>
+  <string>Refrain</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleIconFile</key>
+  <string>Refrain</string>
+  <key>CFBundleShortVersionString</key>
+  <string>__VERSION__</string>
+  <key>CFBundleVersion</key>
+  <string>__VERSION__</string>
+  <!-- Filled by scripts/build-mac-app.command from the Start at login job. -->
+  <key>RefrainURL</key>
+  <string>__URL__</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>12.0</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>NSSupportsAutomaticTermination</key>
+  <false/>
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <!-- Refrain is served over plain http on this Mac only. -->
+    <key>NSAllowsLocalNetworking</key>
+    <true/>
+  </dict>
+</dict>
+</plist>
