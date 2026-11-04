@@ -56,10 +56,11 @@ ctx.saveGState()
 ctx.addPath(plate); ctx.clip()
 linear([(0, machined), (0.42, raised), (1, ground)], from: CGPoint(x: 512, y: 924), to: CGPoint(x: 512, y: 100))
 
+// The R and pipe sit a little above centre, where the eye puts the middle.
+let pipeY: CGFloat = 306, rBottom: CGFloat = 378
+
 // 3. The pipe's light landing on the plate below it: a radial falloff
 //    positioned where the emitter is, and nowhere else.
-// The R and pipe sit a little above centre, where the eye puts the middle.
-let pipeY: CGFloat = 306
 let spill = CGGradient(colorsSpace: space, colors: [hex(0xA96FE8, 0.30), hex(0x8446C9, 0.10), hex(0x8446C9, 0)] as CFArray, locations: [0, 0.45, 1])!
 ctx.saveGState()
 ctx.translateBy(x: 512, y: pipeY); ctx.scaleBy(x: 1, y: 0.42)
@@ -80,12 +81,17 @@ strokeEdge(width: 4, [(0, hex(0x000000, 0)), (0.75, hex(0x000000, 0)), (1, hex(0
 
 // 5. The R, a metal inlay: one curved surface under the same overhead light.
 let font = CTFontCreateWithFontDescriptor(varied, 520, nil)
+// A static font, or a CoreText that drops the axes, would draw a thin R
+// with no error; refuse instead, so the build falls back to the web icon.
+let applied = CTFontCopyVariation(font) as? [NSNumber: NSNumber]
+guard let weight = applied?[tag("wght")]?.doubleValue, weight >= 850 else {
+  fputs("Archivo's weight axis wasn't applied\n", stderr); exit(1)
+}
 var glyph = CGGlyph(0)
 var ch: UniChar = 0x52 // "R"
-CTFontGetGlyphsForCharacters(font, &ch, &glyph, 1)
-guard let outline = CTFontCreatePathForGlyph(font, glyph, nil) else { fputs("no R in font\n", stderr); exit(1) }
+guard CTFontGetGlyphsForCharacters(font, &ch, &glyph, 1),
+      let outline = CTFontCreatePathForGlyph(font, glyph, nil) else { fputs("no R in font\n", stderr); exit(1) }
 let gb = outline.boundingBoxOfPath
-let rBottom: CGFloat = 378
 var place = CGAffineTransform(translationX: 512 - gb.midX, y: rBottom - gb.minY)
 let r = outline.copy(using: &place)!
 let rb = r.boundingBoxOfPath
