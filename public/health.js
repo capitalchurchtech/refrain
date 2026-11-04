@@ -2351,13 +2351,14 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
         </div>
         <p class="text-xs opacity-70 rf-measure">${
           pictures.show === true
-            ? "Safe slides, Quality Control and phones show slide pictures."
+            ? "Phones show ProPresenter's pictures of the slides."
             : pictures.quickSlides !== false
-              ? "Off: slides show their words. Pictures are drawn only for your saved safe slides (below) and when you ask: Quality Control's flagged slides, and Get slide pictures on Flags."
-              : "Off: slides show their words. Pictures are drawn only when you ask: Quality Control's flagged slides, and Get slide pictures on Flags."
+              ? "Off: phones show the slides' words. ProPresenter is asked for pictures only for your saved safe slides (below) and when you ask: Quality Control's flagged slides, and Get slide pictures on Flags."
+              : "Off: phones show the slides' words. ProPresenter is asked for pictures only when you ask: Quality Control's flagged slides, and Get slide pictures on Flags."
         }</p>
+        <p class="text-xs opacity-70 rf-measure">With ProPresenter on this Mac, safe slides and Quality Control draw each slide from its file instead, which asks nothing of ProPresenter, so this switch doesn't turn those off.</p>
         <div class="rf-subhead mt-2">Safe slide pictures</div>
-        <p class="text-sm rf-measure">Pictures of your saved safe slides on Now, even with pictures off, so the logo and the blank are told apart at a glance. Each is drawn once, when it's saved, and kept. Nothing new is drawn during a service.</p>
+        <p class="text-sm rf-measure">Pictures of your saved safe slides on Now, even with pictures off, so the logo and the blank are told apart at a glance. Drawn from the slide's file on this Mac; where it can't be, ProPresenter's picture, taken once when the slide is saved. Nothing new is drawn during a service.</p>
         <div class="rf-tabs" role="radiogroup" aria-label="Safe slide pictures" style="margin-bottom:0">
           <button type="button" role="radio" class="rf-tab" data-quick-pictures="true" aria-checked="${pictures.quickSlides !== false}"><span>Pictures</span></button>
           <button type="button" role="radio" class="rf-tab" data-quick-pictures="false" aria-checked="${pictures.quickSlides === false}"><span>Names</span></button>

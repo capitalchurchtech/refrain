@@ -202,10 +202,6 @@ test("drawn slides: a batch at a time, pictures by number from the workspace or 
       assert.ok(!outside.html.includes("/api/probundle/picture/"));
 
       assert.equal((await fetch(`${base}/slides/nope`)).status, 404);
-      const js = await fetch(`${base}/draw-layout.js`);
-      assert.equal(js.status, 200);
-      assert.match(js.headers.get("content-type"), /javascript/);
-      assert.match(await js.text(), /export function layoutSlide/);
     });
 
     // A bundle's own pictures are copied into the cache under their content hash and served from there.
@@ -226,7 +222,7 @@ test("drawn slides: a batch at a time, pictures by number from the workspace or 
 });
 
 test("a picture's source: only the cache by hash, or inside the workspace, never a link out of it", async () => {
-  const { pictureSource, workspaceOfLibraryFile } = await import("../server/probundle-pictures.js");
+  const { pictureSource, workspaceOfLibraryFile } = await import("../server/slide-pictures.js");
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "probundle-pics-"));
   try {
     const ws = path.join(dir, "ws");
@@ -247,6 +243,24 @@ test("a picture's source: only the cache by hash, or inside the workspace, never
     assert.equal(pictureSource({ name: "a.jpg" }, { cacheDir: dir, workspace: null }), null);
     assert.equal(workspaceOfLibraryFile("/Users/x/Library/Application Support/RenewedVision/ProPresenter/UserWorkspaces/ProPresenter/Libraries/Misc/A.pro"), "/Users/x/Library/Application Support/RenewedVision/ProPresenter/UserWorkspaces/ProPresenter");
     assert.equal(workspaceOfLibraryFile("/tmp/A.pro"), null);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("this Mac's workspace is the one whose libraries changed last, not the first by name", async () => {
+  const { localWorkspace } = await import("../server/slide-pictures.js");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "probundle-ws-"));
+  try {
+    for (const [name, days] of [["Aardvark clone", 30], ["ProPresenter", 1], ["test", 10]]) {
+      fs.mkdirSync(path.join(dir, name, "Media"), { recursive: true });
+      fs.mkdirSync(path.join(dir, name, "Libraries"));
+      const t = new Date(Date.now() - days * 86_400_000);
+      fs.utimesSync(path.join(dir, name, "Libraries"), t, t);
+    }
+    fs.mkdirSync(path.join(dir, "no media"));
+    assert.equal(localWorkspace(dir), path.join(dir, "ProPresenter"));
+    assert.equal(localWorkspace(path.join(dir, "missing")), null);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

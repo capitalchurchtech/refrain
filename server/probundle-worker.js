@@ -14,7 +14,7 @@ import { parentPort, workerData } from "node:worker_threads";
 import { createHash } from "node:crypto";
 import { existsSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
 import path from "node:path";
-import { pictureSource } from "./probundle-pictures.js";
+import { drawWithPictures } from "./slide-pictures.js";
 
 const MEDIA = /\.(png|jpe?g|gif|tiff?|heic|bmp|webp|mp4|m4v|mov)$/i;
 
@@ -49,21 +49,7 @@ function draw(lib, buf) {
       cached.set(e.name.split("/").pop(), name);
     }
   }
-  const pictures = [];
-  const number = new Map();
-  // A picture the bundle does not carry and the workspace does not have is drawn as missing, by
-  // name, rather than as a broken image.
-  const picture = (name, rel) => {
-    if (!MEDIA.test(name)) return null;
-    const pic = { name, rel: rel ?? null, cached: cached.get(name) ?? null };
-    if (!number.has(name) && !pictureSource(pic, { cacheDir: workerData.cacheDir, workspace: workerData.workspace })) return null;
-    if (!number.has(name)) {
-      number.set(name, pictures.length);
-      pictures.push(pic);
-    }
-    return `/api/probundle/picture/__SRC__/${number.get(name)}`;
-  };
   const notes = new Map((doc.cues ?? []).map((c) => [c.uuid?.string, lib.notesOf((c.actions ?? []).find((a) => a.slide))]));
-  const drawn = lib.drawPresentation(doc, { picture }).map((s) => ({ ...s, notes: notes.get(s.id) ?? "" }));
-  return { drawn, pictures };
+  const { drawn, pictures } = drawWithPictures(lib, doc, { cached, cacheDir: workerData.cacheDir, workspace: workerData.workspace, url: (n) => `/api/probundle/picture/__SRC__/${n}` });
+  return { drawn: drawn.map((s) => ({ ...s, notes: notes.get(s.id) ?? "" })), pictures };
 }

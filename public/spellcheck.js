@@ -7,6 +7,7 @@
 
 import { takeOpenWith } from "./open-with.js";
 import { showFailure } from "./notice.js";
+import { drawInto, missingFonts } from "./slide-drawing.js";
 /**
  * Of today's services, the one whose playlist to check first: the one starting
  * nearest to now (a service with no time counts as far away) among those whose
@@ -82,6 +83,7 @@ export function initSpellcheck() {
         </details>
 
         <div id="spellcheck-status" class="text-sm opacity-70"></div>
+        <div id="spellcheck-fontnote" class="text-sm opacity-70" hidden></div>
         <div id="spellcheck-filters" class="hidden"></div>
         <div id="spellcheck-next-host" class="flex items-center gap-3"></div>
         <div id="spellcheck-results" class="flex flex-col gap-3"></div>
@@ -282,7 +284,7 @@ export function initSpellcheck() {
             <div class="text-sm bg-base-100 rounded p-2 spellcheck-slide rf-sc-slide" data-presentation-id="${escapeHtml(p.presentationId)}" data-slide-index="${s.slideIndex}" data-kinds="${[s.words?.length && "words", s.pastDates?.length && "dates", s.missingMedia?.length && "media"].filter(Boolean).join(" ")}">
               <!-- The slide as it looks, to find it by eye in the editor. -->
               <div class="rf-sc-pic${Number.isInteger(s.pictureIndex) ? "" : " rf-sc-nopic"}">
-                ${Number.isInteger(s.pictureIndex) ? `<img src="/api/preview/image/${encodeURIComponent(p.presentationId)}/${s.pictureIndex}?v=${encodeURIComponent(p.pictureVersion ?? "")}" alt="" loading="lazy" />` : ""}
+                ${Number.isInteger(s.pictureIndex) ? `<span class="rf-sc-frame" data-pid="${escapeHtml(p.presentationId)}" data-idx="${s.pictureIndex}" data-v="${escapeHtml(p.pictureVersion ?? "")}"></span>` : ""}
                 <span class="rf-sc-num">#${s.slideIndex + 1}</span>
               </div>
               <div class="min-w-0 flex flex-col gap-2">
@@ -428,23 +430,74 @@ export function initSpellcheck() {
     }
   }
 
+  // --- Slide pictures, drawn ------------------------------------------------
+  let drawnSeen = null;
+  const unfonted = new Map(); // "pid:idx" -> fonts the slide uses that this Mac lacks
+
+  async function drawFrame(frame) {
+    const { pid, idx, v } = frame.dataset;
+    const host = document.createElement("span");
+    host.className = "rf-sc-draw";
+    frame.appendChild(host);
+    const d = await drawInto(host, `/api/preview/drawn/${encodeURIComponent(pid)}/${idx}`);
+    if (!d) {
+      host.remove();
+      return thumbnailInto(frame, `/api/preview/image/${encodeURIComponent(pid)}/${idx}?v=${encodeURIComponent(v ?? "")}`);
+    }
+    const missing = await missingFonts(d.fonts);
+    if (missing.length && frame.isConnected) {
+      unfonted.set(`${pid}:${idx}`, missing);
+      noteFonts();
+    }
+  }
+
+  // ProPresenter's picture: tried twice more, a few seconds apart, since a busy
+  // render queue refuses rather than waits. Then the slide number stands alone
+  // rather than an empty frame (ProPresenter not answering, or performance
+  // mode with no picture rendered ahead).
+  function thumbnailInto(frame, src) {
+    const img = document.createElement("img");
+    img.alt = "";
+    let tries = 0;
+    img.addEventListener("error", () => {
+      if (++tries > 2 || !img.isConnected) return frame.parentElement.classList.add("rf-sc-nopic");
+      setTimeout(() => {
+        if (img.isConnected) img.src = `${src.split("&retry=")[0]}&retry=${tries}`;
+      }, 3000 * tries);
+    });
+    img.src = src;
+    frame.appendChild(img);
+  }
+
+  // A slide drawn without its font looks different from ProPresenter's, so
+  // that is said, once, under the results line (owner, 2026-11-04: only then).
+  function noteFonts() {
+    const el = document.getElementById("spellcheck-fontnote");
+    if (!el) return;
+    const fonts = [...new Set([...unfonted.values()].flat())];
+    const n = unfonted.size;
+    const list = fonts.length > 1 ? `${fonts.slice(0, -1).join(", ")} and ${fonts.at(-1)}` : fonts[0];
+    el.hidden = !n;
+    el.textContent = n ? `${n} slide${n === 1 ? " is" : "s are"} drawn without ${list}, which this Mac doesn't have, so the picture${n === 1 ? "" : "s"} won't match ProPresenter's.` : "";
+  }
+
   function wireResultActions() {
     const resultsEl = document.getElementById("spellcheck-results");
 
-    // No picture: tried twice more, a few seconds apart, since a busy render
-    // queue refuses rather than waits. Then the slide number stands alone
-    // rather than an empty frame (ProPresenter not answering, or performance
-    // mode with no picture rendered ahead).
-    resultsEl.querySelectorAll(".rf-sc-pic img").forEach((img) => {
-      let tries = 0;
-      img.addEventListener("error", () => {
-        if (++tries > 2 || !img.isConnected) return img.parentElement.classList.add("rf-sc-nopic");
-        const src = img.getAttribute("src");
-        setTimeout(() => {
-          if (img.isConnected) img.src = `${src.split("&retry=")[0]}&retry=${tries}`;
-        }, 3000 * tries);
-      });
-    });
+    // Each slide drawn from its file as it scrolls into view (handoff section
+    // 30, E6), which asks nothing of ProPresenter. One that can't be drawn
+    // gets ProPresenter's picture instead.
+    drawnSeen?.disconnect();
+    unfonted.clear();
+    noteFonts();
+    drawnSeen = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        drawnSeen.unobserve(e.target);
+        drawFrame(e.target);
+      }
+    }, { rootMargin: "300px 0px" });
+    resultsEl.querySelectorAll(".rf-sc-frame").forEach((f) => drawnSeen.observe(f));
 
     resultsEl.querySelectorAll(".spellcheck-again-btn").forEach((btn) => btn.addEventListener("click", () => checkAgain(btn)));
 
