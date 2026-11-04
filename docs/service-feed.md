@@ -1,67 +1,65 @@
 # Service feed
 
-A Refrain console can report to **your own** announcement server: which slide is
-showing right now, and its diagnostics log afterwards. Off until a church turns
-it on, and it only ever talks to the address the church typed in. Nothing goes
-to the Refrain project. Core search does not depend on it.
+A Refrain console can report to **your own** announcement server: what is on the
+screens during a service, and its diagnostics log afterwards. It can also read
+staff requests back from that server. It is off until a church turns it on, it
+only ever talks to the address the church typed in, and nothing goes to the
+Refrain project. Core search does not depend on it.
 
-Code: `server/service-feed.js`. Status on the Health screen (Modules tile).
-Todoist task: Announce App > "Telemetry for services using refrain app".
+This page is the contract for the server side. The code is
+`server/service-feed.js` and `server/staff-requests.js`.
 
-## Set up (Refrain side)
+## Setting it up
 
-1. Open **Settings > Telemetry**. Turn it on, name the station (for example
-   `Main Campus FOH`; the announcement server uses the name to tell stations
-   apart), paste the console address from the announcement server (https), and
-   choose the send windows. Save.
-2. Put the key the announcement server issued for this console in Secrets as
+1. On **Settings › More › Telemetry**, turn it on, name the station (for example
+   `Main Campus FOH`; the server tells stations apart by name), paste the
+   announcement server's address (`https://`, except for `localhost`), and choose
+   the send windows. Save.
+2. Put the key the server issued for this console in Secrets as
    `SERVICE_FEED_TOKEN`.
-3. Refrain makes a stable `consoleId` for itself the first time it is turned on.
-   A missing address, name or key shows as "misconfigured" with a sentence
-   saying which.
+3. Refrain makes a `consoleId` for itself the first time the feed is turned on.
 
-**Send windows** (default one: Sunday 09:00 to 14:00, this machine's local time;
-add more, or change the days and times) are the only times Refrain sends status.
-Outside them it sends no status, so a console left on all week is quiet apart from
-the nightly log. Clearing every window restores the default; it never means
-"always".
+A missing address, name or key shows as misconfigured, with a sentence saying
+which.
 
-**The log goes each night** (owner, 2026-11-04), at 02:00 this machine's local
-time unless the church picks another time on the Telemetry tab, or switches it
-to "Only when I press Send log". The log is for reviewing a service afterwards
-(was Refrain involved when ProPresenter stalled; how does this Sunday compare with
-a good one), not for watching live, so it goes once the day is over. Each night
-it sends only the days the server does not already have, so a night with nothing
-new sends nothing. It never goes inside a send window or during performance mode
-(it waits for both to end), and a computer asleep at that time sends when it
-wakes. A failed night is tried twice more, ten minutes apart, then left for the
-next night, and Service > Day says it failed. The **Send log** button on Service >
-Day sends the same thing at once; it works outside the windows and is refused
-during performance mode.
+**Send windows** are the only times Refrain sends status. The default is Sunday
+09:00 to 14:00, this machine's local time; add more or change them. Clearing
+every window brings the default back; it never means "always".
 
-`includeSlideText` (default `false`) adds the words on the slide to the status.
-Leave it off unless the other side needs them: a prayer or care slide can carry
-a name.
+**The log goes each night** at 02:00 local time, or another time you choose, or
+only when someone presses **Send log** (on Day or the Telemetry tab). It never
+goes inside a send window or during performance mode; it waits for both to end.
+A computer asleep at that time sends when it wakes. A failed night is tried
+twice more, ten minutes apart, then left for the next night, and Day says it
+failed. **Send log** sends at once, outside the windows too, and is refused
+during performance mode or while the feed is switched off.
+
+**Words on the slide** (off by default, `includeSlideText`) adds the slide's text
+to the status. Leave it off unless the other side needs it: a prayer or care
+slide can carry a name. **Picture of the slide** (off by default,
+`includeSlideImage`) sends a picture of the slide. It needs Slide pictures set to
+Show pictures. During performance mode it sends only pictures already on disk;
+outside it, ProPresenter may be asked to draw one.
 
 ## Contract, version 1
 
 Every request carries `Authorization: Bearer <SERVICE_FEED_TOKEN>` and
 `X-Console-Id: <consoleId>`. The key identifies the console; the id is a
-cross-check, not a credential. `{url}` is the configured address, without a
+cross-check, not a credential. `{url}` is the configured address without a
 trailing slash.
 
 ### `POST {url}/status`
 
-Sent when anything below changes (at most every 2 s) and every 30 s otherwise as
-proof of life. Latest wins: a failed push is dropped, the next carries newer
-truth.
+Sent when anything below changes (at most every 2 seconds) and every 30 seconds
+otherwise as proof of life, inside the send windows only. Latest wins: a failed
+push is dropped, and the next carries newer truth.
 
 ```json
 {
   "v": 1,
   "consoleId": "uuid",
   "name": "Main Campus FOH",
-  "appVersion": "0.25.0",
+  "appVersion": "0.38.0",
   "seq": 41,
   "sentAt": "2026-10-04T15:02:11.000Z",
   "connected": true,
@@ -70,11 +68,12 @@ truth.
   "performanceMode": false,
   "slide": {
     "presentationName": "Amazing Grace",
-    "arrangementName": null,
+    "arrangementName": "FS",
     "slideIndex": 2,
+    "slideNumber": 3,
     "slideCount": 6,
-    "text": "only present when includeSlideText is on",
-    "imageKey": "only present when picture sending is on"
+    "text": "only when includeSlideText is on",
+    "imageKey": "only when includeSlideImage is on"
   },
   "tz": "America/Denver",
   "history": {
@@ -87,233 +86,157 @@ truth.
 }
 ```
 
-### Which slide, and in which arrangement (2026-10-13; `v` stays 1)
+- `slide` is `null` when nothing is live.
+- `connected: false` means Refrain can't reach ProPresenter: the console is up,
+  the rig isn't. No status for about 90 seconds means Refrain itself, or its
+  network, is down.
+- When a send window closes while something is live, Refrain sends one last
+  status with `live: false` and `slide: null`, so the server reads the end of a
+  service as ended, not lost.
 
-`slide.slideIndex`, `slide.slideCount`, `slide.arrangementName` and, if the church
-sends words, `slide.text` all describe the arrangement that is **playing**: the
-one selected in ProPresenter, read from the live presentation. Before this they
-came from Refrain's own index, which holds the arrangement it prefers (FS), so for
-a "[ T ]" presentation the slide and its count were often wrong (slide 21 of 29
-instead of slide 21 of 27, with another slide's words).
+#### The slide
 
-- `slideIndex` is ProPresenter's zero-based index. **`slideNumber` (new) is the
-  number a person sees on ProPresenter's screens** (`slideIndex + 1`): show this one.
-- When the live presentation cannot be read, the slide's text, `slideCount` and
-  `arrangementName` are null rather than guessed from the index.
+Every field describes the arrangement that is **playing**: the one selected in
+ProPresenter, read from the live presentation.
 
-### Item history in `/status` (added 2026-10-11; `v` stays 1)
+- `slideIndex` is ProPresenter's zero-based index. `slideNumber` is the number a
+  person sees on ProPresenter's screens (`slideIndex + 1`). Show that one.
+- When the live presentation can't be read, `text`, `slideCount` and
+  `arrangementName` are `null` rather than guessed.
 
-`tz` and `history` are **additive**: a receiver that reads only the fields it
-names keeps working, and an older console simply does not send them. They tell
-the other side exactly when each item changed, in the terms of the phone's
-History page.
+#### Item history
 
-- `history.items` is a **snapshot**, newest first, at most 30. Status is latest
-  wins, so a dropped push loses nothing: the next one carries the whole list.
-  The whole status stays under 8 KB; if it ever would not, the oldest items are
-  dropped first. A name is at most 200 characters.
-- Each item is one **stay**: a presentation comes up and stays until a
-  different one comes up, or the screens stay blank for more than `graceMs`
-  (five minutes). Coming back to a song later is a new item. A long item (a
-  sermon) that goes blank for a minute or two, or whose slide cannot be read for
-  a beat, is still one item.
-- `id` is unique per console and the same every time that item is sent (it is
-  made from the moment the item opened). **It is not stable across a Refrain
-  restart**: see "A restart" below.
-- `startedAt` and `endedAt` are UTC ISO times. `endedAt` is null while the item
-  is open, and `current` is true for the one open item (always the first).
-  `endedAt` is when the item went off, which is when the screens went blank if
-  they did before the next item came up. A blank gap needs no entry of its own:
-  it is the time between one item's `endedAt` and the next item's `startedAt`.
-- `kind` was sent from 2026-10-13 to 2026-10-29 (`"delimiter"` for a
-  pre-service item the church named, else `"item"`) and is no longer sent, on
-  `/status` or on the day log's `item` lines. Every item is an ordinary item.
-- `blank` is true only on the open item, while the screens are empty and the
-  gap is still being forgiven. Do not call it live then.
-- Elapsed time is not sent (it would change every second). For the open item it
-  is `sentAt` minus `startedAt` plus the time since the status arrived; for
-  closed items it is `endedAt` minus `startedAt`.
-- `tz` is the console's own IANA time zone, the one its day files are cut by.
-  Show times in it, not the viewer's.
-- Presentation names only (the same kind of name as `slide.presentationName`).
-  No slide text and no presentation ids, whether or not `includeSlideText` is
-  on, and nothing about who did anything (the phone take-over log is not sent).
+`history.items` is a snapshot, newest first, of at most 30 items. Because status
+is latest-wins, a dropped push loses nothing. The whole status stays under 8 KB;
+if it wouldn't, the oldest items are dropped. A name is at most 200 characters.
 
-`slide` is `null` when nothing is live. `connected: false` means Refrain cannot
-reach ProPresenter (the console is up; the rig is not). No heartbeat for ~90 s
-means Refrain itself, or its network, is down.
+- Each item is one **stay**: a presentation comes up and stays until a different
+  one comes up, or until the screens stay blank for more than `graceMs` (five
+  minutes). Coming back to a song later is a new item. A sermon that goes blank
+  for a minute is still one item.
+- `id` is unique per console and the same every time that item is sent. It is
+  **not** stable across a Refrain restart (see below).
+- `startedAt` and `endedAt` are UTC. `endedAt` is `null` while the item is open.
+  `current` is true for the one open item, which is always first. When the
+  screens went blank before the next item came up, `endedAt` is when they went
+  blank; the gap needs no entry of its own.
+- `blank` is true only on the open item, while the screens are empty and the gap
+  is still being forgiven. Don't call it live then.
+- Elapsed time isn't sent. For the open item it is `sentAt` minus `startedAt`
+  plus the time since the status arrived; for a closed item, `endedAt` minus
+  `startedAt`.
+- `tz` is the console's IANA time zone, the one its day files are cut by. Show
+  times in it, not the viewer's.
+- Names only: no slide text and no presentation ids, whatever
+  `includeSlideText` says, and nothing about who did what.
 
-When a send window closes while something is live, Refrain sends one last status
-with `live: false` and `slide: null`, then goes quiet, so the server reads the
-end of a service as ended, not lost.
+### `PUT {url}/image`
 
-### `PUT {url}/image` (only if the church turned on "Picture of the slide")
-
-Sent right after a status whose `slide.imageKey` is set, once per slide. The body
-is the JPEG (about 25 KB, never over 200 KB), `Content-Type: image/jpeg`, with
-header `X-Slide-Key` equal to that status's `slide.imageKey`. Latest wins per
-console: keep one image, replace it, and show it only while its key matches the
-console's current `slide.imageKey`. Refrain never draws a slide for this, so a
-slide with no picture ready simply has none; `404`/`4xx` here is ignored and
-never affects status.
+Only when **Picture of the slide** is on. Sent right after a status whose
+`slide.imageKey` is set, once per slide. The body is the JPEG (about 25 KB, never
+over 200 KB) as `Content-Type: image/jpeg`, with an `X-Slide-Key` header equal to
+that `imageKey`. Keep one image per console, replace it, and show it only while
+its key matches the console's current `imageKey`. A slide with no picture ready
+simply has none, and with Slide pictures on Words only, `imageKey` is set but no
+image is ever sent. A `4xx` here is ignored and never affects status.
 
 ### `PUT {url}/logs/{YYYY-MM-DD}.jsonl`
 
-The body is that day's diagnostics file, `application/x-ndjson`, one JSON object
-per line (`t`, `event`, ...). **Idempotent: a later PUT for the same day replaces
-the earlier one**, because today's file can be sent again after more was added.
-Refrain sends it each night and when a person presses Send log: every day file whose size
-changed since the server last accepted it, oldest first, and nothing during
-performance mode. The files hold timings, counts,
-ProPresenter call paths and `item` lines (below). They do not hold slide text.
+The body is that day's diagnostics file as `application/x-ndjson`, one JSON
+object per line (`t`, `event`, ...). **A later PUT for the same day replaces the
+earlier one**, because today's file can be sent again after more was added.
+Refrain sends every day file whose size changed since the server last accepted
+it, oldest first. Files over 10 MB are skipped rather than truncated. The files
+hold timings, counts, ProPresenter call paths and `item` lines. They don't hold
+slide text.
 
-### `item` lines in the day file
+#### `item` lines
 
 One line when an item **opens** and another, with the same `id`, when it
-**closes**, so an item still on the screens when the log is sent is
-there as an open line (often the last item of the service). The later `t` wins
-per `id`.
+**closes**. An item still on the screens when the log is sent is there as an
+open line. The later `t` wins per `id`.
 
 ```json
 {"t":"2026-10-11T16:41:00.000Z","event":"item","id":"mgx0ab-1","name":"Welcome Loop","startedAt":"2026-10-11T16:41:00.000Z","endedAt":null,"reason":null,"tz":"America/Denver"}
 {"t":"2026-10-11T16:47:00.000Z","event":"item","id":"mgx0ab-1","name":"Welcome Loop","startedAt":"2026-10-11T16:41:00.000Z","endedAt":"2026-10-11T16:47:00.000Z","reason":"moved","tz":"America/Denver"}
 ```
 
-- `reason` is null while open, then `moved` (a different item came up),
+- `reason` is `null` while open, then `moved` (a different item came up),
   `blank-timeout` (the screens stayed blank past `graceMs`; `endedAt` is when
-  they went blank) or `restart` (see below). There is no separate `cleared`: a
-  clear is a blank, and it only ends an item once it has lasted past the grace.
-- Times are UTC. The day file is the **local** day (a Saturday service can run
-  into the next UTC day), so `tz` travels on every line.
-- Same privacy rules as the snapshot: names only.
-- These lines are written to the local day file as items change, whether or not
-  telemetry is on. Nothing leaves the Mac until the nightly send or a press of
-  Send log.
+  they went blank) or `restart`. A clear is a blank, so it only ends an item once
+  it has lasted past the grace.
+- Times are UTC, but the day file is the **local** day, so `tz` travels on every
+  line.
+- These lines are written to the local day file whether or not the feed is on.
+  Nothing leaves the Mac until the nightly send or a press of **Send log**.
 
-### A restart
+#### A restart
 
-Items live in memory, so a restart mid-service forgets the open one. Within a
-second of starting, Refrain reads yesterday's and today's day files, finds each
-`item` whose latest line is still open, and writes one close line for it:
-`reason: "restart"`, `endedAt` the last moment the previous run wrote anything
-(at most about a minute before the restart, since a `minute` line is written
-every minute). What is on the screens afterwards opens as a new item with a **new
-`id`**, even if it is the same presentation, and the phone's own History starts
-again. A crash is the same as a restart.
+Items live in memory, so a restart forgets the open one. Within a second of
+starting, Refrain reads yesterday's and today's day files, finds each item whose
+latest line is still open, and writes a close line for it with `reason:
+"restart"` and `endedAt` the last moment the previous run wrote anything (at
+most about a minute before). What is on the screens afterwards opens as a new
+item with a new `id`, even if it is the same presentation. A crash counts as a
+restart.
 
 ### Answers
 
-`2xx` accepted. `401` bad key. `403` the key is bound to a different console id (a reinstalled Refrain needs an admin to Reset key).  `400` the body is not version 1 or its `consoleId` differs from the header. `404` wrong
-address. `413` too large (Refrain skips files over 10 MB rather than truncate).
-`408`, `429` and `5xx` are treated as "try later". Any other `4xx` is treated as
-a setup problem: Refrain says so on Health and backs off for five minutes.
+| Status | Refrain treats it as |
+|---|---|
+| `2xx` | Accepted |
+| `401` | Bad key |
+| `403` | The key belongs to a different console id (a reinstalled Refrain needs its key reset on the server) |
+| `400` | The body isn't version 1, or its `consoleId` differs from the header |
+| `404` | Wrong address |
+| `413` | Too large |
+| `408`, `429`, `5xx` | Try later |
+| any other `4xx` | A setup problem: Settings says so, and status pushes back off for five minutes (log uploads and staff request polls don't) |
 
-## Staff requests, version 1 (the other direction)
+## Staff requests
 
-Settings > Features > **Staff requests** (off by default) lets staff send a
+Settings › Features › **Staff requests** (off by default) lets staff send a short
 message from the announcement app that someone at this console approves before
 anything reaches the screens. It uses the address, key and console id above, so
-Telemetry has to be set up first (its on/off switch can stay off).
+the feed has to have been turned on once to make the id; its switch can then
+stay off.
 
-Refrain asks; nothing connects in to the console. Every five seconds, and only inside the send windows set under Telemetry (the same quiet-all-week rule as the status feed), it calls,
-with the same `Authorization: Bearer <key>` and `X-Console-Id` headers:
+Refrain asks; nothing connects in to the console. Every five seconds, inside the
+send windows only, it calls, with the same headers:
 
-- `GET <console address>/requests` answers `{ "requests": [{ "id", "text", "from"?, "createdAt"? }] }`.
-  `id` is the announcement server's own, up to 64 letters, digits, `_` or `-`.
-  `text` is one line, 80 characters at most. `from` is shown on the card (a
-  department; 40 characters). `createdAt` is an ISO time.
-- `POST <console address>/requests/<id>/result` with `{ "status": "shown" | "declined" | "expired" }`,
-  once the request has been answered. Refrain tells it again on the next poll if
-  that call did not get through.
+- `GET {url}/requests`, answering
+  `{ "requests": [{ "id", "text", "from"?, "createdAt"? }] }`.
+  - `id` is the server's own, up to 64 letters, digits, `_` or `-`.
+  - `text` is one line of at most 80 characters.
+  - `from` is shown on the card (a department; at most 40 characters).
+  - `createdAt` is an ISO time.
+- `POST {url}/requests/{id}/result` with
+  `{ "status": "shown" | "declined" | "expired" }`, once the request has been
+  answered. If that call doesn't get through, Refrain tells it again on the next
+  poll.
 
-What Refrain guarantees: a request is only ever a card on **Now**; "Post it"
-puts the text into the first ProPresenter message that has a Text field (or the
-one named in `liveModule.requestMessageId`), "Decline" posts nothing. A request is good for eight
-minutes from `createdAt` (a time in the future counts as now); an older one is
-never shown and is reported `expired`. Each `id` is handled once, remembered on
-disk, so a restart or a repeat poll never shows it twice. At most five wait at a
-time; any more stay on the server until there is room. The text is never
-written to a log or sent anywhere but the result call above, which carries no
-text.
+What Refrain guarantees:
 
-What the announcement app needs: a form for staff to send one (a code or a short
-line), a list of pending requests per console, the two endpoints above, and a
-state for each request (waiting, shown, declined, expired) so the sender can see
-what happened. Keep the server's own expiry at eight minutes or less.
+- A request is only ever a card on **Now**. **Post it** puts the text,
+  upper-cased and cut to 60 characters, into the ProPresenter message named in
+  `liveModule.requestMessageId`, or else the first message with a text field
+  that isn't hidden on Now. It needs Messages switched on. **Decline** posts
+  nothing. Keep requests to 60 characters if you don't want them cut.
+- A request is good for eight minutes from `createdAt` (a time in the future
+  counts as now). An older one is never shown and is reported `expired`.
+- Each `id` is handled once and remembered on disk, so a restart or a repeat poll
+  never shows it twice.
+- At most five wait at a time; any more stay on the server until there is room.
+- The text is never written to a log or sent anywhere but the result call, which
+  carries no text.
 
-## Handoff prompt: Announce side (`cc-announce`)
+What the announcement app needs: a way for staff to send one, a list of pending
+requests per console, the two endpoints above, and a state per request (waiting,
+shown, declined, expired) so the sender can see what happened. Keep the server's
+own expiry at eight minutes or less.
 
-Paste into a session opened in the `cc-announce` repo. Read its `AGENTS.md`
-first; its non-negotiables apply.
+## Not yet proven
 
-> Refrain (the ProPresenter console tool, repo `refrain`) now has a "service
-> feed" that pushes to this app. Read `docs/service-feed.md` in the refrain repo
-> for the exact contract; it is the source of truth, do not change it without
-> telling me. Build the receiving side here.
->
-> **Consoles.** A console registry per account, **at most four**. An admin page
-> (follow the existing admin nav and its one-heading-per-list rule; ask me which
-> group it belongs in if it is not obvious) to add a console by name, issue its
-> key once (show it once, store only a hash), reset a key, and remove a console.
-> A fifth gets a plain sentence, not an error page. Keys follow the `staff-key`
-> idea: nothing per key is stored beyond what is needed to verify it, and
-> removing a console ends its key at once.
->
-> **Intake.** `POST /api/consoles/status` and `PUT /api/consoles/logs/{day}.jsonl`
-> exactly as the contract describes. Unauthenticated routes are written like
-> `/api/crash`: only named fields read, each capped, bounded request size, rate
-> limited, and a bad key answers `401` without saying why. A console's key is
-> checked against the `X-Console-Id` it claims. `403` for a fifth console trying
-> to register by sending status. Renders must not write; the intake routes do.
->
-> **Storage.** Latest status per console (one row, replaced, with `last_seen`).
-> No history of slides unless I ask. Logs go to R2 or the data volume (match how
-> attachments are stored), keyed account/console/day, **replaced on each PUT for
-> the same day**, with a retention window (default 60 days, ask me) and a size
-> cap of 10 MB. Everything scoped by `account_id`. Add the tables to `schema.sql`
-> and the additive `ALTER` list, per AGENTS.md.
->
-> **Screen.** A "Consoles" view for staff: one card per console showing name,
-> app version, connected / live / performance-mode state, the live slide
-> (presentation name and "slide 3 of 6", and its text only if the console sent
-> it), and how long since it was last heard from. Green under 45 s, amber under
-> 90 s, red beyond that, with the word as well as the colour. It refreshes by
-> polling every few seconds; no new dependency. A second tab lists each console's
-> log days with a download link and a plain-language summary read from the
-> `minute` / `slow-call` / `stall` lines (slow calls, stalls, performance mode
-> on/off), so a review does not mean reading JSON.
->
-> **Hard constraints.** Slide text is sensitive: never write it to a log, the
-> audit log, an email or a crash report; show it only to signed-in staff. This is
-> the church's own server, but treat the content as congregant-adjacent. Nothing
-> here may auto-publish or change any announcement; this is read-only
-> observation. Add tests (the intake validation, the four-console limit, the
-> key check, the staleness colours); `npm test` and `npm run build` must pass.
-> Update AGENTS.md (map, schema count, non-negotiables) and RUNBOOK.md (a
-> Pulsetic/uptime note is not needed; note where the keys are issued and how to
-> reset one).
->
-> **Don't build** a live push channel (websockets), remote control of Refrain,
-> or anything that sends a command back to a console. Say so if you think one is
-> needed.
->
-> Report what you ran versus what you believe, and what you left undone.
-
-## Left undone / not yet verified
-
-- Item history (2026-10-11) is unit-tested only. It has not been seen in a real
-  service, and nothing has received it yet: the first check is a real Send log
-  and a live status from a real service.
-- The nightly send (2026-11-04) is unit-tested only, on a fake clock. It has not
-  run on a real night against the real announcement server.
-- `reason: "cleared"` is not emitted (see above). The overnight `live: true`
-  and index-start-in-a-pre-service-window observations from the announce side
-  are answered in the handoff, not fixed.
-- Refrain side only has been exercised against a local test server and its unit
-  tests. It has not been run against the real announcement server, because the
-  receiving side does not exist yet.
-- The Health screen shows the module in the Modules tile; there is no settings
-  form for it yet (edit `config.json` and `.env`). A form is the next step if
-  churches other than this one use it.
-- "Register up to four consoles" is enforced by the announcement server; Refrain
-  only identifies itself.
+Refrain's side has run against a local test server and its unit tests, not a
+real announcement server, because the receiving side isn't built yet. The
+nightly send and the item history haven't been seen in a real service.

@@ -1,33 +1,37 @@
-# Contributor Covenant Code of Conduct
+# Code of conduct
 
-## Our Pledge
+Refrain is built by and for people who serve in church production booths. We
+want taking part to be welcoming whatever your experience, background, or the
+church or organisation you come from.
 
-We as members, contributors, and leaders pledge to make participation in our community a harassment-free experience for everyone, regardless of experience level, technical background, or the church or organization they represent.
+## What we expect
 
-## Our Standards
+- Be respectful of people and of differing views and experience levels.
+- Give and take feedback on the work, gracefully.
+- Assume good intent, and ask before assuming otherwise.
+- Keep the focus on what's best for the project and the churches using it.
 
-Examples of behavior that contributes to a positive environment:
-- Being respectful of differing viewpoints and experience levels
-- Giving and gracefully accepting constructive feedback
-- Focusing on what's best for the project and the wider community of churches using it
+## What isn't acceptable
 
-Examples of unacceptable behavior:
-- Harassment, insults, or derogatory comments, public or private
-- Publishing others' private information without explicit permission
-- Other conduct which could reasonably be considered inappropriate in a professional setting
+- Harassment, insults or demeaning comments, in public or in private.
+- Publishing anyone's private information without their permission. That
+  includes details of a congregation or its staff that turn up in a log, a
+  screenshot or an issue.
+- Anything else that would be out of place in a professional setting.
 
-## Enforcement Responsibilities
+## Where this applies
 
-Maintainers are responsible for clarifying standards and will take appropriate, fair corrective action in response to any behavior deemed inappropriate.
+In every project space (issues, pull requests, discussions) and anywhere you
+represent the project in public.
 
-## Scope
+## Reporting
 
-This applies within all project spaces (issues, pull requests, discussions) and in public spaces when an individual is representing the project.
-
-## Enforcement
-
-Instances of unacceptable behavior may be reported via a private security advisory (see SECURITY.md) or directly to a maintainer. All complaints will be reviewed and investigated promptly and fairly.
+Contact a maintainer privately. If it involves a maintainer, contact another
+one. Every report is looked at promptly and fairly, and kept as confidential as
+we can. Maintainers may remove comments or contributions, or block people, who
+don't follow this code.
 
 ## Attribution
 
-This Code of Conduct is adapted from the [Contributor Covenant](https://www.contributor-covenant.org), version 2.1.
+Adapted from the [Contributor Covenant](https://www.contributor-covenant.org),
+version 2.1.
