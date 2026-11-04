@@ -22,15 +22,22 @@ Todoist task: Announce App > "Telemetry for services using refrain app".
 
 **Send windows** (default one: Sunday 09:00 to 14:00, this machine's local time;
 add more, or change the days and times) are the only times Refrain sends status.
-Outside them it is silent, so a console left on all week is quiet. Clearing every
-window restores the default; it never means "always".
+Outside them it sends no status, so a console left on all week is quiet apart from
+the nightly log. Clearing every window restores the default; it never means
+"always".
 
-**The log is sent by a person**, with the **Send log** button on Service > Day,
-after the service. The log is for reviewing a service afterwards (was Refrain
-involved when ProPresenter stalled; how does this Sunday compare with a good
-one), not for watching live, so nothing about it is automatic. The button works
-outside the windows, is refused during performance mode, and only sends days the
-server does not already have.
+**The log goes each night** (owner, 2026-11-04), at 02:00 this machine's local
+time unless the church picks another time on the Telemetry tab, or switches it
+to "Only when I press Send log". The log is for reviewing a service afterwards
+(was Refrain involved when ProPresenter stalled; how does this Sunday compare with
+a good one), not for watching live, so it goes once the day is over. Each night
+it sends only the days the server does not already have, so a night with nothing
+new sends nothing. It never goes inside a send window or during performance mode
+(it waits for both to end), and a computer asleep at that time sends when it
+wakes. A failed night is tried twice more, ten minutes apart, then left for the
+next night, and Service > Day says it failed. The **Send log** button on Service >
+Day sends the same thing at once; it works outside the windows and is refused
+during performance mode.
 
 `includeSlideText` (default `false`) adds the words on the slide to the status.
 Leave it off unless the other side needs them: a prayer or care slide can carry
@@ -155,7 +162,7 @@ never affects status.
 The body is that day's diagnostics file, `application/x-ndjson`, one JSON object
 per line (`t`, `event`, ...). **Idempotent: a later PUT for the same day replaces
 the earlier one**, because today's file can be sent again after more was added.
-Refrain sends it only when a person presses Send log: every day file whose size
+Refrain sends it each night and when a person presses Send log: every day file whose size
 changed since the server last accepted it, oldest first, and nothing during
 performance mode. The files hold timings, counts,
 ProPresenter call paths and `item` lines (below). They do not hold slide text.
@@ -163,7 +170,7 @@ ProPresenter call paths and `item` lines (below). They do not hold slide text.
 ### `item` lines in the day file
 
 One line when an item **opens** and another, with the same `id`, when it
-**closes**, so an item still on the screens when someone presses Send log is
+**closes**, so an item still on the screens when the log is sent is
 there as an open line (often the last item of the service). The later `t` wins
 per `id`.
 
@@ -180,7 +187,8 @@ per `id`.
   into the next UTC day), so `tz` travels on every line.
 - Same privacy rules as the snapshot: names only.
 - These lines are written to the local day file as items change, whether or not
-  telemetry is on. Nothing leaves the Mac until a person presses Send log.
+  telemetry is on. Nothing leaves the Mac until the nightly send or a press of
+  Send log.
 
 ### A restart
 
@@ -296,6 +304,8 @@ first; its non-negotiables apply.
 - Item history (2026-10-11) is unit-tested only. It has not been seen in a real
   service, and nothing has received it yet: the first check is a real Send log
   and a live status from a real service.
+- The nightly send (2026-11-04) is unit-tested only, on a fake clock. It has not
+  run on a real night against the real announcement server.
 - `reason: "cleared"` is not emitted (see above). The overnight `live: true`
   and index-start-in-a-pre-service-window observations from the announce side
   are answered in the handoff, not fixed.

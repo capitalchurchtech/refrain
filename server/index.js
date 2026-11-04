@@ -131,7 +131,7 @@ import { createRemoteApp, pushRecent, serviceProgress, pinFailureGuard } from ".
 import { dailyPin, newSecret, endOfDay } from "./remote-auth.js";
 import { randomUUID } from "node:crypto";
 import { writeAtomic } from "./append-store.js";
-import { createServiceFeed, cleanServiceFeedSettings, applyServiceFeedSettings, effectiveWindows, feedLamp } from "./service-feed.js";
+import { createServiceFeed, cleanServiceFeedSettings, applyServiceFeedSettings, effectiveWindows, feedLamp, nightlyAt } from "./service-feed.js";
 import { createStaffRequests } from "./staff-requests.js";
 import { compareToKnownGood, splitByService, recordOf } from "./known-good.js";
 import {
@@ -2178,6 +2178,7 @@ const serviceFeed = createServiceFeed({
   saveSent: (sent) => writeAtomic(SERVICE_FEED_STATE, "sent.json", sent),
 });
 setInterval(() => serviceFeed.tickStatus().catch(() => {}), 2_000).unref();
+setInterval(() => serviceFeed.tickNightly().catch(() => {}), 60_000).unref();
 
 // Staff requests (owner, 2026-10-07): messages from the church's announcement
 // app that someone at this console approves before they reach the screens.
@@ -3127,7 +3128,11 @@ function servicePayload(now = Date.now()) {
     dayEnded: state.dayEnds.length ? { at: jsonTime(state.dayEnds.at(-1).at), summaryFile: state.dayEnds.at(-1).summaryFile } : null,
     reopened: state.reopened,
     report: reportPayload(state),
-    telemetry: { status: getServiceFeedModuleStatus(config).status, lastLogOkAt: serviceFeed.state().lastLogOkAt },
+    telemetry: {
+      status: getServiceFeedModuleStatus(config).status,
+      lastLogOkAt: serviceFeed.state().lastLogOkAt,
+      nightly: config.serviceFeedModule?.nightlyLog === false ? null : { at: nightlyAt(config.serviceFeedModule), last: serviceFeed.state().lastNightly },
+    },
     autoEnd: autoEndPayload(state, now),
     holdingPace: holdHeartbeatPace(now),
     beatMs: heartbeatInterval({ lastClientAt, hold: holdHeartbeatPace(now), now }),
@@ -6522,6 +6527,8 @@ app.get("/api/health", async (_req, res) => {
         name: config.serviceFeedModule?.name ?? "",
         url: config.serviceFeedModule?.url ?? "",
         includeSlideText: config.serviceFeedModule?.includeSlideText === true,
+        nightlyLog: config.serviceFeedModule?.nightlyLog !== false,
+        nightlyLogAt: nightlyAt(config.serviceFeedModule),
         includeSlideImage: config.serviceFeedModule?.includeSlideImage === true,
         windows: effectiveWindows(config.serviceFeedModule),
         keySet: Boolean(process.env.SERVICE_FEED_TOKEN),

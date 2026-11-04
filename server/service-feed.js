@@ -1,8 +1,8 @@
 /**
  * Service feed: this console tells the church's own announcement server what
- * it is showing, and hands over its diagnostics log when a person presses Send
- * log on the Service screen, so a person in
- * another room can follow a service and review it later. Contract and the other
+ * it is showing, and hands over its diagnostics log each night (and whenever a
+ * person presses Send log on the Service screen), so a person in another room
+ * can follow a service and review it later. Contract and the other
  * side's brief: docs/service-feed.md.
  *
  * **Off until a church turns it on, and it only ever talks to the one URL the
@@ -19,7 +19,10 @@
  * blip leaves it to be retried (CLAUDE.md, "never lose data silently").
  *
  * **Status only goes inside a window** (default Sunday 09:00 to 14:00, local
- * time), so a console left on all week is silent. Logs never go on their own.
+ * time), so a console left on all week sends no status. **Logs go each night**
+ * (owner, 2026-11-04; default 02:00, local time, on unless switched off), and
+ * only the days the server does not already have, so a night with nothing new
+ * sends nothing.
  *
  * Pure functions are exported for tests; `createServiceFeed` is the one piece
  * with timers' worth of state, and takes its fetch and its clock as arguments.
@@ -43,6 +46,10 @@ const IMAGE_RETRY_MS = 15_000;
 const IMAGE_TRIES = 3;
 
 export const DEFAULT_WINDOWS = [{ days: ["sun"], from: "09:00", until: "14:00" }];
+/** When the log goes each night unless the church picks another time: after the day it records is over. */
+export const DEFAULT_NIGHTLY_AT = "02:00";
+const NIGHTLY_RETRY_MS = 10 * 60_000;
+const NIGHTLY_TRIES = 3;
 export const DAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 const toMinutes = (hhmm) => {
   const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm ?? ""));
@@ -70,6 +77,22 @@ export function inWindow(mod, date) {
   );
 }
 
+/** This machine's local date, YYYY-MM-DD: which night a nightly send belongs to. */
+export const localDay = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+
+/** The nightly log send's time as HH:MM: the church's, or 02:00. */
+export const nightlyAt = (mod) => (toMinutes(mod?.nightlyLogAt) !== null ? mod.nightlyLogAt : DEFAULT_NIGHTLY_AT);
+
+/**
+ * Whether the nightly log send is due: switched on (it is unless set false), its
+ * time has passed today, and today's has not run (`lastDay`). A computer asleep
+ * at the time sends at the first check after it wakes, the same day. Pure.
+ */
+export function nightlyDue(mod, date, lastDay) {
+  if (mod?.nightlyLog === false) return false;
+  return lastDay !== localDay(date) && date.getHours() * 60 + date.getMinutes() >= toMinutes(nightlyAt(mod));
+}
+
 /**
  * Settings from the Telemetry tab, checked and tidied. Returns
  * { ok: true, value } or { ok: false, error } with a sentence for the person.
@@ -81,6 +104,8 @@ export function cleanServiceFeedSettings(body) {
   const name = String(b.name ?? "").trim().slice(0, 60);
   const url = String(b.url ?? "").trim().slice(0, 300);
   const windows = Array.isArray(b.windows) ? b.windows : [];
+  if (b.nightlyLog !== undefined && typeof b.nightlyLog !== "boolean") return { ok: false, error: "nightlyLog must be true or false" };
+  if (b.nightlyLogAt !== undefined && toMinutes(b.nightlyLogAt) === null) return { ok: false, error: "The nightly time needs to be a time of day, like 02:00." };
   for (const w of windows) {
     if (!validWindow(w)) return { ok: false, error: "Each window needs at least one day and a start earlier than its end." };
   }
@@ -92,6 +117,8 @@ export function cleanServiceFeedSettings(body) {
       url: url || null,
       includeSlideText: b.includeSlideText === true,
       includeSlideImage: b.includeSlideImage === true,
+      nightlyLog: b.nightlyLog !== false,
+      nightlyLogAt: b.nightlyLogAt ?? DEFAULT_NIGHTLY_AT,
       windows: windows.map((w) => ({ days: DAYS.filter((d) => w.days.map((x) => String(x).toLowerCase()).includes(d)), from: w.from, until: w.until })),
     },
   };
@@ -235,7 +262,11 @@ export function createServiceFeed({
   let lastFingerprint = null;
   let lastPushAt = 0;
   let holdUntil = 0;
-  const state = { lastOkAt: null, lastError: null, lastLogOkAt: null };
+  // lastNightly: the last nightly run, { at, sent, error }, for Service > Day and Settings.
+  const state = { lastOkAt: null, lastError: null, lastLogOkAt: null, lastNightly: null };
+  // The night already done (its local date), and retries within the night.
+  const nightly = { day: null, tries: 0, nextAt: 0 };
+  let sending = null;
 
   // Set up well enough to talk to the server, whether or not it is switched on.
   const usable = () => {
@@ -337,15 +368,22 @@ export function createServiceFeed({
   }
 
   /**
-   * Sends every day's log the server has not already accepted. Only ever run
-   * by a person pressing the button on the Service screen: nothing about logs
-   * is automatic, because the log is for review afterwards, not for watching.
-   * Not limited to the send windows (a person pressing it is the authority),
-   * but refused during performance mode, and each file only goes if its size
-   * changed since the server last accepted it.
+   * Sends every day's log the server has not already accepted: each night
+   * (tickNightly), and when a person presses Send log. Not limited to the send
+   * windows (the log is for review afterwards, not for watching), but refused
+   * during performance mode, and each file only goes if its size changed since
+   * the server last accepted it. One send at a time: a press during the
+   * nightly run waits for it and gets its answer.
    * @returns {Promise<{ ok: boolean, sent: number, failed: number, tooBig: number, error?: string }>}
    */
-  async function sendLogs() {
+  function sendLogs() {
+    sending ??= sendLogsNow().finally(() => {
+      sending = null;
+    });
+    return sending;
+  }
+
+  async function sendLogsNow() {
     const mod = getModule();
     if (!mod?.enabled || !mod.consoleId || serviceFeedProblems(mod, env).length) {
       return { ok: false, sent: 0, failed: 0, tooBig: 0, error: "Telemetry isn't set up. Check Settings > Telemetry." };
@@ -378,8 +416,31 @@ export function createServiceFeed({
     return out;
   }
 
+  /**
+   * The nightly log send, checked once a minute. Waits out performance mode and
+   * the send windows; a
+   * failure is tried twice more, ten minutes apart, then left for the next
+   * night with the reason kept for the screens. Returns whether it ran.
+   */
+  async function tickNightly() {
+    const mod = usable();
+    if (!mod?.enabled) return false;
+    const date = new Date(now());
+    // Never inside a send window (a service), even when a restart makes today's run look not yet done.
+    if (!nightlyDue(mod, date, nightly.day) || inWindow(mod, date) || now() < nightly.nextAt || isFrozen()) return false;
+    const out = await sendLogs();
+    state.lastNightly = { at: now(), sent: out.sent, error: out.ok ? null : out.error ?? "Not sent." };
+    if (out.ok || ++nightly.tries >= NIGHTLY_TRIES) {
+      nightly.day = localDay(date);
+      nightly.tries = 0;
+      nightly.nextAt = 0;
+    } else nightly.nextAt = now() + NIGHTLY_RETRY_MS;
+    return true;
+  }
+
   return {
     tickStatus,
+    tickNightly,
     sendLogs,
     state: () => ({ ...state, ready: Boolean(ready()), inWindow: inWindow(getModule(), new Date(now())) }),
   };
