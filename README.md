@@ -5,573 +5,207 @@
 
 Find the slide. Send it. Sit back down.
 
-Refrain is a small web app you run on the same machine as ProPresenter. It searches the words inside your slides, not just playlist and file names, and puts what you find on screen with one click. Around that it collects the other small tools a church production team ends up needing, and it's built so your team can add the next one without rewriting anything.
+ProPresenter knows what is in your slides. It just will not tell you. Refrain
+asks nicely.
 
-It runs entirely on your own machine. Nothing is hosted for you, there is no subscription, and no data leaves your network unless you connect something to it yourself. Two optional features reach beyond this machine, both off until you turn them on: emailing the day summary through your own mail server, and a phone page on your church network for flagging slides.
+Refrain is a small web app that runs on the same Mac as ProPresenter. Type any
+word and it finds every slide that says it, across your whole library, then puts
+that slide on the screens with one press. Around search it keeps the other small
+tools a church production booth ends up needing: a service timeline, a way to
+flag slides to fix later, pre-service checks, a phone page for the back of the
+room, and a handful of prep tools.
 
-![Refrain search screenshot](docs/screenshot.png)
-
-## If you're about to build your own, read this first
-
-Every so often a church tech lead sits down to build "a little ProPresenter tool", or hands the idea to a volunteer, or asks a chatbot to do it. The feature you actually want is usually the easy part. The slow part is everything underneath it: working out ProPresenter's local API, deciding how an outside integration should plug in, and building a setup screen a non technical volunteer can use, and getting the unglamorous things right (keeping secrets out of version control, writing files without losing data, coping with two machines running at once).
-
-Refrain already did that groundwork, and it did it as a plugin system rather than one big tangle you'd have to unpick. If what you want is one more capability (a different church management integration, a new report, a screen only your team needs), the fast path is usually to fork this and add a module. You don't start from a blank file and rediscover all of the above. The developer section near the bottom has the details.
+It runs entirely on your own computer. Nothing is hosted for you, there is no
+account and no subscription, and nothing about your church is sent to the
+project.
 
 ## What it does
 
-**Slide search.** Type any word and Refrain finds every slide that contains it, anywhere in your library and across playlists, then lets you send it live or open it in the editor with one click. This is the core feature and it works on its own with nothing more than ProPresenter.
+**Search.** Every word on every slide, in the libraries you choose. Go Live puts
+the slide up; Show opens it in ProPresenter's editor without touching the
+screens. A typo is retried against your library's own words, so "ocenas" still
+finds Oceans. This is the core of Refrain and it needs nothing but ProPresenter.
 
-**Lyrics helper.** For a song your library doesn't have yet, Refrain runs a scoped web search across lyrics sites (or copies the search link so you can run it in a full browser window). It builds the link and hands you off: it never fetches or reads lyrics pages itself, which keeps it clear of those sites' terms and means there's nothing to keep licensed or updated. From there it helps you paste the words in, clean up the junk that comes with a web copy (hidden characters, odd spacing, curly quotes), and split them into slides in one step instead of breaking them up by hand. It can also spot blocks that repeat word for word (a chorus written out every time) and collapse them into one slide each, with the play order laid out so you can build the arrangement.
+**Now.** A booth panel for the things that come up mid-service: posting a pager
+code into a ProPresenter message, stage messages for the band, and, if you
+switch them on, your Looks and Macros and up to four safe slides to cut to in a
+hurry.
 
-**Arrangement tracking (optional).** Compares the arrangement your church management system planned for a song against what actually got run in ProPresenter, and can push the correction back so you stop making the same edit every week. Skip it and nothing else changes.
+**Day.** A timeline of what went live in each service, when, and for how long.
+Pre-service checks on a playlist (typos, past dates, missing media, arrangement
+problems), a checklist, a list of songs whose arrangement changed during the
+service, and End the day, which writes a summary you can email or save.
 
-**Image cropping.** Drop a photo in a folder and get it back cropped to every size you need at once (a slide background, a YouTube thumbnail, a square social post), with smart cropping that keeps the important part of the picture in frame.
+**Flags.** One press marks the slide on the screens as something to fix after
+the service. The Flags screen is where you work through them.
 
-**QR codes.** Generate a scannable code for a link, a WiFi network, a contact card and more, all on your own machine, with no third party generator that could expire your printed code or start charging later.
+**Phones.** An optional page anyone on the church network can open to flag a
+slide from the back of the room. With permission, a phone can also search,
+send a stage message, or go live.
 
-**Quality control.** Pick a playlist and Refrain scans its slides for likely typos before they go up on the screen. Words it flags that are correct for your church go on an **Ignored words** list you can see and edit, so a mis-click never hides a real typo for good. It leans on the words already common across your own library, so worship vocabulary and names it has seen before don't get flagged. Refrain can't edit slides itself, so it flags each word and jumps you to the slide in ProPresenter to fix it. The same scan catches **missing media**: a background, video or image a slide points at that isn't on this Mac, named by slide, with a note when the file was saved on another Mac and never copied over. It only looks at the playlist you picked, so it's a short list you can act on, not a count of everything ever deleted.
+**Prep tools**, each off until you switch it on: Lyrics (a scoped web search and
+a paste-and-split helper), Scripture (Bible Gateway and Blue Letter Bible links,
+and the same splitter), Image Crop (a drop folder that crops to every size you
+need), QR Codes (made on your own machine), Arrangement tracking (compare what
+you ran with what your planning system planned), and Bundles (open and check
+ProPresenter files).
 
-**A real plugin system under all of it.** Church management integrations, storage backends, lyrics splitting rules, and whole new screens are all things you add as files in a folder, not core surgery. When your team hits something Refrain doesn't do yet, the answer is "add a module", not "wait for a rewrite".
+**Quality Control.** Pick a playlist and Refrain lists likely typos, dates that
+have passed and media that isn't on this Mac, slide by slide.
 
-**Only what you switch on.** Search and Quality Control (with its date checks) are always there; everything else is a switch on **Settings › Features**, and a feature that's off has no tab and no routes. Flags, Service day and Messages (the Live page's message poster and stage messages, and the phone's Alert tab) start on. QR Codes, Looks, Macros, Image Crop, Arrangement tracking, Lyrics and Scripture start off. Safe slides (up to four, the slides themselves at the foot of Now) are a switch that starts off. Staff requests starts off too. In `config.json` it's the `features` block; a feature left out of it follows its default.
+Search, Quality Control and Now are always there. Nearly everything else is a
+switch on **Settings › Features**, and a feature that is off has no screen and
+its routes refuse. The [user guide](docs/README.md) covers each one.
 
 ## What's finished and what isn't
 
-Being straight about this, since "plugin system" can promise more than it delivers.
-
 Working today:
 
-- Slide search, Go Live, Show in Editor, and the library filter. (The date filter left the Search screen on 2026-10-07; the server still accepts a date range.)
-- The Return bar, to reopen the presentation that was live before an app jump.
-- The Now page: a message poster for urgent codes (with its own Clear, which takes only that message off the screens), stage messages, and, once switched on, one button per Look and Macro. There is no whole-screen Clear on Now: ProPresenter's own clear keys sit beside this window. The menu has no quick slides, no keyboard or phone key and one fixed narrow width (the Keyboard shortcuts button is in Settings › Customize and the ? key still works; the Phone panel opens from Settings › Phones).
-- The lyrics helper and paste to slides.
-- Scripture lookup, opening a reference in Bible Gateway or Blue Letter Bible.
-- Arrangement tracking end to end, with the Manual provider (you type the arrangement in) and the Planning Center provider (pulled automatically, including the one button "compare this weekend" workflow and pushing a fix back).
-- Arrangement storage on a Local Folder (single machine) or a Synced Folder (a Google Drive, Dropbox, or OneDrive folder your desktop app already keeps in sync, which is how two machines share without any server).
-- Image cropping, end to end.
-- QR codes, end to end.
-- Service timeline (on by default, switched on Settings › Features): the **Service** screen records what went live in each service, when it first went up, how long it was on screen, the gap before it, and any time you went back to it. Anything not in the service's playlist is kept and marked off-plan. It rides on what Refrain already reads to show the live readout, so it adds no traffic to ProPresenter and works with performance mode on. Times are when Refrain first saw each item, within about 4 seconds during a service. Services can be added for the day on that screen, with an optional time and playlist, or listed as a weekly schedule in `serviceModule.schedule`. Near a scheduled time Refrain checks the screens at its fast pace even with no browser open, so the times stay accurate. For events with no set time, **Lock in** watches closely and keeps performance mode on until you release it, and it survives a restart. **Before the service**, one press runs the pre-service checks on a service's playlist: ProPresenter answering, every presentation in the search index, likely typos, dates that have passed, missing media, playlist entries pointing at an arrangement the presentation no longer has (issue #5), and presentations with a twin in another library, and entries not on one of your `preferredArrangements` (such as FS) when the presentation has one. Each check says pass, needs a look, or couldn't check, and "couldn't check" is never shown as a pass. The checks won't read ProPresenter while performance mode is on. An hour before a timed service Refrain refreshes the index on its own (and nothing reindexes by itself from the service's lead time, 15 minutes before it by default, until its window closes: edits made then wait, and Search says so; pressing Refresh or Rebuild yourself then asks "Run anyway?" and goes ahead if you confirm), and from 45 minutes out the Service screen reminds you if the checks haven't run. A **checklist** (Arrive, Before the service, Between services, After the service) can be replaced in `serviceModule.phases`. **End the day** (two presses) closes the services and any lock-in, compares the arrangements of the songs actually shown (it never pushes anything back), and writes a day summary in Markdown: the rundown per service, flags by service and type, checks that needed a look, arrangement drift, and steps not ticked. It's kept with the day's records and, if `serviceModule.summaryFolder` is set, copied there as a new file each time. Health mentions a recent day that was never ended, once. The summary can also be **emailed** through your own mail server, or saved to a folder, when `reportModule` is turned on; a person presses Send after reading it. Or the day can **end on its own** (Settings › Features › Day summary, off by default): after two hours with nothing on the screens, or once ProPresenter has been closed for 15 minutes on this Mac (a crash counts; a restart between services doesn't), whichever comes first, and then the summary is sent with nobody reading it first. It never ends a day nothing went live, before a service still scheduled that day, or during a lock-in, and the Service screen says ahead of time when it will. The email addresses go in the same place; the mail server login goes in Secrets (.env). **Phones** (off until you press Turn on in the rail's **Phone** panel, which shows the steps, a QR code and today's PIN): a separate page anyone on the church network can open to flag a slide from the back of the room, choosing the slide on the screens, one a few slides back or ahead, or any slide found in the page's Search, with a type, a note (a **Note** type is for the team and needs its words) and their name; a picture of the flagged slide is taken when the flag is added and kept with it, so it still shows the right slide after the presentation changes (`slidePictures.flagged`, on unless false, even while other pictures are off). The page has five keys along the bottom: Service (what's on, Add flag, View flags), Search (words only; read-only), Alert, History (how long each item was up, with when it started and when it left) and Phone (link status). The same page shows where the service is (item 2 of 9, up 3:12). **The live slide is read from the arrangement that is playing**, not the one Refrain indexes: its words, its slide count and the arrangement's name come from ProPresenter's active presentation (the number shown to a person is always the number on ProPresenter's screens, counting from 1). **Search and alerts need permission** (owner, 2026-10-11): a phone with only the PIN can flag, see what is on and read History; to Search or send alerts it also types this month's four-digit **device code**, shown in the Phone panel, once a month (an untrusted phone, signed in only until midnight, is asked again each day). Search is held to 40 a minute per phone and 150 across all phones. A phone you approve by name in the Phone panel can also send **alerts**: one of your stage messages (a preset or one typed on the phone, seen on the stage screens, never by the audience) or a ProPresenter message with a field to fill in, such as a pager code, under Variables; every alert needs a second tap on the phone to confirm it. **Going live from a phone** is off until you switch on *Let phones go live* in the Phone panel (`networkModule.phoneGoLive`). A phone then needs the same device code it uses for Search and alerts (a phone signed in only until midnight is a new phone each day, so it is asked again; "Trust this phone" keeps it for 30 days), and for every go-live a fresh code the phone shows and the person types back (it stops a pocket press), then a separate confirm. It takes the screens even if someone at the booth is using them, each one is logged by phone name (`data/phone-golive-log.json` and the panel), and switching it off stops phones at once. Otherwise a phone never moves slides: no Next, no safe slides, no Clear, Looks or Macros. Slide pictures on a phone come only from pictures rendered ahead of time and kept on disk; a phone never makes ProPresenter draw one, except the single picture taken of a slide when it is flagged. **Slide pictures are off by default for now** (Settings › Phones › Slide pictures, `slidePictures.show`): while off, Refrain asks ProPresenter for no picture at all, and Now and Next show each slide's words. Two things are drawn anyway, because a person asked for them: the pictures Quality Control shows for the slides it flags (a prep scan, which never runs during a service), and **Get slide pictures** on the Flags screen, which draws a picture of each open flag's slide that has none (up to 40 a press, held off during a service and by Protect ProPresenter). The one exception is your **safe slides** on Now (Settings › Phones › Slide pictures › Safe slide pictures, on by default, `slidePictures.quickSlides`): each saved safe slide is drawn once when it's saved and kept, so the logo and the blank are told apart at a glance; nothing new is drawn during a service. With them on, **draw ahead of time** on the same card turns that on: today's service playlists are drawn while nothing is on the screens and no service is near (off by default, since ProPresenter keeps memory for each picture it draws until it restarts; restart ProPresenter after they're drawn). **Drawing ahead is paused for now** (since 2026-10-29, while ProPresenter 22 beta is slow on rich slides): Refrain draws nothing on its own whatever that switch said, and Settings shows it as paused. After editing songs on a service morning, **Update pictures** on Service › Day redraws only what changed: a slide that keeps its group, its place in the group and its words keeps its picture, wherever an edit or an arrangement change moved it. It reads each of today's presentations once, runs with rehearsal content on the screens, and refuses during performance mode. Flags that can't send wait on the phone and retry. It can ask for a PIN that changes every day, with the booth showing today's PIN on the Flags screen and the phone saying where to find it; "Trust this phone" keeps a phone signed in for 30 days, and Forget all phones on Health signs every phone out. Refrain's own screens stay on this machine only.
-- Now screen, for the booth: the current and next slide in the folded **On screen now** section, as pictures when slide pictures are on and as their words otherwise, and the last press any phone made. **Safe slides** at the bottom, the first four of your own known-good slides (a logo, a blank, a standing announcement) kept with **Keep as safe slide** in On screen now while one is up, one press each; a slide the presentation no longer has refuses rather than firing something else. The first four, and Clear all, are also in the menu on every screen, two presses each. **Stage message**: your presets (Keep going, we're delayed; Cut short, pressing for time; Killing it! to start) and anything typed, one press, shown in the Stage Message box of your stage layouts until Take down. Other messages, Macros, Clear and Looks are folds that open as you last left them; Clear sits there because ProPresenter's own clear keys are right beside Refrain. Messages and macros can each be hidden with Edit. During performance mode no screen makes ProPresenter draw a new slide picture; only pictures already on disk are shown. Messages with nothing to fill in (countdowns) get Show and Take down, with what each says and whether it's up. Macros can be hidden with Edit on their heading. Looks fold away below Macros. Problem-type flags live on the Flags screen, away from every live control. The top of Live shows what's on the screens, the same readout as Search, and the Looks heading names the Look that's on. Message fields offer the last few values you posted (a pager code, say) as taps that fill the field; posting is still its own press.
-- Search, from the keyboard: Enter moves from the box to the results, the arrows choose a slide, Enter opens it in ProPresenter's editor (never live), Esc goes back. A typo that matches nothing is retried against the library's own words ("ocenas" finds Oceans, "waymaker" finds Way Maker), and Search says so.
-- **Changed songs** (on **Service › Day**): after a live event, which songs' arrangements were changed in ProPresenter, as Before and After rows of group chips with the difference marked, and when ProPresenter last saved each ("10:12 am, 14 min into the service"). Songs saved during the service come first; ones saved before it (with Dismiss all), or after the last service ended (usually the clean-up), are quieter. Refrain remembers each song's group order the first time it sees it and only moves it when you press **Dismiss**, so an unreviewed change stays on the list. It compares the search index with that note (song titles and group names, kept in `data/known-good.json`) and asks ProPresenter for nothing. It can't put a song back (ProPresenter has no way to change an arrangement from outside): **Show in Editor** opens it so you can. It only sees the arrangement the index reads (your preferred one, such as FS), and a song edited before Refrain first saw it is learned as it was.
-- **Staff requests** (Settings › Features, off by default): other staff can send a short message from your announcement app, such as a pager code, and it appears on **Now** as a card for someone at this console to **Post it** or **Decline**. Nothing reaches the screens without that press, a request is good for eight minutes, and each is handled once. Refrain asks the announcement server for them (nothing connects in to this computer), using the address, key and send windows from Settings › Telemetry. The announcement app's side of this is described in `docs/service-feed.md`.
-- **Deep Search Arrangements**: search reads one arrangement of each song (your preferred one, such as FS, else the one ProPresenter has selected), so a slide that only another arrangement plays is not found. When a search finds nothing, one button looks through every arrangement. It can only read presentations the index holds the other-arrangement slides for: a rebuild or a Refresh (which now re-reads any unchanged presentation indexed before Deep Search existed) fills them in, and **Deep reindex (slower)** on Settings › Search (also **Save and deep reindex (slower)** under Libraries to Search) reads every presentation again, slowly and with patient retries, then says how many Deep Search can read. The count "could read X of Y presentations" covers only the libraries switched on under Search's Filter, and names where the unread ones are. Those results are Show only, never Go Live, because a slide number only means something inside one arrangement and Refrain can't change which one ProPresenter plays; each names the group (say, Tag) to drag into the arrangement. It reads what the index already stored, so it asks ProPresenter for nothing, but a library indexed before this version has to be fully refreshed once before it covers every song (the screen says how many it could read).
-- Flag this slide: one press on Search's strip, under the search box (or on the Live screen) records whatever slide is live, to fix after the service. It reads what Refrain already knows is on the screens, so it adds no traffic to ProPresenter and works with performance mode on. The Live screen also has a grid of problem types (wrong background, typo, timing, and so on) so one tap records what is wrong, not just where. The **Flags** screen is where you work through them afterwards: grouped by service day and presentation in service order, each with a type you can change, a note, Show in Editor, and Mark resolved. Resolved flags drop off the list after `slideFlagsModule.keepResolvedDays` (14 by default) but are never deleted. Replace the type list with `slideFlagsModule.types`. To share one list between two machines, set `slideFlagsModule.folder` in config.json to a folder both can see (Dropbox, Google Drive, OneDrive); each flag is its own small file, so two machines never overwrite each other.
-- Theme check on Health (a button, read-only): which theme each deck's slides come from, and the decks that don't use their library's most-used theme. "Current theme" means exactly that for now, and the card says so.
-- Quality control (spell check) across a playlist's slides, end to end. The same scan flags dates that have already passed, like an announcement for last month's event still in this weekend's loop, and media a slide needs that isn't on this Mac.
-- **Library Sync (Share Library) has been removed.** It copied one library between machines by writing presentation files into ProPresenter's library folder, the only thing Refrain ever wrote to ProPresenter's data, and it could run on its own while ProPresenter was closed. That was judged too dangerous to offer. Its screen and settings are gone, and it can't run, whatever `config.json` says. The copy code is still in `server/library-sync.js`, unused, if anyone wants to look.
-- Presentation names that appear in more than one Library folder, listed on Health with a Show in Editor button each. Two decks with the same name cannot be told apart in search or Go Live.
-- An unused media report on Health: files in ProPresenter's Media folder that no presentation, playlist, theme or Media bin item uses, largest first, each with Show in Finder. It is a button, never automatic, and Refrain never deletes anything.
-- ProPresenter first aid on the Health screen: when it won't start, Diagnose explains why and hands you a command plus a ready-made prompt.
-- A readout of what is on the screens, with an elapsed clock, on Settings › Status (it left Search and Now in 2026-10-07), and four small lamps at the top of the rail on every screen: link, live, performance mode and the status feed.
-- Reindexing only the presentations whose file changed, automatically a few seconds after you save one.
-- Performance mode, which stops Refrain doing anything of its own accord while something is on the screens.
-- A segmented meter for index progress, in first-run setup and on the Health screen.
-- Stopping a running index build from the Health screen. A crawl makes ProPresenter sluggish, and until v0.14.0 the only way to end one was to quit Refrain. Anything already read is kept and the rest keeps what it had.
-- Waiting for ProPresenter to finish starting before the first index build. Reads fail en masse while ProPresenter is still indexing its own media after launch — measured at 221 of 445 lost — and a silently half-built index looks exactly like a complete one.
+- Search, Go Live, Show, the library filter, typo retry and Deep Search.
+- Indexing from ProPresenter's library files, reindexing changed presentations
+  on its own, performance mode and Protect ProPresenter.
+- Now, Day, Flags, Quality Control, Lyrics, Scripture, Image Crop and QR Codes.
+- The phone page, including alerts and going live from a phone.
+- Arrangement tracking with the Manual and Planning Center providers, stored in
+  a local folder or a synced folder (Google Drive, Dropbox, OneDrive).
+- The day summary, delivered by email or to a folder.
 
-Built, but not proven end to end (read this before relying on them):
+Built and tested, but not yet proven in a real service:
 
-- **Refrain.app** (macOS, `scripts/build-mac-app.command`) is new. Checked on one Mac: it builds with only the Command Line Tools, loads every screen, answers `confirm()` prompts, keeps its title bar in step with the light and dark themes, sends outside links to the browser, and shows a "Refrain isn't answering" page that recovers on its own. Not yet tried by hand: downloading a QR code, picking a file in Bundles, the Copy buttons, and a full service docked beside ProPresenter.
+- **Refrain.app**, the optional native Mac window.
+- **Bundles** and the **MCP server** for assistants. Nothing an assistant edits
+  has yet been imported into ProPresenter and checked by eye. The script builder
+  places a reused title slide for you but not a reused verse or logo slide.
+- **The service feed** and **staff requests** have only been run against a test
+  server. The announcement app on the other end is not built yet.
 
-- **Staff requests.** Refrain's side is built and tested against a fake announcement server: the polling, the card on Now, the 8-minute limit, approve and decline. Two things are not done: the announcement app has no sender or request list yet (the contract for it is in `docs/service-feed.md`), and posting an approved request into a real ProPresenter message has not been run, only the same message path the poster already uses.
-- **Deep Search** and the group names on results need a full refresh of the library once; until then the screen says how many songs it could read.
-- **Changed songs** only sees the arrangement the index reads, and only learns songs from the day it is switched on.
-- **The script builder for assistants** (`npm run mcp`, under Bundles) builds a bundle from a script and your church's own pack. Its output matched the existing builder's exactly on one church's real script, but no show has run from it yet, and a reused verse or logo slide is not placed for you.
-- **Bundles** (read only; Settings › Features, off by default) is new and has been run only on invented sample files, not on a real library. Its slide drawing was compared with ProPresenter's own pictures of real slides, but the screen showing it has not been used on a real library yet. It uses the `propresenter-bundle` package, which `npm install` fetches from GitHub (see below), and its fit and line checks are a rough guess until there is a font table for your church's fonts.
+Stubs (the interface exists, the methods refuse to run):
 
-Wired up but not finished (the interface exists, the methods currently refuse to run):
+- The **Firestore** and **SFTP** storage backends for arrangement history.
+  They appear in the settings, but every read and write throws "Not
+  implemented". A synced folder is the working way to share between machines.
 
-- The Firestore and SFTP storage backends. They show up in the config and the plugin system recognizes them, but their read and write methods are stubs. If you need true multi machine sharing and a synced folder won't do, finishing one of these is the next job, not a switch you can flip today. CONTRIBUTING.md describes the interface.
-- Only two church management providers exist so far (Manual and Planning Center). Rock RMS, Church Community Builder, Elvanto and the rest are documented as places to plug in, not built integrations.
+Paused:
 
-### A warning about Library Sync, and what changed
+- **Drawing slide pictures ahead of time.** While ProPresenter 22 beta is slow
+  on rich slides, Refrain draws no pictures on its own. **Update pictures** on
+  Day still draws them when you ask, once slide pictures are on and Protect
+  ProPresenter is off.
 
-*Library Sync has since been removed (see above). This section is kept for anyone who ran it on an older version.*
+Not built:
 
-**If you ran Library Sync before v0.13.0, run it only with ProPresenter closed, and check your workspaces.**
-
-Library Sync copies presentation files into the library folder ProPresenter reports as its own. Until v0.13.0 there was no check on whether ProPresenter was running at the time. ProPresenter keeps a private catalog of each workspace, built from the library at startup and held open while the app runs — files appearing or being replaced underneath it is how that catalog and the files on disk stop agreeing, which is what a corrupted workspace is.
-
-One church lost three workspaces in the months after adopting Refrain, having lost none in the years before, with a sync run the night before the last one. That is correlation rather than proof, but the mechanism was real and unguarded, and it is the most likely explanation.
-
-Refrain now refuses to run a sync while ProPresenter is running — in either direction, because reading the library while ProPresenter writes to it captures a torn file that then propagates to every other machine. If it cannot tell whether ProPresenter is running, it refuses.
-
-**If you are on v0.13.0, that guard refused everything.** ProPresenter registers a launchd service, `com.renewedvision.propresenter.workspaces-helper`, which keeps running whenever ProPresenter is installed — app open or not. The v0.13.0 guard counted any ProPresenter process as "still running", so with ProPresenter fully quit it still refused, saying two of its processes were live. Library Sync could therefore never run at all on a normal Mac. v0.14.0 knows which helpers launchd owns and ignores those; a running main app, a genuine leftover helper, and a reachable API all still refuse, and if the process list cannot be read nothing is excused.
-
-Two related changes came with it. Sync no longer back-dates the timestamps of files it writes, so a file that lands in a library says when it arrived. And Refrain no longer opens presentation files at all: the index fingerprints them from `stat()` metadata, where it used to read all of them in full on every reindex.
-
-Not independently checked:
-
-- **Light theme is secondary.** Refrain is designed for a dark booth and starts in dark; light and system are there if you want them, and light gets the same colours, contrast, hit areas and indicators, but not the machined material — no cap gradients, lit collars or panel junctions, because a warm-graphite object does not really have a light mode. It is also the theme we look at least, and a run of defects that only appeared there (a primary action below AA contrast, a touch target under 44px, a status lamp that was invisible, a progress meter that did not render) were all found and fixed late. Those are fixed, but if you run light theme and something looks wrong, it is more likely to be real than a misreading, and worth reporting.
-- Only tested against ProPresenter 7.x on the machines that built it. Other versions may need small path adjustments. See Compatibility below.
-- The live-output features (Return bar, the Live page's Looks, Macros, and message poster) were built to ProPresenter's documented API but confirmed only against fake servers during development. If you run a live rig, [docs/propresenter-verification.md](docs/propresenter-verification.md) is a twenty-minute checklist to confirm them, with the exact response to capture if any endpoint differs on your version.
-- Confirmed against a real ProPresenter, twice and by two different methods: that ProPresenter counts disabled slides in the flat index it triggers against, which is what Refrain assumes. Once by firing a slide (2026-08-30) and once read-only, with nothing put on the screens (2026-09-11). It matters more than it sounds: disabled slides are common, and had the assumption been wrong, every slide after one would have fired a position off.
-- Confirmed against a real ProPresenter: the library crawl, incremental reindexing (445 presentations carried over, 0 re-read, 68ms), the layer-status heartbeat, performance mode both arming itself from real screen output and holding a manual arm, the Return history across multiple jumps, and the arrangement correction — a deliberately stale slide index was re-pointed 39 slides and put the right slide on the screens. Sections 2b to 2d of [the verification checklist](docs/propresenter-verification.md) record the measurements.
-- Still not seen working on a live rig: the watcher picking up a presentation you have just saved (ProPresenter's API can't edit a slide, so this needs a person), performance mode standing down on its own after twenty minutes, and its behaviour when ProPresenter quits outright. The checklist says which is which.
+- Church management providers other than Manual and Planning Center. Rock RMS,
+  Elvanto and the rest are a new file in `providers/` away, and nobody has
+  written one yet.
 
 ## What you need
 
-ProPresenter, with its local network API turned on (Preferences, then Network). That's the whole requirement for search.
-
-Everything else (a church management integration, shared storage, image cropping, QR codes) is optional and set up separately, and none of it asks you to change or restart ProPresenter.
-
-## When Refrain indexes, and why ProPresenter has to be open
-
-Refrain has no separate copy of your library. When ProPresenter runs on the same
-computer, Refrain asks ProPresenter **which presentations each library has**,
-then reads each one **from its own `.pro` file** in ProPresenter's library. It
-never writes to those files. Reading through ProPresenter's API instead makes
-ProPresenter write to its own workspace database for every presentation (about
-13 KB each, measured), and a library-sized crawl preceded a "Bootstrap failure"
-on one church's machine; reading the file writes nothing. On this Mac's library
-of 763 presentations, the words, slides, groups and arrangements read from the
-files matched what ProPresenter's API gave, except a box showing a running timer.
-When ProPresenter runs on another computer, or the `propresenter-bundle` package
-is missing, or `indexFromFiles` is `false` in config.json, every presentation is
-read through the API as before. Two things are easy to get backwards:
-
-- **ProPresenter has to be open for indexing to happen at all.** It says which
-  presentations each library has. Closing it stops a build.
-- **What stops Refrain working is something being live, not ProPresenter being
-  open.** That is performance mode: while anything is on the screens, Refrain
-  does nothing of its own accord. ProPresenter open with clear screens is the
-  ideal moment to index, not a problem.
-
-Indexing is reads only. Nothing is ever sent to the screens by a build.
-
-Two checks keep the files honest. Each build compares what ProPresenter lists
-with what is on disk, library by library (a presentation it lists that isn't on
-disk, a file it doesn't list). And when a presentation goes live, the words and
-slide count ProPresenter is playing are compared with the same presentation read
-from its file; a difference shows on Settings › Search beside the index.
-
-### What needs ProPresenter open, and the one thing that needs it closed
-
-| | |
-|---|---|
-| **Needs it open** | Building or refreshing the search index, Go Live, Show in Editor, the Live page (Looks, Macros, Clear, messages), the live readout and Return bar, Quality Control, and Arrangement comparisons. All of these go through ProPresenter's API. |
-| **Does not care** | QR codes, image cropping, splitting pasted lyrics into slides, and Scripture lookup. Searching an index you already have works too — only *building* it needs ProPresenter. |
-| **Needs it closed** | Nothing, now. (Library Sync did, and it has been removed.) |
-
-Library Sync is the exception because it is the one feature that writes
-presentation files into a library folder rather than reading through the API.
-ProPresenter builds a private catalog of each workspace at startup and holds it
-while the app runs, so files appearing or being replaced underneath it is how
-that catalog and the disk stop agreeing — which is what a corrupted workspace
-is. Refrain refuses to sync in either direction while ProPresenter is running,
-and refuses if it cannot tell.
-
-It does make ProPresenter sluggish while it runs — Go Live, Clear and macros
-can be slow to respond — so the time to do it is before a service, not during
-one. A full build takes about a quarter of an hour on a nine hundred
-presentation library. After the first one, Refrain only re-reads presentations
-whose file changed, which takes seconds.
-
-If a build is running and a service is about to start, the Health screen has a
-**Stop indexing** button. Everything already read is kept, and the rest keeps
-what it had.
-
-## Large libraries
-
-**Never rebuild the index near a service** when it reads through ProPresenter's API (ProPresenter on another computer, or `indexFromFiles` off). Read from files, as it is when ProPresenter is on the same computer, a rebuild asks ProPresenter only for its library lists and takes about a minute for 763 presentations. Through the API, a rebuild reads every presentation in your library one at a time, and on a real library that means anything from several minutes to well over an hour. For the whole time it runs, ProPresenter itself gets sluggish and can stop answering at all, which means Go Live, Clear, and macros may not respond. Measured on a real setup: sermon-length presentations took ten to fifteen seconds each to read, and ProPresenter stopped reacting to slide triggers entirely while it was being crawled. Only start a rebuild when you are sure nothing crucial is happening for the next hour or two, and then let it finish rather than killing it partway.
-
-**Performance mode.** While it is on, Refrain does nothing of its own accord: no indexing, no reindexing, no update checks. It keeps one small heartbeat running, every few seconds, so the link indicator and the live readout stay honest. Knowing whether ProPresenter is still answering matters more during a service, not less. Everything you press still works You are in charge; it just stops acting on its own. There is a switch on the Live screen, and it also turns itself on once something has been on the screens for a couple of minutes, and off again about twenty minutes after they go clear. Turning it on by hand keeps it on until you turn it off by hand; a timer should not overrule a person who knows a service starts in ten minutes.
-
-It replaces an older rule that simply refused to index on Saturdays and Sundays. That was a guess at "a service is happening" and it was wrong in both directions. It blocked indexing on an empty Saturday afternoon and allowed it during a Wednesday evening service. ProPresenter reports what is actually on the screens, so Refrain asks instead of guessing. If ProPresenter cannot be reached, performance mode stays on, because not knowing is not a good enough reason to start crawling.
-
-**Most of the time you should not have to touch the index at all.** Refrain watches your library folders, and a few seconds after you save an edited presentation it reindexes that one presentation on its own. A burst of saves collapses into a single reindex, and a slow background check every half hour covers anything the watch missed.
-
-It is deliberately cautious about what it will do unasked:
-
-- **It never starts a full rebuild.** If something changes that needs one, such as editing your preferred arrangements or upgrading Refrain, it stops and says so on the Health screen rather than beginning a job that makes ProPresenter sluggish for half an hour.
-- **It stops at 25 changed presentations.** A bulk import or a Library Sync run shows up as "38 presentations have changed" on the Health screen, waiting for you, instead of quietly starting a multi-minute crawl.
-- **It waits a few minutes after ProPresenter starts**, because reads fail en masse while ProPresenter is still indexing its own media.
-- **It stays out of the way when playlist crawling is on**, since that makes every reindex expensive.
-
-Set `"autoReindex": false` in `config.json` to turn it off and go back to reindexing by hand.
-
-**Consider a full rebuild once a quarter.** Reindexing keeps up with anything that changes a presentation file, which is nearly everything. It does not catch playlist membership, which lives elsewhere, and not a presentation that failed to read and kept its previous slides. Refrain mentions it on the Health screen once the whole library has not been read in 90 days. It never starts one for you.
-
-**Let ProPresenter settle before you rebuild.** Measured on a real library: a full rebuild started right after launching ProPresenter lost 221 of 445 presentations to failed reads, 219 of them in the folder crawled first, because ProPresenter is still busy indexing its own media at that point and stops answering. The same presentations then fetched in 15-30ms once it had settled. Nothing was lost (failed reads keep whatever the previous index had, and a later reindex retries them), but it turned a 15-minute job into 27 minutes plus a second pass. Give ProPresenter a few minutes after launch before starting a rebuild.
-
-**Reindex changed only, not Rebuild Everything.** The Health screen's main button re-reads just the presentations whose file changed since the last build, which on a normal week is a handful rather than hundreds. It works out what changed by fingerprinting every presentation file on disk (size, modified time, and a content hash); measured on a real library that is 818 files and 70MB in under half a second, against fifteen minutes for a full crawl of 445 presentations. Everything unchanged keeps the slides the previous build already read.
-
-Two things still force a full rebuild, and Refrain switches to one on its own when they happen: changing your preferred arrangements (which changes which arrangement's slide order gets indexed, for every song that has more than one) and turning playlist crawling on or off. It also falls back to a full rebuild if ProPresenter is on another machine, since there are no files to check.
-
-Refrain deliberately does not read ProPresenter's own catalog of your workspace. That catalog lives in a hidden folder as a database held open and locked by ProPresenter while it runs, in a private format with no published structure, and a corrupted one stops ProPresenter launching at all. The presentation files hold the same information, are not locked, and Refrain only ever reads them.
-
-You need a *full* rebuild only after changing your preferred arrangements, or when slides you have edited are not turning up in search even after a reindex. Day to day, you do not need to touch either one.
-
-**One index build starts on its own, so know about it.** If the index is more than a day old (or was built by an older version of Refrain) when you start the app, it reindexes changed presentations in the background without asking. That is usually quick, but it becomes a full rebuild if the index was built by an older version of Refrain. Either way it is skipped entirely on a Saturday or Sunday unless you ask for it. If you are starting Refrain shortly before a service, open the Health screen first: if it says a rebuild is running, quit Refrain, and start it again once the service is over. The index you already have keeps working in the meantime.
-
-If your library runs to hundreds of presentations or playlists, a full index build can take a while, and on some setups hitting the API with lots of playlists at once can make ProPresenter itself sluggish. You can narrow what gets indexed in `config.json`:
-
-```json
-"librarySync": {
-  "folders": ["Songs", "Messages"],
-  "crawlPlaylists": false
-}
-```
-
-Set `folders` to `null` to index every library folder. Set `crawlPlaylists` to `true` to also record which playlist each presentation belongs to, which is the slowest part of a build, so it's off by default. Search still covers every presentation in the chosen folders either way.
-
-### Snapping back after a tangent
-
-Live services wander. A singer goes to a song that wasn't in the plan, you search it up and hit Go Live, and now you need to get back to exactly where the plan was, fast. The moment you use the app to jump somewhere, Refrain quietly remembers the slide that was live right before, and a **Return** bar appears across the top of every screen: one click brings that presentation back up in ProPresenter's editor so you can pick the next slide yourself.
-
-Return opens the presentation, it doesn't fire a slide live, so it never changes what's on the screens out from under you mid-song. It only remembers the slide from that one app jump, captured at the click, and tells you which slide you were on. If you then advance seven slides by hand in ProPresenter during the tangent, Return still takes you back to where you were before the jump, not seven slides into the detour. Once you've returned, the bar clears until the next time you jump from the app. Nothing to set up, and it works with search alone.
-
-### Seeing what a pastor changed
-
-A common headache: someone says "I made an update" to a sermon-notes presentation that runs many pages, and you need to find what actually changed. Search gets you to a slide by its text, but it doesn't compare two versions of a document. For that, a diff tool is the right companion. Put the old and new text side by side and it highlights exactly what moved, got added, or got cut.
-
-Keep sermon content on your own machine and use a tool that runs locally rather than a website you paste into (that would send the text off your network, which is the thing this whole project avoids):
-
-- **VS Code** (free, Mac/Windows/Linux): open both files, right click one and pick "Select for Compare", then right click the other and pick "Compare with Selected".
-- **Meld** (free, open source) or **WinMerge** (free, Windows only): purpose-built visual diff tools.
-- **Beyond Compare** or **Kaleidoscope** (paid): polished options a lot of people like.
-- Already in your tools: **Word** has Review, then Compare for two `.docx` files, and macOS ships `diff` in Terminal and FileMerge with Xcode's command line tools.
-
-If the notes live somewhere with version history already (Google Docs, a Word file on OneDrive, anything under Git), its built-in "see version history" or "compare" is usually the fastest path of all.
-
-## Scripture lookup
-
-Open the **Scripture** screen, type a reference ("John 3:16", "Romans 8", "Psalm 23:1-6"), pick a version, and open it in **Bible Gateway** or **Blue Letter Bible** in a new tab (or copy the link to open in a full browser). It's the same idea as the lyrics helper: Refrain builds the link and hands you off, it never fetches or stores scripture text, so there's no bundled bible to keep updated and no version-licensing problem.
-
-Bible Gateway carries nearly every translation, so that's the one for reading and copying a passage. Blue Letter Bible is the one for original-language study (interlinear, Strong's numbers, Hebrew and Greek word tools). Because Blue Letter Bible doesn't carry some modern versions (NIV, NLT, The Message), when you've picked one of those the Blue Letter link opens your configured fallback translation instead, and the screen tells you so. Set the defaults with `scriptureModule.biblegatewayVersion` and `scriptureModule.blueletterTranslation` in `config.json`.
-
-Once you've copied the passage from the site, the same page has a **Paste and split into slides** step, the same one the lyrics helper uses: paste the text, clean up the junk that rides along from a web copy, and split it into slide-sized blocks to drop into ProPresenter. Refrain still never fetches scripture itself, so any version is fine since you did the copying by hand.
-
-## Live page
-
-Open **Service › Now** for big, high-contrast controls meant to be hit at a glance from the back of a dark room. There is no whole-screen Clear here: ProPresenter's own clear keys sit beside this window, and the message poster below has a Clear that takes only its message off the screens .
-
-At the top is a **message poster** for the thing that always comes up urgently mid-service: a code that needs to go on the screen right now, like "Parent of child 1234, please come to childcare downstairs." You set up a message once in ProPresenter (a message with a text token), and from then on Refrain gives you a plain text box and a big **Post to screen** button, so posting a code is type-and-hit-post instead of digging through ProPresenter's message setup every time. **Clear** takes it back down. If you have more than one such message a small picker chooses between them; messages with no text field to fill (a timer, say) aren't listed here.
-
-Below that (once Looks and Macros are switched on in Settings › Features; both start off), Refrain lists the **Looks** and **Macros** you've set up in ProPresenter, one button each, pulled live. So your own "Logo", "Black", "Motion", or whatever you've named them show up by name with nothing to configure here, and tapping one switches the screens to it. If ProPresenter is unreachable the Clear buttons still work; the message poster, Looks, and Macros just won't be listed until it's back.
-
-Nothing here fires a slide live on its own, so it's safe to keep open during a service. It works with search alone, no setup.
-
-## Image cropping
-
-Switch it on in **Settings › Features** (it starts off), then set it up on the **Image Crop** screen. There's nothing to edit in a config file. Refrain creates a default input and output folder inside its own folder up front (and pre-fills them on the screen), so you can hit **Open**, make an alias of the input folder wherever's handy, and drop pictures straight in. You can still point it at any other folders instead. Drop a picture in the input folder and a few seconds later you'll have one cropped copy per preset in the output folder. The original isn't deleted: it moves into a `processed` subfolder inside the **output** folder, so your input folder stays empty like a proper drop box and everything you'd look at (the crops and the untouched original) is in one place.
-
-You can point the input and output at any folders you like on that screen. On a multi-user machine this follows the same logic as where you installed Refrain: if you installed it in the shared `/Users/Shared/Refrain`, the folders it makes for you are already under there, so every account can reach them. If it's in one account's `~/Refrain`, the folders live there too, which is fine when that account does the cropping. Only if you want other accounts to drop images and collect results should you move the folders to a shared spot (a `/Users/Shared` subfolder), and make sure the account running Refrain can read and write them, since that's the account whose watcher does the work.
-
-It starts with a set of presets aimed at what a service drops straight onto a screen: a 1080p slide background and the lower-third and book graphic sizes.
-
-| Preset | Size | Preset | Size |
-|---|---|---|---|
-| 1080p (16:9) | 1920x1080 | Thirds tall | 605x808 |
-| Thirds square | 693x693 | Book graphic | 515x787 |
-| Thirds wide | 777x502 | | |
-
-An **Add common size** picker holds the rest (4K, 1440p, YouTube thumbnail, OG/Facebook, the Instagram shapes, X/Twitter, LinkedIn, Pinterest, Facebook cover, ultrawide) so you never have to look up pixel dimensions, and **Add custom** covers anything else. Delete the ones you don't want. Every preset in the list becomes one output file per picture you drop.
-
-Output files keep the original name plus the preset's label, so `promo.jpg` comes back as `promo_thirds-sq.jpg`, `promo_book.jpg`, and so on. The label is the last box on each preset row and you can edit it to anything (it's cleaned up to be filename safe on save); leave it blank and it's derived from the preset name.
-
-Cropping uses [smartcrop.js](https://github.com/jwagner/smartcrop.js), which picks the most visually important region rather than blindly centering. There's no model to download and no GPU involved, and it holds up across the mix of images a church actually has: portraits, worship graphics, text heavy slides. Face detection is a possible future add for photo heavy work, not something you need to get value now.
-
-### Make it a one drag habit
-
-The idea is that you never open this screen day to day. You drag pictures onto a shortcut and collect the results. After you enable it, click **Open** next to the input folder, then make a shortcut to that folder:
-
-- **macOS:** drag the input folder into the Finder sidebar under Favorites for a permanent drop target, or right click it, choose Make Alias, and move the alias to your Desktop.
-- **Windows:** drag the input folder into Quick access in File Explorer, or right click it and choose Send to, then Desktop (create shortcut).
-
-Leave Refrain running (minimized is fine). Drop pictures on the shortcut and the cropped versions show up in the output folder on their own. No clicking, no waiting on a screen. When the watcher is running you'll see a small green dot on the Image Crop icon in the sidebar, so you can tell it's live at a glance.
-
-## QR codes
-
-Open the **QR Codes** screen (on unless switched off in Settings › Features, nothing to set up), pick a type, and a scannable code renders as you type. Download it as a PNG (with an optional logo in the middle) or an SVG, which is the better choice for print because it scales to any size with no blur.
-
-Types covered: website link, plain text, WiFi network (scanning it joins the network, which is handy for a guest WiFi sign), contact card (vCard), email, phone, and SMS. You can set the size, colors, quiet zone, and error correction level (defaults to a light quiet zone and low error correction, since that reads cleanly on a screen and there's no print damage to guard against). Adding a logo bumps error correction up automatically so the code still scans.
-
-If your church always points codes at the same site and logo, set `qrCodeModule.defaultBaseUrl` and `qrCodeModule.defaultLogoUrl` on the Health screen's Configuration form (or directly in `config.json`) so the URL field and the center logo are pre-filled every time instead of retyping and re-uploading them. Either is still replaceable or clearable per code. The logo value can be a local path Refrain already serves (e.g. `img/mylogo.png`) or a full URL.
-
-You can also set a **default QR size** (`qrCodeModule.defaultSize`, on the same form) to the pixel size your screen layout expects. The screen then starts at that size, so a code you make drops onto the screen at the right size with no resizing. It's still adjustable per code.
-
-Every code you download is saved to a **Recent codes** strip at the bottom of the screen. Click any one to bring back its type, content, and appearance so you can re-download it or tweak it, no retyping. A large uploaded logo isn't kept (it would bloat the history), so restoring one of those brings back everything except the logo, which you re-add. Clear the whole strip any time with the Clear button. How many to keep is up to you: set `qrCodeModule.recentLimit` on the Health screen's Configuration form (or in `config.json`), from 0 (turn the strip off) up to 100, defaulting to 20.
-
-It all happens on your machine, and that's the point rather than a technical footnote. A lot of "free" online QR generators encode a link back through their own domain instead of your actual content, which leaves them able to expire the code, throttle it, add tracking, or start charging later. That can quietly break a code you already printed on 500 bulletins. A code made here holds your content directly, with nobody in the middle.
-
-## Bundles (ProPresenter files)
-
-Open a presentation (`.pro`) or a bundle (`.probundle`) and see every slide **drawn**, in a grid you can size, grouped as the presentation is. Open one large to see its boxes front to back with their words or picture, its media and macros, its notes, and anything Check found on it; **Rough out** outlines and names every box. The drawing follows ProPresenter's own (the rules, and how close they come, are in the package's `docs/RENDERING.md`), in the fonts installed on this computer, so a line can still break differently where ProPresenter's computer has different fonts. Pictures come from the bundle, or for a library file from its ProPresenter workspace; a video shows its first frame when ffmpeg or macOS Quick Look can make one. **Check** lists what will go wrong on import: media the bundle leaves out, fields ProPresenter wrote that the reader can't understand, capitals that stop short of the words, and text predicted to overflow its box or end on one word. **Compare** two versions, such as a file as it was imported and the same file after someone fixed it by hand, and see every box that moved, every word that changed and every slide added.
-
-Open from the library by name (anything Refrain has indexed), from a file on this computer, or **from Claude**: the working copies an assistant is changing over Refrain's MCP, and the bundles it built, newest first. An open draft is redrawn within a couple of seconds of each change, on the same slide, with a line saying what changed.
-
-It works with ProPresenter closed or not installed at all, since it only reads files; the library list needs Refrain's search index, which needs ProPresenter. It never changes a file you open and never talks to ProPresenter (the only thing it writes is a cache of the pictures it shows, under `./data/probundle-staging/pictures`, cleared of anything a week old), refuses while something is on the screens or performance mode is on (except the precaution Refrain takes when it simply can't reach ProPresenter), and reads each file off Refrain's main thread with a 30-second limit, so a large bundle can't hold up anything live.
-
-It asks for a **packs folder** first (default `./data/probundle-packs`). That is where your church's own templates will go when editing arrives; it must be under `./data` or outside Refrain's folder, so a template can't be committed by accident. Editing is not built yet.
-
-The reading and checking are the [`propresenter-bundle`](https://github.com/capitalchurchtech/propresenter-bundle) package (MIT), installed from its GitHub tag rather than npm, which this module loads only when used: if it's missing, Bundles says so and everything else is unaffected. It uses the community ProPresenter schema, is not supported by Renewed Vision, and a ProPresenter update can change what these files hold.
-
-### ProPresenter files, for an assistant (MCP)
-
-`npm run mcp` starts an MCP server over stdio, for Claude or another assistant on the same computer. It works on ProPresenter's files only and never talks to the ProPresenter app, so it runs on a computer without ProPresenter. **It never opens ProPresenter's database**: only `.pro`, `.probundle` and `.protheme` files open, nothing inside ProPresenter's Workspaces folder or any folder named Database, and a link is followed before it is checked.
-
-The general tools need nothing but `npm install`: `refrain_open` (any presentation, bundle or theme, every slide with its boxes and macros; a playlist's items with their arrangement names, and with `inside` any presentation it carries, which `refrain_make_copy` can copy out as a bundle with its media), `refrain_read_slide`, `refrain_check` (what will go wrong, and boxes with no name or sharing one), `refrain_make_copy`, `refrain_edit_boxes` (what ProPresenter's editor changes on a box: name, words, font, type size, colour, alignment, line spacing, lists, text outline and shadow, feather, margins, fit, capitals, position, size, turn, fill, outline, shadow, see-through, hidden, locked, front to back, copy, delete), `refrain_edit_slides` (label and its colour, on or off, background colour, group, order, copy, delete, macros by name, media, and the other actions a slide can fire: clear a layer, a Look, a prop, a message, a timer, a clear group or a stage layout, each by its name in ProPresenter's workspace and copying the church's own macros' settings for that kind; notes, and transitions by effect name (copied from a slide that already uses the effect, in the file or ProPresenter's library, since an effect is one of ProPresenter's presets); group names and colours; arrangements, made, changed, renamed and deleted, and which one plays; the presentation's name), each checked together and saved together or not at all, and `refrain_build_from` (a new presentation from existing slides, or from a theme's slides as masters, with new words in the boxes named and the pictures those slides use). The text settings are written where ProPresenter keeps them, in both places where it keeps two (a box's colour is in its RTF and its text fill), but **none of the editor changes has yet been imported into ProPresenter and looked at**. Nothing the person points at is ever changed: changes are made on a working copy in `./data/probundle-staging`, each is checked before it is saved, and a file holding anything the reader can't understand is read but never copied for changing. Specific jobs (a sermon, a skit, tidying a theme, anything) are **skills**: written instructions with their reference files, kept in the church folder (the Bundles packs folder, or `./data/probundle-packs` when none is set) as `skills/<name>/SKILL.md` and `skills/<name>/files/`. `refrain_list_skills`, `refrain_read_skill`, `refrain_save_skill` (the previous version is kept in the skill's `.history`) and `refrain_file_away` (a file the person gives, kept with a skill, never replacing one already there). The skills are also offered as MCP prompts, and a skill folder works as a Claude skill too. Changing how a job is done means editing its skill, not Refrain.
-
-`refrain_read_workspace` gives the assistant what the church's ProPresenter knows by name, read only: macros, Looks and screens, labels, groups, props, messages, timers, stage layouts, clear groups, and playlists a level at a time. It reads ProPresenter's workspace on this computer when ProPresenter is installed (its content folder, never the database beside it), else a copy of a workspace's `Configuration` and `Playlists` folders kept in the church folder's `workspace`. Without either, the tools still read every file they're given.
-
-ProPresenter can't import a stage layout or a prop, and the MCP never writes to a workspace (it can corrupt ProPresenter's database). So `refrain_workspace_to_presentation` makes them an ordinary presentation: one slide per stage layout or prop, every box as it is, links to the current slide, the clock and timers included, with the pictures they use. Import it, tidy it with the box tools if wanted, and copy the boxes into ProPresenter's stage layout or prop editor.
-
-The script builder below is the first specific job, still built in.
-
-The script builder turns a play's script (a skit, a kids' service, a camp night) into a ProPresenter bundle made from your booth's own slides: one slide for each line, labelled with who says it in their colour; one Scene Notes slide for each stage direction; a slide for each picture, background, video and sound; and a cue slide before anything the sound desk has to do, called VIDEO or AUDIO. Lights go into a slide's notes as a Vista cue rather than on a slide of their own.
-
-Its tools are `refrain_list_script_types`, `refrain_parse_script`, `refrain_preview_script` (the script read back like a play, with the booth's checklist: sounds and videos to add and test, lights to cue, pictures to find, macros on and after each picture slide, timing), `refrain_update_script_draft` (colours, reused slides, corrections by slide number) and `refrain_build_script_bundle`. For every tool, `refrain_setup_status` says what is set up and what is missing, each with the setting in Refrain that fixes it; each tool says whether it only reads or also writes, and answers with structured results as well as text. A build waits until a person has chosen the label colours (ProPresenter's own swatches are offered) and said whether the show reuses a title, verse or logo slide. Drafts and bundles go to `./data/probundle-staging`; nothing is written into ProPresenter's library, and a bundle is never written over another.
-
-The script tools work only when Bundles is on and the packs folder is set (`refrain_setup_status` works without them, and says what is missing), and they need a **pack** for each kind of show: `packs/<your church>/scripts/<kind>/` holding `template.pro`, a presentation your booth built with one slide of each kind (speaker, Scene Notes, picture, background, lights, and optionally sound, video and RESET), and a `recipe.json` naming those slides, the cast colours, how long Scene Notes stay up (1 second unless you say otherwise) and your workspace's path. Refrain ships no pack: they are your church's own. A reused title slide is placed for you; a reused verse or logo slide is not yet, and the checklist says where to put it by hand. It has been run on one church's real scripts and templates, but not yet against a show on the night.
-
-## Quality control
-
-Open the **Quality Control** screen (always there, nothing to set up), pick a playlist, and Refrain reads every slide in it and flags words that look like typos. It's a picker rather than "whatever's live right now" on purpose: jumping to a slide during a service could pull you off the item you're actually running, so you choose when to look.
-
-The trick to keeping it useful is that it doesn't just check against a plain English dictionary, which would light up half your worship lyrics. A word is only flagged if the dictionary doesn't know it **and** it's rare across your own library. So the names, places, and worship words your church uses all the time (the ones that show up on slides week after week) are treated as correct, and what's left is mostly real mistakes. Each flag comes with a suggested fix.
-
-Refrain can't edit slides through ProPresenter's API, so it flags the word and gives you two buttons: **Show in Editor** opens the presentation in ProPresenter so you can fix it, and **Go Live** puts that slide up. If a flag is a word you use on purpose that just isn't common yet, hit **Ignore** and it goes on an allowlist (`spellcheckModule.allowlist` in `config.json`) so it's never flagged again.
-
-## Getting around
-
-The sidebar groups screens by when you use them: Search and Quality Control, then Service (Now, Flags, Day), then Prep (QR Codes, and Lyrics, Scripture, Image Crop and Arrangement once they're switched on), then Settings, with a divider between each group. It starts expanded with labels the first time so nothing is a mystery icon; collapse it to a thin icon rail with the button at the bottom once you know your way around, and that choice is remembered.
-
-The first time you open Refrain (and every start after, until you tick "Don't show this on start") a short **Welcome** card reminds volunteers of the three things they'll actually use: Search, Go Live / Show in Editor, and Return. Setup and the other tools are for the tech admin. You can bring it back any time from **Shortcuts** at the bottom of the sidebar.
-
-Press **/** or **Cmd/Ctrl+K** from any screen to jump straight to Search with the cursor in the box. Each sidebar screen also has a number: press **1** through **9** to jump to it, and hold **Cmd/Ctrl** to see the numbers appear next to the labels. Press **?** any time (or click **Shortcuts** at the bottom of the sidebar) for the full list.
-
-## Sharing one library between two macOS accounts
-
-*Removed.* Refrain used to have an optional **Library Sync** screen for this; it has been taken out because it wrote into ProPresenter's own library files. The notes below describe what it did. If ProPresenter runs under two macOS accounts (or on two machines) and you want just the Songs library kept in step, [docs/cross-account-library-sync.md](docs/cross-account-library-sync.md) has a tested recipe: what a library looks like on disk, why a symlink does not work, and copy-only sync scripts with dated snapshots and a guard that refuses to run against an empty source. It never deletes anything, on the grounds that a song library is years of work.
-
-## Appearance
-
-The icon near the bottom of the sidebar cycles the theme: System, Light, Dark, and Blackroom. Dark uses high-contrast text so it stays readable on a plain (non-retina) booth monitor. Blackroom is a true-black, high-contrast option that's easy on the eyes in a dark room and looks good on an OLED screen. Your choice is remembered.
+- A Mac running ProPresenter, with its network API turned on (ProPresenter's
+  Preferences › Network). Refrain is tested against ProPresenter 21.3.
+- Node.js 20 or newer.
+
+Windows can run Refrain with `scripts/start.bat`, but several features are Mac
+only: Start at login, Refrain.app, opening folders and files from the app, and
+noticing that ProPresenter has quit.
 
 ## Installing
 
-You need Node.js and ProPresenter with its network API on (Preferences, then Network).
+1. Install Node.js 20 or newer from [nodejs.org](https://nodejs.org) (the LTS
+   build). No administrator password? [Install Node into your home
+   folder](docs/install.md#no-administrator-password) instead.
+2. Get Refrain into a folder of its own, such as `~/Refrain`:
 
-### Installing Node.js
+   ```bash
+   git clone https://github.com/capitalchurchtech/refrain.git ~/Refrain
+   ```
 
-Get it from [nodejs.org](https://nodejs.org) and pick the **LTS** build, the one the site labels "Recommended for Most Users". LTS stands for long term support, which is the stable line. Don't grab the "Current" build, since that's the bleeding edge and you don't need it.
+   Or download the ZIP from GitHub and unzip it there.
+3. Double-click `scripts/start.command`. It installs what it needs the first
+   time, starts Refrain, and opens it in your browser at
+   `http://localhost:9999`.
+4. On the setup screen, press **Detect ProPresenter**, then **Test
+   connection**, say whether this is the machine that runs ProPresenter live,
+   and press **Save and continue**.
 
-On a Mac the simplest route is the `.pkg` installer from that page: double click it and click through, no terminal involved. (If the machine already uses Homebrew, `brew install node` works too, but the installer is easier for a shared booth machine.) On Windows, use the `.msi` installer from the same page.
-
-Take Node 20 or newer — that is what Refrain declares it needs, so an older one makes npm complain during setup. If you're installing fresh, just take the newest LTS, which is well past that. You can confirm it worked by opening Terminal and running `node -v`.
-
-#### No administrator password? Install Node into your home folder
-
-The `.pkg` and `.msi` installers write to system locations, so they ask for an
-administrator password. On a borrowed or locked-down machine you may not have
-one, and you do not need one: Node ships as a plain archive that runs perfectly
-well from your own home folder.
-
-On a Mac, open Terminal and paste this. It works out whether the machine is
-Apple Silicon or Intel, fetches the current LTS, checks the download against
-Node's published checksum, and installs it to `~/.local/node`:
-
-```bash
-set -e
-ARCH=$([ "$(uname -m)" = "arm64" ] && echo arm64 || echo x64)
-VER=$(curl -fsSL https://nodejs.org/dist/index.json | tr '}' '\n' \
-      | grep -m1 '"lts":"[A-Za-z]' | sed -n 's/.*"version":"\(v[0-9][0-9.]*\)".*/\1/p')
-TAR="node-$VER-darwin-$ARCH.tar.gz"
-echo "Installing Node $VER ($ARCH)"
-cd "$(mktemp -d)"
-curl -fsSLO "https://nodejs.org/dist/$VER/$TAR"
-curl -fsSL "https://nodejs.org/dist/$VER/SHASUMS256.txt" | grep " $TAR$" | shasum -a 256 -c -
-tar -xzf "$TAR"
-mkdir -p "$HOME/.local"
-rm -rf "$HOME/.local/node"
-mv "node-$VER-darwin-$ARCH" "$HOME/.local/node"
-grep -qs 'HOME/.local/node/bin' "$HOME/.zshrc" || echo 'export PATH="$HOME/.local/node/bin:$PATH"' >> "$HOME/.zshrc"
-export PATH="$HOME/.local/node/bin:$PATH"
-node -v && npm -v
-```
-
-The checksum line is the part worth keeping: if the download were corrupt or
-tampered with, it stops there rather than installing it.
-
-Open a **new** Terminal window afterwards so the `PATH` line takes effect, and
-check `node -v` again. Nothing was written outside your home folder, and
-removing it later is `rm -rf ~/.local/node` plus deleting that one line from
-`~/.zshrc`.
-
-`scripts/start.command` looks in `~/.local/node/bin` (and in nvm, Volta, fnm and
-Homebrew locations) as well as the system path, so double-clicking the launcher
-still works with a home-folder Node. That matters because a double-clicked
-script does not read `~/.zshrc`: without that search, Node would work in
-Terminal and the launcher would still insist it was missing.
-
-### Where to put Refrain
-
-Put the folder somewhere stable that belongs to the same user account that runs ProPresenter, so the login item in the next section can start it. A plain folder in your home directory is the easy answer:
-
-- **macOS:** `~/Refrain` (that is, `/Users/<your-account>/Refrain`).
-- **Windows:** `C:\Refrain` or a `Refrain` folder inside your user folder.
-
-Two things to avoid. Don't put it on the Desktop or in Downloads, where it's easy to drag by accident or get swept up in a cleanup. And don't put it inside a synced folder like iCloud Drive, Dropbox, OneDrive, or Google Drive. Refrain writes a lot of small files (the search index and the installed dependencies), and syncing all of that is wasteful and can cause file lock errors. On a Mac, note that if you have iCloud's "Desktop and Documents" syncing turned on, then `~/Documents` counts as synced too, which is another reason the plain `~/Refrain` location is the safe pick.
-
-**On a machine with several user accounts:** Refrain saves its settings, index, and dependencies inside its own folder, so the folder has to be writable by whoever runs it and reachable by the account that runs ProPresenter. If only one account operates the booth, the `~/Refrain` above is still the simplest choice. If several accounts run ProPresenter on the same machine and all want Refrain, install it once in a shared spot instead: on macOS that's `/Users/Shared/Refrain`, which every account can read and write. One shared install means one set of settings, which is what you want anyway since it's one machine and one ProPresenter. Each account that should start it on login adds its own Login Item pointing at `/Users/Shared/Refrain/scripts/start.command`. Only one copy should run at a time (it uses a local port), which is normally fine since one account is active at the booth at once. Skip `/Applications` here: it needs admin rights to write to, and Refrain needs to write into its own folder.
-
-### Getting the code and starting it
-
-1. Get the code into that folder, either way works:
-   - **Git** (recommended, since updating is then one command): `git clone https://github.com/capitalchurchtech/refrain.git`
-   - **ZIP:** on the [GitHub page](https://github.com/capitalchurchtech/refrain), click Code, then Download ZIP, and unzip it into the folder you chose.
-2. Double click `scripts/start.command` on a Mac or `scripts/start.bat` on Windows. From a terminal it's `npm install && npm start`.
-3. A setup screen opens in your browser. Click **Detect ProPresenter** to find it on the network and fill in the host and port automatically (make sure ProPresenter's Network API is on first, under Preferences then Network). You can still type the host and port by hand and hit Test Connection instead. Then you're in.
-
-If you use the launcher script you don't need to touch a terminal. It installs dependencies on the first run for you.
-
-**Do you need Git?** Only if you choose the Git option above. The ZIP download needs no Git, and nothing else does either: the launcher only runs Node, and the dependencies all come from the npm registry. The upside of Git is that updates become a single `git pull` instead of re-downloading and copying files by hand, which is worth it on a machine you'll update now and then. To install it: on macOS, type `git --version` in Terminal and, if it's missing, accept the Command Line Tools prompt that appears (you don't need full Xcode), or run `xcode-select --install` to trigger it directly. On Windows, use the installer from [git-scm.com](https://git-scm.com/download/win) with its defaults.
-
-### Starting it automatically on reboot
-
-There are two different things here, and they need different setups.
-
-For an easy way to start Refrain by hand, make an alias of the launcher: right click `scripts/start.command`, choose Make Alias, and drop the alias on the Desktop, in the Dock (the right side, near the Trash), or in the Finder sidebar. That's a one click manual start. It does nothing on its own after a reboot, though, since nobody is there to click it.
-
-For it to come back on its own after a reboot, add a Login Item. On macOS: System Settings, then General, then Login Items, then add `scripts/start.command` (or the shared path, `/Users/Shared/Refrain/scripts/start.command`). It now starts whenever that account logs in. The one catch is that Login Items run at login, not at boot, so after a restart Refrain only comes back once someone logs into that account. On a booth machine that should recover by itself after a power blip or an update, also turn on automatic login for the booth account (System Settings, Users & Groups, "Automatically log in as"). Then a reboot leads to auto login, the Login Item fires, and Refrain is back with no one touching it.
-
-Two notes. The launcher opens a Terminal window and the server runs inside it, so don't close that window: closing it (or quitting Terminal) stops Refrain, and macOS will usually warn you first with a "terminate running processes" prompt. To get it out of the way without stopping it, minimize the window (Cmd+M) or hide the app (Cmd+H). And on a machine with several accounts, the Login Item is per account, so set it up on whichever account runs the booth.
-
-On Windows the equivalent is a shortcut to `scripts/start.bat` placed in the Startup folder (press Win+R, type `shell:startup`, and drop the shortcut there).
-
-### Giving it its own window
-
-Refrain is meant to sit docked beside ProPresenter, and a browser tab is a poor
-shape for that: tabs and an address bar eat vertical space, and Chrome will not
-let a tabbed window get as narrow as the dock wants.
-
-Open Refrain in Chrome and use the install button in the address bar (or the
-three-dot menu, then Cast, save and share, then Install page as app). You get a
-window with no tabs and no address bar, its own icon in the Dock, and no minimum
-width to fight. On a 13" MacBook that lets it sit at about 455px beside
-ProPresenter, which is what the layout is built around.
-
-If you would rather not install anything, the Health screen has a one-click copy
-of the equivalent command:
-
-```bash
-open -na "Google Chrome" --args --app=http://localhost:9999
-```
-
-Both give the same window. The installed version keeps its icon and reopens from
-the Dock; the command is a one-off.
-
-#### On a Mac: Refrain.app instead of Chrome
-
-On macOS you can use a small native app in place of the Chrome window. It shows
-exactly the same screens, without needing Chrome, and it can stay on top of
-ProPresenter while docked (Window › Keep on Top, ⌥⌘T). It's only the window:
-the server still runs on its own, so keep **Start at login** on, or start
-Refrain with `start.command` as before. If the server isn't answering, the app
-says so, offers to start it through Start at login, and comes back by itself
-once Refrain is up.
-
-Double-click `scripts/build-mac-app.command`. It builds the app on this Mac and
-puts it in `~/Applications`, and you run it again after an update. Building
-needs Apple's free Command Line Tools; if they're missing, the script tells you
-the one command to install them (`xcode-select --install`). No Apple Developer
-account is involved: an app built on the Mac it runs on opens without
-Gatekeeper warnings. **Build it on each Mac. Don't copy the built app to
-another one**, because macOS refuses an unsigned app that arrives by AirDrop
-or download.
-
-The app shows only Refrain. Links to other sites, such as Bible Gateway, open
-in your normal browser, and downloads go to Downloads.
-
-### Running it with no Terminal window (macOS)
-
-If you'd rather not have a Terminal window sitting open at all, run Refrain as a background service with `launchd`. It stays running with nothing to keep open or close by accident, starts at login, and relaunches itself if it ever crashes.
-
-The easiest way is the **Start at login** card on the Health screen: turn it on, and that is the whole job. Turning it off removes it completely and changes nothing else. If you would rather set it up before anyone opens the app, double-click `scripts/install-launchagent.command` instead — it does exactly the same thing, and `scripts/uninstall-launchagent.command` undoes it. Either way Refrain's output goes to `logs/refrain.out.log` and `logs/refrain.err.log` in the Refrain folder if you ever need to check on it.
-
-**Protect ProPresenter (on by default).** Refrain doesn't read presentations from ProPresenter in bulk while this is on: no Quality Control scans, pre-service checks or Update pictures, and the index runs only from ProPresenter's library files (above), never through its API. Where the files can't be read (ProPresenter on another computer), no index runs at all. Search keeps working from the index it already has, and Go Live, Now and Clear work as always. A whole-library read is the heaviest thing Refrain asks of ProPresenter, so it's off unless someone turns protection off in Settings › Search › Advanced, on a machine where that's safe, away from a service, and restarts ProPresenter afterwards.
-
-**While it indexes.** A glowing bar along the bottom of every screen fills block by block, with the count and time left, whatever started the run; it says when the index is ready, when a run stopped part-way, or why one can't start (something on the screens).
-
-**Stopping it in a hurry.** If the booth feels slow mid-service, **Stop Refrain** on Settings › System stops it at once: press it, then press **Kill** (anything else cancels). **Restart Refrain**, beside it, stops Refrain and starts it again by itself in a few seconds, pressed the same way (Restart Refrain, then Restart now); the page reloads once Refrain is back, and says so if it isn't back after a minute, with the Terminal command. It restarts through the login item when there is one, and otherwise starts the same script again from its folder (a copy run under `node --watch` comes back as a plain run, and one started by hand carries on without printing to the Terminal it was started from). ProPresenter and the screens aren't touched, but History (the places you jumped from, and the phone's item times) starts over. ProPresenter and the screens aren't touched. The page waits until Refrain has actually stopped answering before it says so, then shows the one command that starts it again; with Start at login on, it also comes back at the next login, not before. It's booth-only, never on a phone. It's also the least reliable way out, since a stuck Refrain may not answer its own page; a Terminal command or a Stream Deck key doesn't depend on it.
-
-Two things to know. If you'd already set Refrain up with `start.command` or a Login Item, remove that so two copies aren't started at once — though if one does start while another is already running, it says so and stands down rather than fighting over the port, and takes over at the next login. And a LaunchAgent still only starts once the account logs in, so for a hands-free recovery after a full reboot, turn on automatic login for the booth account as described above.
+Refrain waits for ProPresenter to settle, then builds its search index. The
+[install guide](docs/install.md) covers where to put the folder, starting at
+login, giving Refrain its own window, and stopping or restarting it.
 
 ## Updating
 
-Your real settings (`config.json`) and secrets (`.env`) live only on your machine. Git never tracks them and a ZIP download never contains them, so an update leaves them alone. That includes anything you customized: your crop presets and their labels, QR defaults, folder paths, and the rest all live in `config.json`, so an update never resets them. The flip side is that the new default presets that ship with an update only appear on a fresh install; on an existing machine you add any you want from the "Add common size" picker, which always reflects the latest version.
+On a Git install, **Settings › System › Updates** shows whether a new version is
+out and has an **Update now** button. `scripts/update.command` does the same
+without opening the app. Either way, restart Refrain afterwards.
 
-**The easy way (Git installs):** the Health screen has an **Updates** section that shows your installed version next to the latest one, with an **Update now** button that fetches the latest code and installs any new dependencies in one click. Or double-click `scripts/update.command` (Mac) / `scripts/update.bat` (Windows) to do the same without opening the app. Either way, restart Refrain afterward to finish (or, if you run it as the background service, it picks the update up on its next restart).
+From a ZIP: download the new ZIP, unzip it into a new folder, and copy your
+`config.json`, `.env` and `data` folder across (and `cache`, to skip rebuilding
+the index). They hold your settings, secrets and records, and no download ever
+contains them.
 
-If you'd rather do it by hand, or want to know what those do under the hood:
-
-1. `git pull`
-2. `npm install` (picks up any new dependencies, and is safe to run when nothing changed)
-3. Restart the app: close and reopen the launcher, or if it's running in a terminal, stop it with Ctrl+C and run `npm start` again.
-
-If you downloaded a ZIP: download the latest ZIP, unzip it into a new folder, then copy your old `config.json` and `.env` into the new folder before you start it. Those two files aren't part of any download, so they only exist where you first set them up.
-
-Either way you have to restart. The running server doesn't reload its own code or pick up `.env` changes on its own.
+More in [the install guide](docs/install.md#updating).
 
 ## Privacy
 
-Refrain talks only to services you set up yourself: your own ProPresenter, and optionally your chosen church management API or storage backend. Image cropping and QR generation never leave your machine at all. There is no telemetry, no analytics, and no phoning home to anything the project controls. The one feature that sends status off the machine, the [service feed](docs/service-feed.md), is off until a church sets it up and only ever talks to the address that church typed in. This is a real, checkable claim, and we intend to keep it that way.
+There is no telemetry and no analytics. Refrain makes these connections, and no
+others:
 
-What Refrain does record stays on the machine. During a service it writes a line a minute to its own log (`logs/refrain.out.log` when installed to start at login): how often it asked ProPresenter for something and how long that took, its own CPU and memory, and ProPresenter's. It also keeps the same numbers as one JSON line a minute in `data/diagnostics/`, one file per day, deleted after 14 days. Nothing reads these but you. They exist so that after a bad Sunday there's a record of what Refrain was doing.
+- **ProPresenter**, at the address you set.
+- **GitHub, to check for a new version.** Refrain downloads this repository's
+  `package.json` from `raw.githubusercontent.com` at start-up, then at most
+  every six hours (or when you press **Check again**). The request carries no
+  identifier, version or usage. It can't currently be turned off.
+- **npm and GitHub**, when you first install and when you update.
+- **Your local network**, only when you press **Search the network anyway**
+  during setup to find a ProPresenter on another computer.
+- **Services you set up yourself**, and only once you do: Planning Center for
+  arrangement tracking, your own mail server for the day summary, and your own
+  announcement server for the service feed (the **Settings › More › Telemetry** tab,
+  which is a feed to your church's server, not to this project).
 
-## Compatibility
+Scripture and Lyrics open links in your browser; Refrain never fetches those
+pages itself. Logs and diagnostics stay in the Refrain folder (unless you turn
+on the service feed, which sends the diagnostics to your own server), and
+diagnostics are deleted after 14 days. The details are in [the configuration
+reference](docs/configuration.md#what-refrain-writes-to-disk).
 
-| ProPresenter version | Status |
-|---|---|
-| 7.x | The version this was built and tested against. Check exact API paths against your own version at `http://localhost:<port>/help` before you rely on anything version specific. |
+## What Refrain won't do
 
-## Not on the roadmap: downloading from YouTube
-
-This gets asked a lot, so to be clear: Refrain won't bundle a YouTube or video downloader, and that's on purpose rather than a "someday". Two reasons.
-
-First, the legal side. Downloading and re showing YouTube content generally goes against YouTube's terms of service, and the content is usually someone else's copyrighted work. That's a call each church has to make for its own content and licenses. It isn't something this project should bake in and quietly bless for everyone.
-
-Second, upkeep. Downloaders stay alive by constantly chasing YouTube's changes. They break every few weeks and lean on a heavy external program. Wiring that in would make Refrain fragile in a way its other features aren't.
-
-If you have a legitimate need (your own church uploads, or content you're licensed to use), the right tool is a dedicated one you run separately. It stays out of Refrain's way and gets updated far more often than we could keep up with:
-
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp), the actively maintained standard. One command line program, no install ceremony.
-- [yt-dlp-gui](https://github.com/dsymbol/yt-dlp-gui) or [Open Video Downloader](https://github.com/StefanLobbenmeier/youtube-dl-gui), friendly desktop front ends over it if the command line isn't your thing.
-
-Keeping this out of Refrain is what lets the privacy promise above stay true.
+- **Edit your slides.** ProPresenter's API can't, so Refrain flags and opens the
+  slide, and you fix it in ProPresenter.
+- **Write to ProPresenter's library or database.** The index reads `.pro` files
+  and never writes to them. Bundles and the MCP server work on copies.
+- **Download from YouTube, or scrape lyrics or scripture sites.** Each is a
+  legal call your church makes for itself, and each depends on a site that
+  changes under you. Refrain builds a link and hands you off.
 
 ## For developers
 
-Refrain is built to be extended. Church management integrations, storage backends, lyrics to slide splitters, and whole new feature modules are all things you add as a file (or a small folder) that the app discovers on startup. Nothing central needs editing. Image Crop and QR Codes are both real examples of the "new module" pattern, added after launch without touching the core.
+Refrain is plain Node and Express with a plain JavaScript front end. There is
+no build step and no database. Church management providers, storage backends,
+lyrics splitters, day summary delivery and whole new screens are each a file
+(or a small folder) the app finds when it starts.
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) for worked examples of each kind, and [docs/refrain-architecture.md](docs/refrain-architecture.md) for how the whole thing fits together.
-
-The stack is Node.js and Express on the server, plain JavaScript with Tailwind and DaisyUI on the front end, and Lucide for icons. There's no database anywhere. Data is plain JSON, either in memory or on whatever storage backend you pick.
-
-If an AI coding agent is doing the work, point it at [CLAUDE.md](CLAUDE.md) first. It covers the same ground plus the specific mistakes this codebase has already had to fix.
+- [CONTRIBUTING.md](CONTRIBUTING.md): setting up, the extension points, and the
+  rules.
+- [docs/refrain-architecture.md](docs/refrain-architecture.md): how it fits
+  together.
+- [CLAUDE.md](CLAUDE.md): for AI coding agents, covering the same ground plus
+  the mistakes this codebase has already had to fix.
 
 ## Not affiliated
 
-Refrain is an independent, community built tool. It is not affiliated with, endorsed by, or supported by Renewed Vision (ProPresenter) or Planning Center.
+Refrain is an independent community project. It is not affiliated with,
+endorsed by or supported by Renewed Vision (ProPresenter) or Planning Center.
 
 ## License
 
 MIT. See [LICENSE](LICENSE).
 
-**Two bundled assets are not MIT**, and if you fork this you should know before
-you ship it. Everything in `public/vendor/` is listed there with its source and
-licence, but the two you cannot simply assume about are the panel textures:
-
-- `public/img/textures/` holds three panel tiles from Subtle Patterns, under
-  **CC BY-SA 3.0**. That is a share-alike licence, not plain attribution.
-  "Black Linen 2" and "Dark Leather" are by **Atle Mo**; "Noisy Net" is by
-  **Tom McArdle**. Attribution
-  is given in `public/refrain.css`, in `public/vendor/README.md`, and visibly on
-  the Health screen.
-
-The rest is MIT (Tailwind, DaisyUI, Lucide) or OFL 1.1 (Archivo, Martian Mono).
-If share-alike assets are a problem for your situation, the two custom
-properties at the top of the texture section in `public/refrain.css` are the
-only place you need to change: unset them and no texture loads.
+Bundled third-party files are listed with their licences in
+[public/vendor/README.md](public/vendor/README.md). Three of them are not MIT
+and matter if you fork Refrain: the panel textures in `public/img/textures/`
+(`black_linen_v2.png` and `dark_leather.png` by Atle Mo, `noisy_net.png` by Tom
+McArdle) are from Subtle Patterns under **CC BY-SA 3.0**, a share-alike
+licence. To drop them, set the three `--t-` custom properties at the top of the
+texture section in `public/refrain.css` to `none` and no texture loads. The fonts Archivo
+and Martian Mono are OFL 1.1.

@@ -1,15 +1,19 @@
 ---
 name: Feature request
-about: Suggest an idea, a new provider/backend, or a new module
-title: "[Feature] "
+about: An idea, a new provider or backend, or a new screen
+title: ""
 labels: enhancement
 ---
 
-**What problem does this solve?**
+**What problem does this solve, and for whom?**
+(A volunteer at the booth during a service? Someone preparing on Saturday? The
+tech lead setting it up?)
 
 
-**Is this a core feature, or a good fit for a plugin (provider, storage backend, slide splitter, or module)?**
-(See CONTRIBUTING.md if you're not sure. Happy to help figure it out.)
+**Core feature, or a plugin?**
+A provider, storage backend, lyrics splitter, delivery backend or new screen can
+usually be a plugin. See CONTRIBUTING.md if you're not sure.
 
-**Proposed approach, if you have one**
+
+**How you'd approach it, if you have an idea**
 

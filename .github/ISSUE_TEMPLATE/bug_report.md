@@ -1,14 +1,14 @@
 ---
 name: Bug report
 about: Something isn't working as expected
-title: "[Bug] "
+title: ""
 labels: bug
 ---
 
 **What happened?**
 
 
-**What did you expect to happen?**
+**What did you expect?**
 
 
 **Steps to reproduce**
@@ -16,11 +16,14 @@ labels: bug
 2.
 3.
 
-**Environment**
-- OS:
+**Your setup**
+- Refrain version (bottom of Settings):
 - ProPresenter version:
-- Refrain version/commit:
-- Which storage backend / provider, if relevant:
+- macOS or Windows version:
+- ProPresenter on the same computer as Refrain? (yes / no)
+- Features switched on, if relevant:
 
 **Logs or screenshots**
-(Please don't paste your `.env` contents. Redact any credentials first.)
+The log is `logs/refrain.err.log` if Refrain starts at login, or the Terminal
+window otherwise. Please remove anything from `.env`, any PINs or keys, and any
+sermon text or names from your congregation before you paste.

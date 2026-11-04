@@ -1,20 +1,27 @@
-## What does this PR do?
+## What this changes
 
 
-## Type of change
+## Kind of change
+
 - [ ] Bug fix
 - [ ] New provider (`providers/`)
 - [ ] New storage backend (`storage/`)
-- [ ] New slide splitter (`slide-splitters/`)
-- [ ] New feature module (`modules/`)
-- [ ] Core change (please explain why it needs to be core rather than a plugin)
+- [ ] New lyrics splitter (`slide-splitters/`)
+- [ ] New delivery backend (`delivery/`)
+- [ ] New or changed screen (`modules/`)
+- [ ] Core change (say why it can't be a plugin)
 - [ ] Docs only
 
-## Checklist
-- [ ] I read CONTRIBUTING.md (and CLAUDE.md, if an AI agent wrote or helped write this)
-- [ ] If this touches credentials or auth, secrets stay out of `config.json` and any new `.env` variables are in `.env.example`
-- [ ] I didn't add any telemetry, analytics, or phone home
-- [ ] No vendor or provider name is hardcoded in shared code. New cross provider behavior is gated by a `static supportsX` or `displayName` capability on the base class, not a comparison against a specific `providerId` or `backendId`
-- [ ] If this ships a stub (interface implemented, methods not), the README's "What's finished and what isn't" section or CONTRIBUTING.md says so. It isn't presented as done
-- [ ] If it's visible in the browser, I ran it against a live dev server, not just a syntax check
-- [ ] Lint passes
+## Checks
+
+- [ ] I read CONTRIBUTING.md (and CLAUDE.md, if an AI agent wrote or helped with this)
+- [ ] `npm test` passes, and new logic or new file writes have tests
+- [ ] `npm run lint` is clean and `node --check` passes on every file I touched
+- [ ] If it shows in the browser, I used it against a running Refrain
+- [ ] Core search still works with nothing but ProPresenter
+- [ ] No telemetry, analytics or reporting of any kind
+- [ ] No vendor name in shared code: it reads `displayName` or a `supportsX` flag instead
+- [ ] Secrets stay in `.env`, and any new name is in `.env.example`
+- [ ] No real church data in code, tests, fixtures or screenshots
+- [ ] Anything partly built is listed in the README's "What's finished and what isn't"
+- [ ] If this changes `SCHEMA_VERSION`, the release notes will say the next reindex is a full rebuild

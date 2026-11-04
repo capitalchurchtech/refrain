@@ -1,167 +1,282 @@
 # Contributing to Refrain
 
-Thanks for thinking about contributing. Most of the ways you'd want to extend Refrain don't need you to touch the core at all. You add one file (or a small folder) that follows a short interface, and the app picks it up when it starts. This doc covers the common kinds of contribution and the rules that keep the project honest.
+Thanks for thinking about it. Most of the ways you'd want to extend Refrain are
+a file (or a small folder) dropped into the right place. This page covers
+setting up, each extension point, and the rules that keep the project honest.
 
-If an AI coding agent is writing or helping write your change, read [CLAUDE.md](CLAUDE.md) first. It covers this same ground plus the specific mistakes this codebase has already had to fix, like vendor names leaking into shared code.
+If an AI coding agent is writing or helping with your change, point it at
+[CLAUDE.md](CLAUDE.md) first. It covers the same ground plus the mistakes this
+codebase has already had to fix.
+
+## Setting up
+
+You need Node 20 or newer (`.nvmrc` says 20) and, for anything live, a
+ProPresenter with its network API on.
+
+```bash
+git clone https://github.com/capitalchurchtech/refrain.git
+cd refrain
+npm install
+npm run dev
+```
+
+`npm run dev` restarts the server when a file changes. Open
+`http://localhost:9999` and finish setup. Your `config.json` and `.env` are
+gitignored, as are `cache/`, `data/`, `staging/` and `logs/`.
+
+Run the server from the repository root: the plugin folders are found relative
+to the working directory.
+
+| Command | Does |
+|---|---|
+| `npm start` | Run Refrain |
+| `npm run dev` | Run it and restart on changes |
+| `npm test` | The test suite (Node's built-in runner, files in `test/`) |
+| `npm run lint` | ESLint |
+| `npm run mcp` | The MCP server over stdio |
 
 ## Ground rules
 
-- Open an issue before a big pull request so we can agree on the approach first.
-- Keep the core (`server/propresenter-client.js`, `server/search-index.js`, and the search and lyrics screens) free of anything specific to a church management system or a storage backend. Search has to keep working with nothing but ProPresenter.
-- No telemetry, analytics, or phoning home of any kind. This is a hard rule, not a preference. See the privacy section of the README.
-- A new dependency needs a real reason. Prefer plain Node and `fetch` over pulling in a package where that's reasonable.
+- **Open an issue before a big pull request**, so we can agree on the approach.
+- **Core search stays free of everything else.** Search, Go Live, Show, Quality
+  Control and Now must work with nothing but ProPresenter. If your change makes
+  them depend on a module, a provider or a backend, it's the wrong change.
+- **No telemetry.** No analytics, no error-reporting service, nothing that
+  reports usage to anyone. This is a hard rule, and the README's privacy section
+  is a promise people check.
+- **Never lose data silently.** Write files through a temporary file and a
+  rename. Writes to a shared folder or remote backend go local first and retry.
+  `saveConfig` in `server/config.js`, `writeAtomic` and `saveRecord` in
+  `server/append-store.js`, and `stageAndWrite` in `server/arrangement-diff.js`
+  are the patterns.
+- **No vendor names in shared code.** Read `displayName` and capability flags
+  from the provider or backend class. Name fields and routes for the thing
+  (`externalSongId`, `/api/arrangement/push-arrangement`), not the vendor.
+- **A new dependency needs a real reason.** Prefer Node's own modules and
+  `fetch`.
+- **Be honest in the docs.** If you ship something partly built, say so in the
+  README's "What's finished and what isn't".
 
-## Adding a church management provider
+## Before you open a pull request
 
-Providers live in `providers/`. A provider answers one question: for a given song and service date, what arrangement did the church management system plan?
+- `npm test` passes, and anything you touched that has tests still has them.
+  New pure logic, and anything that writes files a volunteer would hate to lose,
+  gets a test.
+- `npm run lint` is clean.
+- `node --check` passes on every file you touched. There is no build step, so a
+  syntax error otherwise only shows up at runtime.
+- If it's visible in the browser, you've used it against a running Refrain, not
+  only checked that it parses.
+- No real church data in code, tests, fixtures or screenshots: no sermon
+  content, real names, keys or tokens.
+
+CI runs lint on every pull request. It doesn't run the tests yet, so run them
+yourself.
+
+## Extension points
+
+Each kind lives in its own folder with a `base.js` holding the interface.
+`server/plugin-loader.js` imports every other `.js` file in the folder. There is
+no list to edit. Providers and delivery backends are imported when Refrain
+starts, so one that throws on import stops the server. Storage backends and
+splitters are imported when a route needs them, so one that throws breaks those
+routes. Keep imports cheap and safe.
+
+### A church management provider (`providers/`)
+
+A provider answers: for this song and service date, what arrangement did the
+planning system plan? `providers/manual.js` is the simplest (the user types it
+in); `providers/planning-center.js` implements everything.
 
 ```js
 // providers/base.js
-class ArrangementProvider {
-  async getPlannedArrangement(songId, serviceDate) {
-    // return: { sectionSequence: ["Verse 1", "Chorus", ...] }
-    throw new Error("Not implemented");
-  }
-  async testConnection() { throw new Error("Not implemented"); }
+export class ArrangementProvider {
+  static get displayName() {}            // defaults to a title-cased providerId
+  static supportsPush = false;
+  static supportsPlanBrowsing = false;
+  static requiredEnv = [];               // [{ name, roles? }], roles like ["logger"]
+
+  async getPlannedArrangement(songId, serviceDate, songName, planId = null) {}
+                                         // → { sectionSequence: string[] }
+  async testConnection() {}              // → boolean
+
+  // Only if supportsPlanBrowsing:
+  async getRecentPlans(count) {}         // → [{ id, dates }]
+  async getPlanSongs(planId) {}          // → [{ title, sectionSequence, externalSongId,
+                                         //      externalArrangementId, section? }]
+                                         // not declared in base.js yet; the plan screens call it
+  // Only if supportsPush:
+  async getArrangementSequence(songId, arrangementId) {}       // → string[]
+  async updateArrangementSequence(songId, arrangementId, sequence) {}
 }
 ```
 
-1. Make `providers/your-system.js`, extend `ArrangementProvider`, and implement both methods.
-2. Set a `providerId` (for example `"rock-rms"`). That's the string a user puts in `config.json` under `arrangementModule.provider`.
-3. Document any `.env` variables you need in a comment at the top of the file, and add them, blank, to `.env.example`.
-4. That's it. There's no central list to edit. The app scans `providers/` on startup and registers anything that matches the interface.
+1. Make `providers/your-system.js` exporting a class that extends
+   `ArrangementProvider`, with `static providerId = "your-system"`. That is the
+   value of `arrangementModule.provider` in `config.json`.
+2. Implement the two required methods, and the optional ones behind their flags.
+   Routes check the flag (`requireProviderCapability` in `server/index.js`), never
+   the id.
+3. List the `.env` names you need in `requiredEnv`, and add them, blank, to
+   `.env.example`. Settings then reports the provider misconfigured when one is
+   missing, without shared code knowing your provider exists.
+4. A new provider is constructed as `new Provider({ storage })` in
+   `getArrangementProvider` (`server/index.js`). If yours needs credentials or
+   settings passed in, that function needs a branch for it.
 
-Optional capabilities, which you only implement if they apply, and which you flag with a static property so the UI knows to offer them (nothing in the UI ever hardcodes a vendor name):
+### A storage backend (`storage/`)
 
-- `static displayName` gives a readable name for UI text, like "Push to Planning Center" or the provider picker. It defaults to a title cased version of `providerId`, so it's optional.
-- `static supportsPlanBrowsing = true` plus `getRecentPlans(count)` if your system has a "plan" concept (a named, dated set of songs for a service) that can be listed. This drives the "this weekend" one button workflow.
-- `static requiredEnv = [{ name: "YOUR_API_KEY", roles: ["logger"] }]` if your provider needs credentials from `.env`. The Health screen lists them and reports the module misconfigured when one is missing on a machine that needs it; nothing in shared code has to know your provider exists. Leave `roles` off for every machine.
-- `static supportsPush = true` plus `getArrangementSequence(...)` and `updateArrangementSequence(...)` if your system can accept a corrected arrangement back. This drives the "push to (provider)" button, which only ever fires from an explicit confirmation, never on its own.
-
-`providers/planning-center.js` implements all of these and is the reference. `providers/manual.js` is the opposite end: no API at all, the user just types the arrangement in, which is the option for a church with no church management software.
-
-## Adding a delivery backend
-
-Delivery backends live in `delivery/`. A backend answers: once End has written the day summary and someone presses Send, where does it go? `delivery/email.js` and `delivery/folder.js` are the references.
-
-```js
-// delivery/base.js
-class DeliveryBackend {
-  static sendsOffMachine = false; // true if delivering leaves this machine
-  static requiredEnv = [];        // [{ name }], listed on Health
-  static problems(moduleConfig, env) { return []; } // sentences; empty means ready
-  async deliver({ day, subject, markdown, moduleConfig, env }) { throw new Error("Not implemented"); }
-}
-```
-
-1. Make `delivery/your-backend.js`, extend `DeliveryBackend`, and set a `backendId`, used in `config.json` under `reportModule.deliveryBackend`.
-2. Set `sendsOffMachine = true` if it sends anything anywhere else. The Service screen says so beside the Send button, and the README's promise that nothing leaves your network unless you connect it depends on that being honest.
-3. Report missing settings from `problems()`. The module then shows as misconfigured on Health instead of failing when someone presses Send.
-4. Add no dependency you can avoid: `delivery/email.js` uses `server/smtp.js`, on Node's own `net` and `tls`.
-
-## Adding a storage backend
-
-Storage backends live in `storage/`. A backend answers: where do the per song arrangement history files live, and how do we read and write them?
+Where per-song arrangement history lives. `storage/local-folder.js` is the
+reference; `storage/synced-folder.js` is the same class with a different id.
+`storage/firestore.js` and `storage/sftp.js` are stubs waiting for someone to
+finish them.
 
 ```js
 // storage/base.js
-class StorageBackend {
-  async readSongFile(songId) { throw new Error("Not implemented"); }
-  async writeSongFile(songId, data) { throw new Error("Not implemented"); }
-  async listSongFiles() { throw new Error("Not implemented"); }
+export class StorageBackend {
+  static get displayName() {}            // defaults to a title-cased backendId
+  async readSongFile(songId) {}          // → object | null
+  async writeSongFile(songId, data) {}   // write atomically
+  async listSongFiles() {}               // → string[] of songIds
 }
 ```
 
-1. Make `storage/your-backend.js`, extend `StorageBackend`, implement all three methods.
-2. Set a `backendId`, used in `config.json` under `arrangementModule.storageBackend`.
-3. Optionally set `static displayName` for the picker and health screen. It defaults to a title cased `backendId`, so set it only when that would look wrong. `storage/sftp.js` sets `"SFTP"` because the default would give "Sftp".
-4. Document any `.env` variables the same way as for providers.
-5. If your backend needs credentials only for the machine that writes and not for the ones that read, say so clearly in your comments. That matters for the goal that reader machines need no setup. `storage/firestore.js` is the reference for that pattern.
+1. Make `storage/your-backend.js` extending `StorageBackend`, with
+   `static backendId`. That is `arrangementModule.storageBackend`.
+2. Set `static displayName` if the default reads badly (`sftp.js` sets "SFTP").
+3. A new backend is constructed with no arguments in `getStorageBackend`
+   (`server/index.js`), and storage has no `requiredEnv` yet. If yours needs
+   settings or credentials, add a branch there and a status check in
+   `getArrangementModuleStatus` (`server/config.js`). If only the logger needs
+   the credentials, say so: reader machines should need no setup.
 
-`storage/firestore.js` and `storage/sftp.js` are stubs right now: the interface is there, the methods throw. Both are good things to pick up if you want cross machine sharing without a synced folder.
+### A lyrics splitter (`slide-splitters/`)
 
-## Adding a lyrics splitter
-
-Splitters live in `slide-splitters/`. A splitter turns pasted lyrics into an array of slide sized chunks. Churches format differently (one line per slide, grouped by stanza, a fixed line count), so this is a genuine point of variation.
+Turns pasted text into slides. Churches format differently, so this is a real
+point of variation. `slide-splitters/blank-line-delimited.js` is the reference.
 
 ```js
 // slide-splitters/base.js
-class SlideSplitter {
-  static displayName = null;  // optional; what the operator sees in "Split by"
-  split(pastedText) { throw new Error("Not implemented"); }
-  // returns: string[], one entry per slide
+export class SlideSplitter {
+  static displayName = null;   // what a volunteer reads in "Split by"
+  split(pastedText) {}         // → string[], one per slide (synchronous)
 }
 ```
 
-Make `slide-splitters/your-splitter.js`, extend `SlideSplitter`, implement `split()`. See `slide-splitters/blank-line-delimited.js` for the reference.
+Set `static splitterId` and a `displayName` phrased for a volunteer ("Blank
+lines", not "Blank Line Delimited"). Without one, the screen shows a title-cased
+id.
 
-Set `static displayName` to whatever a volunteer should read in the **Split by** field, phrased for them rather than for a developer: "Blank lines", not "Blank Line Delimited". Leave it off and the label falls back to a title-cased `splitterId`, so your splitter still works with nothing else to register.
+### A day summary delivery backend (`delivery/`)
 
-## Adding a whole new feature
+Where the day summary goes when someone presses Send. `delivery/email.js` and
+`delivery/folder.js` are the references.
 
-Modules live in `modules/`. This is how a new nav level feature gets added without touching the router or the nav code.
+```js
+// delivery/base.js
+export class DeliveryBackend {
+  static get displayName() {}            // defaults to a title-cased backendId; email.js sets "Email"
+  static sendsOffMachine = false;        // true if it leaves this machine
+  static takesRecipients = false;        // true to edit reportModule.recipients in Settings
+  static requiredEnv = [];
+  static problems(moduleConfig, env) {}  // → sentences; empty means ready
+  async deliver({ day, subject, markdown, moduleConfig, env }) {}
+                                         // → { ok: true, detail }, throw a sentence on failure
+}
+```
+
+Set `static backendId` (`reportModule.deliveryBackend`). Be honest with
+`sendsOffMachine`: the Send button says so beside it. Report missing settings
+from `problems()` so the module shows as misconfigured rather than failing when
+someone presses Send. `delivery/email.js` speaks SMTP through `server/smtp.js`
+on Node's own `net` and `tls`, with no dependency.
+
+### A new screen (`modules/`)
+
+A module is a folder with a `module.js`. It gives Refrain the menu entry, its
+place, the screen, and the switch on Settings › Features:
 
 ```js
 // modules/your-feature/module.js
 export default {
   id: "your-feature",
   navLabel: "Your Feature",
-  icon: "your-lucide-icon-name",
-  // Where it sits in the menu: "service" for screens used during a service,
-  // "prep" for everything done before one. Lower order comes first.
-  nav: { group: "prep", order: 9 },
-  // Your screen: public/your-feature.js, exporting a function that builds it
-  // and returns { render } (called each time the screen is opened).
+  icon: "lucide-icon-name",
+  // "service" for screens used during a service, "prep" for everything else.
+  // Prep screens are tabs on the Prep page. Lower order comes first.
+  nav: { group: "prep", order: 10 },
+  // public/your-feature.js, exporting initYourFeature(). Return { render } to be
+  // called each time the screen opens.
   client: { file: "your-feature.js", init: "initYourFeature" },
   route: "/your-feature",
   component: null,
-  // An on/off switch on Settings > Features. Off hides the menu entry and
-  // every route under apiPrefixes answers 404 "switched off".
   feature: {
     default: false,
     label: "Your Feature",
-    description: "One sentence on what it does, shown beside the switch.",
-    apiPrefixes: ["/api/your-feature"],
+    summary: "Shown on the switch's row",
+    description: "Shown as the row's tooltip.",
+    apiPrefixes: ["/api/your-feature"],   // answer "switched off" while off
   },
 };
 ```
 
-That's the whole integration: the menu entry, its position, the screen and the on/off switch all come from this file. `client.file` must be a plain file name in `public/`. Search and Spell Check are the core and have no `feature` (they declare `enabledByDefault: true` instead); everything else should be switchable, and off by default unless most churches would want it on the day they install.
+- `client.file` must be a plain file name in `public/`.
+- `features: [{ id, label, summary, description, default, apiPrefixes }]` adds
+  switches for parts of one screen, the way `modules/live/` switches Now's
+  Messages, Macros, Looks, Safe slides and Staff requests separately.
+- A module with neither `feature` nor `enabledByDefault: true` never shows.
+  Search, Quality Control and Now use `enabledByDefault`; everything else should
+  be switchable, and off by default unless most churches would want it on the
+  day they install.
+- **Server routes are not discovered.** Add your `/api/your-feature/*` routes to
+  `server/index.js` (or a router mounted there, as Bundles does with
+  `server/probundle.js`), and keep the logic in `server/your-feature.js`.
 
-A part of an existing screen can be switched on its own with `features: [{ id, label, description, default, apiPrefixes }]` in that screen's module.js, the way `modules/live/` makes Now's Messages, Macros and Looks separate switches. Settings shows each as "on <screen>". A module with neither `feature` nor `enabledByDefault: true` never shows in the menu.
+`modules/image-crop/` (with `server/image-crop.js` and `public/image-crop.js`)
+is a good template for a feature with real setup. `modules/qr-code/` is the
+simplest: a tool with a handful of routes and a small history file.
 
-This is the right shape for something genuinely new, not a provider or a backend or a splitter, but a whole new thing Refrain doesn't do yet. Self contained folder, no core files touched.
+### Classes applied from JavaScript
 
-Two shipped modules are worth reading as templates, both added exactly the way a contribution would be, with nothing in core special cased for them:
+Tailwind runs as a browser JIT. A utility class added only from JavaScript may
+not have a rule yet when you measure it. Give every such class a static rule in
+`public/refrain.css` in the same change. CLAUDE.md has the details.
 
-- `modules/image-crop/` (with `server/image-crop.js` and `public/image-crop.js`) is a watched folder image cropper. It owns its own saved config, its own screen, and its own `/api/image-crop/*` routes. Read it when your feature has real setup state.
-- `modules/qr-code/` (with `server/qr-code.js` and `public/qr-code.js`) is a fully local QR generator. It's the simplest possible module: no saved config, one stateless route, on by default. Read it when your feature is a pure tool.
+## What we won't make a plugin
 
-## What we won't make a plugin, and why
+- **The ProPresenter integration.** It is the product, not a data source.
+- **Search.** It doesn't vary between churches. A better search is a direct
+  upgrade.
+- **The lyrics site list.** A list of domains in config.
 
-- **The ProPresenter integration itself.** It's the product, not a swappable data source. There's no second thing that would sensibly plug in instead.
-- **The core slide text search.** It's simple and central, and it doesn't vary from church to church. If fuzzy or semantic search is ever wanted, that's a direct upgrade to build, not a slot to leave open now.
-- **The lyrics site list.** It's a plain array in config. There's no differing behavior per site, just a different domain, so a class based plugin would be over engineering a list of strings.
+Not sure whether something belongs in core or as a plugin? Open an issue and ask.
 
-If you're not sure whether something belongs in core or as a plugin, open an issue and ask before you build it. Happy to think it through with you.
+## Changing the index format
 
-## Changing the search index format
+Each church's index lives in `cache/search-index.json`, and an update leaves it
+alone: the next reindex re-reads only changed presentations.
 
-Each machine keeps its search index in `cache/search-index.json`, and an update leaves it alone. After an update the next reindex is incremental: it re-reads only the presentations whose file changed.
+`SCHEMA_VERSION` in `server/search-index.js` breaks that. Change it and every
+church's next reindex is a full rebuild, which takes minutes to over an hour
+through the API and makes ProPresenter sluggish.
 
-`SCHEMA_VERSION` in `server/search-index.js` is what breaks that. When it changes, every client's existing index counts as built by an older version, and the next reindex becomes a full crawl of the whole library. A full crawl takes minutes to over an hour on a real library and makes ProPresenter sluggish while it runs (see the rebuild warning in the README). Refrain starts it by itself once nothing has been on the screens for an hour.
+- Only change it when an index entry gains a field the app relies on.
+- A new build option that changes what an entry contains belongs in
+  `sameBuildOptions` in `server/index-fingerprint.js`, not a version change.
+- Say so in the release notes, so nobody updates the day before a service.
+- Add a test for the reindex plan, as `test/index-fingerprint.test.js` does.
 
-So:
+## Releasing
 
-- **Only bump it when an index entry gains a field the app relies on.** If the change doesn't need a new stored field, don't bump it. Search keeps working on an old index without the bump.
-- **Changing what a build option means is a separate trigger.** `sameBuildOptions` in `server/index-fingerprint.js` also forces a full rebuild when it returns false. Adding an option that changes what an entry contains belongs there, not in a version bump.
-- **Say so in the release notes** when you do bump it, so a church admin doesn't update the day before a service.
-- **Add a test** in `test/` for the plan that follows, as the existing reindex-planning tests do.
+Maintainers only. Every release gets a GitHub release page, because that is where
+a church admin looks to decide whether to update.
 
-## Code style
-
-Nothing elaborate. Match what's already there, keep functions small, prefer plain `async`/`await`. CI runs the linter on every pull request, so run `npm run lint` before you push.
+1. `npm version X.Y.Z --no-git-tag-version`
+2. Commit "Release vX.Y.Z" and merge it.
+3. `git tag -a vX.Y.Z` and push the tag.
+4. `gh release create vX.Y.Z` with notes written for a church admin: what
+   changed, and anything to know before updating near a service.
 
 ## Security issues
 
-Please don't file security issues as public GitHub issues. See [SECURITY.md](SECURITY.md).
+Please don't file them as public issues. See [SECURITY.md](SECURITY.md).
