@@ -184,8 +184,11 @@ export function mountSlides(root, o, findings, { view = null, onView = () => {} 
         <section><h5 class="rf-subhead">On this slide</h5>${acts.length ? `<ul class="pb-vlist">${acts.map((a) => `<li>${a}</li>`).join("")}</ul>` : `<p class="pb-none">No media or macros.</p>`}</section>
         <section><h5 class="rf-subhead">Slide notes</h5>${d?.notes ? `<p class="pb-notes">${escapeHtml(d.notes)}</p>` : `<p class="pb-none">No notes.</p>`}</section>
       </aside>`;
+    const opening = viewer.hidden;
     wrap.hidden = true;
     viewer.hidden = false;
+    // Opened from a card far down the grid, the page would still be scrolled there: bring the slide into view.
+    if (opening) viewer.scrollIntoView({ block: "start" });
     paintInto(viewer.querySelector(".pb-host"), n);
     viewer.querySelector("#pb-prev").addEventListener("click", () => show(n - 1));
     viewer.querySelector("#pb-next").addEventListener("click", () => show(n + 1));

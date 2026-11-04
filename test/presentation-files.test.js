@@ -140,7 +140,7 @@ test("rebuildIndex reads from files and asks ProPresenter only for listings; fil
     assert.equal(one.arrangementName, "FS");
     assert.deepEqual(one.slides.map((s) => s.text), ["3:16 John 10:00", "Slide Label Amazing grace how sweet", "1. first 2. second"], "FS plays the Chorus first; normalized as the API's words are");
     assert.equal(index.presentations[id(3)].slides[0].text, "from the API");
-    assert.deepEqual({ ...index.fileReading, libraries: undefined }, { workspace: "Real", fromFiles: 2, notOnDisk: 1, fromApi: 1, libraries: undefined });
+    assert.deepEqual({ ...index.fileReading, libraries: undefined }, { workspace: "Real", fromFiles: 2, notOnDisk: 1, fromApi: 1, unchanged: 0, libraries: undefined });
 
     // Protect on: the previous index's paths give the workspace, and the missing one keeps what it had.
     reads.length = 0;
@@ -168,6 +168,10 @@ test("the index card says where presentations were read from, quietly when all i
     fileReading: { fromFiles: 760, fromApi: 0, notOnDisk: 3, libraries: [{ folder: "Messages <b>", notListed: 1 }] },
     fileCheck: { checked: 5, differed: 1, last: { fileCount: 27, liveCount: 29, firstDifference: null } },
   });
+  assert.match(renderFileReading({ fileReading: { fromFiles: 2, unchanged: 761, fromApi: 0, notOnDisk: 0, libraries: [] }, fileCheck: null }), /library files: 2 presentations \(761 unchanged since the last read\)\./);
+  const onlyExtra = renderFileReading({ fileReading: { fromFiles: 763, fromApi: 0, notOnDisk: 0, libraries: [{ folder: "Messages", notListed: 1 }] }, fileCheck: { checked: 1, differed: 0 } });
+  assert.doesNotMatch(onlyExtra, /alert/, "a file ProPresenter doesn't list harms nothing: said quietly");
+  assert.match(onlyExtra, /not in ProPresenter's list, so not in search either: 1 in Messages\. Checked against ProPresenter at Go Live: 1 presentation, all the same\./);
   assert.match(warn, /alert-warning/);
   assert.match(warn, /3 presentations ProPresenter listed weren't found in its library folders, so they kept what the last index had/);
   assert.match(warn, /1 in Messages &lt;b&gt;/, "a library's name is escaped");

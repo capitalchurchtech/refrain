@@ -129,7 +129,7 @@ export function mountRunCard(host, rim = null) {
     );
 
     const running = s.phase === "running" || s.phase === "stopping";
-    q(".rf-run-warn").hidden = !running;
+    q(".rf-run-warn").hidden = !running || s.fromFiles;
     // Only when the phase changes: a button rebuilt every poll swallows a click
     // that lands between two polls and drops keyboard focus.
     if (s.phase !== actionsKey) {

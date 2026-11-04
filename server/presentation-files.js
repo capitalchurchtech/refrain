@@ -148,7 +148,13 @@ export async function createFileReading({ lib, items, knownPaths = {}, askPath =
     }
     return scans.get(dir);
   };
-  const dirOf = (folder) => (workspace && folder ? path.join(workspace, "Libraries", folder) : null);
+  // A library's folder, kept inside the workspace's Libraries whatever the listing calls it.
+  const dirOf = (folder) => {
+    if (!workspace || !folder) return null;
+    const libraries = path.join(workspace, "Libraries");
+    const dir = path.resolve(libraries, folder);
+    return dir.startsWith(libraries + path.sep) ? dir : null;
+  };
   const stats = { fromFiles: 0, notOnDisk: [] };
   const readFrom = new Map(); // id -> the file it was read from this run
 

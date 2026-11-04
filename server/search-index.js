@@ -399,9 +399,8 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
     const presentations = {};
 
     console.log("");
-    console.log("  Building the search index. Leave ProPresenter open — every presentation is");
-    console.log("  read through it, so closing it stops this. Nothing goes to the screens.");
-    console.log("  ProPresenter will feel sluggish until it finishes.");
+    console.log("  Building the search index. Leave ProPresenter open: it says which presentations");
+    console.log("  each library has, so closing it stops this. Nothing goes to the screens.");
     console.log("");
     console.log(`Fetching library${folders ? ` (folders: ${folders.join(", ")})` : ""}...`);
     const crawl = await client.getLibraryDetailed(folders);
@@ -505,6 +504,7 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
       throw Object.assign(new Error("Protect ProPresenter is on, and this computer can't read ProPresenter's library files, so the index isn't read."), { protected: true });
     }
     if (fileReading) console.log(`Reading presentations from ProPresenter's library files (workspace ${path.basename(fileReading.workspace)}), not through its API.`);
+    else console.log("Reading every presentation through ProPresenter's API: ProPresenter will feel sluggish until this finishes.");
 
     // Work out what actually has to be re-read. Everything else keeps the
     // slides the previous build already paid for.
@@ -515,7 +515,7 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
       if (!client.isLocalHost) {
         plan = { mode: "full", reason: "ProPresenter is on another machine, so its files cannot be checked" };
       } else {
-        rebuildProgress = { inProgress: true, stage: "checking files", current: 0, total: skeletonIds.length };
+        rebuildProgress = { inProgress: true, stage: "checking files", current: 0, total: skeletonIds.length, fromFiles: Boolean(fileReading) };
         const targets = fingerprintTargets({ ids: skeletonIds, previous: currentIndex });
         const fingerprints = {};
         // Local disk and ~88KB a file: the whole library fingerprints in well
@@ -559,7 +559,8 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
     let consecutiveFailures = 0;
     let crawlAborted = null;
     const sweepLater = [];
-    rebuildProgress = { inProgress: true, stage: "presentations", current: 0, total: idsNeedingSlides.length, startedAt: Date.now() };
+    // fromFiles: the screens drop the "ProPresenter will be sluggish" warning, which a file read doesn't earn.
+    rebuildProgress = { inProgress: true, stage: "presentations", current: 0, total: idsNeedingSlides.length, startedAt: Date.now(), fromFiles: Boolean(fileReading) };
 
     // Saved every CHECKPOINT_EVERY reads, so a restart mid-crawl resumes
     // instead of starting over (issue #13: 250 and then 100 reads were lost
@@ -802,7 +803,7 @@ export async function rebuildIndex(client, syncOptions = {}, preferredArrangemen
       // The per-library check: what the API listed, what was read from files,
       // what wasn't on disk, files on disk the API didn't list, and how many
       // were read through the API instead. Null when the API read everything.
-      fileReading: fileReading ? { ...(await fileReading.summary()), fromApi } : null,
+      fileReading: fileReading ? { ...(await fileReading.summary()), fromApi, unchanged: plan.mode === "incremental" ? (plan.counts?.carriedOver ?? 0) : 0 } : null,
       reindexAttempted: idsNeedingSlides.length,
       reindexCompleted: crawlAborted ? fetched : idsNeedingSlides.length,
       presentations,

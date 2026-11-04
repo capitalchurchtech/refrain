@@ -208,7 +208,7 @@ export function initHealth() {
       <div class="flex flex-col gap-4 max-w-3xl">
         <h1 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="menu" class="w-5 h-5"></i> Settings</h1>
         <div id="health-unfinished-day"></div>
-        ${renderHealth(health, configOptions, versionInfo, renderLibraryCard(libraryFolders, arrangementFolders), duplicateNames.groups ?? [], envData.entries ?? [])}
+        ${renderHealth(health, configOptions, versionInfo, renderLibraryCard(libraryFolders, arrangementFolders, { fromFiles: health.index?.indexFromFiles === true }), duplicateNames.groups ?? [], envData.entries ?? [])}
       </div>`;
 
     window.scrollTo(0, scrollY);
@@ -1247,7 +1247,7 @@ export function searchScopeSummary({ folders = [], selected = null, indexed = {}
   return `Searching ${selected.length}${of} ${selected.length === 1 && !of ? "library" : "libraries"} (${selected.join(", ")}): ${plural(total)}.`;
 }
 
-function renderLibraryCard({ folders = [], selected = null, indexed = {}, error }, arrangementFolders) {
+function renderLibraryCard({ folders = [], selected = null, indexed = {}, error }, arrangementFolders, { fromFiles = false } = {}) {
   const summary = `<div class="text-sm font-medium">${escapeHtml(searchScopeSummary({ folders, selected, indexed }))}</div>`;
   const count = (name) => indexed[name] ?? 0;
   if (error) {
@@ -1289,16 +1289,22 @@ function renderLibraryCard({ folders = [], selected = null, indexed = {}, error 
             )
             .join("")}
         </div>
-        <div class="alert alert-warning py-2 text-sm mt-2 items-start">
+        ${
+          // Read from ProPresenter's files, a reindex asks it only for its library lists: no warning
+          // to keep it free, and no "deep" run, which exists to retry the reads its API fails.
+          fromFiles
+            ? `<div class="text-sm opacity-70 mt-2 rf-measure"><strong>Saving starts a reindex.</strong> A library you switch on is read from ProPresenter's library files, about a minute for 700 presentations, asking ProPresenter only for its library lists.</div>`
+            : `<div class="alert alert-warning py-2 text-sm mt-2 items-start">
           <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
           <span><strong>Saving starts a reindex.</strong> A library you switch on is read in full, and
           ProPresenter can be slow or unresponsive for an hour or more. Save only when it's free for the
           next two hours.</span>
-        </div>
+        </div>`
+        }
         <div class="flex flex-wrap items-center gap-2 mt-1">
           <button id="save-library-folders-btn" class="btn btn-sm btn-outline w-fit">Save and rebuild</button>
-          <button id="save-library-folders-deep-btn" class="btn btn-sm btn-outline w-fit">Save and deep reindex (slower)</button>
-          ${infoIcon("Saves, then reads every presentation again, slowly, retrying the ones ProPresenter fails to answer. For when Deep Search says it could only read some of your presentations.")}
+          ${fromFiles ? "" : `<button id="save-library-folders-deep-btn" class="btn btn-sm btn-outline w-fit">Save and deep reindex (slower)</button>
+          ${infoIcon("Saves, then reads every presentation again, slowly, retrying the ones ProPresenter fails to answer. For when Deep Search says it could only read some of your presentations.")}`}
         </div>
 
         ${arrangementFolders ? renderArrangementFoldersSection(arrangementFolders) : ""}
@@ -1436,20 +1442,24 @@ export function renderFileReading(index) {
   if (!f && !check) return "";
   const notes = [];
   if (f?.notOnDisk) notes.push(`${f.notOnDisk} presentation${f.notOnDisk === 1 ? "" : "s"} ProPresenter listed weren't found in its library folders${f.fromApi ? `; ${f.fromApi} of them read through ProPresenter instead` : ", so they kept what the last index had"}.`);
+  // Files ProPresenter doesn't list harm nothing (it doesn't show them, so search doesn't either):
+  // said quietly, beside the count, not as a warning.
   const extra = (f?.libraries ?? []).filter((l) => l.notListed);
-  if (extra.length) notes.push(`On disk but not in ProPresenter's list: ${extra.map((l) => `${l.notListed} in ${escapeHtml(l.folder)}`).join(", ")}. ProPresenter doesn't show those, so search doesn't either.`);
+  const quiet = extra.length ? ` On disk but not in ProPresenter's list, so not in search either: ${extra.map((l) => `${l.notListed} in ${escapeHtml(l.folder)}`).join(", ")}.` : "";
   if (check?.differed) {
     const l = check.last;
     notes.push(`At Go Live, ${check.differed} of ${check.checked} presentation${check.checked === 1 ? "" : "s"} read from their files didn't match what ProPresenter played${l ? ` (the last: ${l.fileCount} slides from the file, ${l.liveCount} playing${l.firstDifference != null ? `, first different at slide ${l.firstDifference + 1}` : ""})` : ""}. Turn off reading from files (indexFromFiles: false) if search keeps finding the wrong slide.`);
   }
+  // An incremental run reads only what changed; the rest is said too, or "0 presentations" reads as a failure.
   const line = f
-    ? `Read from ProPresenter's library files: ${f.fromFiles} presentation${f.fromFiles === 1 ? "" : "s"}${f.fromApi ? `, ${f.fromApi} through ProPresenter` : ""}. Reading files asks nothing of ProPresenter.`
+    ? `Read from ProPresenter's library files: ${f.fromFiles} presentation${f.fromFiles === 1 ? "" : "s"}${f.unchanged ? ` (${f.unchanged} unchanged since the last read)` : ""}${f.fromApi ? `, ${f.fromApi} through ProPresenter` : ""}. Reading files asks nothing of ProPresenter.`
     : "";
   const checked = check && !check.differed ? ` Checked against ProPresenter at Go Live: ${check.checked} presentation${check.checked === 1 ? "" : "s"}, all the same.` : "";
-  if (!notes.length) return `<div class="text-xs opacity-70 mt-2 rf-measure">${line}${checked}</div>`;
-  return `<div class="alert alert-warning py-2 text-sm mt-2 items-start">
+  const quietLine = `<div class="text-xs opacity-70 mt-2 rf-measure">${line}${quiet}${checked}</div>`;
+  if (!notes.length) return quietLine;
+  return `${quietLine}<div class="alert alert-warning py-2 text-sm mt-2 items-start">
             <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
-            <span class="flex flex-col gap-1">${line ? `<span>${line}</span>` : ""}${notes.map((n) => `<span>${n}</span>`).join("")}</span>
+            <span class="flex flex-col gap-1">${notes.map((n) => `<span>${n}</span>`).join("")}</span>
           </div>`;
 }
 
@@ -2115,7 +2125,11 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
                 // nothing to compare files against, so the only thing on offer
                 // IS the full crawl — offering a "quick and safe" reindex
                 // button that silently becomes one would be a trap.
-                const fullRebuildWarning = `
+                // Read from ProPresenter's files a rebuild takes a minute or two and asks it only for
+                // its library lists, so the warning and the slow "deep" run are for the API alone.
+                const fullRebuildWarning = index.indexFromFiles
+                  ? `<div class="text-sm opacity-70 mt-2 rf-measure">A rebuild reads every presentation again from ProPresenter's library files, about a minute for 700, and asks ProPresenter only for its library lists.</div>`
+                  : `
                   <div class="alert alert-warning py-2 text-sm mt-2 items-start">
                     <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
                     <span>
@@ -2130,10 +2144,10 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
                     <button id="health-rebuild-btn" class="btn btn-sm btn-outline w-fit"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> <span id="health-rebuild-btn-label">${index.builtAt ? "Rebuild everything" : "Build index"}</span></button>
                     ${infoIcon("Reads the whole library again. Only for a first build, or when reindexing hasn't fixed search.")}
                   </div>
-                  <div class="flex items-center gap-2 mt-1">
+                  ${index.indexFromFiles ? "" : `<div class="flex items-center gap-2 mt-1">
                     <button id="health-deep-rebuild-btn" class="btn btn-sm btn-outline w-fit"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> <span id="health-deep-rebuild-btn-label">Deep reindex (slower)</span></button>
                     ${infoIcon("Reads every presentation again, slowly, retrying the ones ProPresenter fails to answer. For when Deep Search says it could only read some of your presentations after a rebuild.")}
-                  </div>`;
+                  </div>`}`;
 
                 if (!index.builtAt) {
                   return `<div class="flex flex-col gap-2 mt-2">

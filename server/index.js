@@ -1099,7 +1099,9 @@ function startRebuild({ incremental = false, operatorInitiated = false, deep = f
   diag("index-start", { incremental, operatorInitiated, deep, performance: { armed: performance.armed, source: performance.source } });
   const run = rebuildIndex(client, config.librarySync, preferredArrangements(), {
     incremental,
-    fromFiles: indexFromFiles(),
+    // The intent, not whether the package has finished loading: rebuildIndex waits
+    // for it, so a run started in the first moments after boot still reads files.
+    fromFiles: config.indexFromFiles !== false && client.isLocalHost,
     // Protect on: presentations come from files only, never one by one from ProPresenter.
     filesOnly: protectOn(),
     // Deep reindex: every presentation, read slowly and retried patiently, for a

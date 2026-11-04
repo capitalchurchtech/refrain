@@ -92,6 +92,8 @@ export function runningState(run, { stopping = false, hist = [] } = {}) {
     hist,
     current,
     total,
+    // Reading ProPresenter's files, not asking it for each presentation: no "sluggish" warning.
+    fromFiles: run.fromFiles === true,
   };
 }
 
