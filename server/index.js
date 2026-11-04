@@ -14,6 +14,7 @@ import { promisify } from "node:util";
 import { platform, homedir, networkInterfaces, totalmem } from "node:os";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const execFileAsync = promisify(execFile);
 import express from "express";
@@ -76,7 +77,9 @@ import {
   searchOtherArrangements,
   otherSlidesCoverage,
 } from "./search-index.js";
-import { loadFileReader, readPresentationFile, compareWithLive } from "./presentation-files.js";
+import { loadFileReader, readPresentationFile, compareWithLive, workspaceOfFile } from "./presentation-files.js";
+import { createSlideDrawing } from "./slide-drawing.js";
+import { shownCopy, pruneCache } from "./slide-pictures.js";
 import { startLibraryWatch, fullRebuildSuggestion,
   indexStaleness,
   WATCH_DEFAULTS,
@@ -4370,6 +4373,64 @@ app.get("/api/preview/image/:pid/:idx", async (req, res) => {
   res.type(img.type).send(img.bytes);
 });
 
+// --- Slides drawn from their files (handoff section 30, E6) -----------------
+// Quality Control's flagged slides and Live's safe-slide keys are drawn from
+// the presentation's .pro on this Mac, which asks nothing of ProPresenter (a
+// thumbnail writes into its database). So the pictures switch, which exists to
+// spare ProPresenter, does not decide these (owner, 2026-11-04). The same
+// slides the picture route serves, and nothing new drawn during a service.
+const DRAWN_PICTURES_DIR = "./data/drawn-pictures";
+const slideDrawing = createSlideDrawing();
+setInterval(() => pruneCache(DRAWN_PICTURES_DIR).catch(() => {}), 3_600_000).unref();
+// Where Quality Control's last scans found each presentation, for one the index has not seen.
+const scannedFiles = new Map();
+const drawAllowed = (pid, idx) => isSafeSlide(pid, idx) || spellcheckPictures.has(`${pid}:${idx}`);
+// In each drawing's tag, so a browser holding one from before Refrain (or the
+// drawing package) was updated asks again rather than keeping the old one.
+const DRAWN_SINCE = Date.now().toString(36);
+/** The library file a presentation is drawn from, on this Mac only, and its version; or null. */
+async function drawableFile(pid) {
+  if (!client.isLocalHost) return null;
+  for (const file of new Set([scannedFiles.get(pid), getIndex().presentations?.[pid]?.presentationPath])) {
+    const version = file && workspaceOfFile(file) ? await readFingerprint(file) : null;
+    if (version) return { file, version };
+  }
+  return null;
+}
+
+app.get("/api/preview/drawn/:pid/:idx", async (req, res) => {
+  const { pid } = req.params;
+  const idx = Number(req.params.idx);
+  if (!Number.isInteger(idx) || !drawAllowed(pid, idx)) return res.status(404).json({ error: "Only a safe slide or a slide Quality Control found is drawn." });
+  const lib = await loadFileReader();
+  const found = lib?.drawPresentation ? await drawableFile(pid) : null;
+  if (!found) return res.status(404).json({ error: "This slide can't be drawn here." });
+  const { file, version } = found;
+  const tag = `"drawn:${DRAWN_SINCE}:${version}:${idx}"`;
+  if (req.headers["if-none-match"] === tag) return res.status(304).end();
+  const d = await slideDrawing.slide(pid, file, version, idx, { drawNew: !performance.armed });
+  if (!d) return res.status(404).json({ error: "No drawing for that slide." });
+  res.set("Cache-Control", "private, no-cache").set("ETag", tag);
+  res.json({ ...d, css: lib.DRAW_CSS, fontCss: lib.fontFaces(d.fonts) });
+});
+
+// A picture a drawn slide shows, by its number in that presentation's drawing.
+app.get("/api/preview/drawn/:pid/picture/:n", async (req, res) => {
+  const src = slideDrawing.picture(req.params.pid, Number.parseInt(req.params.n, 10));
+  const shown = src ? await shownCopy(src, DRAWN_PICTURES_DIR, { onlyMade: performance.armed }).catch(() => null) : null;
+  if (!shown) return res.status(404).end();
+  res.set("Cache-Control", "private, max-age=3600").type(shown.type).sendFile(path.resolve(shown.file));
+});
+
+// The browser half of the drawing (the package's draw-layout.js).
+app.get("/api/preview/draw-layout.js", (_req, res) => {
+  try {
+    res.type("text/javascript").sendFile(fileURLToPath(import.meta.resolve("propresenter-bundle/draw-layout")));
+  } catch {
+    res.status(404).end();
+  }
+});
+
 /** New secret: every phone is signed out, and the daily PIN changes now. */
 app.post("/api/network/forget-phones", async (_req, res) => {
   try {
@@ -5327,8 +5388,15 @@ app.post("/api/spellcheck/scan", async (req, res) => {
   if (!playlistId && !one) return res.status(400).json({ error: "playlistId or presentationId is required" });
   try {
     const only = one ? [{ id: one, name: getIndex().presentations?.[one]?.name ?? null }] : null;
-    const { presentations, scannedCount, truncated, mediaUnreadable } = await scanPlaylist(playlistId, { only });
+    const { presentations, docs, scannedCount, truncated, mediaUnreadable } = await scanPlaylist(playlistId, { only });
     allowSpellcheckPictures(presentations);
+    for (const p of presentations) {
+      const file = docs.get(p.presentationId)?.presentation?.presentation_path;
+      if (!file) continue;
+      scannedFiles.delete(p.presentationId);
+      scannedFiles.set(p.presentationId, file);
+    }
+    while (scannedFiles.size > SPELLCHECK_PICTURES_MAX) scannedFiles.delete(scannedFiles.keys().next().value);
     // Pictures from before a slide was removed are dropped from memory: when
     // the file's version can't be read (ProPresenter on another Mac), the
     // version in the key can't tell old from new.

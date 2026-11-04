@@ -1,39 +1,19 @@
 import { escapeHtml } from "./slide-tools.js";
+import { addFontCss, paintSlide, unwatch } from "./slide-drawing.js";
 
 /**
  * Bundles › Slides: every slide of the open file, drawn, in a grid; one slide
  * large with its layers, its media and macros, its notes, and anything Check
- * found on it. The drawing is the propresenter-bundle package's (server-side
- * HTML, laid out here by its draw-layout.js with the fonts' real metrics).
- *
- * Each slide sits in its own shadow root, so neither this app's stylesheet nor
- * the Tailwind JIT touches it, and the slide's own CSS touches nothing else.
- * Slides are fetched a batch at a time as they scroll into view.
+ * found on it. The drawing is the propresenter-bundle package's, painted by
+ * slide-drawing.js (shared with the desktop previews), each slide in its own
+ * shadow root. Slides are fetched a batch at a time as they scroll into view.
  */
 
 const BATCH = 24;
-const SLIDE_W = 1920;
 const prefs = {
   get(k, d) { try { return localStorage.getItem(`pb-${k}`) ?? d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem(`pb-${k}`, v); } catch { /* private window: not kept */ } },
 };
-
-let layoutModule = null;
-const layout = () => (layoutModule ??= import("/api/probundle/draw-layout.js").catch(() => null));
-
-// @font-face only works in the page itself, not inside a shadow root.
-function addFontCss(css) {
-  if (!css) return;
-  let el = document.getElementById("pb-slide-fonts");
-  if (!el) {
-    el = document.createElement("style");
-    el.id = "pb-slide-fonts";
-    document.head.appendChild(el);
-  }
-  const have = new Set(el.textContent.split("\n"));
-  const add = css.split("\n").filter((l) => l && !have.has(l));
-  if (add.length) el.textContent += (el.textContent ? "\n" : "") + add.join("\n");
-}
 
 /** The slides of the open file, numbered from 1 in drawing order, each with its group. */
 function slidesOf(o) {
@@ -85,11 +65,6 @@ export function mountSlides(root, o, findings, { view = null, onView = () => {} 
   let rough = prefs.get("rough", "0") === "1";
   let css = "";
 
-  // Each slide's scale follows its own frame's width (the size slider, the window, the large view).
-  const sized = new ResizeObserver((entries) => {
-    for (const e of entries) if (e.target.clientWidth) e.target.style.setProperty("--k", String(e.target.clientWidth / SLIDE_W));
-  });
-
   const fetchBatch = (from) => {
     if (!loading.has(from)) {
       loading.set(from, fetch(`/api/probundle/slides/${encodeURIComponent(o.sourceId)}?from=${from}&count=${BATCH}`)
@@ -107,18 +82,7 @@ export function mountSlides(root, o, findings, { view = null, onView = () => {} 
   // A slide into a host element, scaled to its width, laid out once its fonts are in.
   async function paintInto(host, n) {
     const d = await drawn(n);
-    if (!d || !host.isConnected) return;
-    const shadow = host.shadowRoot ?? host.attachShadow({ mode: "open" });
-    shadow.innerHTML = `<style>${css}
-      :host{display:block;position:absolute;inset:0;overflow:hidden}
-      .wrap{position:absolute;inset:0}
-      .wrap>.slide{transform:scale(var(--k,0.2))}</style><div class="wrap${rough ? " rough" : ""}">${d.html}</div>`;
-    host.style.setProperty("--k", String(host.clientWidth / SLIDE_W));
-    host.dataset.drawn = "1";
-    sized.observe(host);
-    const mod = await layout();
-    await document.fonts.ready;
-    if (mod && host.isConnected) mod.layoutSlide(shadow);
+    if (d) await paintSlide(host, d, css, { rough });
   }
 
   const seen = new IntersectionObserver((entries) => {
@@ -226,7 +190,7 @@ export function mountSlides(root, o, findings, { view = null, onView = () => {} 
 
   return () => {
     seen.disconnect();
-    sized.disconnect();
+    for (const h of root.querySelectorAll(".pb-host")) unwatch(h);
     document.removeEventListener("keydown", keys);
   };
 }

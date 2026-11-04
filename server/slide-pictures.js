@@ -1,7 +1,7 @@
 /**
- * Pictures for drawn slides (server/probundle.js serves them). A slide names a
- * picture by file name; this finds the file and makes one small copy of it to
- * show, cached on disk.
+ * Pictures for drawn slides: Bundles' (server/probundle.js) and the desktop
+ * previews' (server/slide-drawing.js). A slide names a picture by file name;
+ * this finds the file and makes one small copy of it to show, cached on disk.
  *
  * Where a picture may come from, and nowhere else:
  *  - a bundle's own media, which the reader copied into the cache under their
@@ -18,14 +18,14 @@
  */
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, realpathSync } from "node:fs";
+import { existsSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, rename, rm, stat, unlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 const PICTURE = /\.(png|jpe?g|gif|tiff?|heic|bmp|webp)$/i;
 const VIDEO = /\.(mp4|m4v|mov)$/i;
-const USER_WORKSPACES = path.join(os.homedir(), "Library", "Application Support", "RenewedVision", "ProPresenter", "UserWorkspaces");
+export const USER_WORKSPACES = path.join(os.homedir(), "Library", "Application Support", "RenewedVision", "ProPresenter", "UserWorkspaces");
 const KEEP_MS = 7 * 24 * 60 * 60_000;
 
 /** The workspace folder a library presentation lives in (…/UserWorkspaces/<name>/Libraries/<library>/x.pro), or null. */
@@ -35,13 +35,27 @@ export function workspaceOfLibraryFile(file) {
   return at > 1 ? parts.slice(0, at).join(path.sep) : null;
 }
 
-/** This computer's ProPresenter workspace, most recently changed first, or null when there is none. */
+/**
+ * This computer's ProPresenter workspace: of the workspace folders, the one
+ * whose Libraries changed most recently, or null when there is none. A Mac can
+ * hold several (a clone, a test one), and the folder's own name order says
+ * nothing about which ProPresenter uses.
+ */
 export function localWorkspace(userWorkspaces = USER_WORKSPACES) {
   if (!existsSync(userWorkspaces)) return null;
+  const changed = (dir) => {
+    try {
+      return statSync(path.join(dir, "Libraries")).mtimeMs;
+    } catch {
+      return 0;
+    }
+  };
   const found = readdirSync(userWorkspaces, { withFileTypes: true })
     .filter((d) => d.isDirectory() && existsSync(path.join(userWorkspaces, d.name, "Media")))
-    .map((d) => path.join(userWorkspaces, d.name));
-  return found[0] ?? null;
+    .map((d) => path.join(userWorkspaces, d.name))
+    .map((dir) => ({ dir, at: changed(dir) }))
+    .sort((a, b) => b.at - a.at);
+  return found[0]?.dir ?? null;
 }
 
 const inside = (p, dir) => p === dir || p.startsWith(dir + path.sep);
@@ -107,15 +121,17 @@ async function videoStill(src, dir) {
 /**
  * A copy of `src` at most 960 pixels on its longer side, made once and kept in
  * `cacheDir`. JPEG, which keeps fine texture in a background; WebP only where
- * the picture has transparency. Returns { file, type } or null.
+ * the picture has transparency. Returns { file, type } or null. `onlyMade`:
+ * a copy already made, or null (nothing is resized during a service).
  */
-export async function shownCopy(src, cacheDir) {
+export async function shownCopy(src, cacheDir, { onlyMade = false } = {}) {
   const s = await stat(src);
   const key = createHash("sha256").update(`${src}\0${s.size}\0${s.mtimeMs}`).digest("hex");
   for (const [ext, type] of [["jpg", "image/jpeg"], ["webp", "image/webp"]]) {
     const f = path.join(cacheDir, `shown-${key}.${ext}`);
     if (existsSync(f)) return { file: f, type };
   }
+  if (onlyMade) return null;
   const { default: sharp } = await import("sharp");
   let input = src;
   let tmp = null;
@@ -157,4 +173,30 @@ export async function pruneCache(cacheDir, now = Date.now()) {
       /* already gone */
     }
   }
+}
+
+const MEDIA = /\.(png|jpe?g|gif|tiff?|heic|bmp|webp|mp4|m4v|mov)$/i;
+
+/**
+ * Every slide of a decoded presentation drawn (the package's drawPresentation),
+ * its pictures numbered. `cached` maps a bundle's media file names to their
+ * copies in `cacheDir`; anything else is looked for in `workspace`. A picture
+ * neither has is drawn as missing, by name, rather than as a broken image.
+ * `url(n)` is the address the page asks for picture n by.
+ * @returns {{ drawn: object[], pictures: { name: string, rel: string|null, cached: string|null }[] }}
+ */
+export function drawWithPictures(lib, doc, { cached = new Map(), cacheDir, workspace, url }) {
+  const pictures = [];
+  const number = new Map();
+  const picture = (name, rel) => {
+    if (!MEDIA.test(name)) return null;
+    const pic = { name, rel: rel ?? null, cached: cached.get(name) ?? null };
+    if (!number.has(name) && !pictureSource(pic, { cacheDir, workspace })) return null;
+    if (!number.has(name)) {
+      number.set(name, pictures.length);
+      pictures.push(pic);
+    }
+    return url(number.get(name));
+  };
+  return { drawn: lib.drawPresentation(doc, { picture }), pictures };
 }

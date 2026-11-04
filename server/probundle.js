@@ -7,7 +7,7 @@
  *  - File work only. Nothing here calls ProPresenter's API.
  *  - A file comes from the search index (by presentation id, never a path a
  *    caller typed) or is uploaded from the page. It is never written; the only
- *    files written are the pictures shown (probundle-pictures.js), under ./data.
+ *    files written are the pictures shown (slide-pictures.js), under ./data.
  *  - Never during a service: refused while performance mode is on or
  *    something is on the screens, and each read runs in a worker thread with a
  *    time limit, so the main thread (heartbeat, Go Live, phones) never waits.
@@ -21,9 +21,8 @@ import express from "express";
 import { Worker } from "node:worker_threads";
 import { readFile, readdir, stat, mkdir } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { workspaceOfLibraryFile, localWorkspace, pictureSource, shownCopy, pruneCache } from "./probundle-pictures.js";
+import { workspaceOfLibraryFile, localWorkspace, USER_WORKSPACES, pictureSource, shownCopy, pruneCache } from "./slide-pictures.js";
 
 export const PROBUNDLE_LIMITS = {
   libraryFileBytes: 64 * 1024 * 1024, // a .pro from the library
@@ -135,6 +134,19 @@ export function probundleRouter({ getConfig, updateConfig, getStatus, getProblem
     return false;
   };
 
+  // The workspace ProPresenter uses on this Mac, for a file opened from outside
+  // it (an upload, Claude's draft): where the search index found its
+  // presentations, which is ProPresenter's own answer; else the workspace
+  // changed most recently.
+  const thisMacWorkspace = () => {
+    const root = path.resolve(userWorkspaces ?? USER_WORKSPACES);
+    for (const e of Object.values(getIndex()?.presentations ?? {})) {
+      const ws = e?.presentationPath ? workspaceOfLibraryFile(e.presentationPath) : null;
+      if (ws && path.dirname(ws) === root) return ws;
+    }
+    return localWorkspace(root);
+  };
+
   router.get("/status", async (_req, res) => {
     const pkg = await packageReady();
     const config = getConfig();
@@ -220,7 +232,7 @@ export function probundleRouter({ getConfig, updateConfig, getStatus, getProblem
       /* not encoded as the page sends it: shown as it arrived */
     }
     // A file from disk takes its pictures from its bundle, else from this computer's ProPresenter.
-    await openBytes(res, req.body, { name: name.slice(0, 200) || "Uploaded file", from: "Uploaded", workspace: localWorkspace(userWorkspaces) });
+    await openBytes(res, req.body, { name: name.slice(0, 200) || "Uploaded file", from: "Uploaded", workspace: thisMacWorkspace() });
   });
 
   // CLAUDE'S DRAFTS: the MCP's working copies (data/probundle-staging/copies/<id>, changed in place as
@@ -273,7 +285,7 @@ export function probundleRouter({ getConfig, updateConfig, getStatus, getProblem
       const s = await stat(d.file);
       if (s.size > PROBUNDLE_LIMITS.uploadBytes) return res.status(413).json({ error: `That file is more than ${PROBUNDLE_LIMITS.uploadBytes / 1024 / 1024} MB.` });
       const bytes = await readFile(d.file);
-      await openBytes(res, bytes, { name: d.name, from: d.from, workspace: localWorkspace(userWorkspaces), draft: { id: d.id, version: d.version, note: d.note, changed: d.changed } });
+      await openBytes(res, bytes, { name: d.name, from: d.from, workspace: thisMacWorkspace(), draft: { id: d.id, version: d.version, note: d.note, changed: d.changed } });
     } catch (err) {
       res.status(404).json({ error: `Couldn't read that draft: ${err.code ?? err.message}` });
     }
@@ -288,7 +300,7 @@ export function probundleRouter({ getConfig, updateConfig, getStatus, getProblem
     const count = Math.min(48, Math.max(1, Number.parseInt(req.query.count, 10) || 24));
     const lib = await import("propresenter-bundle");
     const slides = s.drawn.slice(from, from + count).map((d, i) => ({
-      n: from + i + 1, id: d.id, group: d.group, label: d.label, enabled: d.enabled, notes: d.notes,
+      n: from + i + 1, id: d.id, group: d.group, label: d.label, enabled: d.enabled, notes: d.notes, width: d.width,
       html: d.html.replaceAll("/api/probundle/picture/__SRC__/", `/api/probundle/picture/${encodeURIComponent(req.params.sourceId)}/`),
     }));
     res.json({ total: s.drawn.length, from, slides, css: lib.DRAW_CSS, fontCss: lib.fontFaces(s.drawn.slice(from, from + count).flatMap((d) => d.fonts)) });
@@ -305,15 +317,6 @@ export function probundleRouter({ getConfig, updateConfig, getStatus, getProblem
       const shown = await shownCopy(src, cacheDir);
       if (!shown) return res.status(404).end();
       res.set("Cache-Control", "private, max-age=3600").type(shown.type).sendFile(shown.file);
-    } catch {
-      res.status(404).end();
-    }
-  });
-
-  // The browser half of the drawing (the package's draw-layout.js), served from the installed package.
-  router.get("/draw-layout.js", async (_req, res) => {
-    try {
-      res.type("text/javascript").sendFile(fileURLToPath(import.meta.resolve("propresenter-bundle/draw-layout")));
     } catch {
       res.status(404).end();
     }
