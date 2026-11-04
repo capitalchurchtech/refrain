@@ -66,6 +66,7 @@ delivery/          where the day summary goes
 modules/           one folder per screen, each a module.js
 public/            the front end, one script per screen
 mac/Refrain/       Refrain.app
+mac/icon/          make-icon.swift, which draws the app's icon from Archivo at build time
 scripts/           launchers, updaters, Start at login, the Mac app build
 test/              node --test suites
 docs/              these pages
@@ -150,6 +151,18 @@ Search is a case-insensitive substring match with apostrophe folding, a typo
 retry against the library's own words, and repeated lines collapsed.
 
 See [the search index](indexing.md) for the behaviour.
+
+## Slide pictures
+
+A ProPresenter thumbnail writes about 30 KB into its workspace database, so the
+booth screens draw their own where they can. `server/slide-drawing.js` draws a
+whole presentation from its `.pro` file in a worker, in the arrangement
+ProPresenter has selected, keeps the last 30 files drawn in memory, and serves
+them to `public/slide-drawing.js`. Quality Control and the safe slide keys use
+it; a slide it can't draw falls back to ProPresenter's thumbnail, then to its
+words. Bundles shares the same drawing code. Everything else that needs a
+picture (phones, Update pictures, flag pictures) asks ProPresenter, under the
+rules in [phones](phones.md#slide-pictures).
 
 ## The heartbeat
 

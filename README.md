@@ -19,6 +19,8 @@ It runs entirely on your own computer. Nothing is hosted for you, there is no
 account and no subscription, and nothing about your church is sent to the
 project.
 
+> **Use at your own risk.** Refrain is provided "as is", without warranty of any kind. By downloading, installing or using it you accept sole responsibility for its use and for any result, and the owners and contributors of this repository accept no liability for any loss, damage or interruption it causes, including during a live service or event. Read [Warranty and liability](#warranty-and-liability) before you rely on it.
+
 ## What it does
 
 **Search.** Every word on every slide, in the libraries you choose. Go Live puts
@@ -127,7 +129,9 @@ noticing that ProPresenter has quit.
    connection**, say whether this is the machine that runs ProPresenter live,
    and press **Save and continue**.
 
-Refrain waits for ProPresenter to settle, then builds its search index. The
+Refrain waits for ProPresenter to settle, then builds its search index. Setting
+up a booth for the first time? [Setting up Refrain for your
+church](docs/first-setup.md) is the checklist from here to a ready Sunday. The
 [install guide](docs/install.md) covers where to put the folder, starting at
 login, giving Refrain its own window, and stopping or restarting it.
 
@@ -197,9 +201,25 @@ lyrics splitters, day summary delivery and whole new screens are each a file
 Refrain is an independent community project. It is not affiliated with,
 endorsed by or supported by Renewed Vision (ProPresenter) or Planning Center.
 
+## Warranty and liability
+
+Refrain is licensed under the MIT License, and the disclaimer of warranty and limitation of liability in [LICENSE](LICENSE) apply in full. This section states those terms more fully. It adds to them and does not narrow them. If you do not accept these terms, do not download, install or use the software.
+
+**No warranty.** The software is provided "as is" and "as available", with all faults, and without warranty or condition of any kind, whether express, implied or statutory. This includes, without limitation, any warranty of merchantability, fitness for a particular purpose, title, non-infringement, accuracy, compatibility, security, or uninterrupted or error-free operation. No statement made by the owners or contributors, whether in this README, the documentation, an issue, a pull request, a release note or anywhere else, creates any warranty or obligation.
+
+**You assume all risk.** You download, install, configure, modify, distribute and use the software entirely at your own risk. You alone are responsible for deciding whether it is suitable for your purposes, for testing it before you rely on it, for keeping backups of your data (including your ProPresenter libraries, media, playlists and settings), and for every consequence of its use. Refrain runs alongside live production software. It can put content on screens, read and write files on your computer, and connect to services you configure. Any error, interruption, loss or corruption of data, or content shown or not shown during a service, event, recording or broadcast is your responsibility and no one else's.
+
+**No liability.** To the maximum extent permitted by applicable law, in no event will the owners of this repository, the copyright holders, the contributors, or their respective churches, employers, affiliates, staff, volunteers or agents be liable to you or to any third party for any claim, loss or damages of any kind. This includes direct, indirect, incidental, special, consequential, exemplary or punitive damages, and loss of data, revenue, goodwill or use, or the interruption of any service, event or broadcast. This applies however the loss is caused, under any theory of liability, whether in contract, tort (including negligence), strict liability or otherwise, arising out of or in connection with the software or its use or inability to use it, even if any of them were told such loss was possible.
+
+**You hold them harmless.** To the maximum extent permitted by applicable law, you agree to hold harmless and indemnify the owners, copyright holders and contributors from and against any claim, loss, liability, damage, cost or expense (including reasonable legal fees) brought by any third party or arising from your use of the software, your modification or distribution of it, or your breach of these terms.
+
+**No support and no duty to update.** No one is obliged to provide support, maintenance, updates, security fixes or notice of any defect. Any help that is offered is given voluntarily, without obligation, and may stop at any time.
+
+**Where the law limits this.** Some jurisdictions do not allow certain warranties to be excluded or certain liability to be limited. Where that is so, these exclusions and limitations apply to the fullest extent the law allows, and the rest of these terms remain in effect.
+
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE). The terms under [Warranty and liability](#warranty-and-liability) apply to every use of the software.
 
 Bundled third-party files are listed with their licences in
 [public/vendor/README.md](public/vendor/README.md). Three of them are not MIT

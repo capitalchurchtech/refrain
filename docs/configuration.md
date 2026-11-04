@@ -108,7 +108,7 @@ See [the search index](indexing.md).
 | `networkModule.pinHint` | none | The sign-in screen's line about where to find the PIN |
 | `networkModule.phoneGoLive` | `false` | Let phones go live |
 | `networkModule.phonePictures` | `false` | Let the phone page fetch stored slide pictures (the current page doesn't show them) |
-| `slidePictures.show` | `false` | Show pictures (otherwise words only) |
+| `slidePictures.show` | `false` | Let screens ask ProPresenter for slide pictures (otherwise words only); doesn't affect the pictures Refrain draws from files |
 | `slidePictures.quickSlides` | on unless false | Draw each safe slide once when it is kept |
 | `slidePictures.flagged` | on unless false | Take a picture when a slide is flagged |
 | `slidePictures.prerender` | `false` | Draw ahead of time (paused) |

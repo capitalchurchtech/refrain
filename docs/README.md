@@ -2,6 +2,8 @@
 
 ## Running Refrain
 
+- [Setting up Refrain for your church](first-setup.md): a checklist from an
+  empty Mac to a booth that's ready for Sunday. Start here.
 - [Installing and running](install.md): Node, where to put Refrain, first run,
   starting at login, its own window, updating, stopping and restarting.
 - [The search index](indexing.md): how Refrain reads your library, when it

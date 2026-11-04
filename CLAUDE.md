@@ -5,7 +5,7 @@ This is for Claude or any other AI coding agent making changes here. Human contr
 ## Three things that must never break
 
 1. **Core search stays free of everything else.** The core (`server/propresenter-client.js`, `server/search-index.js`, and the search and lyrics screens) must keep working with nothing but ProPresenter. A church with no church management software and no interest in the other tools should get full value from search with zero setup for features it didn't ask for. If a change makes core search depend on the arrangement module, a specific provider, or any module, it's wrong. This is not a judgment call.
-2. **No telemetry, ever.** No analytics, no phoning home to anything the project controls. Not "off by default", not present in the code at all. The README states this plainly and it's a checkable claim. Don't be the change that quietly breaks it with an error reporting SDK or an update check that leaks usage.
+2. **No telemetry, ever.** No analytics, no phoning home to anything the project controls. Not "off by default", not present in the code at all. The README states this plainly and it's a checkable claim. Don't be the change that quietly breaks it with an error reporting SDK or an update check that leaks usage. The one automatic outbound request today is the update check (`/api/version-check` in `server/index.js`): a plain GET of this repo's `package.json` from `raw.githubusercontent.com`, cached six hours, carrying no identifier, version or usage. Keep it that way. The README's Privacy section lists every connection Refrain makes; if you add or change one, change that list in the same commit.
 3. **Never lose data silently.** Config writes are atomic (temp file then rename, see `saveConfig` in `server/config.js`). Writes to shared arrangement storage stage locally first and retry on failure rather than dropping data on a network blip (see `stageAndWrite` and `retryPendingUploads` in `server/arrangement-diff.js`). If you add a new place that writes something a volunteer would be upset to lose, follow that pattern, not a bare `fs.writeFile`.
 
 ## Where new code goes
@@ -17,10 +17,31 @@ The project uses auto discovery, not central registries. Dropping a file in the 
 | Church management integration | `providers/your-name.js` | `providers/planning-center.js` | `providers/base.js` |
 | Storage backend | `storage/your-name.js` | `storage/local-folder.js` | `storage/base.js` |
 | Lyrics splitter | `slide-splitters/your-name.js` | `slide-splitters/blank-line-delimited.js` | `slide-splitters/base.js` |
+| Where the day summary goes | `delivery/your-name.js` | `delivery/email.js`, `delivery/folder.js` | `delivery/base.js` |
 | A whole new nav feature | `modules/your-feature/module.js` plus `server/your-feature.js` plus `public/your-feature.js` | `modules/image-crop/`, `modules/qr-code/` | none |
 | Native macOS window behaviour | `mac/Refrain/` (Swift, built by `scripts/build-mac-app.command`) | `WebController.swift` | none. It only shows the front end, so a feature still goes in `modules/`, never only here. |
 
 CONTRIBUTING.md has the exact method signatures for each.
+
+Where discovery stops, so you don't go looking for magic that isn't there:
+
+- **A module's server routes are not discovered.** `module.js` gives the menu
+  entry, the screen and the Settings › Features switch. The `/api/...` routes
+  still get added by hand in `server/index.js`, or as a router mounted there
+  the way Bundles mounts `server/probundle.js`. That is the expected edit, not
+  fighting the architecture.
+- **Constructor arguments are built per id** in `getArrangementProvider` and
+  `getStorageBackend` (`server/index.js`). A new provider gets
+  `new Provider({ storage })` and a new storage backend gets `new Backend()`; one
+  that needs credentials or settings needs a branch there.
+- **Load timing differs.** Providers and delivery backends are imported at
+  start-up with top-level await, so one that throws on import stops the server.
+  Storage backends and splitters are imported when a route needs them, so one
+  that throws breaks only those routes. A broken module is skipped.
+- **`getPlanSongs(planId)`** is called on any provider with
+  `supportsPlanBrowsing` but isn't declared in `providers/base.js`. Read
+  `providers/planning-center.js` for its shape before writing a second
+  plan-browsing provider.
 
 ## Don't hardcode a vendor name in shared code
 
@@ -29,13 +50,59 @@ This was a real bug class here. Early on, the "push to church management system"
 - If a screen or route needs a provider or backend's name, read `Provider.displayName` or `Backend.displayName`. Never write the vendor's name as a literal outside that provider's own file.
 - If a screen or route needs to know whether a provider can do something (push an update, browse plans), add a `static supportsX = false` flag to the base class and check `Provider.supportsX`, the way `requireProviderCapability()` in `server/index.js` does. Never write `if (providerId === "planning-center")` in code that isn't that provider's own file.
 - Name fields and routes for the thing, not the vendor: `externalSongId`, not `pcoSongId`. `/api/arrangement/push-arrangement`, not `.../pco/...`.
-- The one fair exception is a provider's own config field, like "Planning Center Service Type ID" on the Health screen, which is inherently specific to that system. The test: would this string need to change if someone swapped in a different provider? If yes, it's hardcoded, so read it from the capability or the display name instead.
+- The one fair exception is a provider's own config field, like "Planning Center Service Type ID" on Settings, which is inherently specific to that system. The test: would this string need to change if someone swapped in a different provider? If yes, it's hardcoded, so read it from the capability or the display name instead.
 
 ## Config, secrets, and module status
 
 - Non secret preferences go in `config.json` (gitignored, real values). `config.example.json` documents the shape.
 - Secrets go in `.env` (gitignored). `.env.example` lists the names, blank.
-- Every optional module reports off, misconfigured, or active from a `getXModuleStatus(config)` function in `server/config.js`. A missing credential or unset folder should degrade to misconfigured with a clear Health screen message, never crash the server or take down an unrelated feature.
+- **Both templates are user-facing, not just developer notes.** Refrain reads `config.example.json` when there is no `config.json`, and setup saves what it read, so its `_comment` keys land in every new church's `config.json`. The Secrets screen (Settings › Features › Options › Secrets) shows one field per name in `.env.example`. Keep the comments true and the names live.
+- Every optional module reports off, misconfigured, or active from a `get<Name>ModuleStatus(config)` function in `server/config.js` (some return `{ status, problems }` instead of a string). A missing credential or unset folder should degrade to misconfigured with a clear message on Settings › Status, never crash the server or take down an unrelated feature.
+- Most switches come from a module's own `feature` in `module.js`, read by `server/features.js`; `featureOn(config, id)` is the check. Phones (`networkModule.enabled`), the day summary (`reportModule.enabled`) and the service feed (`serviceFeedModule.enabled`) are switched in their own blocks instead.
+
+### The screen called Health is Settings
+
+The rail and every page say **Settings**, with tabs Status, Search, Features,
+System, and More (Phones, Customize, Telemetry, Audit). The code still calls it
+`health`: `public/health.js`, the `health` view, `#health`. Plenty of comments and a
+few strings still say "Health screen" and mean Settings. Write "Settings ›
+<tab>" in anything a person reads, and use the More path (Settings › More ›
+Phones) in docs.
+
+## Don't make ProPresenter work during a service
+
+Two safeguards exist because heavy reads through ProPresenter's API make it
+sluggish (Go Live, Clear and macros lag) and make it write to its own workspace
+database, about 13 KB per presentation read. Anything new that reads
+presentations, playlists or slide pictures from ProPresenter has to respect both:
+
+- **Performance mode** (`server/performance-mode.js`). Armed after two minutes
+  of something live, or by hand, or when ProPresenter can't be reached.
+  Background work must not start while it is armed, and bulk work should
+  refuse with the shared "Performance mode is on, so Refrain is holding
+  still…" message. The heartbeat is the exception, and new live-state features
+  should read the heartbeat's cached state rather than add calls.
+- **Protect ProPresenter** (`protectProPresenter`, on unless `false`). While
+  on, nothing reads presentations through the API in bulk: Quality Control,
+  the pre-service checks, Update pictures and Get slide pictures all refuse,
+  and the index runs from `.pro` files only. It is on in every fresh install,
+  so a feature that needs bulk API reads will refuse out of the box. Say so in
+  its docs and its refusal message rather than discovering it in a booth.
+
+Prefer reading `.pro` files with `propresenter-bundle` (see
+`server/presentation-files.js`) to asking the API. The same goes for pictures:
+a ProPresenter thumbnail writes about 30 KB into its workspace database, so a
+booth screen that needs a slide picture should draw it with
+`server/slide-drawing.js` (as Quality Control and safe slides do) and fall back
+to the thumbnail only when it can't. Never write to
+ProPresenter's library or workspace. The old Library Sync feature did, and is
+switched off with `SHARE_LIBRARY_REMOVED` in `server/index.js` (every route
+answers 410); don't revive it and don't document it as a feature.
+
+The ProPresenter API paths are verified against 21.3 (see the top of
+`server/propresenter-client.js`). `/help` answers 404 on that version, so don't
+send people there to check an endpoint; `docs/propresenter-verification.md` has
+`curl` captures instead.
 
 ## Tailwind is a runtime JIT here, not a compiled stylesheet
 
@@ -143,7 +210,8 @@ different sessions.
 ## Before you commit
 
 - `npm run lint` has to be clean. If your change broke it, fix the change. Don't paper over it with an eslint disable unless you can say why the rule is genuinely wrong for that line.
-- `npm test` has to pass. The suite (Node's built-in runner, files in `test/`) covers the pure logic and the data-safety writers: spell-check flagging, slide-text cleanup and splitting, arrangement diffing, slide indexing, and the atomic `saveConfig`. If you touch any of those, add or update a test. If you add new pure logic worth protecting (especially anything that writes files a volunteer would hate to lose), give it a test rather than relying on a manual check that won't survive the next change.
+- `npm test` has to pass. The suite (Node's built-in runner, files in `test/`) covers the pure logic and the data-safety writers: spell-check flagging, slide-text cleanup and splitting, arrangement diffing, slide indexing, and the atomic `saveConfig`. If you touch any of those, add or update a test. If you add new pure logic worth protecting (especially anything that writes files a volunteer would hate to lose), give it a test rather than relying on a manual check that won't survive the next change. There is no fake ProPresenter server: tests stub `globalThis.fetch`, and route tests start Express on port 0. `stageAndWrite`/`retryPendingUploads` and `saveRecord`/`retryPending` have no tests yet, so add them if you touch those.
+- CI runs `npm run lint` only, on Node 18, while `package.json` needs Node 20. It does not run the tests, so a green check is not a passing suite. Run `npm test` yourself.
 - Run `node --check` on every file you touched. This is plain ESM with no build step, so a syntax error otherwise only shows up at runtime.
 - If the change is visible in the browser (a new screen, a changed flow, a route the UI calls), exercise it against a running dev server before you call it done. This repo's history is full of bugs a syntax check wouldn't catch: races on fast clicks, a route path that didn't match the front end's fetch, a config field the UI never wired up. Don't claim something works without having run it.
 - Never commit real church data: sermon content, real names, real keys or tokens, or a screenshot from a live search that happens to surface sermon notes. If you need a doc screenshot, use clearly generic content (hymn lyrics, not sermon notes) or ask first.
@@ -151,6 +219,42 @@ different sessions.
 ## Be honest in the docs
 
 If you ship something partly stubbed (interface there, methods throwing, like `storage/firestore.js` and `storage/sftp.js`), say so plainly where you'd otherwise claim it works. The README's "What's finished and what isn't" section is the format. Don't let a stub read as a shipped feature because the change description didn't mention it. If you add a stub, add it to that section.
+
+### Keep the docs true as you go
+
+The docs were rebuilt from the code at v0.38.0 because they had drifted into
+85 KB of release notes that contradicted it. Don't let that happen again: a
+change to anything a person sees updates its page in the same commit.
+
+| If you change | Update |
+|---|---|
+| Install, launchers, Start at login, Refrain.app, updating | `docs/install.md` (and README's Installing or Updating if the steps change) |
+| What a new church does on day one | `docs/first-setup.md` |
+| Indexing, performance mode, Protect ProPresenter | `docs/indexing.md` |
+| Search, Go Live, Return, keyboard | `docs/search.md` |
+| Now, Day, Flags, End the day, summary | `docs/service.md` |
+| The phone page, its permissions, slide pictures | `docs/phones.md` and SECURITY.md |
+| Quality Control, Lyrics, Scripture, Image Crop, QR | `docs/prep-tools.md` |
+| Arrangement tracking, providers, storage | `docs/arrangements.md` |
+| Bundles, the MCP server or its tools | `docs/bundles-and-mcp.md` |
+| A Settings tab, a feature switch, a config key, a `.env` name, a file under `data/` | `docs/configuration.md`, `config.example.json` comments, `.env.example` |
+| Any outbound connection | README's Privacy section |
+| The service feed or staff requests contract | `docs/service-feed.md` |
+| A ProPresenter endpoint | `docs/propresenter-verification.md` |
+| Structure, an extension point, a rule | `docs/refrain-architecture.md`, CONTRIBUTING.md, this file |
+
+Some names are load-bearing. Scripts and error messages send people to the
+README's **Installing** and **Updating** sections, and this file and the PR
+template point at **What's finished and what isn't**. Code comments cite
+`docs/refrain-architecture.md`, `docs/service-feed.md` and `docs/ideas.md` by
+path. Rename any of those and fix every reference in the same change.
+
+Docs are the warm voice zone in `.claude/creative-direction.md`: plain, sentence
+case, active voice, no em dashes. Name buttons and menus exactly as the UI
+spells them, and write paths as **Settings › More › Phones**. Describe the
+current version only; what changed belongs in the release notes. A claim you
+couldn't check (a measurement, a ProPresenter behaviour) says so rather than
+reading as fact.
 
 ## Git
 

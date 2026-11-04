@@ -36,14 +36,15 @@ whose sections have moved since it was indexed still sends the slide you chose.
 If ProPresenter can't answer that check within four seconds, Refrain sends the
 slide number it indexed.
 
-The **Flag** chip under the search box marks whatever is on the screens as
+The **Flag** key under the search box marks whatever is on the screens as
 something to fix later. See [Flags](service.md#flags).
 
 ## The library filter
 
-When you index more than one library, a **Filter** chip appears. Each library
+When you index more than one library, a **Filter** key (the funnel, beside Flag)
+appears. Each library
 has a key; switch one off to leave it out of your searches, or press **Search
-all**. A dot on the chip means the search is narrowed. Your choice is
+all**. A dot on the key's corner means the search is narrowed. Your choice is
 remembered, and a library added later is searched until you switch it off.
 
 ## Deep Search

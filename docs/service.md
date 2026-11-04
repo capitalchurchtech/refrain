@@ -55,7 +55,9 @@ Two rows link to Flags ("N to fix") and Day ("Checks due", "N services today",
 
 Off by default (Settings › Features › Safe slides). Up to four of your own
 known-good slides, such as a logo or a blank, to cut to in a hurry. With one of
-them on the screens, **Keep current** keeps it. Each is then one press. Refrain
+them on the screens, **Keep current** keeps it. Each is then one press, and each
+key shows a picture of its slide that Refrain draws from the presentation's file
+(or the slide's words, with Safe slide pictures set to Names). Refrain
 remembers a safe slide by its group and position, so if the presentation has
 changed and the slide isn't where it was, it refuses rather than sending
 something else. **Edit** renames, reorders and removes them.
