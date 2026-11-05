@@ -25,6 +25,24 @@ folder, so nothing of yours can be committed to Refrain by accident.
 
 Refrain keeps the last six files you opened for an hour, in memory only.
 
+### Themes
+
+ProPresenter's theme export holds every theme it has, and most are not the
+church's. Under **Themes Claude may use**, upload that export (a `.protheme`,
+up to 64 MB). Refrain splits it into one file per theme, each with its own
+pictures, and keeps them in `<packs folder>/themes/`. Nothing in your file or in
+ProPresenter changes.
+
+- **Look** draws a theme's slides, so you can see what you are choosing. The
+  export itself has no preview.
+- **The tick** says which themes Claude may use through the MCP server. Every
+  theme starts unticked. Uploading the same theme again keeps its tick; a theme
+  of the same name with different content is a new entry, unticked.
+- **Remove** takes a theme out of the library.
+
+The tick only limits the MCP server. It does not hide a theme from Look, and it
+does not change ProPresenter's own themes.
+
 ### What you see
 
 - **Slides**: every slide drawn, in a grid grouped as the presentation is, with
@@ -50,9 +68,9 @@ same slide.
 Bundles never changes a file you open and never talks to ProPresenter. Pictures
 come from the bundle itself or, for other files, from ProPresenter's workspace on
 this computer. A video shows its first frame if `ffmpeg` or macOS Quick Look can
-make one. The only thing it writes is a cache of the pictures it shows, in
+make one. It writes a cache of the pictures it shows, in
 `data/probundle-staging/pictures`, cleared of anything unused for a week when
-Refrain starts.
+Refrain starts, and the theme library in your packs folder (see Themes).
 
 It refuses to open files while something is on the screens or performance mode
 is on (unless that is only because ProPresenter isn't answering), and each file is read off Refrain's main thread with a 30-second limit,
@@ -94,6 +112,11 @@ If Node isn't on the assistant's path, give the full path to `node` instead.
 
 - It opens only `.pro`, `.probundle`, `.protheme` and `.proplaylist` files, and
   the picture, video or sound files you give it to add, up to 1.5 GB.
+- A theme opens only if it is ticked in Bundles › Themes, wherever the file is.
+  Refrain recognises it by what is inside, not its name or place. An unticked
+  theme is refused, and so is an export holding several themes: upload it in
+  Bundles first. Because of this, a theme file a skill carries has to be ticked
+  too.
 - It never opens anything inside ProPresenter's `Workspaces` folder or any folder
   named `Database`, checked again after following links.
 - It never changes the file you point it at. Changes happen on a working copy in
@@ -123,6 +146,7 @@ If Node isn't on the assistant's path, give the full path to `node` instead.
 | `refrain_build_from` | Writes | A new presentation from existing slides, or from a theme's slides as masters, with new words |
 | `refrain_read_workspace` | Reads | What your ProPresenter knows by name: macros, Looks, labels, groups, props, messages, timers, stage layouts, clear groups, playlists |
 | `refrain_workspace_to_presentation` | Writes | Stage layouts or props as an ordinary presentation you can import |
+| `refrain_list_themes` | Reads | The themes ticked in Bundles › Themes, each with the path to open or build from |
 | `refrain_list_skills`, `refrain_read_skill` | Reads | Your church's skills |
 | `refrain_save_skill`, `refrain_file_away` | Writes | Save a skill (the previous version is kept), or file a reference file with one |
 | `refrain_list_script_types`, `refrain_preview_script` | Reads | The script builder (below) |

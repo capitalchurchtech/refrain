@@ -21,13 +21,56 @@ const MEDIA = /\.(png|jpe?g|gif|tiff?|heic|bmp|webp|mp4|m4v|mov)$/i;
 try {
   const lib = await import("propresenter-bundle");
   const buf = Buffer.from(workerData.bytes);
-  const { findings, model, predicted, file } = lib.checkFile(buf, { maxEntryBytes: workerData.maxEntryBytes });
-  let drawn = null;
-  let pictures = [];
-  if (model && workerData.cacheDir && lib.drawPresentation) ({ drawn, pictures } = draw(lib, buf));
-  parentPort.postMessage({ ok: true, findings, model, predicted, file, drawn, pictures });
+  if (workerData.theme) {
+    parentPort.postMessage({ ok: true, ...drawTheme(lib, buf) });
+  } else {
+    const { findings, model, predicted, file } = lib.checkFile(buf, { maxEntryBytes: workerData.maxEntryBytes });
+    let drawn = null;
+    let pictures = [];
+    if (model && workerData.cacheDir && lib.drawPresentation) ({ drawn, pictures } = draw(lib, buf));
+    parentPort.postMessage({ ok: true, findings, model, predicted, file, drawn, pictures });
+  }
 } catch (err) {
   parentPort.postMessage({ ok: false, error: err?.message ?? String(err) });
+}
+
+/** A cached copy of a picture, named by its content's hash (written once). */
+function cachePicture(name, data) {
+  mkdirSync(workerData.cacheDir, { recursive: true });
+  const cachedName = `${createHash("sha256").update(data).digest("hex")}${path.extname(name).toLowerCase()}`;
+  const to = path.join(workerData.cacheDir, cachedName);
+  if (!existsSync(to)) {
+    const tmp = `${to}.${process.pid}.tmp`;
+    writeFileSync(tmp, data);
+    renameSync(tmp, to);
+  }
+  return cachedName;
+}
+
+/**
+ * A theme (.protheme, one theme) drawn as a presentation: each theme slide becomes a slide of a stand-in
+ * presentation, so the Slides view needs nothing of its own. The theme's pictures come from the theme file.
+ */
+function drawTheme(lib, buf) {
+  const t = lib.readThemeFile(buf, { maxEntryBytes: workerData.maxEntryBytes });
+  const workspace = lib.themeWorkspace(t.doc) ?? workerData.workspace ?? "/Refrain/theme-preview";
+  const cached = new Map();
+  const cues = (t.doc.slides ?? []).map((_, i) => {
+    const made = lib.themeSlideAsCue(t.file, t.doc, i, { workspace });
+    for (const m of made.media) cached.set(m.name.split("/").pop(), cachePicture(m.name, m.data));
+    return made.cue;
+  });
+  const doc = { uuid: t.doc.uuid, name: t.file.name ?? "", cues, cue_groups: [{ group: { name: "Theme slides" }, cue_identifiers: cues.map((c) => c.uuid) }], arrangements: [] };
+  const { drawn, pictures } = drawWithPictures(lib, doc, { cached, cacheDir: workerData.cacheDir, workspace: workerData.workspace, url: (n) => `/api/probundle/picture/__SRC__/${n}` });
+  const unread = t.unknown.length ? [{ severity: "note", code: "unreadable", slide: null, box: null, message: `${t.unknown.length} field(s) in this theme aren't understood by the reader, so it can be drawn but not changed.` }] : [];
+  return {
+    findings: unread,
+    model: lib.toModel(doc),
+    predicted: null,
+    file: { kind: "protheme", media: t.file.assets.map((a) => a.file) },
+    drawn: drawn.map((x) => ({ ...x, notes: "" })),
+    pictures,
+  };
 }
 
 function draw(lib, buf) {

@@ -38,7 +38,7 @@ test("every tool is named refrain_…, says whether it writes, and has a result 
     assert.equal(t.outputSchema?.type, "object");
   }
   const reads = tools.filter((t) => t.annotations.readOnlyHint).map((t) => t.name);
-  assert.deepEqual(reads, ["refrain_setup_status", "refrain_open", "refrain_read_slide", "refrain_check", "refrain_read_workspace", "refrain_list_skills", "refrain_read_skill", "refrain_list_script_types", "refrain_preview_script"]);
+  assert.deepEqual(reads, ["refrain_setup_status", "refrain_open", "refrain_read_slide", "refrain_check", "refrain_read_workspace", "refrain_list_themes", "refrain_list_skills", "refrain_read_skill", "refrain_list_script_types", "refrain_preview_script"]);
 });
 
 test("setup status names the exact setting for each thing missing, and a tool that needs it says so", async () => {

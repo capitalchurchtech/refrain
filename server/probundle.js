@@ -22,12 +22,14 @@ import { runWorker } from "./run-worker.js";
 import { readFile, readdir, stat, mkdir } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+import { createThemeLibrary, themesDir } from "./theme-library.js";
 import { workspaceOfLibraryFile, localWorkspace, USER_WORKSPACES, pictureSource, shownCopy, pruneCache } from "./slide-pictures.js";
 
 export const PROBUNDLE_LIMITS = {
   libraryFileBytes: 64 * 1024 * 1024, // a .pro from the library
   uploadBytes: 300 * 1024 * 1024, // a bundle carries its media
   entryBytes: 300 * 1024 * 1024,
+  themeUploadBytes: 64 * 1024 * 1024, // an export of every theme is a few MB; one with videos in it is not
   readMs: 30_000,
   kept: 6, // opened files kept for comparing, oldest dropped first
   keptMs: 60 * 60_000,
@@ -48,10 +50,10 @@ async function packageReady() {
 }
 
 /** Reads, checks and draws bytes in a worker, with a time limit. */
-function readInWorker(bytes, cacheDir, workspace) {
+function readInWorker(bytes, cacheDir, workspace, theme = false) {
   const copy = new Uint8Array(bytes); // its own buffer, so it can be handed over
   return runWorker(new URL("./probundle-worker.js", import.meta.url), {
-    workerData: { bytes: copy, maxEntryBytes: PROBUNDLE_LIMITS.entryBytes, cacheDir, workspace },
+    workerData: { bytes: copy, maxEntryBytes: PROBUNDLE_LIMITS.entryBytes, cacheDir, workspace, theme },
     transferList: [copy.buffer],
     ms: PROBUNDLE_LIMITS.readMs,
     tooLong: `Reading the file took longer than ${PROBUNDLE_LIMITS.readMs / 1000} seconds and was stopped.`,
@@ -174,13 +176,13 @@ export function probundleRouter({ getConfig, updateConfig, getStatus, getProblem
 
   // One file at a time: each read can hold a few hundred MB, on the machine running the service.
   let reading = false;
-  async function openBytes(res, bytes, { name, from, workspace, draft = null }) {
+  async function openBytes(res, bytes, { name, from, workspace, draft = null, theme = false }) {
     const pkg = await packageReady();
     if (!pkg.ok) return res.status(409).json({ error: pkg.error });
     if (reading) return res.status(429).json({ error: "Another file is being read. Try again when it has opened." });
     reading = true;
     try {
-      const out = await readInWorker(bytes, cacheDir, workspace);
+      const out = await readInWorker(bytes, cacheDir, workspace, theme);
       if (!out.model) return res.status(422).json({ error: out.findings[0]?.message ?? "This file could not be read.", findings: out.findings });
       const sourceId = store.add({ name, from, kind: out.file.kind, model: out.model, drawn: out.drawn, pictures: out.pictures ?? [], workspace });
       res.json({ sourceId, name, from, kind: out.file.kind, media: out.file.media, model: out.model, findings: out.findings, predicted: out.predicted, drawnCount: out.drawn?.length ?? 0, ...(draft ? { draft } : {}) });
@@ -218,6 +220,53 @@ export function probundleRouter({ getConfig, updateConfig, getStatus, getProblem
     }
     // A file from disk takes its pictures from its bundle, else from this computer's ProPresenter.
     await openBytes(res, req.body, { name: name.slice(0, 200) || "Uploaded file", from: "Uploaded", workspace: thisMacWorkspace() });
+  });
+
+  // THEMES: the church's theme library, and which themes the MCP server may use (server/theme-library.js).
+  // ProPresenter exports every theme into one file with no preview, so an export is split here, each theme
+  // can be drawn, and the person ticks the on-brand ones. Unticked is the default.
+  const themeLibrary = () => createThemeLibrary({ dir: themesDir(getConfig(), appRoot) });
+  const themeView = (t) => ({ id: t.id, name: t.name, allowed: t.allowed === true, added: t.added ?? null });
+
+  router.get("/themes", async (_req, res) => {
+    res.json({ themes: (await themeLibrary().list()).map(themeView) });
+  });
+
+  router.post("/themes/upload", express.raw({ type: "application/octet-stream", limit: PROBUNDLE_LIMITS.themeUploadBytes }), async (req, res) => {
+    if (refuseIfBusy(res)) return;
+    if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ error: "No file arrived." });
+    const pkg = await packageReady();
+    if (!pkg.ok) return res.status(409).json({ error: pkg.error });
+    try {
+      const lib = await import("propresenter-bundle");
+      const r = await themeLibrary().add(req.body, lib);
+      res.json({ ...r, themes: (await themeLibrary().list()).map(themeView) });
+    } catch (err) {
+      res.status(422).json({ error: err.message });
+    }
+  });
+
+  router.post("/themes/allow", async (req, res) => {
+    const t = typeof req.body?.id === "string" ? await themeLibrary().setAllowed(req.body.id, req.body.allowed === true) : null;
+    if (!t) return res.status(404).json({ error: "That theme is not in the library." });
+    res.json({ theme: themeView(t) });
+  });
+
+  router.delete("/themes/:id", async (req, res) => {
+    if (!(await themeLibrary().remove(req.params.id))) return res.status(404).json({ error: "That theme is not in the library." });
+    res.json({ ok: true });
+  });
+
+  router.post("/themes/:id/preview", async (req, res) => {
+    if (refuseIfBusy(res)) return;
+    const lib = themeLibrary();
+    const t = (await lib.list()).find((x) => x.id === req.params.id);
+    if (!t) return res.status(404).json({ error: "That theme is not in the library." });
+    try {
+      await openBytes(res, await readFile(lib.fileOf(t.id)), { name: t.name, from: "Theme library", workspace: thisMacWorkspace(), theme: true });
+    } catch (err) {
+      res.status(404).json({ error: `Couldn't read that theme: ${err.code ?? err.message}` });
+    }
   });
 
   // CLAUDE'S DRAFTS: the MCP's working copies (data/probundle-staging/copies/<id>, changed in place as
@@ -318,7 +367,7 @@ export function probundleRouter({ getConfig, updateConfig, getStatus, getProblem
 
   // Errors from the body parser (a file over the limit) as JSON the page can show.
   router.use((err, _req, res, _next) => {
-    if (err?.type === "entity.too.large") return res.status(413).json({ error: `That file is more than ${PROBUNDLE_LIMITS.uploadBytes / 1024 / 1024} MB.` });
+    if (err?.type === "entity.too.large") return res.status(413).json({ error: `That file is more than ${Math.round((err.limit ?? PROBUNDLE_LIMITS.uploadBytes) / 1024 / 1024)} MB.` });
     res.status(400).json({ error: err?.message ?? "Bad request" });
   });
 

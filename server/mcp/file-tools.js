@@ -15,6 +15,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { openablePath, mediaPath, forbiddenReason } from "./paths.js";
 import { describeAction, buildAction, matchesAction, workspaceIndex } from "./actions.js";
+import { themeAccess, themesDir, createThemeLibrary, mightHoldTheme } from "../theme-library.js";
 
 const lib = () => import("propresenter-bundle");
 const COPY_ID = /^[a-f0-9-]{36}$/;
@@ -50,16 +51,45 @@ const copyDir = (staging, id) => {
   return dir;
 };
 
+/**
+ * Refuses a theme the church hasn't ticked in Refrain (Prep › Bundles › Themes), and an export of several,
+ * which has to be uploaded there first. Anything that isn't a theme passes, whatever its file name says. A
+ * working copy was made from a ticked theme, so only a document named by path comes here.
+ */
+async function requireThemeTicked(bytes, file, env) {
+  if (!mightHoldTheme(bytes)) return;
+  const access = await themeAccess(bytes, { dir: themesDir(env.config, env.root), lib: await lib() });
+  if (!access.theme || access.allowed) return;
+  if (access.many) throw new Error(`${path.basename(file)} holds ${access.many} themes. Upload it in Refrain (Prep › Bundles › Themes) to look at each one and tick the ones to use. refrain_list_themes gives the ticked ones.`);
+  throw new Error(`The theme "${access.name}" isn't ticked for use here. Tick it in Refrain: Prep › Bundles › Themes. refrain_list_themes gives the ticked ones.`);
+}
+
+/** The themes the church has ticked in Refrain, with the full path of each to open. */
+export async function listThemesTool(_args, env) {
+  const dir = themesDir(env.config, env.root);
+  const lib = createThemeLibrary({ dir });
+  const all = await lib.list();
+  const themes = all.filter((t) => t.allowed).map((t) => ({ name: t.name, path: lib.fileOf(t.id) }));
+  return {
+    themes,
+    not_ticked: all.length - themes.length,
+    note: themes.length
+      ? "Only these themes open. Others are refused until someone ticks them in Refrain: Prep › Bundles › Themes."
+      : "No theme is ticked. Upload the church's theme export in Refrain (Prep › Bundles › Themes) and tick the ones to use.",
+  };
+}
+
 /** The bytes a tool works on: a document the person named by path, or one of the working copies. */
-async function source(args, staging) {
+async function source(args, env) {
   if (args.copy_id) {
-    const dir = copyDir(staging, args.copy_id);
+    const dir = copyDir(env.staging, args.copy_id);
     const meta = JSON.parse(readFileSync(path.join(dir, "copy.json"), "utf8"));
     const file = path.join(dir, meta.file);
     return { bytes: await readFile(file), where: file, copy: { id: args.copy_id, dir, meta } };
   }
   const file = openablePath(args.path);
   const bytes = await readFile(file);
+  await requireThemeTicked(bytes, file, env);
   if (args.inside === undefined) return { bytes, where: file, copy: null };
   return { bytes: await fromPlaylist(bytes, args.inside, file), where: `${file} › ${args.inside}`, copy: null };
 }
@@ -145,8 +175,8 @@ const brief = (s) => {
   return { ...rest, words: words.length > 120 ? `${words.slice(0, 120)}…` : words, boxes: boxes.length, ...(enabled === false ? { enabled } : {}), ...(macros?.length ? { macros } : {}) };
 };
 
-export async function openTool(args, { staging }) {
-  const src = await source(args, staging);
+export async function openTool(args, env) {
+  const src = await source(args, env);
   const d = await decode(src.bytes);
   if (d.kind === "proplaylist") {
     const pl = d.playlist;
@@ -185,14 +215,14 @@ function pickSlide(slides, which) {
   throw new Error(`No slide ${which}. This file has slides 1 to ${slides.length}.`);
 }
 
-export async function readSlideTool(args, { staging }) {
-  const src = await source(args, staging);
+export async function readSlideTool(args, env) {
+  const src = await source(args, env);
   const d = await decode(src.bytes);
   return { ...describe(src), kind: d.kind, slide: pickSlide(slidesOf(d, { full: true }), args.slide) };
 }
 
-export async function checkTool(args, { staging }) {
-  const src = await source(args, staging);
+export async function checkTool(args, env) {
+  const src = await source(args, env);
   const p = await lib();
   const d = await decode(src.bytes);
   const findings = [];
@@ -215,9 +245,11 @@ export async function checkTool(args, { staging }) {
   return { ...describe(src), kind: d.kind, findings };
 }
 
-export async function makeCopyTool(args, { staging }) {
+export async function makeCopyTool(args, env) {
+  const { staging } = env;
   const file = openablePath(args.path);
   const bytes = args.inside === undefined ? await readFile(file) : await fromPlaylist(await readFile(file), args.inside, file);
+  await requireThemeTicked(bytes, file, env);
   const d = await decode(bytes);
   if (d.kind === "proplaylist") throw new Error("A playlist is read, not changed. Copy a presentation in it with inside: its file name.");
   if (d.unknown.length) throw new Error(`${path.basename(file)} holds ${d.unknown.length} field(s) this reader does not understand, so it is not copied for changing: something in it could be lost. It can still be opened and read.`);
@@ -234,12 +266,12 @@ export async function makeCopyTool(args, { staging }) {
 
 /**
  * What a save changed, in one line for a person watching the draft in Refrain:
- * "Changed slides 3, 5 (words, text color); groups".
+ * "Changed slides 3, 5 (words, text color); groups", or "Changed \"Harvest Supper\" (words)" by name.
  */
 function changeNote(slides, fields, also = []) {
   const nums = [...new Set(slides)];
   // Slides by number ("slides 3, 5"), or by name when the tool knows them by name ("Harvest Supper").
-  const which = nums.every((n) => typeof n === "number") ? `slide${nums.length === 1 ? "" : "s"} ${nums.join(", ")}` : nums.join(", ");
+  const which = nums.every((n) => typeof n === "number") ? `slide${nums.length === 1 ? "" : "s"} ${nums.join(", ")}` : nums.map((n) => `"${n}"`).join(", ");
   const head = nums.length ? `${which}${fields.length ? ` (${[...new Set(fields)].map((k) => k.replace(/_/g, " ")).join(", ")})` : ""}` : null;
   const parts = [head, ...also].filter(Boolean);
   return parts.length ? `Changed ${parts.join("; ")}` : "Changed";
@@ -313,11 +345,10 @@ const boundsOf = (el) => {
  * wanted), its position and size. All are applied in memory and checked first; if one is wrong, none is saved.
  */
 export async function editBoxesTool(args, env) {
-  const { staging } = env;
   changeable(args);
   if (!Array.isArray(args.changes) || !args.changes.length) throw new Error("changes is a list of { box, name, words, type_size, x, y, width, height }: the box's id and what to change.");
   const p = await lib();
-  const src = await source(args, staging);
+  const src = await source(args, env);
   const d = await decode(src.bytes);
   const where = new Map(p.elementsOf(d.doc).map((x) => [x.element.uuid?.string, x]));
   const done = [];
@@ -417,7 +448,7 @@ function listWithIndent(p, spec, hit, d) {
 export async function buildFromTool(args, env) {
   const { staging } = env;
   const p = await lib();
-  const src = await source(args.source ?? {}, staging);
+  const src = await source(args.source ?? {}, env);
   const d = await decode(src.bytes);
   const theme = d.kind === "protheme";
   let workspace = null;
@@ -600,7 +631,7 @@ const MOVES = ["up", "down", "first", "last", "duplicate", "delete"];
 export async function editSlidesTool(args, env) {
   changeable(args);
   const p = await lib();
-  const src = await source(args, env.staging);
+  const src = await source(args, env);
   const d = await decode(src.bytes);
   const theme = d.kind === "protheme";
   const listed = slidesOf(d);

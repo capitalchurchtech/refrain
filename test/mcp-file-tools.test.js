@@ -11,6 +11,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createMcpServer } from "../server/mcp/server.js";
 import { openablePath, forbiddenReason } from "../server/mcp/paths.js";
+import { createThemeLibrary, themesDir } from "../server/theme-library.js";
 
 const lib = await import("propresenter-bundle").catch(() => null);
 const skip = lib?.readThemeFile ? false : "propresenter-bundle with theme support is not installed";
@@ -32,7 +33,13 @@ async function setup() {
     if (r.isError) throw new Error(r.content.map((c) => c.text).join(" "));
     return r.structuredContent;
   };
-  return { root, staging, call };
+  // The fixture theme is ticked, as a church would tick one; the tests of the tick itself untick it.
+  const themes = createThemeLibrary({ dir: themesDir({}, root) });
+  if (lib?.readThemeFile) {
+    await themes.add(fs.readFileSync(path.join(FIX, "sample.protheme")), lib);
+    for (const t of await themes.list()) await themes.setAllowed(t.id, true);
+  }
+  return { root, staging, call, themes };
 }
 
 test("ProPresenter's database is refused however it is reached; documents elsewhere open", () => {
@@ -410,9 +417,46 @@ test("each save leaves a note of what changed in the copy, for Refrain to show b
   const box = (await call("refrain_read_slide", { copy_id: copy.copy_id, slide: 1 })).slide.boxes.find((b) => b.kind === "text");
   await call("refrain_edit_boxes", { copy_id: copy.copy_id, changes: [{ box: box.id, words: "Hello", text_color: "#ffcc00" }] });
   const label = (await call("refrain_read_slide", { copy_id: copy.copy_id, slide: 1 })).slide.label;
-  assert.equal(meta().note, `Changed ${label} (words, text color)`);
+  assert.equal(meta().note, `Changed "${label}" (words, text color)`);
   assert.ok(Date.parse(meta().changed) > 0);
   assert.equal(meta().file, copy.file.split(path.sep).pop(), "the rest of copy.json is kept");
   await call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 2, label: "Two" }, { slide: 4, notes: "Hi" }], name: "Renamed" });
   assert.equal(meta().note, "Changed slides 2, 4 (label, notes); the name");
+});
+
+test("a theme opens only when it is ticked; an export of several is refused and says where to upload it", { skip }, async () => {
+  const { root, call, themes } = await setup();
+  const sample = path.join(FIX, "sample.protheme");
+
+  // Ticked: the tool lists it with a path that opens, and the same bytes open from anywhere.
+  const listed = await call("refrain_list_themes", {});
+  assert.deepEqual(listed.themes.map((t) => t.name), ["Example Theme"]);
+  assert.equal((await call("refrain_open", { path: listed.themes[0].path })).kind, "protheme");
+  assert.equal((await call("refrain_open", { path: sample })).kind, "protheme");
+
+  // Unticked: refused wherever the file is, by every tool that reads it, naming where to tick it.
+  const [entry] = await themes.list();
+  await themes.setAllowed(entry.id, false);
+  assert.deepEqual((await call("refrain_list_themes", {})).themes, []);
+  assert.equal((await call("refrain_list_themes", {})).not_ticked, 1);
+  for (const [tool, args] of [["refrain_open", { path: sample }], ["refrain_check", { path: sample }], ["refrain_make_copy", { path: sample }], ["refrain_build_from", { source: { path: sample }, slides: [1], name: "x" }]]) {
+    await assert.rejects(() => call(tool, args), /isn't ticked.*Prep › Bundles › Themes/s, tool);
+  }
+  assert.equal(fs.existsSync(path.join(root, "staging", "copies")), false, "nothing was copied");
+
+  // Another file extension doesn't hide it.
+  const renamed = path.join(root, "renamed.probundle");
+  fs.copyFileSync(sample, renamed);
+  await assert.rejects(() => call("refrain_open", { path: renamed }), /isn't ticked/);
+
+  // An export of several themes is not opened at all.
+  const [one] = lib.readBundle(fs.readFileSync(sample));
+  assert.ok(one);
+  const many = await lib.writeBundle([
+    ...lib.readBundle(fs.readFileSync(sample)),
+    ...lib.readBundle(fs.readFileSync(sample)).map((e) => ({ ...e, name: e.name.replace(/^[^/]*\//, "Other/") })),
+  ]);
+  const manyPath = path.join(root, "all.protheme");
+  fs.writeFileSync(manyPath, many);
+  await assert.rejects(() => call("refrain_open", { path: manyPath }), /holds 2 themes.*Upload it in Refrain/s);
 });
