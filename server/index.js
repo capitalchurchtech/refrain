@@ -1985,8 +1985,9 @@ const slowCallSaidAt = new Map();
 
 // The diagnostics file: one JSON line a minute, always, plus one per notable
 // event, in data/diagnostics/YYYY-MM-DD.jsonl, kept 14 days. The text log is
-// for reading; this is for lining up a bad Sunday against a good one. Local
-// only, never sent anywhere. Appends only, so nothing here can lose anything.
+// for reading; this is for lining up a bad Sunday against a good one. It leaves
+// the Mac only through the service feed's nightly send, when the church has set
+// that up (server/service-feed.js). Appends only, so nothing here can lose anything.
 const DIAGNOSTICS_DIR = "./data/diagnostics";
 const DIAGNOSTICS_KEEP_DAYS = 14;
 let diagnosticsDirReady = false;
@@ -2031,8 +2032,8 @@ setInterval(() => pruneDiagnostics(), 86_400_000).unref();
 
 // Service feed (server/service-feed.js): off unless the church sets it up, and
 // it only talks to the address they typed in. Status reads the heartbeat's
-// cache, never ProPresenter; logs are copies of the files above, sent only when
-// someone presses Send log on the Service screen.
+// cache, never ProPresenter; logs are copies of the files above, sent each
+// night.
 const SERVICE_FEED_STATE = "./data/service-feed";
 const serviceFeed = createServiceFeed({
   getModule: () => config.serviceFeedModule,
@@ -3006,7 +3007,7 @@ function servicePayload(now = Date.now()) {
     telemetry: {
       status: getServiceFeedModuleStatus(config).status,
       lastLogOkAt: serviceFeed.state().lastLogOkAt,
-      nightly: config.serviceFeedModule?.nightlyLog === false ? null : { at: nightlyAt(config.serviceFeedModule), last: serviceFeed.state().lastNightly },
+      nightly: { at: nightlyAt(config.serviceFeedModule), last: serviceFeed.state().lastNightly },
     },
     autoEnd: autoEndPayload(state, now),
     holdingPace: holdHeartbeatPace(now),
@@ -3393,12 +3394,6 @@ app.post("/api/service/send-summary", async (_req, res) => {
   }
 });
 
-/** Send log (Service screen): hands this machine's diagnostics to the announcement server. */
-app.post("/api/service-feed/send-log", async (_req, res) => {
-  const out = await serviceFeed.sendLogs();
-  // Also pressed from Settings > Telemetry, so it must not need the Service screen.
-  res.status(out.ok ? 200 : 409).json({ ...out, ...(serviceModuleOn() ? servicePayload() : {}) });
-});
 
 /** The latest summary for a day, as Markdown. */
 app.get("/api/service/summary", async (req, res) => {
@@ -6470,7 +6465,6 @@ app.get("/api/health", async (_req, res) => {
         name: config.serviceFeedModule?.name ?? "",
         url: config.serviceFeedModule?.url ?? "",
         includeSlideText: config.serviceFeedModule?.includeSlideText === true,
-        nightlyLog: config.serviceFeedModule?.nightlyLog !== false,
         nightlyLogAt: nightlyAt(config.serviceFeedModule),
         windows: effectiveWindows(config.serviceFeedModule),
         keySet: Boolean(process.env.SERVICE_FEED_TOKEN),

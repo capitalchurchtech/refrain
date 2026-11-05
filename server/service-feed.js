@@ -1,7 +1,7 @@
 /**
  * Service feed: this console tells the church's own announcement server what
- * it is showing, and hands over its diagnostics log each night (and whenever a
- * person presses Send log on the Service screen), so a person in another room
+ * it is showing, and hands over its diagnostics log each night, so a person in
+ * another room
  * can follow a service and review it later. Contract and the other
  * side's brief: docs/service-feed.md.
  *
@@ -80,12 +80,13 @@ export const localDay = (date) => `${date.getFullYear()}-${String(date.getMonth(
 export const nightlyAt = (mod) => (toMinutes(mod?.nightlyLogAt) !== null ? mod.nightlyLogAt : DEFAULT_NIGHTLY_AT);
 
 /**
- * Whether the nightly log send is due: switched on (it is unless set false), its
- * time has passed today, and today's has not run (`lastDay`). A computer asleep
- * at the time sends at the first check after it wakes, the same day. Pure.
+ * Whether the nightly log send is due: its time has passed today and today's
+ * has not run (`lastDay`). It always runs while the feed is on: there is no
+ * button to send by hand (owner, 2026-11-04: "just send whatever is in the
+ * queue nightly"). A computer asleep at the time sends at the first check after
+ * it wakes, the same day. Pure.
  */
 export function nightlyDue(mod, date, lastDay) {
-  if (mod?.nightlyLog === false) return false;
   return lastDay !== localDay(date) && date.getHours() * 60 + date.getMinutes() >= toMinutes(nightlyAt(mod));
 }
 
@@ -100,7 +101,6 @@ export function cleanServiceFeedSettings(body) {
   const name = String(b.name ?? "").trim().slice(0, 60);
   const url = String(b.url ?? "").trim().slice(0, 300);
   const windows = Array.isArray(b.windows) ? b.windows : [];
-  if (b.nightlyLog !== undefined && typeof b.nightlyLog !== "boolean") return { ok: false, error: "nightlyLog must be true or false" };
   if (b.nightlyLogAt !== undefined && toMinutes(b.nightlyLogAt) === null) return { ok: false, error: "The nightly time needs to be a time of day, like 02:00." };
   for (const w of windows) {
     if (!validWindow(w)) return { ok: false, error: "Each window needs at least one day and a start earlier than its end." };
@@ -112,7 +112,6 @@ export function cleanServiceFeedSettings(body) {
       name: name || null,
       url: url || null,
       includeSlideText: b.includeSlideText === true,
-      nightlyLog: b.nightlyLog !== false,
       nightlyLogAt: b.nightlyLogAt ?? DEFAULT_NIGHTLY_AT,
       windows: windows.map((w) => ({ days: DAYS.filter((d) => w.days.map((x) => String(x).toLowerCase()).includes(d)), from: w.from, until: w.until })),
     },
@@ -338,12 +337,12 @@ export function createServiceFeed({
   }
 
   /**
-   * Sends every day's log the server has not already accepted: each night
-   * (tickNightly), and when a person presses Send log. Not limited to the send
-   * windows (the log is for review afterwards, not for watching), but refused
-   * during performance mode, and each file only goes if its size changed since
-   * the server last accepted it. One send at a time: a press during the
-   * nightly run waits for it and gets its answer.
+   * Sends every day's log the server has not already accepted, from the
+   * nightly run (tickNightly). Not limited to the send windows (the log is for
+   * review afterwards, not for watching), but refused during performance mode,
+   * and each file only goes if its size changed since the server last accepted
+   * it. One send at a time: a second call waits for the first and gets its
+   * answer.
    * @returns {Promise<{ ok: boolean, sent: number, failed: number, tooBig: number, error?: string }>}
    */
   function sendLogs() {

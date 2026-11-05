@@ -134,14 +134,14 @@ test("status never carries the log; the log goes at night or when asked", async 
   assert.equal(r.calls.every((c) => c.url.endsWith("/status")), true);
 });
 
-test("the nightly send is due once a night, after its time, unless switched off", () => {
+test("the nightly send is due once a night, after its time", () => {
   const at = (iso) => new Date(iso); // local time
   assert.equal(nightlyDue({}, at("2026-10-05T01:59:00"), null), false, "before 2 am");
   assert.equal(nightlyDue({}, at("2026-10-05T02:00:00"), null), true);
   assert.equal(nightlyDue({}, at("2026-10-05T07:30:00"), null), true, "asleep at 2, sends on waking");
   assert.equal(nightlyDue({}, at("2026-10-05T07:30:00"), "2026-10-05"), false, "tonight's already done");
   assert.equal(nightlyDue({}, at("2026-10-06T02:00:00"), "2026-10-05"), true, "the next night");
-  assert.equal(nightlyDue({ nightlyLog: false }, at("2026-10-05T03:00:00"), null), false);
+  assert.equal(nightlyDue({ nightlyLog: false }, at("2026-10-05T03:00:00"), null), true, "an old manual-only setting no longer stops it: there is no button");
   assert.equal(nightlyDue({ nightlyLogAt: "23:30" }, at("2026-10-05T23:00:00"), null), false);
   assert.equal(nightlyDue({ nightlyLogAt: "23:30" }, at("2026-10-05T23:30:00"), null), true);
   assert.equal(nightlyDue({ nightlyLogAt: "bad" }, at("2026-10-05T02:00:00"), null), true, "a bad time means 2 am");
@@ -196,11 +196,9 @@ test("the nightly send waits out a send window and performance mode, and can be 
   assert.equal(busy.calls.length, 0);
   frozen = false;
   assert.equal(await busy.feed.tickNightly(), true);
-  const off = nightRig({ start: "2026-10-05T02:00:00", mod: { nightlyLog: false } });
-  assert.equal(await off.feed.tickNightly(), false);
   const notOn = nightRig({ start: "2026-10-05T02:00:00", mod: { enabled: false } });
   assert.equal(await notOn.feed.tickNightly(), false, "telemetry switched off sends nothing");
-  assert.equal(off.calls.length + notOn.calls.length, 0);
+  assert.equal(notOn.calls.length, 0);
 });
 
 test("a nightly send that fails is tried twice more, ten minutes apart, then left for the next night", async () => {
@@ -257,10 +255,10 @@ test("settings from the tab are checked and tidied", () => {
   assert.equal(cleanServiceFeedSettings({ enabled: true, windows: [{ days: [], from: "09:00", until: "14:00" }] }).ok, false, "a window needs a day");
   assert.equal(cleanServiceFeedSettings({ enabled: true, windows: [{ days: ["sun"], from: "14:00", until: "09:00" }] }).ok, false, "start before end");
   const ok = cleanServiceFeedSettings({ enabled: true, name: "  FOH  ", url: " https://a.example ", windows: [{ days: ["sun", "fri"], from: "09:00", until: "14:00" }], extra: 1 });
-  assert.deepEqual(ok.value, { enabled: true, name: "FOH", url: "https://a.example", includeSlideText: false, nightlyLog: true, nightlyLogAt: "02:00", windows: [{ days: ["sun", "fri"], from: "09:00", until: "14:00" }] });
-  assert.deepEqual([cleanServiceFeedSettings({ enabled: true, nightlyLog: false, nightlyLogAt: "23:30" }).value.nightlyLog, cleanServiceFeedSettings({ enabled: true, nightlyLogAt: "23:30" }).value.nightlyLogAt], [false, "23:30"]);
+  assert.deepEqual(ok.value, { enabled: true, name: "FOH", url: "https://a.example", includeSlideText: false, nightlyLogAt: "02:00", windows: [{ days: ["sun", "fri"], from: "09:00", until: "14:00" }] });
+  assert.equal(cleanServiceFeedSettings({ enabled: true, nightlyLogAt: "23:30" }).value.nightlyLogAt, "23:30");
+  assert.ok(!("nightlyLog" in cleanServiceFeedSettings({ enabled: true, nightlyLog: false }).value), "the manual-only choice is gone, and isn't saved");
   assert.match(cleanServiceFeedSettings({ enabled: true, nightlyLogAt: "25:00" }).error, /time of day/);
-  assert.match(cleanServiceFeedSettings({ enabled: true, nightlyLog: "yes" }).error, /nightlyLog/);
 });
 
 test("outside the window no status is sent", async () => {
@@ -351,14 +349,14 @@ test("saving settings mints a console id once, on first enable, and keeps the re
   assert.equal(on.theme, "dark");
 });
 
-test("Send log shows only when telemetry is set up", () => {
+test("the nightly log line shows only when telemetry is set up, and has no button", () => {
   assert.equal(renderLogSendHtml({ status: "off" }), "");
   assert.equal(renderLogSendHtml(undefined), "");
   assert.match(renderLogSendHtml({ status: "misconfigured" }), /isn't set up/);
   const active = renderLogSendHtml({ status: "active", lastLogOkAt: null });
-  assert.match(active, /service-send-log-btn/);
+  assert.doesNotMatch(active, /<button|Send log/, "no button: it always goes each night");
   assert.match(active, /Not sent yet/);
-  assert.match(active, /when you press Send log/, "nightly switched off");
+  assert.match(active, /each night/);
   const nightly = renderLogSendHtml({ status: "active", lastLogOkAt: null, nightly: { at: "02:00", last: null } });
   assert.match(nightly, /each night at 2:00/);
   assert.doesNotMatch(nightly, /failed/);

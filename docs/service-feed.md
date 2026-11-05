@@ -26,13 +26,14 @@ which.
 09:00 to 14:00, this machine's local time; add more or change them. Clearing
 every window brings the default back; it never means "always".
 
-**The log goes each night** at 02:00 local time, or another time you choose, or
-only when someone presses **Send log** (on Day or the Telemetry tab). It never
-goes inside a send window or during performance mode; it waits for both to end.
-A computer asleep at that time sends when it wakes. A failed night is tried
-twice more, ten minutes apart, then left for the next night, and Day says it
-failed. **Send log** sends at once, outside the windows too, and is refused
-during performance mode or while the feed is switched off.
+**The log goes each night** at 02:00 local time, or another time you choose,
+every night of the week the feed is on. There is no button to send it by hand.
+Each night it sends every day the server hasn't accepted yet, oldest first, one
+file at a time, so a night that failed is caught up the next. It never goes
+inside a send window or during performance mode; it waits for both to end. A
+computer asleep at that time sends when it wakes. A failed night is tried twice
+more, ten minutes apart, then left for the next night, and Day and the Telemetry
+tab say it failed and why.
 
 **Words on the slide** (off by default, `includeSlideText`) adds the slide's text
 to the status. Leave it off unless the other side needs it: a prayer or care
@@ -166,7 +167,7 @@ open line. The later `t` wins per `id`.
 - Times are UTC, but the day file is the **local** day, so `tz` travels on every
   line.
 - These lines are written to the local day file whether or not the feed is on.
-  Nothing leaves the Mac until the nightly send or a press of **Send log**.
+  Nothing leaves the Mac until the nightly send.
 
 #### A restart
 

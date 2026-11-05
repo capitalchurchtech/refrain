@@ -512,30 +512,15 @@ export function initHealth() {
     const feedWindows = document.getElementById("feed-windows");
     if (feedWindows) {
       const radio = (attr, val) => document.querySelector(`[${attr}][aria-checked="true"]`)?.getAttribute(attr) === val;
-      document.querySelectorAll("[data-feed-enabled], [data-feed-text], [data-feed-nightly]").forEach((key) =>
+      document.querySelectorAll("[data-feed-enabled], [data-feed-text]").forEach((key) =>
         key.addEventListener("click", () => {
-          const attr = ["data-feed-enabled", "data-feed-text", "data-feed-nightly"].find((a) => key.hasAttribute(a));
+          const attr = ["data-feed-enabled", "data-feed-text"].find((a) => key.hasAttribute(a));
           document.querySelectorAll(`[${attr}]`).forEach((k) => k.setAttribute("aria-checked", String(k === key)));
         })
       );
       feedWindows.addEventListener("click", (e) => e.target.closest("[data-feed-remove]")?.closest("[data-feed-window]")?.remove());
       document.getElementById("feed-add-window").addEventListener("click", () => {
         feedWindows.insertAdjacentHTML("beforeend", feedWindowRow({ days: ["sun"], from: "09:00", until: "14:00" }));
-      });
-      document.getElementById("feed-send-log").addEventListener("click", async (e) => {
-        const btn = e.currentTarget;
-        const status = document.getElementById("feed-status");
-        btn.disabled = true;
-        try {
-          const res = await fetch("/api/service-feed/send-log", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(data.error ?? res.statusText);
-          status.textContent = data.sent ? `Sent ${data.sent} day${data.sent === 1 ? "" : "s"} of log.` : "Nothing new to send. The server already has every log.";
-        } catch (err) {
-          showFailure(`The log didn't send: ${err.message}`);
-        } finally {
-          btn.disabled = false;
-        }
       });
       document.getElementById("feed-save").addEventListener("click", async () => {
         const status = document.getElementById("feed-status");
@@ -549,7 +534,6 @@ export function initHealth() {
           name: document.getElementById("feed-name").value,
           url: document.getElementById("feed-url").value,
           includeSlideText: radio("data-feed-text", "true"),
-          nightlyLog: radio("data-feed-nightly", "true"),
           nightlyLogAt: document.getElementById("feed-nightly-at").value,
           windows,
         };
@@ -2331,7 +2315,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
   // Telemetry (owner, 2026-10-04): this station reporting to the church's own
   // announcement server. Off until set up; the slide only inside its windows, the log once a night.
   const feed = health.serviceFeedModule ?? {};
-  const fs = feed.settings ?? { enabled: false, name: "", url: "", includeSlideText: false, nightlyLog: true, nightlyLogAt: "02:00", windows: [], keySet: false };
+  const fs = feed.settings ?? { enabled: false, name: "", url: "", includeSlideText: false, nightlyLogAt: "02:00", windows: [], keySet: false };
   const feedStatusLine = !fs.enabled
     ? "Off. Nothing is sent anywhere."
     : feed.status === "misconfigured"
@@ -2366,11 +2350,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
         <div class="flex flex-col gap-1">
           <div class="text-sm">The log</div>
           <div class="flex flex-wrap items-center gap-3">
-            <div class="rf-tabs" role="radiogroup" aria-label="Send the log each night" style="margin-bottom:0">
-              <button type="button" role="radio" class="rf-tab" data-feed-nightly="true" aria-checked="${fs.nightlyLog !== false}"><span>Each night</span></button>
-              <button type="button" role="radio" class="rf-tab" data-feed-nightly="false" aria-checked="${fs.nightlyLog === false}"><span>Only when I press Send log</span></button>
-            </div>
-            <label class="flex items-center gap-2 text-sm">at <input id="feed-nightly-at" type="time" class="input input-bordered input-sm" value="${escapeHtml(fs.nightlyLogAt ?? "02:00")}"></label>
+            <label class="flex items-center gap-2 text-sm">Sent each night at <input id="feed-nightly-at" type="time" class="input input-bordered input-sm" value="${escapeHtml(fs.nightlyLogAt ?? "02:00")}"></label>
           </div>
           <span class="text-xs opacity-60 rf-measure">Each night it sends the days your server doesn't have yet, so a night with nothing new sends nothing. Not during a send window or while performance mode is on; a computer asleep at that time sends when it wakes.${feed.lastNightly ? ` Last night's send: ${feed.lastNightly.error ? escapeHtml(`failed, ${feed.lastNightly.error}`) : `${feed.lastNightly.sent} day${feed.lastNightly.sent === 1 ? "" : "s"} sent at ${new Date(feed.lastNightly.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}.` : ""}</span>
         </div>
@@ -2384,7 +2364,6 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
         </div>
         <div class="rf-control-row">
           <button type="button" id="feed-save" class="btn btn-primary btn-sm">Save</button>
-          <button type="button" id="feed-send-log" class="btn btn-outline btn-sm">Send log</button>
           <span id="feed-status" class="text-xs opacity-70 rf-measure">${escapeHtml(feedStatusLine)}</span>
         </div>
       </div>
