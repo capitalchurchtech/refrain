@@ -41,10 +41,10 @@ plus macOS-only features behind their own switches.
 | # | Step | Size | What it gets | Platforms |
 |---|---|---|---|---|
 | 1 | **Hand-check the app** on the booth Mac: the untried items above, then one Sunday docked beside ProPresenter, with Chrome closed. Then have the in-app update rerun the build script when `mac/` changes | an hour, then a service, then half a day | Confidence before it replaces Chrome, and no stale app after an update | Mac |
-| 2 | **Phase A: push the live feed.** Live-check the ProPresenter stream with rehearsal content, then stream into the heartbeat and SSE to the page | 1 to 2 days plus the live check | Most of the battery and wakeup savings: ProPresenter calls fall to roughly zero when nothing changes, and the 2 to 5 second page polls stop | Both |
+| 2 | ~~**Phase A: push the live feed.**~~ **Stopped 2026-11-04 by its live check: ProPresenter 21.3's stream doesn't push slide or layer changes.** The Refrain-to-page half (SSE in place of the 2 to 5 second page polls) doesn't depend on ProPresenter and could still be done on its own | | The page-side wakeups only; ProPresenter calls stay as they are | Both |
 | 3 | **Platform field on features** (`platforms: ["darwin"]`) | half a day, with tests | Lets steps 4 and 6 ship as macOS-only switches without hardcoding ids | Both (Windows shows them locked) |
 | 4 | **Phase C: words in pictures, in Quality Control.** A `refrain-vision` helper plus `server/image-text.js` | 1 to 2 days | Past dates and typos inside announcement graphics, which no check sees today (700 images with text, 21 with dates) | Mac |
-| 5 | **Phase C, part two: search the words in pictures** | 1 day | 852 slides in 130 decks become findable | Mac |
+| 5 | **Phase C, part two: search the words in pictures.** Owner, 2026-11-04: not convinced. The words in pictures are likely message content, which nobody searches for; search is for musicians jumping between songs. Hold until a song slide made only of a picture is shown to exist (the 852 count was never split into songs and messages) | 1 day | 852 slides in 130 decks become findable | Mac |
 | 6 | **Phase D experiment: listen for the song.** Record two minutes of rehearsal from the board, measure offline. Go or stop | half a day once there's a recording | Decides whether speech-to-lyrics is worth building at all | Mac |
 | 7 | Phase D build, only if 6 says go: self-signed signing so permissions survive rebuilds, then the Listen module | several days | Suggestions for an unplanned song or a repeated bridge, with spoken scripture as a likely easier win | Mac |
 | 8 | Smaller native extras, each only if measured worth it: Vision crop with face detection, occlusion-aware polling, a menu bar lamp | each about a day | Better crops and no `sharp` install failures, fewer wakeups when hidden | Mac |
@@ -68,10 +68,25 @@ live:
 - `timer/system_time` → pushed again while the stream was open
 - `status/slide` → sent nothing while nothing was live
 
-**Not verified:** that slide changes, layer changes and presentation changes
-are pushed when they happen. Checking that means putting rehearsal content on
-the screens, which I did not do without asking. That run is the first task in
-Phase A.
+**Checked later the same day (owner: screens safe, test is fine): the stream
+does not push slide, layer or presentation changes on 21.3.** Four runs
+against ProPresenter 21.3 on this Mac, each putting a slide live through
+Refrain's own Go Live and clearing it, with every combination of endpoints
+tried (all ten, four, and `status/layers` alone). Each run got the opening
+snapshot and then only `timer/system_time` ticks, at uneven gaps of 6 to 23
+seconds. In the longest run (85 s: live at 10 s, clear at 61 s) nothing about
+the slide, the layers or the presentation arrived, while a plain
+`GET /v1/status/layers` and `GET /v1/presentation/slide_index` made seconds
+after going live showed the change. One earlier run did show a single
+`presentation/active` `{"presentation": null}` about half a second after a
+clear, and no later run repeated it, so it can't be relied on. Probe:
+`streamprobe.mjs` (not kept in the repo).
+
+**Phase A stops here, as its own risk note says.** The stream can't replace
+the polling on 21.3, and a heartbeat that waited on it would show a slide
+late or not at all. The polling stays. Worth re-running the probe after a
+ProPresenter update (it takes a minute), since the endpoint is documented to
+push changes.
 
 **The current UI runs in WKWebView without changes.** A scratch Swift probe
 (`wkprobe.swift` in the session scratchpad, not in the repo) loaded the dev
