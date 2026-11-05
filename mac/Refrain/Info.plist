@@ -21,6 +21,9 @@
   <!-- Filled by scripts/build-mac-app.command from the Start at login job. -->
   <key>RefrainURL</key>
   <string>__URL__</string>
+  <!-- The commit this app was built from, so an update can tell it's stale. -->
+  <key>RefrainSourceCommit</key>
+  <string>__COMMIT__</string>
   <key>LSMinimumSystemVersion</key>
   <string>12.0</string>
   <key>NSHighResolutionCapable</key>

@@ -153,7 +153,9 @@ needs Start at login), and comes back on its own once Refrain is up.
 
 Build it by double-clicking `scripts/build-mac-app.command`. It needs Apple's
 free Command Line Tools (`xcode-select --install`) and macOS 12 or later, and
-it installs to `~/Applications/Refrain.app`. Run it again after each update.
+it installs to `~/Applications/Refrain.app`. After that, **Update now** and
+`scripts/update.command` rebuild it whenever an update changes it. If a rebuild
+fails, the update still finishes and says so: run the script again by hand.
 **Build it on each Mac rather than copying it across**: an app built on the Mac
 it runs on opens without warnings, and macOS blocks an unsigned app that arrives
 by AirDrop or download.

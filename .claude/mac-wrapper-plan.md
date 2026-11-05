@@ -1,7 +1,9 @@
 # Plan: Refrain on the Mac, the wrapper and what comes after it
 
-Status, 2026-11-04: **Phase B (Refrain.app) is built**, uncommitted, on branch
-`claude/nodejs-swift-architecture-ea66cf`. Everything else here is a proposed
+Status, 2026-11-04: **Phase B (Refrain.app) is on main** (PRs #57, #58), and
+updates rebuild it (step 1's last part). Owner, 2026-11-04: steps 1 to 3
+approved; Phase A starts after the `drawn-only` branch merges, which changes
+the same heartbeat and live-page code. Everything else here is a proposed
 next step. Not yet the handoff.
 
 There is nothing to branch. Windows keeps using the Chrome or Edge app window
@@ -435,10 +437,12 @@ feature: {
    - Each Mac needs the Command Line Tools once (`xcode-select --install`,
      free). The script checks for them and says how to get them instead of
      failing midway.
-   - **Not built yet:** the in-app update (`git pull` and `npm install`,
-     `server/index.js` near line 583) should run the build script after a pull
-     that changed `mac/`, and only then. Until it does, rerun the script by
-     hand after an update.
+   - **Built 2026-11-04:** Update now (`/api/update`) and
+     `scripts/update.command` rerun the build script when `mac/` or the script
+     changed since the commit the app was built from (stamped in its
+     Info.plist as `RefrainSourceCommit`), and only on a Mac that already has
+     the app (`server/mac-app.js`). A failed build is a note on the update,
+     never a failed update, and the next update tries again.
    - Never copy a built app to another Mac. AirDrop and downloads quarantine
      it, and Gatekeeper then blocks an unsigned app. Each Mac builds its own.
    - A rebuild changes the ad hoc signature, so macOS would forget any
