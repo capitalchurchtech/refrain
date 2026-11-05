@@ -114,7 +114,7 @@
     "summaryFolder": null,
     "phases": null
   },
-  "_serviceFeedModule": "Lets this console report to your own announcement server: which slide is showing, and its diagnostics log afterwards (see docs/service-feed.md). Off until enabled, and it only ever talks to the url you set: nothing goes to the Refrain project. url is the console address from the announcement server's admin page (https). Set these on the Telemetry tab of Settings. name is the station's name as the announcement server lists it (for example Main Campus FOH). The key goes in .env as SERVICE_FEED_TOKEN. includeSlideText sends the words on the slide as well as its title and number; leave it false unless you want that. windows are the only times it sends status, in this machine's local time. The diagnostics log goes each night at nightlyLogAt (local time, default 02:00), only the days the server does not have yet, never inside a window or during performance mode. There is no way to send it by hand. consoleId is filled in by Refrain.",
+  "_serviceFeedModule": "Lets this console report to your own announcement server: which slide is showing, and its diagnostics log afterwards (see docs/service-feed.md). Off until enabled, and it only ever talks to the url you set: nothing goes to the Refrain project. url is the console address from the announcement server's admin page (https). Set these on the Telemetry tab of Settings. name is the station's name as the announcement server lists it (for example Main Campus FOH). The key goes in .env as SERVICE_FEED_TOKEN. includeSlideText sends the words on the slide as well as its title and number; leave it false unless you want that. windows are the only times it sends status, in this machine's local time. The diagnostics log goes each night at nightlyLogAt (local time, default 02:00), only the days the server does not have yet, never inside a window or during performance mode. There is no way to send it by hand. slideTimingMatch picks the items whose log line also says how long each slide was up, by label and group, never the words: any item whose name contains it, any case. consoleId is filled in by Refrain.",
   "serviceFeedModule": {
     "enabled": false,
     "url": null,
@@ -122,6 +122,7 @@
     "includeSlideText": false,
     "windows": [{ "days": ["sun"], "from": "09:00", "until": "14:00" }],
     "nightlyLogAt": "02:00",
+    "slideTimingMatch": "announcement",
     "consoleId": null
   }
 }

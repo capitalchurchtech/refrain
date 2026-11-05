@@ -82,7 +82,7 @@ test("the view says which presentation, and marks an open stay whose screens are
 });
 
 // --- What leaves this Mac (docs/service-feed.md) ---------------------------------
-import { feedItems, itemLines, leftOpenLines, withPlaylist, libraryOf, FEED_ITEMS_MAX, FEED_NAME_MAX, FEED_LIBRARY_MAX, FEED_PLAYLIST_MAX } from "../server/item-splits.js";
+import { feedItems, itemLines, leftOpenLines, libraryOf, wantsSlideTiming, startSlideTiming, noteSlide, SLIDES_MAX, FEED_ITEMS_MAX, FEED_NAME_MAX, FEED_LIBRARY_MAX, FEED_LABEL_MAX } from "../server/item-splits.js";
 
 const TZ = "America/Denver";
 const SECRET = "Was blind but now I see";
@@ -146,32 +146,72 @@ test("an item open when Refrain restarts is closed at the last moment the old ru
   assert.notEqual(feedItems(reopened)[0].id, "old-1");
 });
 
-test("item lines say which library and playlist an item came from, the same on its open and close lines, and leave out what isn't known", () => {
+test("item lines say which library an item came from, the same on its open and close lines, and leave it out when it isn't known", () => {
   assert.equal(libraryOf("/Users/x/Library/Application Support/RenewedVision/ProPresenter/Libraries/Songs/Amazing Grace.pro"), "Songs");
   assert.equal(libraryOf("C:\\ProPresenter\\Libraries\\Messages\\Week 6.pro"), "Messages");
   assert.equal(libraryOf("/Users/x/Desktop/Loose.pro"), null, "a file outside a library has none");
   assert.equal(libraryOf(null), null);
   assert.equal(libraryOf(`/w/Libraries/${"L".repeat(100)}/a.pro`).length, FEED_LIBRARY_MAX);
 
-  let log = noteItem([], { ...a, library: "Misc" }, 0);
-  const opened = log[0].id;
-  log = withPlaylist(log, opened, "Sunday 9am");
+  const log = noteItem([], { ...a, library: "Misc" }, 0);
   const open = itemLines([], log, TZ)[0];
-  assert.deepEqual([open.library, open.playlist], ["Misc", "Sunday 9am"]);
   const next = noteItem(log, { ...b, library: "Songs" }, 60_000);
   const [closed, second] = itemLines(log, next, TZ);
-  assert.deepEqual([closed.id, closed.library, closed.playlist], [opened, "Misc", "Sunday 9am"], "the close line matches its open line");
-  assert.equal(second.library, "Songs");
-  assert.ok(!("playlist" in second), "played from the library: no playlist, not a placeholder");
-  const unknown = itemLines([], noteItem([], a, 0), TZ)[0];
-  assert.ok(!("library" in unknown) && !("playlist" in unknown), "nothing known, nothing sent");
-  assert.equal(itemLines([], withPlaylist(noteItem([], a, 0), noteItem([], a, 0)[0].id, "P".repeat(300)), TZ)[0].playlist.length, FEED_PLAYLIST_MAX);
-
-  // A restart's close line carries what the open line had.
+  assert.deepEqual([open.library, closed.library, second.library], ["Misc", "Misc", "Songs"]);
+  assert.ok(!("playlist" in open) && !("slides" in closed), "no playlist, and no slides for an item that wasn't timed");
+  assert.ok(!("library" in itemLines([], noteItem([], a, 0), TZ)[0]), "nothing known, nothing sent");
   const text = JSON.stringify({ t: "2026-10-11T15:40:00.000Z", event: "item", ...open });
-  assert.deepEqual(Object.fromEntries(Object.entries(leftOpenLines(text, "2026-10-11T16:00:00.000Z", TZ)[0]).filter(([k]) => ["library", "playlist"].includes(k))), { library: "Misc", playlist: "Sunday 9am" });
-  // The status snapshot is unchanged.
-  assert.deepEqual(Object.keys(feedItems(next)[0]).sort(), ["blank", "current", "endedAt", "id", "name", "startedAt"]);
+  assert.equal(leftOpenLines(text, "2026-10-11T16:00:00.000Z", TZ)[0].library, "Misc", "a restart's close line carries it");
+  assert.deepEqual(Object.keys(feedItems(next)[0]).sort(), ["blank", "current", "endedAt", "id", "name", "startedAt"], "the status snapshot is unchanged");
+});
+
+test("per-slide timing: only items whose name asks for it, each slide in order with its label, group and seconds, on the closing line", () => {
+  assert.equal(wantsSlideTiming("Announcements 2026-11-01"), true);
+  assert.equal(wantsSlideTiming("SLC ANNOUNCEMENT Loop"), true, "any case");
+  assert.equal(wantsSlideTiming("Amazing Grace"), false);
+  assert.equal(wantsSlideTiming("Week 6", ""), false, "an empty match times nothing");
+  assert.equal(wantsSlideTiming("Week 6 Sermon", "sermon"), true);
+
+  const ann = { presentationId: "ANN", name: "Announcements 2026-11-01" };
+  const names = { 0: { label: "Speaker Intro", group: "Park City · Sunday 10am" }, 2: { label: "Connection Card", group: "Park City · Sunday 10am" } };
+  let log = noteItem([], ann, 0);
+  log = startSlideTiming(log, log[0].id, { uuid: "ARR", name: "PC Sunday" });
+  log = noteSlide(log, 0, 0, () => null); // read before the presentation: named later
+  log = noteSlide(log, 0, 4000, (i) => names[i]);
+  assert.deepEqual(log[0].slides.map((r) => [r.i, r.l]), [[0, "Speaker Intro"]], "named once the presentation is read, still one row");
+  assert.equal(noteSlide(log, 0, 8000, (i) => names[i]), log, "the same slide again changes nothing");
+  log = noteSlide(log, 2, 41_000, (i) => names[i]);
+  log = noteSlide(log, null, 59_000); // a blank inside the item
+  log = noteSlide(log, 0, 70_000, (i) => names[i]);
+  assert.equal(itemLines([], log, TZ)[0].slides, undefined, "the open line has no slides");
+  const closed = noteItem(log, b, 100_000);
+  const line = itemLines(log, closed, TZ)[0];
+  assert.equal(line.arrangement, "PC Sunday");
+  assert.deepEqual(line.slides, [
+    { i: 0, l: "Speaker Intro", g: "Park City · Sunday 10am", s: 41 },
+    { i: 2, l: "Connection Card", g: "Park City · Sunday 10am", s: 18 },
+    { i: 0, l: "Speaker Intro", g: "Park City · Sunday 10am", s: 30 },
+  ], "the blank counts for no slide; a repeat appears again");
+
+  // Unknown arrangement: numbers and seconds only, never a guess; a long label is cut.
+  let bare = startSlideTiming(noteItem([], ann, 0), noteItem([], ann, 0)[0].id, null);
+  bare = noteSlide(bare, 3, 0, () => null);
+  bare = noteSlide(bare, 4, 5000, () => ({ label: "L".repeat(500), group: null }));
+  const out = itemLines(bare, noteItem(bare, b, 9000), TZ)[0];
+  assert.ok(!("arrangement" in out));
+  assert.deepEqual(out.slides.map((x) => [x.i, x.s, x.l?.length ?? 0]), [[3, 5, FEED_LABEL_MAX], [4, 4, FEED_LABEL_MAX]], "slide 3 was named when slide 4 came up");
+  // A library item played with a selected arrangement learns it later.
+  let lib = startSlideTiming(noteItem([], ann, 0), noteItem([], ann, 0)[0].id, null);
+  lib = noteSlide(lib, 1, 0, () => null, { uuid: "SEL", name: null });
+  lib = noteSlide(lib, 1, 4000, () => null, { uuid: "SEL", name: "SL Sunday" });
+  assert.equal(itemLines(lib, noteItem(lib, b, 8000), TZ)[0].arrangement, "SL Sunday", "its name, learned while the same slide stayed up");
+
+  // Capped, and nothing on an item that isn't timed.
+  let many = startSlideTiming(noteItem([], ann, 0), noteItem([], ann, 0)[0].id, null);
+  for (let k = 0; k < SLIDES_MAX + 50; k++) many = noteSlide(many, k % 2, k * 1000);
+  assert.equal(many[0].slides.length, SLIDES_MAX);
+  const plain = noteItem([], a, 0);
+  assert.equal(noteSlide(plain, 1, 0), plain);
 });
 
 test("no slide words appear in the snapshot or the item lines, whatever the item carried", () => {

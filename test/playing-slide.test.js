@@ -66,3 +66,29 @@ test("the live presentation is read again when never read, when slides were adde
 test("a person's slide number is the API index plus one, and nothing for a bad index", () => {
   assert.deepEqual([slideNumber(0), slideNumber(28), slideNumber(-1), slideNumber(null), slideNumber(1.5)], [1, 29, null, null, null]);
 });
+
+test("the outline names a slide by label and group in the arrangement that played, never by guessing", async () => {
+  const { outlineOf, slideInOutline } = await import("../server/playing-slide.js");
+  // Announcements 2026-11-01's shape: three groups, three arrangements, each with its own group.
+  const doc = {
+    presentation: {
+      id: { uuid: "ANN" },
+      current_arrangement: "",
+      groups: [
+        { uuid: "G-SAT", name: "SLC · Saturday 5pm", slides: [{ label: "Speaker Intro", text: "secret" }, { label: "Giving ALL", text: "secret" }] },
+        { uuid: "G-PC", name: "Park City · Sunday 10am", slides: [{ label: "Speaker Intro", text: "secret" }, { label: "Serving", text: "secret" }, { label: "", text: "secret" }] },
+      ],
+      arrangements: [{ id: { uuid: "A-SAT", name: "Saturday" }, groups: ["G-SAT"] }, { id: { uuid: "A-PC", name: "PC Sunday" }, groups: ["G-PC"] }],
+    },
+  };
+  const outline = outlineOf(doc.presentation);
+  assert.doesNotMatch(JSON.stringify(outline), /secret/, "no words in the outline");
+  assert.deepEqual(slideInOutline(outline, "A-PC", 1), { label: "Serving", group: "Park City · Sunday 10am" }, "counted within PC Sunday, not the whole file");
+  assert.deepEqual(slideInOutline(outline, "A-PC", 2), { label: null, group: "Park City · Sunday 10am" }, "a slide with no label still has its group");
+  assert.equal(slideInOutline(outline, "A-PC", 3), null, "past the arrangement's end");
+  assert.equal(slideInOutline(outline, null, 1), null, "several arrangements and none known: no guess");
+  assert.deepEqual(slideInOutline({ ...outline, current: "A-SAT" }, null, 1), { label: "Giving ALL", group: "SLC · Saturday 5pm" }, "the selected one when no playlist chose");
+  const flat = outlineOf({ ...doc.presentation, arrangements: [] });
+  assert.deepEqual(slideInOutline(flat, null, 3), { label: "Serving", group: "Park City · Sunday 10am" }, "no arrangements: the file's own order");
+  assert.ok(playingFromDoc(doc).outline, "kept with the playing presentation");
+});

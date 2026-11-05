@@ -465,20 +465,21 @@ test("the two list endpoints are on the paths this file documents", async () => 
   }
 });
 
-test("the active playlist is named only for the presentation it actually played", async () => {
+test("the arrangement a playlist item chose is read only for the presentation it actually played", async () => {
   const answer = {
     presentation: {
-      playlist: { uuid: "PL", name: " TECH DRILLS ", index: 1 },
-      item: { uuid: "ITEM", name: "Drills", index: 1 },
-      playlist_item: { id: { uuid: "ITEM", name: "Drills", index: 1 }, type: "presentation", presentation_info: { presentation_uuid: "PRES-A" } },
+      playlist: { uuid: "PL", name: "Sun 11/1/26 PC-10 (FS) - Rehearsal", index: 1 },
+      playlist_item: { id: { uuid: "ITEM", name: "Announcements 2026-11-01", index: 11 }, type: "presentation", presentation_info: { presentation_uuid: "PRES-A", arrangement_name: "PC Sunday", arrangement_uuid: "ARR" } },
     },
-    announcements: { playlist: null, item: null, playlist_item: null },
   };
   await withFetch(jsonFetch(answer), async () => {
-    assert.equal(await client().getActivePlaylistName("PRES-A"), "TECH DRILLS");
-    assert.equal(await client().getActivePlaylistName("PRES-B"), null, "put up from the library: not the playlist's item");
+    assert.deepEqual(await client().getPlaylistArrangement("PRES-A"), { uuid: "ARR", name: "PC Sunday" });
+    assert.equal(await client().getPlaylistArrangement("PRES-B"), null, "put up from the library: not the playlist's item");
   });
+  const none = structuredClone(answer);
+  none.presentation.playlist_item.presentation_info.arrangement_uuid = "";
+  await withFetch(jsonFetch(none), async () => assert.equal(await client().getPlaylistArrangement("PRES-A"), null, "the item chose no arrangement"));
   await withFetch(jsonFetch({ presentation: { playlist: null, item: null, playlist_item: null } }), async () => {
-    assert.equal(await client().getActivePlaylistName("PRES-A"), null, "nothing played from a playlist");
+    assert.equal(await client().getPlaylistArrangement("PRES-A"), null, "nothing played from a playlist");
   });
 });
