@@ -144,7 +144,29 @@ database and keeps memory until it restarts.
   (Settings › More › Phones › Slide pictures) set to **Names** shows the names
   on the keys instead.
 
-Phones show a slide's words, never a picture of it. The phone's list of open
-flags shows the flagged slide's words, or the picture kept with the flag if
-there is one.
+### Pictures on phones
+
+Phones show a slide's words. **Pictures on phones** (Settings › More › Phones ›
+Slide pictures, off until you switch it on) has this Mac make pictures of slides
+for phones as well: on Now, in the list you pick a slide from when flagging, and
+on flag cards. They are Refrain's own drawings, photographed with this Mac's
+fonts, so they cost ProPresenter nothing.
+
+- **Made ahead of time,** for today's service playlists (from Day) and slides
+  with an open flag, every few minutes while nothing is on the screens and
+  performance mode is off. A batch stops within a few seconds if something goes
+  live. Until a slide has a picture, or once its file changes, phones show its
+  words.
+- **It needs a Mac with Refrain.app built** (`scripts/build-mac-app.command`),
+  whose tools make the pictures, and ProPresenter on this Mac. Settings says
+  when either is missing.
+- **A picture follows the arrangement that is playing,** the same as the words,
+  so a slide picked from the list is the slide on the screens.
+- **Only signed-in phones get them,** and only of the presentation on the
+  screens or one with an open flag. They are kept in `data/phone-pictures/`, a
+  cache of today's presentations. A slide can carry a name (a prayer or care
+  slide), which is why it is off until switched on.
+
+The phone's list of open flags shows the flagged slide's picture kept with the
+flag, else its picture from this Mac, else its words.
 

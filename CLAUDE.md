@@ -118,8 +118,10 @@ a ProPresenter thumbnail writes about 30 KB into its workspace database, so
 every slide picture on the desktop is Refrain's own drawing from
 `server/slide-drawing.js` (safe slides, Quality Control, Flags). ProPresenter is
 asked for one slide's thumbnail only when Quality Control or a flag needs a
-slide that can't be drawn. Phones get the slide's words, never a picture, and
-the service feed sends no picture. Don't add a thumbnail path back. Never write to
+slide that can't be drawn. Phones get the slide's words, or, only when a church
+switches it on, a picture this Mac made of Refrain's own drawing ahead of time
+(`server/phone-pictures.js`, `mac/helpers/refrain-snapshot.swift`), never a
+ProPresenter thumbnail. The service feed sends no picture. Don't add a thumbnail path back. Never write to
 ProPresenter's library or workspace. The old Library Sync feature did, and is
 switched off with `SHARE_LIBRARY_REMOVED` in `server/index.js` (every route
 answers 410); don't revive it and don't document it as a feature.

@@ -22,7 +22,9 @@ Knowing the design helps tell a bug from a known limit.
   network interface, over **plain HTTP**, with a daily PIN by default, a monthly
   device code for search and going live, approval by name for alerts, and rate
   limits on every sign-in path. A church can set no PIN, which lets anyone on the
-  network see what's on the screens and add flags.
+  network see what's on the screens and add flags. With **Pictures on phones**
+  switched on (off by default), signed-in phones also get pictures of the
+  slides of the presentation on the screens and of flagged slides.
   [Phones](docs/phones.md#security) has the details.
 - **Secrets** live in `.env` in the Refrain folder: Planning Center keys, the
   mail server login, the service feed key. A fixed phone PIN, if a church sets

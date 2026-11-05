@@ -55,6 +55,14 @@ xcrun swiftc -O -swift-version 5 \
   mac/Refrain/*.swift \
   -o "$APP/Contents/MacOS/Refrain"
 
+# The tool that photographs drawn slides for phones (server/phone-pictures.js).
+# Phones show words without it, so a failure here never costs the app.
+mkdir -p "$APP/Contents/Helpers"
+if ! xcrun swiftc -O -swift-version 5 -target "$(uname -m)-apple-macos12.0" \
+     mac/helpers/refrain-snapshot.swift -o "$APP/Contents/Helpers/refrain-snapshot"; then
+  echo "Couldn't build the phone pictures tool, so phones will show slides' words."
+fi
+
 # The commit built from, so Update now can tell when the app is out of date.
 COMMIT="$(git rev-parse HEAD 2>/dev/null || true)"
 sed -e "s|__VERSION__|$VERSION|g" -e "s|__URL__|$URL|g" -e "s|__COMMIT__|$COMMIT|g" mac/Refrain/Info.plist > "$APP/Contents/Info.plist"

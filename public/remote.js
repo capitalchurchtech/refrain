@@ -153,11 +153,13 @@ function readoutHtml() {
   if (!p?.item) return `<div class="glass"><div class="ph off">Nothing up</div><div class="ph-sub">Nothing is on the screens</div></div>`;
   const slide = state.recent?.[0];
   const slideNo = slide && state.live ? ` · slide ${slide.slideNumber}` : "";
-  return `<div class="glass"><div class="ph-sub" style="margin:0 0 6px">On screen${p.item.position ? ` · item ${p.item.position} of ${p.item.of}` : ""} · up ${mmss(p.item.upForMs)}</div><div class="ph">${esc(p.item.name)}</div>${slideNo ? `<div class="ph-sub">${slideNo.slice(3)}</div>` : ""}</div>`;
+  const pic = state.live && slide?.picture ? `<div class="pic" style="margin-top:8px"><img data-pic="${esc(slide.picture)}" alt="The slide on the screens" /></div>` : "";
+  return `<div class="glass"><div class="ph-sub" style="margin:0 0 6px">On screen${p.item.position ? ` · item ${p.item.position} of ${p.item.of}` : ""} · up ${mmss(p.item.upForMs)}</div><div class="ph">${esc(p.item.name)}</div>${slideNo ? `<div class="ph-sub">${slideNo.slice(3)}</div>` : ""}${pic}</div>`;
 }
 function paintReadout() {
   const el = $("readout");
   if (el) el.innerHTML = readoutHtml();
+  loadPictures();
 }
 
 function paintPage() {
@@ -308,7 +310,7 @@ function renderSheet() {
   const { title, body } = sheetContent();
   $("sheet").hidden = false;
   $("sheet").innerHTML = `<div class="scrim" data-act="close-sheet"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="sheet-head"><span class="wordmark">${esc(title)}</span><button class="key chip" data-act="close-sheet">${sheet.kind === "live" && sheet.step === "confirm" ? "Cancel" : "Close"}</button></div><div class="sheet-body">${body}</div></div>`;
-  if (sheet.kind === "flags") loadFlagPictures();
+  loadPictures();
 }
 function sheetContent() {
   if (sheet.kind === "flag") return { title: "Add flag", body: flagBody() };
@@ -370,13 +372,14 @@ function flagBody() {
         .map((x) => {
           const rel = x.slideIndex === cur ? "On screen" : x.slideIndex < cur ? `${cur - x.slideIndex} back` : `${x.slideIndex - cur} ahead`;
           const sel = s.sel?.slideIndex === x.slideIndex;
-          return `<button class="key${sel ? " on" : ""}" data-act="pick-slide" data-idx="${x.slideIndex}" aria-pressed="${sel}"><span><small>Slide ${x.slideNumber} · ${rel}</small><span class="words">${x.text ? esc(x.text.slice(0, 90)) : "<i>No words on this slide</i>"}</span></span></button>`;
+          const words = x.picture ? `<span class="pic kpic"><img data-pic="${esc(x.picture)}" data-words="${esc((x.text ?? "").slice(0, 90))}" alt="Slide ${x.slideNumber}" /></span>` : `<span class="words">${x.text ? esc(x.text.slice(0, 90)) : "<i>No words on this slide</i>"}</span>`;
+          return `<button class="key${sel ? " on" : ""}" data-act="pick-slide" data-idx="${x.slideIndex}" aria-pressed="${sel}"><span><small>Slide ${x.slideNumber} · ${rel}</small>${words}</span></button>`;
         })
         .join("")}</div>
       ${s.slides.slides.length > shown.length || s.all ? `<button class="key chip" style="width:100%;margin-top:8px" data-act="all-slides">${s.all ? "Show fewer" : `All ${s.slides.slides.length} slides`}</button>` : ""}`;
   }
   const types = (state?.types ?? []).map((t) => `<button class="key" data-act="pick-type" data-type="${esc(t)}" aria-pressed="${s.type === t}">${esc(t)}</button>`).join("");
-  const hint = !s.type ? "Pick what's wrong." : noteNeeded(s) ? "Write the note for the team." : "A picture of this slide is saved with the flag.";
+  const hint = !s.type ? "Pick what's wrong." : noteNeeded(s) ? "Write the note for the team." : "The booth shows this slide with the flag.";
   const ready = (s.pick || s.sel) && s.type && !noteNeeded(s);
   return `${which}
     <div class="sect"><span>What's wrong</span></div><div class="bank types">${types}</div>
@@ -391,7 +394,7 @@ document.addEventListener("input", (e) => {
   const ready = (sheet.pick || sheet.sel) && sheet.type && !noteNeeded(sheet);
   const b = document.querySelector("[data-act='add-flag-now']");
   if (b) b.disabled = !ready || sheet.busy;
-  $("flag-hint").textContent = !sheet.type ? "Pick what's wrong." : noteNeeded(sheet) ? "Write the note for the team." : "A picture of this slide is saved with the flag.";
+  $("flag-hint").textContent = !sheet.type ? "Pick what's wrong." : noteNeeded(sheet) ? "Write the note for the team." : "The booth shows this slide with the flag.";
 });
 
 // One retry at a time, and each flag has its own id, so a retry only ever
@@ -479,7 +482,7 @@ function flagsBody() {
   return `${add}<div class="sect"><span>Open · ${s.list.length}</span></div>${s.list
     .map(
       (f) => `<div class="fcard">
-        ${f.picture ? `<div class="pic"><img data-flag-pic="${esc(f.id)}" alt="Picture of the flagged slide" /></div>` : f.text ? `<div class="pic words">${esc(f.text)}</div>` : ""}
+        ${f.picture ? `<div class="pic"><img data-flag-pic="${esc(f.id)}" alt="Picture of the flagged slide" /></div>` : f.slidePicture ? `<div class="pic"><img data-pic="${esc(f.slidePicture)}" alt="Picture of the flagged slide" /></div>` : f.text ? `<div class="pic words">${esc(f.text)}</div>` : ""}
         <div style="margin-top:8px"><span class="tagc${f.type === "Note" ? " note" : ""}">${esc(f.type ?? "Flag")}</span><b>${esc(f.presentationName ?? "Untitled")}${f.slideNumber ? ` · slide ${f.slideNumber}` : ""}</b></div>
         ${f.note ? `<div style="margin-top:4px">${esc(f.note)}</div>` : ""}
         <div class="muted" style="margin-top:4px">${esc(f.by ?? "Someone")} · ${esc(ago(f.at))}</div></div>`
@@ -487,7 +490,11 @@ function flagsBody() {
     .join("")}`;
 }
 // Pictures need the phone's token, so they're fetched and shown from memory.
-async function loadFlagPictures() {
+// A booth-made slide picture is kept by its address, so the readout repainting
+// every few seconds doesn't fetch the same one again; one that fails shows the
+// slide's words instead (the line beside it says which slide it is).
+const pictureCache = new Map(); // address -> object URL
+async function loadPictures() {
   for (const img of document.querySelectorAll("[data-flag-pic]")) {
     if (img.src) continue;
     try {
@@ -496,6 +503,25 @@ async function loadFlagPictures() {
       else img.parentElement.textContent = "No picture available";
     } catch {
       img.parentElement.textContent = "No picture available";
+    }
+  }
+  for (const img of document.querySelectorAll("[data-pic]")) {
+    if (img.src) continue;
+    const url = img.dataset.pic;
+    if (pictureCache.has(url)) {
+      img.src = pictureCache.get(url);
+      continue;
+    }
+    try {
+      const res = await fetch(url, { headers: token ? { "x-refrain-device": token } : {} });
+      if (!res.ok) throw new Error(String(res.status));
+      const local = URL.createObjectURL(await res.blob());
+      pictureCache.set(url, local);
+      img.src = local;
+    } catch {
+      // The slide's words take the picture's place where the key had them.
+      if (img.dataset.words) img.parentElement.outerHTML = `<span class="words">${esc(img.dataset.words)}</span>`;
+      else img.parentElement.remove();
     }
   }
 }

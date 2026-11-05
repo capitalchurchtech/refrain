@@ -87,16 +87,30 @@ export function outlineOf(p) {
  * arrangements and none known, null: a guess would name the wrong slide.
  */
 export function slideInOutline(outline, arrangementUuid, index) {
+  const at = placeInOutline(outline, arrangementUuid, index);
+  if (!at) return null;
+  const g = outline.groups[at.groupUuid];
+  return { label: g.labels[at.offset] || null, group: g.name };
+}
+
+/**
+ * Where slide `index` of the arrangement that is playing sits: its group's
+ * uuid and its place in that group, the same in every arrangement, so a
+ * slide can be found in the file whatever numbering it was given. Null as
+ * `slideInOutline` is; `raw` is for a deck known to play in the file's own
+ * order (put up from the library with nothing selected).
+ */
+export function placeInOutline(outline, arrangementUuid, index, { raw = false } = {}) {
   if (!outline || !Number.isInteger(index) || index < 0) return null;
   const arrangements = outline.arrangements ?? [];
-  const chosen = arrangements.find((a) => a.uuid && a.uuid === (arrangementUuid || outline.current));
-  if (!chosen && arrangements.length) return null;
+  const chosen = raw ? null : arrangements.find((a) => a.uuid && a.uuid === (arrangementUuid || outline.current));
+  if (!chosen && arrangements.length && !raw) return null;
   const order = chosen ? chosen.groups : Object.keys(outline.groups ?? {});
   let at = index;
   for (const uuid of order) {
     const g = outline.groups?.[uuid];
     if (!g) continue;
-    if (at < g.labels.length) return { label: g.labels[at] || null, group: g.name };
+    if (at < g.labels.length) return { groupUuid: uuid, offset: at };
     at -= g.labels.length;
   }
   return null;

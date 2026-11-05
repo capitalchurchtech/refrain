@@ -497,6 +497,19 @@ export function initHealth() {
       })
     );
 
+    document.querySelectorAll("[data-phone-pictures]").forEach((key) =>
+      key.addEventListener("click", async () => {
+        try {
+          const res = await fetch("/api/slide-pictures", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phones: key.dataset.phonePictures === "true" }) });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error ?? res.statusText);
+          render();
+        } catch (err) {
+          showFailure(`Couldn't change pictures on phones: ${err.message}`);
+        }
+      })
+    );
+
     document.querySelectorAll("[data-quick-pictures]").forEach((key) =>
       key.addEventListener("click", async () => {
         try {
@@ -2299,7 +2312,25 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
             ? "ProPresenter is on another Mac, so Refrain can't draw slides here: safe slides show their words, and Quality Control and Flags ask ProPresenter for one slide's picture when they need it."
             : "Refrain draws slide pictures from the presentation files on this Mac, which asks nothing of ProPresenter. Only when Quality Control or a flag needs a slide it can't draw does it ask ProPresenter, for that one slide."
         }</p>
-        <p class="text-xs opacity-70 rf-measure">Phones show the slides' words, and a flag's picture only when ProPresenter gave one.</p>
+        <div class="rf-subhead mt-2">Pictures on phones</div>
+        <p class="text-sm rf-measure">Phones show the slides' words. Switched on, this Mac also makes pictures of the slides for phones to show on Now, when flagging and on flags, using Refrain.app's tools. It makes them ahead of time, for today's service playlists and flagged slides, never while something is on the screens; until a slide has one, phones show its words. A slide can carry a name, so it is off until you switch it on.</p>
+        <div class="rf-tabs" role="radiogroup" aria-label="Pictures on phones" style="margin-bottom:0">
+          <button type="button" role="radio" class="rf-tab" data-phone-pictures="true" aria-checked="${pictures.phones?.on === true}"><span>On</span></button>
+          <button type="button" role="radio" class="rf-tab" data-phone-pictures="false" aria-checked="${pictures.phones?.on !== true}"><span>Off</span></button>
+        </div>
+        ${
+          pictures.phones?.on !== true
+            ? ""
+            : pictures.phones.status === "misconfigured"
+              ? `<p class="text-xs text-warning rf-measure">${escapeHtml(pictures.phones.problem ?? "")}</p>`
+              : `<p class="text-xs opacity-70 rf-measure">${
+                  pictures.phones.running
+                    ? "Making pictures now."
+                    : pictures.phones.last
+                      ? `Last checked ${new Date(pictures.phones.last.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}: ${pictures.phones.last.made} made${pictures.phones.last.failed ? `, ${pictures.phones.last.failed} couldn't be made` : ""}.`
+                      : "Waiting for a quiet moment to make them."
+                }</p>`
+        }
         ${
           // Only while Safe slides is on (Settings › Features): it's the one thing this chooses.
           safeSlidesOn

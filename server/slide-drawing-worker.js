@@ -20,6 +20,9 @@ try {
   parentPort.postMessage({
     ok: true,
     order: playedCueIds(doc),
+    // Each group's cues, so a slide numbered in any arrangement (by group and
+    // place in it) can be found: phone pictures are kept by cue.
+    groups: (doc.cue_groups ?? []).map((g) => [g.group?.uuid?.string ?? null, (g.cue_identifiers ?? []).map((id) => id.string)]),
     drawn: drawn.map((d) => ({ id: d.id, html: d.html, fonts: d.fonts, width: d.width, height: d.height })),
     pictures,
     workspace,

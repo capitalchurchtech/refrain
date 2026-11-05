@@ -121,7 +121,8 @@ import QRCode from "qrcode";
 import { emptyRegistry, seeDevice, setApproved, removeDevice, isApproved, isRemoved, deviceList, loadRegistry, saveRegistry, setLiveMonth, isLiveAllowed } from "./remote-devices.js";
 import { monthKey, deviceCode, appendTakeover } from "./remote-live.js";
 import { noteItem, libraryOf, wantsSlideTiming, startSlideTiming, setArrangement, noteSlide, splitsView, feedItems, itemLines, leftOpenLines } from "./item-splits.js";
-import { playingFromDoc, playingArrangement, playingStale, liveSlideDetails, slideInOutline } from "./playing-slide.js";
+import { playingFromDoc, playingArrangement, playingStale, liveSlideDetails, slideInOutline, placeInOutline } from "./playing-slide.js";
+import { createPhonePictures, phonePicturesStatus } from "./phone-pictures.js";
 import { saveFlagPicture, readFlagPicture, listFlagPictureIds } from "./flag-pictures.js";
 import { previewTargets, createThumbCache } from "./slide-preview.js";
 import { createThumbStore } from "./thumb-store.js";
@@ -1539,7 +1540,11 @@ app.post("/api/protect", async (req, res) => {
   res.json({ ok: true, on: protectOn() });
 });
 
-/** Every slide of the presentation on the screens, words from the index. At most 300. */
+/**
+ * Every slide of the presentation on the screens, in the arrangement that is
+ * playing: words from the live read (liveSlideText), or none while that
+ * arrangement isn't known yet. At most 300.
+ */
 function currentSlides() {
   const slide = liveState.live ? liveState.slide : null;
   if (!slide?.presentationId || !Number.isInteger(slide.slideIndex)) return null;
@@ -1650,7 +1655,7 @@ async function openFlagsCached() {
   const list = visibleFlags(all)
     .filter((f) => !f.resolved)
     .slice(0, 30)
-    .map((f) => ({ id: f.id, presentationName: f.presentationName ?? null, slideNumber: Number.isInteger(f.slideIndex) ? f.slideIndex + 1 : null, text: f.text ?? "", type: f.type ?? null, note: f.note ?? "", by: f.submittedBy ?? null, at: f.capturedAt, picture: f.picture ?? (pictured.has(f.id) ? "local" : null) }));
+    .map((f) => ({ id: f.id, presentationId: f.presentationId ?? null, slideIndex: Number.isInteger(f.slideIndex) ? f.slideIndex : null, presentationName: f.presentationName ?? null, slideNumber: Number.isInteger(f.slideIndex) ? f.slideIndex + 1 : null, text: f.text ?? "", type: f.type ?? null, note: f.note ?? "", by: f.submittedBy ?? null, at: f.capturedAt, picture: f.picture ?? (pictured.has(f.id) ? "local" : null) }));
   openFlagsCache = { at: Date.now(), list };
   return list;
 }
@@ -1679,6 +1684,9 @@ function startRemoteListener() {
     history: () => splitsView(itemSplits),
     captureFlagPicture,
     openFlags: () => openFlagsCached(),
+    // Pictures of slides made on this Mac, off unless switched on (server/phone-pictures.js).
+    slidePictures: (pid, indexes, opts) => phonePictureUrls(pid, indexes, opts),
+    slidePictureFile: (pid, cue) => phonePictureFile(pid, cue),
     flagPicture: (id) => readFlagPicture(FLAG_PICTURES_DIR, id),
     devices: {
       see: (id, { name, signIn } = {}) => changeDevices(seeDevice(remoteDevices, id, { name, signIn }), { now: Boolean(signIn) }),
@@ -4297,6 +4305,108 @@ app.get("/api/preview/drawn/:pid/:idx", async (req, res) => {
   res.json({ ...d, css: lib.DRAW_CSS, fontCss: lib.fontFaces(d.fonts) });
 });
 
+// --- Slide pictures for phones, made on this Mac (server/phone-pictures.js) ---
+// Off until switched on (Settings › More › Phones). Made ahead of time only:
+// never while something is live or in performance mode, for today's service
+// playlists and open flags; a phone without one shows the slide's words.
+const phonePictures = createPhonePictures({ dir: "./data/phone-pictures" });
+const phoneShots = new Set(); // "pid\0cue" the page below may show, only while a batch runs
+let phonePicturesRun = { running: false, last: null };
+const phonePicturesOn = () => client.isLocalHost && phonePicturesStatus(config).status === "active";
+
+/**
+ * Picture addresses for slides of `pid`, or null each. `live`: numbered as
+ * the live presentation plays them (the flag picker, Now), so through the
+ * arrangement that is playing; otherwise as the file orders them (a flag's
+ * slide, as Flags draws it). None while which arrangement plays isn't known.
+ */
+async function phonePictureUrls(pid, indexes, { live = false } = {}) {
+  const none = indexes.map(() => null);
+  if (!phonePicturesOn() || !pid) return none;
+  const found = await drawableFile(pid);
+  const playing = live ? playingCache.get(pid) : null;
+  if (!found || (live && (!playing || playing.pending))) return none;
+  return Promise.all(
+    indexes.map(async (i) => {
+      const which = live ? placeInOutline(playing.outline, playing.arrangementId, i, { raw: !playing.arrangementId }) : { order: i };
+      const pic = which ? await phonePictures.picture(pid, found.version, which) : null;
+      return pic ? `/api/slide-picture/${encodeURIComponent(pid)}/${encodeURIComponent(pic.cue)}` : null;
+    })
+  );
+}
+
+/** The picture file a phone may have: of the presentation on the screens or one with an open flag. */
+async function phonePictureFile(pid, cue) {
+  if (!phonePicturesOn()) return null;
+  const onScreen = liveState.live && liveState.slide?.presentationId === pid;
+  const flagged = featureOn(config, "slide-flags") && (await openFlagsCached().catch(() => [])).some((f) => f.presentationId === pid);
+  const allowed = onScreen || flagged;
+  if (!allowed) return null;
+  const found = await drawableFile(pid);
+  return found ? phonePictures.picture(pid, found.version, cue) : null;
+}
+
+// One drawn slide, scaled to 960x540 and laid out with this Mac's fonts, for
+// the snapshot tool to photograph. Only the slides of a batch being made.
+app.get("/api/phone-pictures/page/:pid/:cue", async (req, res) => {
+  const { pid, cue } = req.params;
+  if (!phoneShots.has(`${pid}\0${cue}`)) return res.status(404).end();
+  const lib = await loadFileReader();
+  const found = await drawableFile(pid);
+  const d = lib && found ? await slideDrawing.slideByCue(pid, found.file, found.version, cue, { drawNew: false }) : null;
+  if (!d) return res.status(404).end();
+  const k = 960 / (d.width || 1920);
+  res.set("Cache-Control", "no-store").type("html").send(`<!doctype html><meta charset="utf-8"><style>${lib.fontFaces(d.fonts)}
+${lib.DRAW_CSS}
+html,body{margin:0;width:960px;height:540px;overflow:hidden;background:#000}.f{position:relative;width:960px;height:540px;overflow:hidden}.f .slide{transform:scale(${k})}</style>
+<div class="f">${d.html}</div>
+<script type="module">
+import { layoutSlide } from "/api/preview/draw-layout.js";
+await document.fonts.ready;
+await Promise.all([...document.images].map((i) => (i.complete ? null : new Promise((r) => { i.onload = i.onerror = r; }))));
+layoutSlide(document.querySelector(".f"));
+// A short timer, not animation frames: WebKit hardly runs those for an off-screen window.
+setTimeout(() => { document.body.dataset.done = "1"; }, 60);
+</script>`);
+});
+
+/** Makes the phone pictures still missing, one presentation at a time, stopping if anything goes live. */
+async function makePhonePictures() {
+  if (!phonePicturesOn() || phonePicturesRun.running || performance.armed || liveState.live) return;
+  const targets = new Set();
+  if (serviceModuleOn() && serviceDay.day) for (const sv of serviceState().services) for (const it of sv.playlist?.items ?? []) if (it.presentationId) targets.add(it.presentationId);
+  for (const f of await openFlagsCached().catch(() => [])) if (f.presentationId) targets.add(f.presentationId);
+  phonePicturesRun = { ...phonePicturesRun, running: true };
+  let made = 0;
+  let failed = 0;
+  try {
+    for (const pid of targets) {
+      if (performance.armed || liveState.live) break; // the rest waits for the next quiet check
+      const found = await drawableFile(pid);
+      const cues = found ? await slideDrawing.cues(pid, found.file, found.version) : null;
+      if (!cues) continue;
+      const todo = await phonePictures.missing(pid, found.version, cues.ids);
+      // Ten slides at a time, so something going live stops the run within one batch (a few seconds a slide).
+      for (let i = 0; i < todo.length && !performance.armed && !liveState.live; i += 10) {
+        const batch = todo.slice(i, i + 10);
+        for (const cue of batch) phoneShots.add(`${pid}\0${cue}`);
+        try {
+          const r = await phonePictures.make(pid, found.version, cues.groups, cues.order, batch, (cue) => `http://127.0.0.1:${port}/api/phone-pictures/page/${encodeURIComponent(pid)}/${encodeURIComponent(cue)}`);
+          made += r.made;
+          failed += r.failed;
+        } finally {
+          for (const cue of batch) phoneShots.delete(`${pid}\0${cue}`);
+        }
+      }
+    }
+    await phonePictures.prune(targets);
+  } finally {
+    phonePicturesRun = { running: false, last: { at: Date.now(), made, failed, presentations: targets.size } };
+    if (made || failed) console.log(`Phone pictures: made ${made}${failed ? `, ${failed} couldn't be made` : ""}, for ${targets.size} presentation(s).`);
+  }
+}
+setInterval(() => makePhonePictures().catch((err) => console.error("Phone pictures:", err.message)), 5 * 60_000).unref();
+
 // A picture a drawn slide shows, by its number in that presentation's drawing.
 app.get("/api/preview/drawn/:pid/picture/:n", async (req, res) => {
   const src = slideDrawing.picture(req.params.pid, Number.parseInt(req.params.n, 10));
@@ -5320,14 +5430,20 @@ async function saveAllowlist(change, res) {
  * the write has landed. Nothing is drawn by pressing it.
  */
 app.post("/api/slide-pictures", async (req, res) => {
-  const { quickSlides } = req.body ?? {};
-  if (typeof quickSlides !== "boolean") return res.status(400).json({ error: "quickSlides must be true or false" });
+  const { quickSlides, phones } = req.body ?? {};
+  for (const [name, v] of Object.entries({ quickSlides, phones })) {
+    if (v !== undefined && typeof v !== "boolean") return res.status(400).json({ error: `${name} must be true or false` });
+  }
+  if (quickSlides === undefined && phones === undefined) return res.status(400).json({ error: "Send quickSlides and/or phones." });
+  const change = Object.fromEntries(Object.entries({ quickSlides, phones }).filter(([, v]) => v !== undefined));
   try {
-    await updateConfig((c) => ({ ...c, slidePictures: { ...c.slidePictures, quickSlides } }));
+    await updateConfig((c) => ({ ...c, slidePictures: { ...c.slidePictures, ...change } }));
   } catch (err) {
     return res.status(500).json({ error: `Couldn't save it: ${err.message}` });
   }
-  res.json({ ok: true, quickSlides: quickSlidePicturesOn() });
+  // Switched on: start on the pictures now if it's quiet, rather than at the next check.
+  if (phones === true) makePhonePictures().catch(() => {});
+  res.json({ ok: true, quickSlides: quickSlidePicturesOn(), phones: phonePicturesStatus(config) });
 });
 
 /**
@@ -6449,7 +6565,7 @@ app.get("/api/health", async (_req, res) => {
   // is the thing to watch on a long service day, and only this machine sees it.
   propresenter.process = propresenterSamples.at(-1) ?? null;
   propresenter.load = propresenterLoad;
-  propresenter.slidePictures = { quickSlides: quickSlidePicturesOn(), onThisMac: client.isLocalHost };
+  propresenter.slidePictures = { quickSlides: quickSlidePicturesOn(), onThisMac: client.isLocalHost, phones: { ...phonePicturesStatus(config), on: config.slidePictures?.phones === true, running: phonePicturesRun.running, last: phonePicturesRun.last } };
   res.json({
     version,
     role: config.role ?? null,
