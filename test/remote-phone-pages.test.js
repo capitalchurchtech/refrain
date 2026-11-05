@@ -6,7 +6,7 @@ import { issueToken } from "../server/remote-auth.js";
 const SECRET = "test-secret";
 const FLAG_ID = "2026-10-09T10-52-01-123Z-0a1b2c3d";
 
-function start({ approved = true, permitted = true, captured = "pic.png", controls = [], searchLog = [] } = {}) {
+function start({ approved = true, permitted = true, captured = "pic.png", controls = [], searchLog = [], pictures = null, pictureFile = null } = {}) {
   const saved = [];
   const app = createRemoteApp({
     getState: () => ({ liveState: { connected: true, live: true }, recent: [], progress: null }),
@@ -23,6 +23,8 @@ function start({ approved = true, permitted = true, captured = "pic.png", contro
     openFlags: async () => [{ id: FLAG_ID, presentationName: "Amazing Grace", slideNumber: 4, type: "Typo or spelling", note: "wretch", by: "Sam", at: "2026-10-09T10:52:01.123Z", picture: `${FLAG_ID}.png` }, { id: "2026-10-09T10-53-01-123Z-0a1b2c3e", picture: null }],
     flagPicture: async (id) => (id === FLAG_ID ? { type: "image/png", bytes: Buffer.from([137, 80, 78, 71]) } : null),
     currentSlides: () => ({ presentationId: "P1", presentationName: "Amazing Grace", currentIndex: 3, slides: [{ slideIndex: 3, text: "Words as the playing arrangement has them" }] }),
+    ...(pictures ? { slidePictures: pictures } : {}),
+    ...(pictureFile ? { slidePictureFile: pictureFile } : {}),
     stageControl: controls,
     control: async (action) => (controls.push(action), { label: action.label }),
   });
@@ -185,5 +187,35 @@ test("a flag on the slide picked from the on-screen list records the live words;
     assert.equal(saved[0].text, "Words as the playing arrangement has them", "numbered in the playing arrangement, so its words come from the live copy");
     await post(base, t, "/api/flag", { slide: { presentationId: "P1", slideIndex: 3 }, type: "Typo or spelling" });
     assert.equal(saved[1].text, "Was blind, but now I see", "numbered by the index, so its words come from the index");
+  } finally { server.close(); }
+});
+
+test("booth-made slide pictures: on the flag picker and on a flag without its own picture, served only when the booth allows", async () => {
+  const asked = [];
+  const pictures = async (pid, indexes, opts = {}) => (asked.push([pid, indexes, Boolean(opts.live)]), indexes.map((i) => (i === 3 ? `/api/slide-picture/${pid}/cue-${i}` : null)));
+  const file = new URL("../public/img/icon-1000.jpg", import.meta.url).pathname;
+  const pictureFile = async (pid, cue) => (pid === "P1" && cue === "cue-3" ? { cue, file } : null);
+  const { server, base } = await start({ pictures, pictureFile });
+  try {
+    const t = tok();
+    const slides = await (await get(base, t, "/api/flag-slides")).json();
+    assert.equal(slides.slides[0].picture, "/api/slide-picture/P1/cue-3");
+    assert.deepEqual(asked[0], ["P1", [3], true], "numbered in the arrangement playing");
+    const flags = (await (await get(base, t, "/api/flags")).json()).flags;
+    assert.equal(flags[0].slidePicture, undefined, "a flag with ProPresenter's own picture keeps it");
+    const img = await get(base, t, "/api/slide-picture/P1/cue-3");
+    assert.equal(img.status, 200);
+    assert.equal(img.headers.get("content-type"), "image/jpeg");
+    assert.equal((await get(base, t, "/api/slide-picture/P1/cue-9")).status, 404, "nothing the booth won't hand over");
+    assert.equal((await get(base, "nope", "/api/slide-picture/P1/cue-3")).status, 401, "a phone without a token gets nothing");
+  } finally { server.close(); }
+});
+
+test("with pictures off, phones get words and no picture addresses", async () => {
+  const { server, base } = await start();
+  try {
+    const slides = await (await get(base, tok(), "/api/flag-slides")).json();
+    assert.ok(!("picture" in slides.slides[0]));
+    assert.equal((await get(base, tok(), "/api/slide-picture/P1/cue-3")).status, 404);
   } finally { server.close(); }
 });

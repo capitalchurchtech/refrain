@@ -21,7 +21,7 @@ Refrain reads both when it starts. After editing either by hand, restart it.
 | **Search** | Libraries to search, the Search index card, Arrangement drift tracking folders (when that feature is on), and Advanced (Protect ProPresenter) |
 | **Features** | A switch for each optional feature, and Options: ProPresenter, Search & indexing, Lyrics, Secrets (.env), plus QR codes, Arrangement tracking and Day summary while those features are on |
 | **System** | Index notices, Stop and Restart Refrain, ProPresenter connection (**Diagnose**), Updates |
-| **More › Phones** | Open the Phone panel, Slide pictures |
+| **More › Phones** | Open the Phone panel, Slide pictures (Safe slide pictures, Pictures on phones) |
 | **More › Customize** | Theme, which side the menu sits on, keyboard shortcuts, the command for a window of its own, the welcome card, Start at login |
 | **More › Telemetry** | The service feed to your own announcement server |
 | **More › Audit** | Read-only reports: presentation names used in more than one library, entries not on your preferred arrangement, decks using a different theme from the rest of their library, and unused media in ProPresenter's Media folder (Refrain never deletes anything) |

@@ -63,7 +63,7 @@ export function createSlideDrawing({ draw = drawInWorker, kept = KEPT } = {}) {
     if (!drawing.has(key)) {
       const run = queue.then(async () => {
         const m = await draw({ file, pid, version });
-        const entry = { version, order: m.order, byId: new Map(m.drawn.map((d) => [d.id, d])), pictures: m.pictures, workspace: m.workspace };
+        const entry = { version, order: m.order, groups: new Map(m.groups ?? []), byId: new Map(m.drawn.map((d) => [d.id, d])), pictures: m.pictures, workspace: m.workspace };
         remember(pid, entry);
         return entry;
       });
@@ -84,6 +84,19 @@ export function createSlideDrawing({ draw = drawInWorker, kept = KEPT } = {}) {
       const f = await fileOf(pid, file, version, drawNew);
       const d = f ? f.byId.get(f.order[idx]) : null;
       return d ? { html: d.html, fonts: d.fonts, width: d.width, height: d.height } : null;
+    },
+    /** One slide by its cue id, as `slide()` answers. */
+    async slideByCue(pid, file, version, cueId, { drawNew = true } = {}) {
+      if (!file || !version || !cueId) return null;
+      const f = await fileOf(pid, file, version, drawNew);
+      const d = f ? f.byId.get(cueId) : null;
+      return d ? { html: d.html, fonts: d.fonts, width: d.width, height: d.height } : null;
+    },
+    /** Every drawn cue id of a presentation, each group's cue ids (group uuid to cue ids) and the played order, or null. */
+    async cues(pid, file, version, { drawNew = true } = {}) {
+      if (!file || !version) return null;
+      const f = await fileOf(pid, file, version, drawNew);
+      return f ? { ids: [...f.byId.keys()], groups: Object.fromEntries(f.groups ?? []), order: f.order } : null;
     },
     /** The file picture `n` of a drawn presentation is read from (inside its workspace), or null. */
     picture(pid, n) {

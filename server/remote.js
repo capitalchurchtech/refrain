@@ -176,6 +176,9 @@ export function rateLimiter({ max = 20, windowMs = 60_000 } = {}) {
  * @param {(flagId: string, presentationId: string, slideIndex: number) => Promise<{drawn: boolean, picture: string|null}>} [deps.captureFlagPicture]
  *   drawn: the booth draws the slide from its file; else picture is the file name of ProPresenter's picture kept with the flag, or null
  * @param {() => Promise<Array>} [deps.openFlags]  open flags, newest first, for the phone's list
+ * @param {(pid: string, indexes: number[], opts?: {live?: boolean}) => Promise<Array<string|null>>} [deps.slidePictures]
+ *   picture addresses for those slides, made on the booth Mac (server/phone-pictures.js); null where there is none
+ * @param {(pid: string, cue: string) => Promise<{file: string}|null>} [deps.slidePictureFile]  the picture file a phone may have
  * @param {(flagId: string) => Promise<{type, bytes}|null>} [deps.flagPicture]
  * @param {object} [deps.golive]  going live from a phone (server/remote-live.js); off unless enabled() says so
  *   { enabled(): boolean, code(): string (this month's device code), allowed(id): boolean, allow(id): void,
@@ -193,6 +196,8 @@ export function createRemoteApp({
   pinGuard = null,
   devices = { see() {}, approved: () => false, removed: () => false, name: () => null },
   stage = async () => ({ presets: [], current: "" }),
+  slidePictures = async (_pid, indexes) => indexes.map(() => null),
+  slidePictureFile = async () => null,
   features = () => ({ flags: true, messages: true }),
   messages = async () => [],
   currentSlides = () => null,
@@ -307,15 +312,18 @@ export function createRemoteApp({
     next();
   });
 
-  app.get("/api/state", (req, res) => {
+  app.get("/api/state", async (req, res) => {
     const { liveState, recent, progress } = getState();
+    // The slide on the screens gets its picture, when the booth has made one.
+    const first = liveState?.live ? recent?.[0] : null;
+    const [nowPicture] = first ? await slidePictures(first.presentationId, [first.slideIndex], { live: true }).catch(() => [null]) : [null];
     res.json({
       features: features(),
       connected: Boolean(liveState?.connected),
       live: Boolean(liveState?.live),
       pinRequired: pinOn(),
       types: flagTypes().map((t) => t.label),
-      recent: (recent ?? []).map((r) => ({ ref: r.ref, at: new Date(r.at).toISOString(), presentationId: r.presentationId, slideIndex: r.slideIndex, presentationName: r.presentationName, slideNumber: r.slideIndex + 1, text: r.text })),
+      recent: (recent ?? []).map((r, i) => ({ ref: r.ref, at: new Date(r.at).toISOString(), presentationId: r.presentationId, slideIndex: r.slideIndex, presentationName: r.presentationName, slideNumber: r.slideIndex + 1, text: r.text, ...(i === 0 && nowPicture ? { picture: nowPicture } : {}) })),
       progress,
       phone: req.deviceId ? { name: devices.name(req.deviceId), canControl: pinOn() && devices.approved(req.deviceId) } : { name: null, canControl: false },
     });
@@ -331,17 +339,19 @@ export function createRemoteApp({
    * previous, current and next up front, and all of them in a tray, so the
    * person can pick the exact slide that needs fixing (owner request).
    */
-  app.get("/api/flag-slides", (_req, res) => {
+  app.get("/api/flag-slides", async (_req, res) => {
     const d = currentSlides();
     if (!d) return res.json({ presentationId: null, slides: [] });
+    const pictures = await slidePictures(d.presentationId, d.slides.map((sl) => sl.slideIndex), { live: true }).catch(() => []);
     res.json({
       presentationId: d.presentationId,
       presentationName: d.presentationName,
       currentIndex: d.currentIndex,
-      slides: d.slides.map((sl) => ({
+      slides: d.slides.map((sl, i) => ({
         slideIndex: sl.slideIndex,
         slideNumber: sl.slideIndex + 1,
         text: sl.text,
+        ...(pictures[i] ? { picture: pictures[i] } : {}),
       })),
     });
   });
@@ -373,7 +383,28 @@ export function createRemoteApp({
 
   app.get("/api/history", (_req, res) => res.json({ items: history() }));
 
-  app.get("/api/flags", async (_req, res) => res.json({ flags: await openFlags() }));
+  app.get("/api/flags", async (_req, res) => {
+    const flags = await openFlags();
+    // A flag with no ProPresenter picture of its own gets the booth-made one, when there is one.
+    const withPictures = await Promise.all(
+      flags.map(async (f) => {
+        if (f.picture || !f.presentationId || !Number.isInteger(f.slideIndex)) return f;
+        const [slidePicture] = await slidePictures(f.presentationId, [f.slideIndex]).catch(() => [null]);
+        return slidePicture ? { ...f, slidePicture } : f;
+      })
+    );
+    res.json({ flags: withPictures });
+  });
+  // Pictures the booth Mac made of slides (server/phone-pictures.js): only of the
+  // presentation on the screens or one with an open flag, and only when switched
+  // on there. A whole tray scrolled end to end is a few dozen.
+  const allowPicture = rateLimiter({ max: 240, windowMs: 60_000 });
+  app.get("/api/slide-picture/:pid/:cue", async (req, res) => {
+    if (!allowPicture(req.deviceId ?? req.ip)) return res.status(429).json({ error: "Too many pictures at once. Wait a moment." });
+    const pic = await slidePictureFile(req.params.pid, req.params.cue).catch(() => null);
+    if (!pic) return res.status(404).json({ error: "No picture for that slide." });
+    res.set("Cache-Control", "private, max-age=300").type("image/jpeg").sendFile(path.resolve(pic.file));
+  });
   app.get("/api/flag-picture/:id", async (req, res) => {
     if (!isFlagId(req.params.id)) return res.status(404).json({ error: "No picture for that flag." });
     const img = await flagPicture(req.params.id);

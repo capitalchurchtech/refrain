@@ -160,8 +160,11 @@ whole presentation from its `.pro` file in a worker, in the arrangement
 ProPresenter has selected, keeps the last 30 files drawn in memory, and serves
 them to `public/slide-drawing.js`. The safe slide keys, Quality Control and
 Flags use it, and Bundles shares the same drawing code. ProPresenter is asked for
-a picture only when Quality Control or a flag needs a slide that can't be drawn;
-phones show words. See [phones](phones.md#slide-pictures).
+a picture only when Quality Control or a flag needs a slide that can't be drawn.
+Phones show words, or, when switched on, pictures of those drawings that
+`mac/helpers/refrain-snapshot.swift` (built with Refrain.app) photographs in
+WebKit ahead of time (`server/phone-pictures.js`). See
+[phones](phones.md#slide-pictures).
 
 ## The heartbeat
 
