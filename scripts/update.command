@@ -25,6 +25,10 @@ git pull --ff-only
 echo "Installing any new dependencies..."
 npm install
 
+# Refrain.app is built on this Mac from mac/, so rebuild it if this update
+# changed what it's built from. Nothing on a Mac that never built the app.
+node server/mac-app.js || true
+
 echo
 echo "Update complete. Close Refrain (and its Terminal window) and start it"
 echo "again to finish. If you run it as the background service, it picks up"

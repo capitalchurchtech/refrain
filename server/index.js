@@ -191,6 +191,7 @@ import { installAsyncErrorCatching, routeErrorHandler } from "./async-routes.js"
 import { THEMES, DEFAULT_THEME } from "../public/themes.js";
 import { moduleFeatures, featureDefaults, featureForPath } from "./features.js";
 import { probundleRouter } from "./probundle.js";
+import { rebuildMacAppIfStale } from "./mac-app.js";
 
 const { version } = JSON.parse(readFileSync("./package.json", "utf-8"));
 
@@ -589,8 +590,9 @@ app.post("/api/update", async (_req, res) => {
     await execFileAsync("git", ["checkout", "--", "package-lock.json"], { timeout: 30000 }).catch(() => {});
     const pull = await execFileAsync("git", ["pull", "--ff-only"], { timeout: 120000 });
     const install = await execFileAsync("npm", ["install"], { timeout: 300000 });
-    const output = [pull.stdout, pull.stderr, install.stdout, install.stderr].filter(Boolean).join("\n").trim();
-    res.json({ ok: true, output });
+    const macApp = await rebuildMacAppIfStale();
+    const output = [pull.stdout, pull.stderr, install.stdout, install.stderr, macApp?.output].filter(Boolean).join("\n").trim();
+    res.json({ ok: true, output, macAppNote: macApp?.note ?? null, macAppRebuilt: macApp?.rebuilt ?? null });
   } catch (err) {
     // git/npm failures put the useful message on stderr.
     res.status(500).json({ error: (err.stderr || err.message || "Update failed").trim() });

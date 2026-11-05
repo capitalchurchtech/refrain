@@ -72,7 +72,7 @@ export function initUpdateNudge() {
       // Deliberately not offering to restart it: the server cannot restart
       // itself without dropping the very request that asked, and a volunteer
       // closing and reopening the window is a step they already know.
-      text.textContent = `Updated to v${latest}. Quit Refrain and start it again to finish.`;
+      text.textContent = [`Updated to v${latest}. Quit Refrain and start it again to finish.`, data.macAppNote].filter(Boolean).join(" ");
       go.classList.add("hidden");
       dismiss.textContent = "Close";
       dismiss.disabled = false;
