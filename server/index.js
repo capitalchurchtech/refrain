@@ -128,6 +128,7 @@ import { createThumbStore } from "./thumb-store.js";
 import { readFingerprint } from "./index-fingerprint.js";
 import { envEntries, applyEnvEdits, saveEnvFile, readText as readEnvText } from "./env-file.js";
 import { crossSiteRefused, hostRefused } from "./request-guard.js";
+import { folderAccess } from "./folder-access.js";
 import { readEta } from "./rebuild-eta.js";
 import { markHidden, setHidden, isControlId, hiddenIds } from "./live-visibility.js";
 import { safeSlides, addSafeSlide, removeSafeSlide, renameSafeSlide, moveSafeSlide } from "./safe-slides.js";
@@ -6422,6 +6423,9 @@ app.get("/api/health", async (_req, res) => {
     // Health screen can hand over a command that works on this machine rather
     // than one with a placeholder path in it.
     installDir: process.cwd(),
+    // Whether this account can save and read Refrain's own folder: a copy
+    // another account installed can't be used from this one (server/folder-access.js).
+    folder: await folderAccess(process.cwd()).catch(() => ({ problems: [] })),
     port,
     // Whether Refrain starts itself at login. Read on every Health load rather
     // than cached: the operator can also install or remove it with the

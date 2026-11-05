@@ -17,7 +17,7 @@ Refrain reads both when it starts. After editing either by hand, restart it.
 
 | Tab | What's there |
 |---|---|
-| **Status** | What's on the screens, and a health check: ProPresenter link, the status feed, performance mode (**Turn on** / **Turn off**), the search index (**Refresh**), and any feature that is set up wrong |
+| **Status** | What's on the screens, and a health check: ProPresenter link, the status feed, performance mode (**Turn on** / **Turn off**), the search index (**Refresh**), any feature that is set up wrong, and a **Refrain's folder** warning when this account can't use the copy it is running (see [several accounts on one Mac](install.md#several-accounts-on-one-mac)) |
 | **Search** | Libraries to search, the Search index card, Arrangement drift tracking folders (when that feature is on), and Advanced (Protect ProPresenter) |
 | **Features** | A switch for each optional feature, and Options: ProPresenter, Search & indexing, Lyrics, Secrets (.env), plus QR codes, Arrangement tracking and Day summary while those features are on |
 | **System** | Index notices, Stop and Restart Refrain, ProPresenter connection (**Diagnose**), Updates |

@@ -15,6 +15,7 @@ const ICON = {
   feed: '<path d="M2 9a15 15 0 0 1 20 0M5.5 12.5a10 10 0 0 1 13 0M9 16a5 5 0 0 1 6 0M12 19.5h.01"/>',
   perf: '<path d="M12 3 5 6v5c0 5 3 8 7 10 4-2 7-5 7-10V6z"/>',
   index: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+  folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
   modules: '<rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/>',
 };
 
@@ -79,4 +80,22 @@ export function healthCheckHtml(s, now = Date.now()) {
     rows.push(row({ id: "modules", icon: "modules", tone: "fault", name: "Modules", line: s.modules.detail || s.modules.headline, right: state("Look", "fault") }));
   }
   return rows.join("");
+}
+
+/**
+ * A row above the health check when this account can't use Refrain's own
+ * folder (server/folder-access.js): usually a copy another account installed.
+ * Empty when all is well. Drawn once per render: the poll repaints only the
+ * rows below it.
+ * @param {{ dir?: string, problems?: string[] }} folder
+ */
+export function folderRowHtml(folder) {
+  if (!folder?.problems?.length) return "";
+  const line = `This account can't use ${folder.dir ?? "Refrain's folder"}. ${folder.problems.join(" ")} If another account installed this copy, install Refrain in this account's own folder too: see "Several accounts on one Mac" in docs/install.md.`;
+  return `
+    <div class="rf-hc-row" data-hc-row="folder" role="alert">
+      <span class="rf-hc-icon" data-tone="fault"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON.folder}</svg></span>
+      <div class="rf-hc-text"><b>Refrain's folder</b><span>${esc(line)}</span></div>
+      <span class="rf-hc-state" data-tone="fault">Fix it</span>
+    </div>`;
 }
