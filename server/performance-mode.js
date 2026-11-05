@@ -135,6 +135,20 @@ export function disarmManually(state, now) {
 }
 
 /**
+ * Why an update must wait, or null when it can run. An update pulls code and
+ * installs packages, and on a Mac rebuilds Refrain.app, all on the machine
+ * running ProPresenter. It waits while the mode is armed, on or by hand, but
+ * not for an "unknown" arm: ProPresenter not answering means nothing can be
+ * seen to protect, and an update is often how that gets fixed.
+ */
+export function updateRefusal(state) {
+  if (!state.armed || state.source === "unknown") return null;
+  return state.source === "manual"
+    ? "Performance mode is on, so Refrain won't update now. Turn it off on Settings › Status, or update after the service."
+    : "Something is on the screens, so Refrain won't update now. Update after the service, once the screens have been clear for a while.";
+}
+
+/**
  * Why it just changed, for the log. `describe` is for the banner, where off
  * needs no words; a log line reading "Performance mode OFF — " with nothing
  * after it read as Refrain contradicting itself (issue #11).

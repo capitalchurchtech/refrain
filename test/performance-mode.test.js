@@ -6,6 +6,7 @@ import {
   advance,
   armManually,
   disarmManually,
+  updateRefusal,
   describe as describeState,
   PERFORMANCE_DEFAULTS,
 } from "../server/performance-mode.js";
@@ -205,4 +206,14 @@ test("describe names when it last checked, so the banner is not just a claim", (
   // Pinned to an armed state, which is where the claim actually gets made.
   const s = armManually(run([[CLEAR, 0]]), 1_000_000);
   assert.match(describeState(s, 1_000_000), /last checked \d/);
+});
+
+test("an update waits while something is live or the mode is on by hand", () => {
+  assert.equal(updateRefusal(initialState()), null);
+  assert.match(updateRefusal({ ...initialState(), armed: true, source: "auto" }), /on the screens/);
+  assert.match(updateRefusal(armManually(initialState(), 1)), /Performance mode is on/);
+});
+
+test("an update is not held up by ProPresenter simply not answering", () => {
+  assert.equal(updateRefusal({ ...initialState(), armed: true, source: "unknown" }), null);
 });

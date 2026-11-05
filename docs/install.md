@@ -171,7 +171,8 @@ versions. **Update now** runs `git checkout -- package-lock.json`, `git pull
 --ff-only` and `npm install`, and shows you the output. Double-clicking
 `scripts/update.command` (or `update.bat`) does the same. The card also has a
 copyable command for doing it by hand. Search shows a small nudge when an update
-is out, never while performance mode is on.
+is out, never while performance mode is on, and **Update now** itself refuses
+while something is on the screens or performance mode is on by hand.
 
 **ZIP installs.** Download the new ZIP and unzip it into a new folder. Copy
 `config.json`, `.env` and the `data` folder from the old folder (and `cache`, to

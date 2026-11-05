@@ -95,6 +95,7 @@ import {
   disarmManually,
   describe as describePerformance,
   transitionReason as performanceTransitionReason,
+  updateRefusal,
 } from "./performance-mode.js";
 import { resolveArrangement, flattenGroups, findLiveIndex, parseSlideIndex, preferredNotSelected, selectedIsPreferred } from "./arrangements.js";
 import { pushLiveItem, findReturnEntry } from "./return-history.js";
@@ -578,6 +579,8 @@ app.post("/api/update", async (_req, res) => {
       error: "This copy of Refrain wasn't set up with Git, so it can't update itself. Download the latest ZIP from GitHub instead (see the README's Updating section).",
     });
   }
+  const refusal = updateRefusal(performance);
+  if (refusal) return res.status(409).json({ error: refusal });
   try {
     // npm rewrites package-lock.json whenever it syncs it to package.json, and
     // a modified lockfile makes `git pull` refuse outright -- which is exactly
