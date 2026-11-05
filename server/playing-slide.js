@@ -31,13 +31,38 @@ export const slideNumber = (slideIndex) => (Number.isInteger(slideIndex) && slid
 /**
  * What the live presentation says it is playing, from its document, or null
  * when the document is not one (nothing live, or not a presentation).
+ *
+ * `arrangementUuid`: the arrangement a playlist item chose, which ProPresenter
+ * plays without selecting (`current_arrangement` stays empty). `pending`: which
+ * arrangement is playing isn't known yet, so no words or count at all; wrong
+ * words are worse than none (owner, 2026-11-05).
  */
-export function playingFromDoc(doc) {
+export function playingFromDoc(doc, { arrangementUuid = null, pending = false } = {}) {
   const p = doc?.presentation;
   if (!p || !p.id?.uuid) return null;
-  const resolved = resolveArrangement(doc, []); // the selected arrangement: no preference given
+  if (pending) return { presentationId: p.id.uuid, arrangementId: null, arrangementName: null, slides: null, count: null, pending: true, outline: outlineOf(p) };
+  const chosen = arrangementUuid ? { ...doc, presentation: { ...p, current_arrangement: arrangementUuid } } : doc;
+  const resolved = resolveArrangement(chosen, []); // the selected (or chosen) arrangement: no preference given
   const slides = flattenGroups(resolved.groups).map((s) => ({ index: s.index, text: s.text, groupName: s.groupName }));
   return { presentationId: p.id.uuid, arrangementId: resolved.arrangementId, arrangementName: resolved.arrangementName, slides, count: slides.length, outline: outlineOf(p) };
+}
+
+/**
+ * Which arrangement is playing, when ProPresenter's own answer may not say
+ * (measured on 21.3, 2026-11-04: an item played from a playlist that chose an
+ * arrangement leaves `current_arrangement` empty, while the live index counts
+ * in that arrangement). `playlistItem` is the playlist item ProPresenter says is
+ * active, if it is this presentation (`{ arrangementUuid }`), else null.
+ * @returns {{ uuid?: string, raw?: true, pending?: true }} the arrangement, the
+ *   file's own order, or not known yet (the playlist answer lags the trigger by
+ *   about half a second; after a few asks with no answer it was the library)
+ */
+export function playingArrangement(doc, playlistItem, { lastTry = false } = {}) {
+  const p = doc?.presentation ?? {};
+  if (p.current_arrangement) return { uuid: p.current_arrangement };
+  if (!(p.arrangements ?? []).length) return { raw: true };
+  if (playlistItem) return playlistItem.arrangementUuid ? { uuid: playlistItem.arrangementUuid } : { raw: true };
+  return lastTry ? { raw: true } : { pending: true };
 }
 
 /**
@@ -86,7 +111,7 @@ export function playingStale(entry, slideIndex, now, { quiet = false, ttlMs = PL
   if (!entry) return true;
   // Past the end means slides were added, but not worth asking every beat: if the
   // read is fresh and the index is still past it, the numbers disagree for another reason.
-  if (Number.isInteger(slideIndex) && slideIndex >= entry.count && now - entry.at > PLAYING_RETRY_MS) return true;
+  if (Number.isInteger(slideIndex) && Number.isInteger(entry.count) && slideIndex >= entry.count && now - entry.at > PLAYING_RETRY_MS) return true;
   return !quiet && now - entry.at > ttlMs;
 }
 
@@ -98,7 +123,7 @@ export function playingStale(entry, slideIndex, now, { quiet = false, ttlMs = PL
 export function liveSlideDetails({ playing, slideIndex, indexed }) {
   if (playing) {
     return {
-      text: playing.slides[slideIndex]?.text ?? null,
+      text: playing.slides?.[slideIndex]?.text ?? null,
       slideCount: playing.count,
       arrangementName: playing.arrangementName ?? null,
     };

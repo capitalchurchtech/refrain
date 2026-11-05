@@ -483,3 +483,14 @@ test("the arrangement a playlist item chose is read only for the presentation it
     assert.equal(await client().getPlaylistArrangement("PRES-A"), null, "nothing played from a playlist");
   });
 });
+
+test("the active playlist item, only when it is this presentation, with its arrangement or none", async () => {
+  const item = (info) => ({ presentation: { playlist_item: { type: "presentation", presentation_info: info } } });
+  await withFetch(jsonFetch(item({ presentation_uuid: "PRES-A", arrangement_uuid: "ARR", arrangement_name: "" })), async () => {
+    assert.deepEqual(await client().getPlaylistItem("PRES-A"), { arrangementUuid: "ARR", arrangementName: null }, "its name can be empty");
+    assert.equal(await client().getPlaylistItem("PRES-B"), null);
+  });
+  await withFetch(jsonFetch(item({ presentation_uuid: "PRES-A", arrangement_uuid: "", arrangement_name: "" })), async () => {
+    assert.deepEqual(await client().getPlaylistItem("PRES-A"), { arrangementUuid: null, arrangementName: null }, "the item chose no arrangement");
+  });
+});

@@ -13,7 +13,7 @@
     "mcp": "node server/mcp/index.js"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=20.9.0"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
@@ -24,8 +24,7 @@
     "nspell": "^2.1.5",
     "propresenter-bundle": "github:capitalchurchtech/propresenter-bundle#v0.4.1",
     "qrcode": "^1.5.4",
-    "sharp": "^0.32.6",
-    "smartcrop-sharp": "^2.0.8"
+    "sharp": "^0.35.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

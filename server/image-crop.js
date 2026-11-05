@@ -1,17 +1,17 @@
 /**
  * Image Crop module — watches an input folder, and for every image
  * dropped in, produces one resized+cropped output per configured
- * preset (e.g. "16:9 1080p", "1:1 900x900") using saliency-based smart
- * cropping (smartcrop-sharp) so the "important" part of the image
- * stays in frame instead of a naive center-crop.
+ * preset (e.g. "16:9 1080p", "1:1 900x900") using sharp's own smart
+ * cropping (`position: sharp.strategy.attention`, which keeps the region
+ * with the most luminance frequency, saturation and skin tones) so the
+ * "important" part of the image stays in frame instead of a naive
+ * center-crop. It replaced smartcrop-sharp (2026-11-05), which pinned sharp
+ * to 0.32 and its vulnerable libvips; the result is the same kind of
+ * saliency guess with no extra package.
  *
- * Deliberately no face-detection model in this first version —
- * smartcrop's entropy/saliency heuristic needs no model download and
- * handles the full mix of content a church actually has (portraits,
- * text-heavy graphics, worship backgrounds) reasonably well on its
- * own. Face detection is a legitimate later upgrade (smartcrop-sharp's
- * own docs point at smartcrop-cli's opencv integration as the
- * reference), not a requirement for this to be useful today.
+ * Deliberately no face-detection model: the heuristic needs no model
+ * download and handles the full mix of content a church actually has
+ * (portraits, text-heavy graphics, worship backgrounds) reasonably well.
  *
  * Processed originals are moved to a `processed/` subfolder of the
  * input folder, never deleted — reversible by design, same philosophy
@@ -19,7 +19,6 @@
  */
 import { watch } from "chokidar";
 import sharp from "sharp";
-import smartcrop from "smartcrop-sharp";
 import { mkdir, rename, access } from "node:fs/promises";
 import path from "node:path";
 
@@ -29,7 +28,7 @@ const MAX_ACTIVITY = 25;
 let watcher = null;
 // Files are processed strictly one at a time through this queue, not
 // concurrently: dropping a folder of 200 images fires 200 near-instant
-// "add" events, and launching 200 concurrent sharp/smartcrop pipelines
+// "add" events, and launching 200 concurrent sharp pipelines
 // would spike memory hard enough to OOM on a modest booth machine.
 // Sequential is plenty fast for the actual use case and keeps the
 // footprint flat.
@@ -135,10 +134,8 @@ async function processImage(filePath, config) {
       usedNames.add(candidate);
 
       const destPath = path.join(config.outputFolder, `${basename}_${candidate}${ext}`);
-      const { topCrop } = await smartcrop.crop(filePath, { width: preset.width, height: preset.height });
       await sharp(filePath)
-        .extract({ width: topCrop.width, height: topCrop.height, left: topCrop.x, top: topCrop.y })
-        .resize(preset.width, preset.height)
+        .resize(preset.width, preset.height, { fit: "cover", position: sharp.strategy.attention })
         .toFile(destPath);
       outputs.push(preset.name);
     }

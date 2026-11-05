@@ -93,8 +93,9 @@ later, the output folder has one cropped copy per preset. The original moves to
 deleted. Files go through one at a time, so a folder of hundreds can't swamp the
 machine. A lit dot on the Image Crop key shows the folder is being watched.
 
-Cropping uses [smartcrop](https://github.com/jwagner/smartcrop.js), which keeps
-the most important part of the picture in frame rather than cutting the middle.
+Cropping keeps the most eye-catching part of the picture in frame rather than
+cutting the middle: the area with the most detail, colour and skin tone (the
+image library's own "attention" crop).
 
 **Presets.** A new install starts with sizes for the screens:
 
