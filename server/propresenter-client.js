@@ -363,9 +363,20 @@ export class ProPresenterClient {
    * last played, so a `presentationId` that isn't that item's gets null.
    */
   async getPlaylistArrangement(presentationId, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
+    const item = await this.getPlaylistItem(presentationId, { timeoutMs });
+    return item?.arrangementUuid ? { uuid: item.arrangementUuid, name: item.arrangementName } : null;
+  }
+
+  /**
+   * The active playlist item, if it is `presentationId`: `{ arrangementUuid,
+   * arrangementName }`, each null when the item chose no arrangement. Null when
+   * the active item is something else or nothing (played from the library, or
+   * ProPresenter hasn't caught up with the trigger yet). Same request as above.
+   */
+  async getPlaylistItem(presentationId, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
     const info = (await this.#get("/v1/playlist/active", { timeoutMs }))?.presentation?.playlist_item?.presentation_info;
-    if (!info || info.presentation_uuid !== presentationId || !info.arrangement_uuid) return null;
-    return { uuid: info.arrangement_uuid, name: info.arrangement_name || null };
+    if (!info || info.presentation_uuid !== presentationId) return null;
+    return { arrangementUuid: info.arrangement_uuid || null, arrangementName: info.arrangement_name || null };
   }
 
   // --- Live output controls (the "Live" page) ---

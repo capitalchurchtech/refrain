@@ -97,7 +97,7 @@ Not built:
 
 - A Mac running ProPresenter, with its network API turned on (ProPresenter's
   Preferences › Network). Refrain is tested against ProPresenter 21.3.
-- Node.js 20 or newer.
+- Node.js 20.9 or newer.
 
 Windows can run Refrain with `scripts/start.bat`, but several features are Mac
 only: Start at login, Refrain.app, opening folders and files from the app, and
@@ -105,7 +105,7 @@ noticing that ProPresenter has quit.
 
 ## Installing
 
-1. Install Node.js 20 or newer from [nodejs.org](https://nodejs.org) (the LTS
+1. Install Node.js 20.9 or newer from [nodejs.org](https://nodejs.org) (the LTS
    build). No administrator password? [Install Node into your home
    folder](docs/install.md#no-administrator-password) instead.
 2. Get Refrain into a folder of its own, such as `~/Refrain`. On a Mac with

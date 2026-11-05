@@ -10,7 +10,7 @@ to the page with the detail.
       account the booth uses.
 - [ ] ProPresenter's network API is on: ProPresenter › Preferences › Network.
       Note the port it shows.
-- [ ] Node.js 20 or newer is installed: `node -v` in Terminal. No administrator
+- [ ] Node.js 20.9 or newer is installed: `node -v` in Terminal. No administrator
       password? [Install Node into your home
       folder](install.md#no-administrator-password).
 

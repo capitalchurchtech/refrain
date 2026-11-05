@@ -14,6 +14,20 @@ if [ ! -d .git ]; then
 fi
 
 echo "Fetching the latest version..."
+# What the new version needs, before anything is pulled: an update this Node
+# can't run would leave Refrain half-broken (server/node-version.js).
+git fetch --quiet
+NEED="$(git show '@{u}:package.json' 2>/dev/null | node --input-type=module -e '
+import { nodeTooOld } from "./server/node-version.js";
+let s = "";
+process.stdin.on("data", (d) => (s += d)).on("end", () => { try { const n = nodeTooOld(JSON.parse(s).engines?.node); if (n) console.log(n); } catch {} });
+' 2>/dev/null || true)"
+if [ -n "$NEED" ]; then
+  echo "This update needs Node $NEED or newer, and this Mac runs Node $(node --version)."
+  echo "Install the current LTS from nodejs.org, then run this again. Nothing was changed."
+  read -r -p "Press Enter to close..."
+  exit 1
+fi
 # npm rewrites package-lock.json whenever it syncs the lockfile to
 # package.json, and a modified lockfile makes `git pull` refuse outright.
 # Discarding it is safe and is not a data loss: it is generated from

@@ -10,7 +10,7 @@ codebase has already had to fix.
 
 ## Setting up
 
-You need Node 20 or newer (`.nvmrc` says 20) and, for anything live, a
+You need Node 20.9 or newer (`.nvmrc` says 20) and, for anything live, a
 ProPresenter with its network API on.
 
 ```bash

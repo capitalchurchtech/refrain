@@ -149,6 +149,8 @@ export function initHealth() {
           armed: Boolean(live.performanceMode?.armed),
           indexBuiltAt: idx.builtAt ?? null,
           indexCount: idx.presentationCount ?? 0,
+          // The poll doesn't re-read the modules; keep the row the render drew.
+          modules: JSON.parse(host.dataset.modules || "null"),
         };
         const key = JSON.stringify([next.connected, next.feed, next.armed, next.indexBuiltAt, next.indexCount]);
         if (key === host.dataset.key) return;
@@ -2727,7 +2729,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
     <div class="flex flex-col gap-2">
       <h3 class="rf-silkscreen">Health check</h3>
       ${folderRowHtml(health.folder)}
-      <div id="health-check" class="flex flex-col gap-2" data-host="${escapeHtml(propresenter.host ?? "")}" data-port="${escapeHtml(String(propresenter.port ?? ""))}">${healthCheckHtml({
+      <div id="health-check" class="flex flex-col gap-2" data-host="${escapeHtml(propresenter.host ?? "")}" data-port="${escapeHtml(String(propresenter.port ?? ""))}" data-modules="${escapeHtml(JSON.stringify(modules ?? null))}">${healthCheckHtml({
         connected: propresenter.connected,
         host: propresenter.host,
         port: propresenter.port,

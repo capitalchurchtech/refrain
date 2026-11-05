@@ -4,7 +4,7 @@
 
 - **A Mac running ProPresenter**, with ProPresenter's network API turned on
   (Preferences › Network). Refrain is tested against ProPresenter 21.3.
-- **Node.js 20 or newer.**
+- **Node.js 20.9 or newer.**
 - **Git** if you want one-press updates. A ZIP download works without it.
 
 Refrain also runs on Windows with `scripts/start.bat`. Start at login,

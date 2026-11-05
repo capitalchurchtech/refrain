@@ -92,3 +92,32 @@ test("the outline names a slide by label and group in the arrangement that playe
   assert.deepEqual(slideInOutline(flat, null, 3), { label: "Serving", group: "Park City · Sunday 10am" }, "no arrangements: the file's own order");
   assert.ok(playingFromDoc(doc).outline, "kept with the playing presentation");
 });
+
+test("the arrangement a playlist item chose is the one whose words show; unknown means no words, never the whole file", async () => {
+  const { playingArrangement } = await import("../server/playing-slide.js");
+  // Announcements 2026-11-01's shape, played from a playlist on "PC Sunday": ProPresenter selects nothing.
+  const ann = {
+    presentation: {
+      id: { uuid: "ANN" },
+      current_arrangement: "",
+      groups: [
+        { uuid: "G-SAT", name: "Saturday", slides: [{ text: "sat one" }, { text: "sat two" }] },
+        { uuid: "G-PC", name: "PC", slides: [{ text: "pc one" }, { text: "pc two" }, { text: "pc three" }] },
+      ],
+      arrangements: [{ id: { uuid: "A-SAT", name: "Saturday" }, groups: ["G-SAT"] }, { id: { uuid: "A-PC", name: "PC Sunday" }, groups: ["G-PC"] }],
+    },
+  };
+  assert.deepEqual(playingArrangement(ann, { arrangementUuid: "A-PC" }), { uuid: "A-PC" });
+  assert.deepEqual(playingArrangement(ann, { arrangementUuid: null }), { raw: true }, "the playlist item chose none: the file's own order");
+  assert.deepEqual(playingArrangement(ann, null), { pending: true }, "the playlist hasn't caught up yet");
+  assert.deepEqual(playingArrangement(ann, null, { lastTry: true }), { raw: true }, "never this presentation: put up from the library");
+  assert.deepEqual(playingArrangement({ presentation: { ...ann.presentation, current_arrangement: "A-SAT" } }, null), { uuid: "A-SAT" }, "selected in the app: no need to ask");
+  assert.deepEqual(playingArrangement({ presentation: { ...ann.presentation, arrangements: [] } }, null), { raw: true }, "no arrangements: nothing to ask");
+
+  const pc = playingFromDoc(ann, { arrangementUuid: "A-PC" });
+  assert.deepEqual([pc.arrangementName, pc.count, pc.slides[1].text], ["PC Sunday", 3, "pc two"], "slide 1 is PC's second, not the file's");
+  const unknown = playingFromDoc(ann, { pending: true });
+  assert.equal(unknown.pending, true);
+  assert.deepEqual(liveSlideDetails({ playing: unknown, slideIndex: 1, indexed: { text: "index words", arrangementName: "X", selectedArrangementName: "X", slideCount: 9 } }), { text: null, slideCount: null, arrangementName: null }, "no words, and not the index's either");
+  assert.equal(playingStale({ ...unknown, at: 0 }, 5, 10_000, { quiet: true }), false, "an unknown count never makes it read the presentation again");
+});

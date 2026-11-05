@@ -121,7 +121,7 @@ import QRCode from "qrcode";
 import { emptyRegistry, seeDevice, setApproved, removeDevice, isApproved, isRemoved, deviceList, loadRegistry, saveRegistry, setLiveMonth, isLiveAllowed } from "./remote-devices.js";
 import { monthKey, deviceCode, appendTakeover } from "./remote-live.js";
 import { noteItem, libraryOf, wantsSlideTiming, startSlideTiming, setArrangement, noteSlide, splitsView, feedItems, itemLines, leftOpenLines } from "./item-splits.js";
-import { playingFromDoc, playingStale, liveSlideDetails, slideInOutline } from "./playing-slide.js";
+import { playingFromDoc, playingArrangement, playingStale, liveSlideDetails, slideInOutline } from "./playing-slide.js";
 import { saveFlagPicture, readFlagPicture, listFlagPictureIds } from "./flag-pictures.js";
 import { previewTargets, createThumbCache } from "./slide-preview.js";
 import { createThumbStore } from "./thumb-store.js";
@@ -129,6 +129,7 @@ import { readFingerprint } from "./index-fingerprint.js";
 import { envEntries, applyEnvEdits, saveEnvFile, readText as readEnvText } from "./env-file.js";
 import { crossSiteRefused, hostRefused } from "./request-guard.js";
 import { folderAccess } from "./folder-access.js";
+import { nodeTooOld, nodeRefusal } from "./node-version.js";
 import { readEta } from "./rebuild-eta.js";
 import { markHidden, setHidden, isControlId, hiddenIds } from "./live-visibility.js";
 import { safeSlides, addSafeSlide, removeSafeSlide, renameSafeSlide, moveSafeSlide } from "./safe-slides.js";
@@ -585,6 +586,13 @@ app.post("/api/update", async (_req, res) => {
   const refusal = updateRefusal(performance);
   if (refusal) return res.status(409).json({ error: refusal });
   try {
+    // What the incoming version needs, read before anything is pulled: an
+    // update this Node can't run would leave the copy half-broken
+    // (server/node-version.js). No upstream, or no range, updates as before.
+    await execFileAsync("git", ["fetch", "--quiet"], { timeout: 120000 });
+    const incoming = await execFileAsync("git", ["show", "@{u}:package.json"], { timeout: 30000 }).then((r) => JSON.parse(r.stdout)).catch(() => null);
+    const need = nodeTooOld(incoming?.engines?.node);
+    if (need) return res.status(409).json({ error: nodeRefusal(need) });
     // npm rewrites package-lock.json whenever it syncs it to package.json, and
     // a modified lockfile makes `git pull` refuse outright -- which is exactly
     // how an update got blocked in the field. Discarding it loses nothing: it
@@ -1561,12 +1569,10 @@ function readPlaying(presentationId) {
   if (playingInFlight) return playingInFlight;
   playingInFlight = client
     .getActivePresentation({ timeoutMs: 2500 })
-    .then((doc) => {
-      const p = playingFromDoc(doc);
-      if (p && p.presentationId === presentationId) {
-        playingCache.set(presentationId, { ...p, at: Date.now() });
-        checkAgainstFile(doc).catch(() => {});
-      }
+    .then(async (doc) => {
+      if (doc?.presentation?.id?.uuid !== presentationId) return;
+      await settlePlaying(presentationId, doc, 0);
+      checkAgainstFile(doc).catch(() => {});
     })
     .catch(() => {}) // not answering: the index is used only where it is known to agree
     .finally(() => {
@@ -1574,6 +1580,27 @@ function readPlaying(presentationId) {
       if (playingCache.size > 40) playingCache.delete(playingCache.keys().next().value);
     });
   return playingInFlight;
+}
+/**
+ * Which arrangement the live presentation is playing, then its words in it.
+ * ProPresenter names none for an item played from a playlist that chose one,
+ * so the playlist item is asked (a small request that writes nothing to its
+ * database; the presentation is not read again). Until it answers, no words:
+ * wrong ones are worse (owner, 2026-11-05). While it's pending the heartbeat
+ * asks again on its next beats, three times in all, then takes the file's own
+ * order (put up from the library with nothing selected). `keepRaw`: it was
+ * already the library's order, so no playlist item means nothing changed.
+ * `at` is kept from the presentation read, so asking again never makes the
+ * presentation itself read sooner.
+ */
+async function settlePlaying(presentationId, doc, tries, { at = Date.now(), keepRaw = false } = {}) {
+  const p = doc.presentation;
+  const askable = !p.current_arrangement && (p.arrangements ?? []).length > 0;
+  const item = askable ? await Promise.race([client.getPlaylistItem(presentationId).catch(() => null), new Promise((r) => setTimeout(() => r(null), 900))]) : null;
+  const where = keepRaw && !item ? { raw: true } : playingArrangement(doc, item, { lastTry: tries >= 2 });
+  const playing = playingFromDoc(doc, where.pending ? { pending: true } : { arrangementUuid: where.uuid ?? null });
+  const asked = askable ? { doc, askable: true, askedAt: Date.now(), source: where.pending ? "pending" : where.uuid ? "chosen" : "raw" } : {};
+  playingCache.set(presentationId, { ...playing, at, ...asked, ...(where.pending ? { tries: tries + 1 } : {}) });
 }
 // THE GO LIVE CHECK: when a presentation goes live, the read above is ProPresenter's
 // own account of it. The same presentation read from its file, in the same
@@ -1879,6 +1906,19 @@ async function heartbeat() {
   if (current && layers && isLive(layers) && playingStale(playingCache.get(current.presentationId), current.slideIndex, now, { quiet: performance.armed })) {
     const asked = readPlaying(current.presentationId);
     if (!playingCache.has(current.presentationId)) await Promise.race([asked, new Promise((r) => setTimeout(r, 900))]);
+  }
+  // A presentation whose arrangement only the playlist knows: ask the playlist
+  // again (never the presentation) while that is still pending, when the slide
+  // jumps or the presentation comes back after a clear (it may have been put up
+  // again, from the library or another playlist), and once a minute (owner,
+  // 2026-11-05: per item change is fine, every beat is not).
+  const asking = current && layers && isLive(layers) ? playingCache.get(current.presentationId) : null;
+  if (asking?.askable && now - asking.askedAt >= 1000) {
+    const wasLive = liveState.live && liveState.slide?.presentationId === current.presentationId;
+    const before = wasLive ? liveState.slide.slideIndex : null;
+    const jumped = !wasLive || (current.slideIndex !== before && current.slideIndex !== before + 1);
+    if (asking.pending) await settlePlaying(current.presentationId, asking.doc, asking.tries, { at: asking.at });
+    else if (jumped || now - asking.askedAt >= 60_000) await settlePlaying(current.presentationId, asking.doc, 0, { at: asking.at, keepRaw: asking.source === "raw" });
   }
   const indexed = current ? (getIndexedSlide(current.presentationId, current.slideIndex) ?? null) : null;
   const enriched = current
