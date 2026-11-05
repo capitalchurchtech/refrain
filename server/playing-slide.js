@@ -37,7 +37,44 @@ export function playingFromDoc(doc) {
   if (!p || !p.id?.uuid) return null;
   const resolved = resolveArrangement(doc, []); // the selected arrangement: no preference given
   const slides = flattenGroups(resolved.groups).map((s) => ({ index: s.index, text: s.text, groupName: s.groupName }));
-  return { presentationId: p.id.uuid, arrangementId: resolved.arrangementId, arrangementName: resolved.arrangementName, slides, count: slides.length };
+  return { presentationId: p.id.uuid, arrangementId: resolved.arrangementId, arrangementName: resolved.arrangementName, slides, count: slides.length, outline: outlineOf(p) };
+}
+
+/**
+ * Every arrangement's slides by label and group, no words: what the service
+ * log's per-slide timing names a slide by (docs/service-feed.md). Groups by
+ * uuid with their slides' labels; arrangements by uuid and name with their
+ * groups in play order; and the arrangement ProPresenter says is selected
+ * (empty for an item played from a playlist that chose one).
+ */
+export function outlineOf(p) {
+  return {
+    current: p?.current_arrangement || null,
+    groups: Object.fromEntries((p?.groups ?? []).map((g) => [g.uuid, { name: g.name ?? null, labels: (g.slides ?? []).map((s) => s.label ?? "") }])),
+    arrangements: (p?.arrangements ?? []).map((a) => ({ uuid: a.id?.uuid ?? null, name: a.id?.name ?? null, groups: a.groups ?? [] })),
+  };
+}
+
+/**
+ * The label and group of slide `index` in the arrangement that is playing:
+ * the one a playlist item chose (`arrangementUuid`), else the one selected,
+ * else the document's own order when it has no arrangements. With several
+ * arrangements and none known, null: a guess would name the wrong slide.
+ */
+export function slideInOutline(outline, arrangementUuid, index) {
+  if (!outline || !Number.isInteger(index) || index < 0) return null;
+  const arrangements = outline.arrangements ?? [];
+  const chosen = arrangements.find((a) => a.uuid && a.uuid === (arrangementUuid || outline.current));
+  if (!chosen && arrangements.length) return null;
+  const order = chosen ? chosen.groups : Object.keys(outline.groups ?? {});
+  let at = index;
+  for (const uuid of order) {
+    const g = outline.groups?.[uuid];
+    if (!g) continue;
+    if (at < g.labels.length) return { label: g.labels[at] || null, group: g.name };
+    at -= g.labels.length;
+  }
+  return null;
 }
 
 /**

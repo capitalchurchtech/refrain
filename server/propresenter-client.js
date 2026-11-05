@@ -352,23 +352,20 @@ export class ProPresenterClient {
   }
 
   /**
-   * The name of the playlist the active presentation was played from, or null
-   * (played from the library, or nothing live). Writes nothing to
-   * ProPresenter's database: six requests on 21.3 left its write log
-   * unchanged (2026-11-04). With nothing live it answers
-   * {presentation: {playlist: null, item: null, playlist_item: null}, ...};
-   * with an item played from a playlist, `playlist` is {uuid, name, index}
-   * and `playlist_item.presentation_info.presentation_uuid` names the
-   * presentation (seen on 21.3, an item triggered from a playlist,
-   * 2026-11-04). The answer is for the playlist item last played, so a
-   * `presentationId` that isn't that item's (put up straight from the
-   * library) gets null rather than a playlist it didn't come from.
+   * The arrangement a playlist item chose for the active presentation,
+   * { uuid, name }, or null (played from the library, nothing live, or the
+   * item chose none). ProPresenter's own presentation answer leaves
+   * `current_arrangement` empty for such an item, but the live slide index
+   * counts in it (measured on 21.3, 2026-11-04: Announcements 2026-11-01 from
+   * its playlist on "PC Sunday", the file's second group, counted 0 to 9).
+   * GET /v1/playlist/active writes nothing to ProPresenter's database (six
+   * requests, its write log unchanged). The answer is for the playlist item
+   * last played, so a `presentationId` that isn't that item's gets null.
    */
-  async getActivePlaylistName(presentationId = null, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
-    const active = (await this.#get("/v1/playlist/active", { timeoutMs }))?.presentation;
-    if (presentationId && active?.playlist_item?.presentation_info?.presentation_uuid !== presentationId) return null;
-    const name = active?.playlist?.name;
-    return typeof name === "string" && name.trim() ? name.trim() : null;
+  async getPlaylistArrangement(presentationId, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
+    const info = (await this.#get("/v1/playlist/active", { timeoutMs }))?.presentation?.playlist_item?.presentation_info;
+    if (!info || info.presentation_uuid !== presentationId || !info.arrangement_uuid) return null;
+    return { uuid: info.arrangement_uuid, name: info.arrangement_name || null };
   }
 
   // --- Live output controls (the "Live" page) ---

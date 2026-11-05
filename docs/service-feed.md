@@ -145,20 +145,49 @@ One line when an item **opens** and another, with the same `id`, when it
 open line. The later `t` wins per `id`.
 
 ```json
-{"t":"2026-10-11T16:41:00.000Z","event":"item","id":"mgx0ab-1","name":"Welcome Loop","startedAt":"2026-10-11T16:41:00.000Z","endedAt":null,"reason":null,"tz":"America/Denver","library":"Misc","playlist":"Sunday 9am"}
-{"t":"2026-10-11T16:47:00.000Z","event":"item","id":"mgx0ab-1","name":"Welcome Loop","startedAt":"2026-10-11T16:41:00.000Z","endedAt":"2026-10-11T16:47:00.000Z","reason":"moved","tz":"America/Denver","library":"Misc","playlist":"Sunday 9am"}
+{"t":"2026-10-11T16:41:00.000Z","event":"item","id":"mgx0ab-1","name":"Welcome Loop","startedAt":"2026-10-11T16:41:00.000Z","endedAt":null,"reason":null,"tz":"America/Denver","library":"Misc"}
+{"t":"2026-10-11T16:47:00.000Z","event":"item","id":"mgx0ab-1","name":"Welcome Loop","startedAt":"2026-10-11T16:41:00.000Z","endedAt":"2026-10-11T16:47:00.000Z","reason":"moved","tz":"America/Denver","library":"Misc"}
 ```
 
 - `library` is the ProPresenter library the presentation lives in, its folder's
   own name as ProPresenter shows it (`Songs`, `Messages`), at most 64
-  characters. It comes from the file's path in Refrain's search index.
-- `playlist` is the playlist ProPresenter says the item was played from, at most
-  120 characters. Refrain asks ProPresenter once when an item opens, and only
-  while the feed is on (the answer writes nothing to ProPresenter's database;
-  measured on 21.3). An item played straight from the library has none.
-- Each is left out when it isn't known, never sent as a placeholder. Both are
-  read when the item opens, so its open and close lines carry the same values.
-  Lines written before 2026-11-04 have neither.
+  characters. It comes from the file's path in Refrain's search index, so it is
+  the same on an item's open and close lines. It is left out when it isn't
+  known, never sent as a placeholder. Lines written before 2026-11-04 have none.
+
+##### Per-slide timing
+
+An item whose name contains `slideTimingMatch` (default `announcement`, any
+case; set in `config.json` under `serviceFeedModule`, and an empty value turns
+it off) also says, on its
+**closing** line only, which slides were shown and for how long:
+
+```json
+{"event":"item","id":"mgx2cd-4","name":"Announcements 2026-11-01","endedAt":"…","reason":"moved","library":"Misc","arrangement":"PC Sunday","slides":[{"i":0,"l":"Speaker Intro","g":"Park City · Sunday 10am","s":41},{"i":2,"l":"Connection Card","g":"Park City · Sunday 10am","s":18}]}
+```
+
+- `arrangement` is the arrangement that played, at most 64 characters: the one
+  the playlist item chose, else the one selected in ProPresenter. Left out when
+  neither is known.
+- `slides` lists each slide in the order it was shown, a slide shown twice
+  appearing twice, at most 300. `i` is its 0-based number **within that
+  arrangement** (ProPresenter's live slide index counts in it; measured on 21.3),
+  `l` its label (at most 120 characters) and `g` its group's name (at most 64),
+  each left out when unknown, and `s` the whole seconds it was up. Time with
+  nothing of the item on the screens counts for no slide.
+- Never the slide's words or notes. Labels and group names go as they are typed
+  in ProPresenter, so a label that names a person sends that name to your
+  server.
+- When a presentation has several arrangements and Refrain can't tell which
+  played (an item put up straight from the library with none selected), `slides`
+  still goes, with `i` and `s` only, and `arrangement` is left out.
+- Times come from the heartbeat, which reads the live slide every 4 seconds
+  during a send window, so each `s` is good to about 4 seconds and a slide up
+  for less than that can be missed. It adds no request to ProPresenter beyond
+  one when the item opens, asking which arrangement its playlist item chose
+  (that answer writes nothing to ProPresenter's database; measured on 21.3).
+- Only while the feed is on, and only in memory until the item closes: an item
+  open when Refrain restarts closes without `slides`.
 
 - `reason` is `null` while open, then `moved` (a different item came up),
   `blank-timeout` (the screens stayed blank past `graceMs`; `endedAt` is when

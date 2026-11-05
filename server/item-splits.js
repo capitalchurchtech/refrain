@@ -31,7 +31,7 @@ const forgiven = (entry) => {
 };
 
 /**
- * @param {Array} log  entries, newest first: { id, presentationId, name, library, playlist?, startMs, endMs|null, blankSince? }
+ * @param {Array} log  entries, newest first: { id, presentationId, name, library, startMs, endMs|null, blankSince?, timed?, arrangement?, slides? }
  *   (`blankSince` is when the open entry's screens last went empty, while that is still being forgiven)
  * @param {{presentationId: string, name?: string|null, library?: string|null}|null} item  what is on the screens now, or null when nothing is
  * @returns the same array when nothing changed, otherwise a new one
@@ -69,9 +69,58 @@ export function noteItem(log, item, now = Date.now(), max = MAX_SPLITS, graceMs 
   return next.slice(0, max);
 }
 
-/** The log with entry `id` given the playlist it was played from, learned just after it opened. */
-export function withPlaylist(log, id, playlist) {
-  return (log ?? []).map((e) => (e.id === id ? { ...e, playlist } : e));
+// --- Per-slide timing, for items like the announcements only (owner, 2026-11-04:
+// "send the slide label back with timing per slide"). The open entry records
+// each slide as it comes up; its closing log line says how long each was shown.
+
+export const SLIDES_MAX = 300;
+export const DEFAULT_SLIDE_TIMING_MATCH = "announcement";
+
+/** Whether an item's name asks for per-slide timing: it contains `match`, any case. */
+export function wantsSlideTiming(name, match = DEFAULT_SLIDE_TIMING_MATCH) {
+  const m = String(match ?? "").trim().toLowerCase();
+  return Boolean(m) && String(name ?? "").toLowerCase().includes(m);
+}
+
+/** The log with open entry `id` marked for per-slide timing, in arrangement `arrangement` ({ uuid, name } or null). */
+export function startSlideTiming(log, id, arrangement) {
+  return (log ?? []).map((e) => (e.id === id && e.endMs == null ? { ...e, timed: true, arrangement: arrangement ?? null, slides: [] } : e));
+}
+
+/** The log with timed open entry `id` given its arrangement, learned after it opened. */
+export function setArrangement(log, id, arrangement) {
+  return (log ?? []).map((e) => (e.id === id && e.timed && e.endMs == null ? { ...e, arrangement } : e));
+}
+
+/**
+ * Notes which slide of the timed open item is up: `index`, or null while
+ * something else or nothing is on the screens. A new row only when it changed,
+ * named by `describe(index)` ({ label, group } or null); rows noted before the
+ * presentation was read are named then too. `arrangement`, when given, is the
+ * best known now (its name may only be known once the presentation is read).
+ * Same array when nothing changed.
+ */
+export function noteSlide(log, index, now, describe = () => null, arrangement = null) {
+  const open = log?.[0];
+  if (!open || open.endMs != null || !open.timed) return log;
+  const i = Number.isInteger(index) && index >= 0 ? index : null;
+  let changed = false;
+  const named = (r) => {
+    if (r.i == null || r.l || r.g) return r;
+    const d = describe(r.i);
+    if (!d?.label && !d?.group) return r;
+    changed = true;
+    return { ...r, ...(d.label ? { l: d.label } : {}), ...(d.group ? { g: d.group } : {}) };
+  };
+  const slides = open.slides.map(named);
+  const last = slides.at(-1);
+  if (!(last ? last.i === i : i == null) && slides.length < SLIDES_MAX) {
+    slides.push(named({ i, at: now }));
+    changed = true;
+  }
+  const arr = arrangement ?? open.arrangement;
+  if (arr?.uuid !== open.arrangement?.uuid || arr?.name !== open.arrangement?.name) changed = true;
+  return changed ? [{ ...open, arrangement: arr, slides }, ...log.slice(1)] : log;
 }
 
 /** What the phone shows: a name, when it came up, when it left, and how long it was up (still counting for the open one). */
@@ -96,7 +145,7 @@ export function splitsView(log, now = Date.now()) {
 export const FEED_ITEMS_MAX = 30;
 export const FEED_NAME_MAX = 200;
 export const FEED_LIBRARY_MAX = 64;
-export const FEED_PLAYLIST_MAX = 120;
+export const FEED_LABEL_MAX = 120;
 const nameOf = (e) => String(e.name ?? "Untitled").slice(0, FEED_NAME_MAX);
 
 /** The library a presentation lives in, from its path (…/Libraries/<Library>/…), or null. */
@@ -106,10 +155,23 @@ export function libraryOf(presentationPath) {
 }
 
 // Where an item came from, on its log lines only when known (docs/service-feed.md).
-const whereFrom = (e) => ({
-  ...(typeof e.library === "string" && e.library ? { library: e.library.slice(0, FEED_LIBRARY_MAX) } : {}),
-  ...(typeof e.playlist === "string" && e.playlist ? { playlist: e.playlist.slice(0, FEED_PLAYLIST_MAX) } : {}),
-});
+const whereFrom = (e) => (typeof e.library === "string" && e.library ? { library: e.library.slice(0, FEED_LIBRARY_MAX) } : {});
+
+/**
+ * A closed timed item's slides for its closing line: each in the order shown,
+ * with the seconds until the next (or until the item ended); the times nothing
+ * of it was up are left out. Its arrangement's name when known.
+ */
+function slideTiming(e) {
+  if (!e.timed || e.endMs == null) return {};
+  const rows = e.slides ?? [];
+  const slides = rows
+    .map((r, k) => ({ r, s: Math.max(0, Math.round(((rows[k + 1]?.at ?? e.endMs) - r.at) / 1000)) }))
+    .filter(({ r }) => r.i != null)
+    .map(({ r, s }) => ({ i: r.i, ...(r.l ? { l: String(r.l).slice(0, FEED_LABEL_MAX) } : {}), ...(r.g ? { g: String(r.g).slice(0, FEED_LIBRARY_MAX) } : {}), s }));
+  const name = e.arrangement?.name;
+  return { ...(typeof name === "string" && name ? { arrangement: name.slice(0, FEED_LIBRARY_MAX) } : {}), slides };
+}
 
 /** The `history` snapshot for POST /status: newest first, capped. Times are UTC. */
 export function feedItems(log, max = FEED_ITEMS_MAX) {
@@ -143,6 +205,7 @@ export function itemLines(prev, next, tz) {
       reason: e.endMs == null ? null : (e.reason ?? "moved"),
       tz,
       ...whereFrom(e),
+      ...slideTiming(e),
     });
   }
   return lines;

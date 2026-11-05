@@ -120,8 +120,8 @@ import { heartbeatInterval } from "./heartbeat-pacing.js";
 import QRCode from "qrcode";
 import { emptyRegistry, seeDevice, setApproved, removeDevice, isApproved, isRemoved, deviceList, loadRegistry, saveRegistry, setLiveMonth, isLiveAllowed } from "./remote-devices.js";
 import { monthKey, deviceCode, appendTakeover } from "./remote-live.js";
-import { noteItem, withPlaylist, libraryOf, splitsView, feedItems, itemLines, leftOpenLines } from "./item-splits.js";
-import { playingFromDoc, playingStale, liveSlideDetails } from "./playing-slide.js";
+import { noteItem, libraryOf, wantsSlideTiming, startSlideTiming, setArrangement, noteSlide, splitsView, feedItems, itemLines, leftOpenLines } from "./item-splits.js";
+import { playingFromDoc, playingStale, liveSlideDetails, slideInOutline } from "./playing-slide.js";
 import { saveFlagPicture, readFlagPicture, listFlagPictureIds } from "./flag-pictures.js";
 import { previewTargets, createThumbCache } from "./slide-preview.js";
 import { createThumbStore } from "./thumb-store.js";
@@ -1286,6 +1286,7 @@ let serviceDay = { day: null, events: [], loading: null };
 let recentSlides = [];
 // How long each item was up, for the phone's History (server/item-splits.js).
 let itemSplits = [];
+const arrangementAsks = new Map(); // timed item id -> times ProPresenter was asked for its playlist item's arrangement
 
 /** Where a phone on the church network would open the flag page, one URL per network address. */
 function networkUrls() {
@@ -1909,13 +1910,31 @@ async function heartbeat() {
     const itemName = enriched ? (enriched.presentationName ?? enriched.name ?? null) : null;
     const library = enriched ? libraryOf(getIndex()?.presentations?.[enriched.presentationId]?.presentationPath) : null;
     itemSplits = noteItem(itemSplits, liveState.live && enriched ? { presentationId: enriched.presentationId, name: itemName, library } : null, now);
-    // The playlist a new item was played from, asked of ProPresenter once as it
-    // opens and only while the service feed is on (the request writes nothing
-    // to its database). Waited for briefly, so the open line carries it.
+    // Per-slide timing for an item like the announcements, only while the
+    // service feed is on (docs/service-feed.md). As it opens, ProPresenter is
+    // asked once which arrangement its playlist item chose (the request writes
+    // nothing to its database); after that each slide comes from the heartbeat
+    // already running, named from the presentation read once as it went live.
     const opened = itemSplits[0]?.endMs == null && !before.some((e) => e.id === itemSplits[0].id) ? itemSplits[0] : null;
-    if (opened && config.serviceFeedModule?.enabled === true) {
-      const playlist = await Promise.race([client.getActivePlaylistName(opened.presentationId).catch(() => null), new Promise((r) => setTimeout(() => r(null), 900))]);
-      if (playlist) itemSplits = withPlaylist(itemSplits, opened.id, playlist);
+    const feed = config.serviceFeedModule;
+    if (opened && feed?.enabled === true && wantsSlideTiming(opened.name, feed.slideTimingMatch ?? undefined)) itemSplits = startSlideTiming(itemSplits, opened.id, null);
+    let timed = itemSplits[0]?.endMs == null && itemSplits[0]?.timed ? itemSplits[0] : null;
+    // ProPresenter reports the playlist item a moment after the trigger, so an
+    // item that opened without one asks on its next beats too, three times at most.
+    if (timed && !timed.arrangement && (arrangementAsks.get(timed.id) ?? 0) < 3) {
+      arrangementAsks.set(timed.id, (arrangementAsks.get(timed.id) ?? 0) + 1);
+      if (arrangementAsks.size > 20) arrangementAsks.delete(arrangementAsks.keys().next().value);
+      const got = await Promise.race([client.getPlaylistArrangement(timed.presentationId).catch(() => null), new Promise((r) => setTimeout(() => r(null), 900))]);
+      if (got) timed = (itemSplits = setArrangement(itemSplits, timed.id, got))[0];
+    }
+    if (timed) {
+      const index = liveState.live && enriched?.presentationId === timed.presentationId ? enriched.slideIndex : null;
+      const outline = playingCache.get(timed.presentationId)?.outline;
+      // The playlist item's arrangement (it names it by id only), else the one
+      // ProPresenter has selected when it was played from the library.
+      const uuid = timed.arrangement?.uuid ?? outline?.current ?? null;
+      const arrangement = uuid ? { uuid, name: timed.arrangement?.name || outline?.arrangements.find((a) => a.uuid === uuid)?.name || null } : null;
+      itemSplits = noteSlide(itemSplits, index, now, (i) => slideInOutline(outline, uuid, i), arrangement);
     }
     // When an item opens and when it closes, into the day's log (docs/service-feed.md).
     for (const line of itemLines(before, itemSplits, STATION_TZ)) diag("item", line);
