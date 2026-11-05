@@ -7,7 +7,7 @@ import { SETTINGS_TABS, SETTINGS_TOP, SETTINGS_MORE, settingsTopTab, settingsTab
 import { mountRunCard } from "./index-card.js";
 import { subscribeRun } from "./index-run.js";
 import { mountLiveReadout, unmountLiveReadout } from "./live-readout.js";
-import { healthCheckHtml } from "./health-check.js";
+import { healthCheckHtml, folderRowHtml } from "./health-check.js";
 const ARRANGEMENT_STATUS_LABEL = {
   off: null, // hidden entirely per Section 4.1
   misconfigured: "Misconfigured",
@@ -2726,6 +2726,7 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
   const statusStrip = `
     <div class="flex flex-col gap-2">
       <h3 class="rf-silkscreen">Health check</h3>
+      ${folderRowHtml(health.folder)}
       <div id="health-check" class="flex flex-col gap-2" data-host="${escapeHtml(propresenter.host ?? "")}" data-port="${escapeHtml(String(propresenter.port ?? ""))}">${healthCheckHtml({
         connected: propresenter.connected,
         host: propresenter.host,

@@ -16,8 +16,8 @@ to the page with the detail.
 
 ## 1. Install and connect
 
-- [ ] Put Refrain in `~/Refrain`, or `/Users/Shared/Refrain` if several accounts
-      use the booth. Not on the Desktop and not in a synced folder. ([Where to
+- [ ] Put Refrain in `~/Refrain`, one copy in each account that runs
+      ProPresenter. Not on the Desktop and not in a synced folder. ([Where to
       put Refrain](install.md#where-to-put-refrain))
 - [ ] Double-click `scripts/start.command`. The first run takes a minute.
 - [ ] On the setup screen, press **Detect ProPresenter**, then **Test

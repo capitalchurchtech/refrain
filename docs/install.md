@@ -58,8 +58,9 @@ Refrain keeps its settings, search index and data inside its own folder, so give
 it a folder of its own that the account running ProPresenter can write to:
 
 - **One account at the booth:** `~/Refrain`.
-- **Several accounts on one Mac:** `/Users/Shared/Refrain`, so there is one copy
-  and one set of settings. Only one copy can run at a time.
+- **Several accounts on one Mac:** `~/Refrain` in each account that runs
+  ProPresenter, one copy each. See
+  [Several accounts on one Mac](#several-accounts-on-one-mac).
 
 Avoid the Desktop and Downloads, and avoid anything synced by iCloud Drive,
 Dropbox, OneDrive or Google Drive. Refrain writes many small files and a sync
@@ -129,6 +130,29 @@ nothing else. `scripts/install-launchagent.command` and
 
 On Windows, put a shortcut to `scripts/start.bat` in the Startup folder (press
 Win+R and type `shell:startup`).
+
+## Several accounts on one Mac
+
+Give each account that runs ProPresenter its own copy, in its own home folder
+(`~/Refrain`). Each account has its own ProPresenter, with its own library, so
+each copy indexes and talks to the ProPresenter it sits beside.
+
+- **Don't share one copy** between accounts. A copy belongs to the account that
+  installed it; the others can't save its settings, keep its logs or read its
+  key (Settings › Status says so in a **Refrain's folder** row). Opening the
+  folder up to every account would let any of them change the code the others
+  run.
+- **Each copy is set up once:** its settings, its key in Secrets, and Start at
+  login for that account. Each updates with its own **Update now**.
+- **The service feed sees each copy as its own console,** so add a console on
+  your announcement server for each and paste each its own key.
+- **Copying settings from another copy:** you can copy `config.json`, but delete
+  `serviceFeedModule.consoleId` from the copy first, so it makes its own. Two
+  copies with the same id send their logs as one console, and the server keeps
+  only the last log sent for each day. Copy `.env` only if both should use the
+  same mail login; the feed key must be the new console's.
+- If two accounts are logged in at once, only one copy runs: the second sees
+  the port is taken and stands down, as above.
 
 ## Giving Refrain its own window
 
