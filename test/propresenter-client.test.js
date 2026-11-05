@@ -464,3 +464,21 @@ test("the two list endpoints are on the paths this file documents", async () => 
     assert.equal(new URL(urls[0]).pathname, path);
   }
 });
+
+test("the active playlist is named only for the presentation it actually played", async () => {
+  const answer = {
+    presentation: {
+      playlist: { uuid: "PL", name: " TECH DRILLS ", index: 1 },
+      item: { uuid: "ITEM", name: "Drills", index: 1 },
+      playlist_item: { id: { uuid: "ITEM", name: "Drills", index: 1 }, type: "presentation", presentation_info: { presentation_uuid: "PRES-A" } },
+    },
+    announcements: { playlist: null, item: null, playlist_item: null },
+  };
+  await withFetch(jsonFetch(answer), async () => {
+    assert.equal(await client().getActivePlaylistName("PRES-A"), "TECH DRILLS");
+    assert.equal(await client().getActivePlaylistName("PRES-B"), null, "put up from the library: not the playlist's item");
+  });
+  await withFetch(jsonFetch({ presentation: { playlist: null, item: null, playlist_item: null } }), async () => {
+    assert.equal(await client().getActivePlaylistName("PRES-A"), null, "nothing played from a playlist");
+  });
+});
