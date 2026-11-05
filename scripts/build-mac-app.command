@@ -55,7 +55,9 @@ xcrun swiftc -O -swift-version 5 \
   mac/Refrain/*.swift \
   -o "$APP/Contents/MacOS/Refrain"
 
-sed -e "s|__VERSION__|$VERSION|g" -e "s|__URL__|$URL|g" mac/Refrain/Info.plist > "$APP/Contents/Info.plist"
+# The commit built from, so Update now can tell when the app is out of date.
+COMMIT="$(git rev-parse HEAD 2>/dev/null || true)"
+sed -e "s|__VERSION__|$VERSION|g" -e "s|__URL__|$URL|g" -e "s|__COMMIT__|$COMMIT|g" mac/Refrain/Info.plist > "$APP/Contents/Info.plist"
 /usr/bin/plutil -lint -s "$APP/Contents/Info.plist"
 
 # The Dock icon, drawn by mac/icon/make-icon.swift with the app's own Archivo,

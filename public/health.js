@@ -610,8 +610,8 @@ export function initHealth() {
             updateNowBtn.disabled = false;
             return;
           }
-          statusEl.textContent = "Updated. Restart Refrain to finish.";
-          statusEl.className = "text-sm rf-nominal";
+          statusEl.textContent = ["Updated. Restart Refrain to finish.", data.macAppNote].filter(Boolean).join(" ");
+          statusEl.className = data.macAppRebuilt === false ? "text-sm text-warning" : "text-sm rf-nominal";
         } catch (err) {
           statusEl.textContent = `Update failed: ${err.message}`;
           statusEl.className = "text-sm text-warning";
