@@ -14,8 +14,7 @@
  * There is no route to Clear, Looks, Macros, settings or anything on the main
  * app. Search and Alerts need the phone to have typed this month's device code
  * (server/remote-live.js); a phone with only the PIN can flag and read. Three
- * things reach ProPresenter, all narrow: pictures of the current
- * and next slide (cached); for a phone the booth approved by name, a stage
+ * things reach ProPresenter, all narrow: for a phone the booth approved by name, a stage
  * message or a pager code, each needing a second, confirming press; and, only
  * while the booth has switched "Let phones go live" on, one searched slide
  * put on the screens by a phone that has this month's device code, typed a
@@ -169,15 +168,13 @@ export function rateLimiter({ max = 20, windowMs = 60_000 } = {}) {
  * @param {object} [deps.devices]   { see(id, {name, signIn}), approved(id), removed(id), name(id) }
  * @param {(q: string) => Array} [deps.search]      read-only search, for the Search tab
  * @param {() => object} [deps.preview]              previewTargets for what's live
- * @param {(pid, idx) => Promise<{type, bytes}|null>} [deps.thumb]
- * @param {() => boolean} [deps.pictures] whether a phone may be sent slide pictures at all; closed unless the booth opens it (networkModule.phonePictures)
  * @param {() => Array} [deps.safeSlides]
  * @param {(action: object, deviceId: string) => Promise<{label: string}>} [deps.control]
  *   performs an approved, confirmed control action; throws with a sentence on failure
  * @param {(q: string) => Array} [deps.search]  read-only text search of the index, for the phone's Search page; nothing it returns can be fired except through golive
  * @param {() => Array} [deps.history]  how long each item was up (server/item-splits.js splitsView)
- * @param {(flagId: string, presentationId: string, slideIndex: number) => Promise<string|null>} [deps.captureFlagPicture]
- *   takes and keeps a picture of the flagged slide; the file name, or null if none could be taken
+ * @param {(flagId: string, presentationId: string, slideIndex: number) => Promise<{drawn: boolean, picture: string|null}>} [deps.captureFlagPicture]
+ *   drawn: the booth draws the slide from its file; else picture is the file name of ProPresenter's picture kept with the flag, or null
  * @param {() => Promise<Array>} [deps.openFlags]  open flags, newest first, for the phone's list
  * @param {(flagId: string) => Promise<{type, bytes}|null>} [deps.flagPicture]
  * @param {object} [deps.golive]  going live from a phone (server/remote-live.js); off unless enabled() says so
@@ -195,8 +192,6 @@ export function createRemoteApp({
   knownSlide = () => null,
   pinGuard = null,
   devices = { see() {}, approved: () => false, removed: () => false, name: () => null },
-  thumb = async () => null,
-  pictures = () => false,
   stage = async () => ({ presets: [], current: "" }),
   features = () => ({ flags: true, messages: true }),
   messages = async () => [],
@@ -230,9 +225,6 @@ export function createRemoteApp({
   app.disable("x-powered-by");
   app.use(express.json({ limit: "8kb" }));
   const allow = rateLimiter();
-  // Pictures per phone: a whole tray scrolled end to end is ~30-60, so this
-  // only stops a runaway loop or a scripted flood, not a person.
-  const allowImage = rateLimiter({ max: 240, windowMs: 60_000 });
   // Five PIN tries a minute per device, and a daily cap across every device
   // (pinGuard). Four digits is the point, since it's read aloud across a room;
   // the cap, not the device limit, is what keeps guessing it unlikely.
@@ -305,8 +297,7 @@ export function createRemoteApp({
   // Matched as Express routes them: any case, with or without a trailing slash.
   const phoneFeature = (raw) => {
     const path = String(raw).toLowerCase().replace(/\/+$/, "");
-    // Slide pictures on a phone are only for choosing a slide to flag.
-    if (path === "/api/flag" || path === "/api/flags" || path === "/api/flag-slides" || path.startsWith("/api/flag-picture/") || path.startsWith("/api/preview/image/")) return "flags";
+    if (path === "/api/flag" || path === "/api/flags" || path === "/api/flag-slides" || path.startsWith("/api/flag-picture/")) return "flags";
     if (path === "/api/stage" || path === "/api/messages" || path.startsWith("/api/control/")) return "messages";
     return null;
   };
@@ -351,28 +342,8 @@ export function createRemoteApp({
         slideIndex: sl.slideIndex,
         slideNumber: sl.slideIndex + 1,
         text: sl.text,
-        ...(pictures() ? { image: `/api/preview/image/${encodeURIComponent(d.presentationId)}/${sl.slideIndex}` } : {}),
       })),
     });
-  });
-
-  // Pictures of the presentation on the screens only, and only ones already
-  // on disk (owner, 2026-10-04: "pre cached so it does not hurt performance
-  // at all"). `thumb` never asks ProPresenter to draw: a picture that wasn't
-  // rendered ahead of the service is simply not shown, and the slide's words
-  // stand in for it.
-  app.get("/api/preview/image/:pid/:idx", async (req, res) => {
-    // Closed unless networkModule.phonePictures is true. Checked here, on the
-    // server, so a phone page cannot open it by itself.
-    if (!pictures()) return res.status(404).json({ error: "Pictures are not sent to phones." });
-    const d = currentSlides();
-    const idx = Number(req.params.idx);
-    const onScreenDeck = d && d.presentationId === req.params.pid && Number.isInteger(idx) && idx >= 0 && idx < d.slides.length;
-    if (!onScreenDeck) return res.status(404).json({ error: "Only slides of the presentation on screen can be previewed." });
-    if (!allowImage(req.deviceId ?? req.ip)) return res.status(429).json({ error: "Too many pictures at once. Wait a moment." });
-    const imgData = await thumb(req.params.pid, idx);
-    if (!imgData) return res.status(404).json({ error: "No picture for that slide." });
-    res.set("Cache-Control", "private, max-age=300").type(imgData.type).send(imgData.bytes);
   });
 
   // --- Search, History, and the flags list: read-only -----------------------
@@ -603,12 +574,13 @@ export function createRemoteApp({
     const built = flagFromRecent(entry, { type: chosenType, note, name });
     if (!built.ok) return res.status(409).json({ error: built.error });
     try {
-      // The picture is part of the flag, so it is taken before the flag is
-      // saved; one that cannot be taken never stops the flag (it is words only).
-      const picture = await captureFlagPicture(built.flag.id, entry.presentationId, entry.slideIndex).catch(() => null);
-      if (picture) built.flag.picture = picture;
+      // The slide is drawn from its file at the booth; only one that can't be
+      // gets ProPresenter's picture, taken before the flag is saved. One that
+      // cannot be taken never stops the flag (it is words only).
+      const got = await captureFlagPicture(built.flag.id, entry.presentationId, entry.slideIndex).catch(() => null);
+      if (got?.picture) built.flag.picture = got.picture;
       const saved = await saveFlag(built.flag);
-      res.json({ ok: true, id: built.flag.id, shared: saved?.shared !== false, picture: Boolean(picture) });
+      res.json({ ok: true, id: built.flag.id, shared: saved?.shared !== false, picture: Boolean(got?.picture), drawn: Boolean(got?.drawn) });
     } catch (err) {
       res.status(500).json({ error: `Not saved: ${err.message}` });
     }

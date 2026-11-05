@@ -129,7 +129,7 @@ test("a stuck button can't fill the flags folder", () => {
 });
 
 import { pinFailureGuard } from "../server/remote.js";
-import { crossSiteRefused } from "../server/request-guard.js";
+import { crossSiteRefused, hostRefused } from "../server/request-guard.js";
 
 test("wrong PINs are capped across every phone for the day, and the cap lifts when the day changes", () => {
   let day = "2026-09-27";
@@ -199,6 +199,9 @@ test("a flag that waited on the phone still lands, but only on a slide the index
 
 test("another site's page can't send the main app a change; Refrain's own pages and tools can", () => {
   assert.equal(crossSiteRefused("POST", "https://evil.example", "127.0.0.1:9999"), true);
+  // DNS rebinding: a site's own name pointed at 127.0.0.1 is refused for reads too.
+  for (const h of ["127.0.0.1:9999", "localhost:9999", "LOCALHOST", "[::1]:9999", "refrain.localhost:3050", undefined]) assert.equal(hostRefused(h), false, String(h));
+  for (const h of ["evil.example:9999", "evil.example", "127.0.0.1.evil.example", "192.168.1.5:9999", "localhost.evil.example"]) assert.equal(hostRefused(h), true, h);
   assert.equal(crossSiteRefused("POST", "http://127.0.0.1:1234", "127.0.0.1:9999"), true, "another local port is another site");
   assert.equal(crossSiteRefused("POST", "http://127.0.0.1:9999", "127.0.0.1:9999"), false);
   assert.equal(crossSiteRefused("POST", "http://localhost:9999", "127.0.0.1:9999"), false);
@@ -209,7 +212,7 @@ test("another site's page can't send the main app a change; Refrain's own pages 
 
 import { emptyRegistry, seeDevice, setApproved, removeDevice, isApproved, isRemoved } from "../server/remote-devices.js";
 
-function startControl({ pictures = false } = {}) {
+function startControl() {
   let reg = emptyRegistry();
   const permitted = new Set(); // phones that typed this month's device code
   const done = [];
@@ -225,8 +228,6 @@ function startControl({ pictures = false } = {}) {
       removed: (id) => isRemoved(reg, id),
       name: (id) => reg.devices[id]?.name ?? null,
     },
-    thumb: async () => ({ type: "image/jpeg", bytes: Buffer.from("jpg") }),
-    pictures: () => pictures,
     currentSlides: () => ({ presentationId: "H", presentationName: "Hymn", currentIndex: 2, slides: [0, 1, 2, 3, 4].map((i) => ({ slideIndex: i, text: `line ${i + 1}` })) }),
     stage: async () => ({ presets: [{ id: "short", text: "Cut short, pressing for time" }], current: "" }),
     messages: async () => [{ id: "PAGER", name: "Kids pager", active: false, fields: ["Code"] }],
@@ -283,7 +284,7 @@ test("alerts: unapproved phones can't; approved ones prepare then confirm, once;
   }
 });
 
-test("pictures are closed to phones by default, whatever the page asks for", async () => {
+test("a phone is never sent a slide picture", async () => {
   const t = await startControl();
   try {
     const { token } = await (await fetch(`${t.base}/api/unlock`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin: "2468" }) })).json();
@@ -297,19 +298,14 @@ test("pictures are closed to phones by default, whatever the page asks for", asy
   }
 });
 
-test("pictures, when the booth opens them: the presentation on screen only, for flagging", async () => {
-  const t = await startControl({ pictures: true });
+test("the flag tray: the presentation on screen only", async () => {
+  const t = await startControl();
   try {
     const { token } = await (await fetch(`${t.base}/api/unlock`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin: "2468" }) })).json();
     const h = { headers: { "x-refrain-device": token } };
-    assert.equal((await fetch(`${t.base}/api/preview/image/H/3`, h)).status, 200);
-    assert.equal((await fetch(`${t.base}/api/preview/image/H/9`, h)).status, 404, "not past the end of the presentation");
-    assert.equal((await fetch(`${t.base}/api/preview/image/OTHER/0`, h)).status, 404, "not another presentation");
-    assert.equal((await fetch(`${t.base}/api/preview/image/H/0`, h)).status, 200, "any slide of the one on screen, for the tray");
     const all = await (await fetch(`${t.base}/api/flag-slides`, h)).json();
     assert.equal(all.currentIndex, 2);
     assert.deepEqual(all.slides.map((x) => x.slideNumber), [1, 2, 3, 4, 5]);
-    assert.equal((await fetch(`${t.base}/api/preview/image/LOGO/0`, h)).status, 404, "no safe slides on the phone any more");
     // A tray pick with no words is never in the index; it's accepted as a
     // slide of the presentation on screen, and one of another isn't.
     const flag = (slide) => fetch(`${t.base}/api/flag`, { method: "POST", headers: { "Content-Type": "application/json", "x-refrain-device": token }, body: JSON.stringify({ slide }) });
@@ -360,9 +356,7 @@ test("a phone route that throws still answers, instead of leaving the phone wait
     saveFlag: async () => ({}),
     flagTypes: () => [],
     auth: { expectedPin: () => null, secret: () => "s", hint: () => "", daily: () => true },
-    currentSlides: () => ({ presentationId: "H", presentationName: "Hymn", currentIndex: 0, slides: [{ slideIndex: 0, text: "x" }] }),
-    pictures: () => true,
-    thumb: async () => {
+    currentSlides: () => {
       throw new Error("disk went away");
     },
   });
@@ -376,7 +370,7 @@ test("a phone route that throws still answers, instead of leaving the phone wait
     console.error = (...a) => logged.push(a.join(" "));
     let res;
     try {
-      res = await fetch(`${base}/api/preview/image/H/0`, { signal: AbortSignal.timeout(2000) });
+      res = await fetch(`${base}/api/flag-slides`, { signal: AbortSignal.timeout(2000) });
     } finally {
       console.error = error;
     }

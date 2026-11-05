@@ -10,7 +10,8 @@ is chosen for you. Refrain reads every slide in the playlist (up to 120
 presentations) and lists three kinds of finding, slide by slide, each with a
 picture of the slide. With ProPresenter on this Mac, Refrain draws that picture
 itself from the presentation's file, so it asks nothing of ProPresenter; it uses
-this Mac's fonts and says when a slide uses a font this Mac doesn't have. The
+this Mac's fonts and says when a slide uses a font this Mac doesn't have. A slide
+it can't draw gets ProPresenter's picture of that one slide, asked for once. The
 three kinds are:
 
 - **Spelling.** A word is flagged only when the dictionary doesn't know it

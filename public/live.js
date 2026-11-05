@@ -884,28 +884,16 @@ export function initLive() {
         setStatus(`Kept as a safe slide: ${answer.added.label}.`);
       }
     });
-    // Each key's picture: drawn from the presentation's file (handoff section
-    // 30, E6), which asks nothing of ProPresenter; else ProPresenter's stored
-    // picture; else the words stay. Never a broken image.
+    // Each key's picture is drawn from the presentation's file (handoff
+    // section 30, E6), which asks nothing of ProPresenter. A slide that can't be
+    // drawn keeps its words (owner, 2026-11-04: rendered pictures only).
     grid.querySelectorAll(".rf-safe-pic[data-pid]").forEach(async (frame) => {
       const { pid, idx } = frame.dataset;
-      const words = frame.querySelector(".rf-safe-words");
       const host = document.createElement("span");
       host.className = "rf-safe-draw";
       frame.appendChild(host);
-      if (await drawInto(host, `/api/preview/drawn/${encodeURIComponent(pid)}/${idx}`)) return words?.remove();
-      host.remove();
-      if (!frame.isConnected) return;
-      const img = document.createElement("img");
-      img.alt = "";
-      img.hidden = true;
-      img.addEventListener("load", () => {
-        img.hidden = false;
-        words?.remove();
-      });
-      img.addEventListener("error", () => img.remove());
-      img.src = `/api/preview/image/${encodeURIComponent(pid)}/${idx}`;
-      frame.appendChild(img);
+      if (await drawInto(host, `/api/preview/drawn/${encodeURIComponent(pid)}/${idx}`)) frame.querySelector(".rf-safe-words")?.remove();
+      else host.remove();
     });
     grid.querySelectorAll(".live-safe-key").forEach((btn) => {
       const sl = safeList.find((x) => x.id === btn.dataset.safe);

@@ -35,15 +35,11 @@ export const FEED_PROTOCOL_VERSION = 1;
 export const TOKEN_ENV = "SERVICE_FEED_TOKEN";
 /** Beyond this a day's log is skipped, not truncated: half a log misleads. */
 export const MAX_LOG_BYTES = 10 * 1024 * 1024;
-/** A slide picture is a small thumbnail (about 25 KB); anything bigger is not sent. */
-export const MAX_IMAGE_BYTES = 200 * 1024;
 
 const KEEPALIVE_MS = 30_000;
 const MIN_GAP_MS = 2_000;
 const BACKOFF_MS = 5 * 60_000;
 const REQUEST_TIMEOUT_MS = 8_000;
-const IMAGE_RETRY_MS = 15_000;
-const IMAGE_TRIES = 3;
 
 export const DEFAULT_WINDOWS = [{ days: ["sun"], from: "09:00", until: "14:00" }];
 /** When the log goes each night unless the church picks another time: after the day it records is over. */
@@ -116,7 +112,6 @@ export function cleanServiceFeedSettings(body) {
       name: name || null,
       url: url || null,
       includeSlideText: b.includeSlideText === true,
-      includeSlideImage: b.includeSlideImage === true,
       nightlyLog: b.nightlyLog !== false,
       nightlyLogAt: b.nightlyLogAt ?? DEFAULT_NIGHTLY_AT,
       windows: windows.map((w) => ({ days: DAYS.filter((d) => w.days.map((x) => String(x).toLowerCase()).includes(d)), from: w.from, until: w.until })),
@@ -159,9 +154,6 @@ function isLoopback(host) {
   return host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host.endsWith(".localhost");
 }
 
-/** Names one slide's picture, so the server shows it only beside the status it belongs to. */
-export const imageKeyOf = (slide) => `${slide.presentationId}:${slide.slideIndex}`;
-
 /** The whole status stays under this, so a long list of long names cannot make it huge. The other side caps the body at 16 KB. */
 export const STATUS_MAX_BYTES = 8 * 1024;
 
@@ -176,7 +168,6 @@ export function buildStatus({ live, mod, consoleId, appVersion, seq, now }) {
         slideNumber: Number.isInteger(live.slide.slideIndex) ? live.slide.slideIndex + 1 : null,
         slideCount: live.slide.slideCount ?? null,
         ...(mod?.includeSlideText ? { text: live.slide.text ?? null } : {}),
-        ...(mod?.includeSlideImage && live.slide.presentationId != null ? { imageKey: imageKeyOf(live.slide) } : {}),
       }
     : null;
   const status = {
@@ -252,7 +243,6 @@ export function createServiceFeed({
   env = process.env,
   fetchImpl = fetch,
   now = Date.now,
-  getPicture = async () => null,
   listLogs,
   readLog,
   loadSent,
@@ -278,7 +268,6 @@ export function createServiceFeed({
     return mod?.enabled && inWindow(mod, new Date(now())) ? mod : null;
   };
   let goodbyeTries = 0;
-  const image = { key: null, tries: 0, triedAt: 0 };
   // Whether the last status the server heard said something was live. The
   // server only raises a problem for a console that was live and then went
   // quiet, so a window that closes mid-service must say "not live" on the way out.
@@ -321,7 +310,6 @@ export function createServiceFeed({
       lastPushAt = now();
       state.lastOkAt = lastPushAt;
       state.lastError = null;
-      await sendPicture(mod, status.slide?.imageKey ? getLive().slide : null).catch(() => {});
       return true;
     } catch (err) {
       // Dropped on purpose: the next beat carries newer truth than this one did.
@@ -329,24 +317,6 @@ export function createServiceFeed({
       lastPushAt = now();
       return false;
     }
-  }
-
-  /**
-   * The live slide's picture, once per slide, after its status. Best effort: the
-   * picture is only ever one Refrain already has (never drawn for this), a
-   * slide with none just shows without, and a refusal never affects status.
-   */
-  async function sendPicture(mod, slide) {
-    if (!slide) return;
-    const key = imageKeyOf(slide);
-    if (key !== image.key) Object.assign(image, { key, tries: 0, triedAt: 0, done: false });
-    if (image.done || image.tries >= IMAGE_TRIES || now() - image.triedAt < IMAGE_RETRY_MS) return;
-    image.tries += 1;
-    image.triedAt = now();
-    const pic = await getPicture(slide.presentationId, slide.slideIndex);
-    if (!pic?.bytes?.length || pic.bytes.length > MAX_IMAGE_BYTES) return;
-    await send(mod, "/image", { method: "PUT", headers: { "content-type": pic.type || "image/jpeg", "x-slide-key": key }, body: pic.bytes }, { status: false });
-    image.done = true;
   }
 
   /** One last status as a window closes on a live console, so the server reads it as ended, not lost. */

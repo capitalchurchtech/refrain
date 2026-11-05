@@ -495,19 +495,6 @@ export function initHealth() {
       })
     );
 
-    document.querySelectorAll("[data-pictures-show]").forEach((key) =>
-      key.addEventListener("click", async () => {
-        try {
-          const res = await fetch("/api/slide-pictures", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ show: key.dataset.picturesShow === "true" }) });
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(data.error ?? res.statusText);
-          render(); // the card's wording and the draw-ahead keys follow it
-        } catch (err) {
-          showFailure(`Couldn't change slide pictures: ${err.message}`);
-        }
-      })
-    );
-
     document.querySelectorAll("[data-quick-pictures]").forEach((key) =>
       key.addEventListener("click", async () => {
         try {
@@ -521,29 +508,13 @@ export function initHealth() {
       })
     );
 
-    document.querySelectorAll("[data-prerender]").forEach((key) =>
-      key.addEventListener("click", async () => {
-        const prerender = key.dataset.prerender === "true";
-        const status = document.getElementById("prerender-status");
-        try {
-          const res = await fetch("/api/slide-pictures", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prerender }) });
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(data.error ?? res.statusText);
-          document.querySelectorAll("[data-prerender]").forEach((k) => k.setAttribute("aria-checked", String(k.dataset.prerender === String(prerender))));
-          if (status) status.textContent = prerender ? "On. Starts when nothing is on the screens and no service is near." : "Off.";
-        } catch (err) {
-          showFailure(`Couldn't change slide pictures: ${err.message}`);
-        }
-      })
-    );
-
     // Telemetry tab: collected from the fields, validated by the server.
     const feedWindows = document.getElementById("feed-windows");
     if (feedWindows) {
       const radio = (attr, val) => document.querySelector(`[${attr}][aria-checked="true"]`)?.getAttribute(attr) === val;
-      document.querySelectorAll("[data-feed-enabled], [data-feed-text], [data-feed-image], [data-feed-nightly]").forEach((key) =>
+      document.querySelectorAll("[data-feed-enabled], [data-feed-text], [data-feed-nightly]").forEach((key) =>
         key.addEventListener("click", () => {
-          const attr = ["data-feed-enabled", "data-feed-text", "data-feed-image", "data-feed-nightly"].find((a) => key.hasAttribute(a));
+          const attr = ["data-feed-enabled", "data-feed-text", "data-feed-nightly"].find((a) => key.hasAttribute(a));
           document.querySelectorAll(`[${attr}]`).forEach((k) => k.setAttribute("aria-checked", String(k === key)));
         })
       );
@@ -578,7 +549,6 @@ export function initHealth() {
           name: document.getElementById("feed-name").value,
           url: document.getElementById("feed-url").value,
           includeSlideText: radio("data-feed-text", "true"),
-          includeSlideImage: radio("data-feed-image", "true"),
           nightlyLog: radio("data-feed-nightly", "true"),
           nightlyLogAt: document.getElementById("feed-nightly-at").value,
           windows,
@@ -2040,11 +2010,6 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
           propresenter.load ? `<div class="text-sm rf-flag rf-measure" role="status">${escapeHtml(propresenter.load.message)}</div>` : ""
         }
         ${
-          propresenter.slidePictures?.show && propresenter.slidePictures?.lastRunAt && propresenter.slidePictures.presentations
-            ? `<div class="text-sm opacity-60 rf-measure">Slide pictures: ${propresenter.slidePictures.ready} ready for today's playlists (checked ${new Date(propresenter.slidePictures.lastRunAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}${propresenter.slidePictures.stopped ? `; stopped: ${escapeHtml(propresenter.slidePictures.stopReason ?? "something went live")}` : ""}).</div>`
-            : ""
-        }
-        ${
           propresenter.connected
             ? `<div class="text-sm opacity-60 rf-measure">Last checked ${new Date(propresenter.lastCheckIn ?? Date.now()).toLocaleTimeString()}. Run Diagnose if ProPresenter is behaving oddly.</div>`
             : `<div class="text-sm">Check ProPresenter is open with its Network API on (Preferences &gt; Network), and the host and port on the <a href="#settings/features" class="link">Features</a> tab are correct.</div>`
@@ -2333,57 +2298,32 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
       </div>
     </div>`;
 
-  // Pictures ahead of time (owner, 2026-10-04): here, beside Phones, because
-  // the phone's flag tray is what needs them. During a service nothing new is
-  // drawn, so a picture that wasn't rendered ahead just isn't shown.
+  // Slide pictures (owner, 2026-11-04): Refrain's own drawings of the files,
+  // never ProPresenter's, except one slide Quality Control or a flag needs that
+  // can't be drawn. What's left to choose is whether the safe-slide keys show
+  // the slide or its name.
   const pictures = propresenter.slidePictures ?? {};
-  const picturesOn = pictures.prerender === true;
+  const safeSlidesOn = typeof document !== "undefined" && !document.documentElement.classList.contains("feature-off-safe-slides");
   const picturesCard = `
     <div class="card bg-base-200">
       <div class="card-body p-3 gap-2">
         <h2 class="card-title text-base"><i data-lucide="images" class="w-4 h-4 opacity-70"></i> Slide pictures</h2>
-        <!-- The one switch for every picture (owner, 2026-10-04: "disable all
-             image previews ... temporary"). Off: ProPresenter is asked for
-             none, and the screens show the slides' words. -->
-        <div class="rf-tabs" role="radiogroup" aria-label="Show slide pictures" style="margin-bottom:0">
-          <button type="button" role="radio" class="rf-tab" data-pictures-show="true" aria-checked="${pictures.show === true}"><span>Show pictures</span></button>
-          <button type="button" role="radio" class="rf-tab" data-pictures-show="false" aria-checked="${pictures.show !== true}"><span>Words only</span></button>
-        </div>
-        <p class="text-xs opacity-70 rf-measure">${
-          pictures.show === true
-            ? "Phones show ProPresenter's pictures of the slides."
-            : pictures.quickSlides !== false
-              ? "Off: phones show the slides' words. ProPresenter is asked for pictures only for your saved safe slides (below) and when you ask: Quality Control's flagged slides, and Get slide pictures on Flags."
-              : "Off: phones show the slides' words. ProPresenter is asked for pictures only when you ask: Quality Control's flagged slides, and Get slide pictures on Flags."
+        <p class="text-sm rf-measure">${
+          pictures.onThisMac === false
+            ? "ProPresenter is on another Mac, so Refrain can't draw slides here: safe slides show their words, and Quality Control and Flags ask ProPresenter for one slide's picture when they need it."
+            : "Refrain draws slide pictures from the presentation files on this Mac, which asks nothing of ProPresenter. Only when Quality Control or a flag needs a slide it can't draw does it ask ProPresenter, for that one slide."
         }</p>
-        <p class="text-xs opacity-70 rf-measure">With ProPresenter on this Mac, safe slides and Quality Control draw each slide from its file instead, which asks nothing of ProPresenter, so this switch doesn't turn those off.</p>
-        <div class="rf-subhead mt-2">Safe slide pictures</div>
-        <p class="text-sm rf-measure">Pictures of your saved safe slides on Now, even with pictures off, so the logo and the blank are told apart at a glance. Drawn from the slide's file on this Mac; where it can't be, ProPresenter's picture, taken once when the slide is saved. Nothing new is drawn during a service.</p>
+        <p class="text-xs opacity-70 rf-measure">Phones show the slides' words, and a flag's picture only when ProPresenter gave one.</p>
+        ${
+          // Only while Safe slides is on (Settings › Features): it's the one thing this chooses.
+          safeSlidesOn
+            ? `<div class="rf-subhead mt-2">Safe slide pictures</div>
+        <p class="text-sm rf-measure">The slide on each safe-slide key on Now, so the logo and the blank are told apart at a glance, or its name.</p>
         <div class="rf-tabs" role="radiogroup" aria-label="Safe slide pictures" style="margin-bottom:0">
           <button type="button" role="radio" class="rf-tab" data-quick-pictures="true" aria-checked="${pictures.quickSlides !== false}"><span>Pictures</span></button>
           <button type="button" role="radio" class="rf-tab" data-quick-pictures="false" aria-checked="${pictures.quickSlides === false}"><span>Names</span></button>
-        </div>
-        <div class="rf-subhead mt-2">Draw ahead of time</div>
-        ${
-          pictures.prerenderPaused
-            ? `<p class="text-sm rf-measure">Paused for now: Refrain doesn't draw pictures on its own. To draw today's, press Update pictures on Service › Day.</p>`
-            : `<p class="text-sm rf-measure">Phones and the Now screen only show pictures drawn before the service. Turn this on to draw today's service playlists while nothing is on the screens.</p>
-        <p class="text-xs opacity-70 rf-measure">ProPresenter holds on to memory for each picture it draws until it restarts, so restart ProPresenter after the pictures are drawn and before the service. The pictures are kept.</p>
-        <div class="rf-tabs" role="radiogroup" aria-label="Slide pictures ahead of time" style="margin-bottom:0">
-          <button type="button" role="radio" class="rf-tab" data-prerender="true" aria-checked="${picturesOn}" ${pictures.show === true ? "" : "disabled"}><span>On</span></button>
-          <button type="button" role="radio" class="rf-tab" data-prerender="false" aria-checked="${!picturesOn}" ${pictures.show === true ? "" : "disabled"}><span>Off</span></button>
-        </div>
-        <div id="prerender-status" class="text-xs opacity-70 rf-measure">${
-          pictures.show !== true
-            ? "Nothing is drawn ahead while pictures are off (Words only above)."
-            : pictures.onThisMac === false
-            ? "ProPresenter is on another Mac, so pictures can't be drawn ahead from here."
-            : picturesOn
-              ? pictures.lastRunAt
-                ? `${pictures.ready} ready for today's playlists (checked ${new Date(pictures.lastRunAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}${pictures.stopped ? `; stopped: ${escapeHtml(pictures.stopReason ?? "something went live")}` : ""}).`
-                : "Waits until nothing is on the screens and no service is near, then starts. Needs today's services set up on Service › Day."
-              : "Off."
-        }</div>`
+        </div>`
+            : ""
         }
       </div>
     </div>`;
@@ -2441,14 +2381,6 @@ function renderHealth(health, configOptions, versionInfo, libraryCard = "", dupl
             <button type="button" role="radio" class="rf-tab" data-feed-text="false" aria-checked="${!fs.includeSlideText}"><span>Title and number only</span></button>
           </div>
           <span class="text-xs opacity-60 rf-measure">A prayer or care slide can carry a name, so the default is the title and slide number only.</span>
-        </div>
-        <div class="flex flex-col gap-1">
-          <div class="text-sm">Picture of the slide</div>
-          <div class="rf-tabs" role="radiogroup" aria-label="Send a picture of the slide" style="margin-bottom:0">
-            <button type="button" role="radio" class="rf-tab" data-feed-image="true" aria-checked="${fs.includeSlideImage}"><span>Send it</span></button>
-            <button type="button" role="radio" class="rf-tab" data-feed-image="false" aria-checked="${!fs.includeSlideImage}"><span>Don't send</span></button>
-          </div>
-          <span class="text-xs opacity-60 rf-measure">A small picture of the slide on screen, about 25 KB each time it changes. During a service only slides already drawn ahead of time are sent (Settings &gt; Phones &gt; Slide pictures), so nothing new is drawn on ProPresenter. A picture can show a name, like the words can.</span>
         </div>
         <div class="rf-control-row">
           <button type="button" id="feed-save" class="btn btn-primary btn-sm">Save</button>

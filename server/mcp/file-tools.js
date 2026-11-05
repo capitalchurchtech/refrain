@@ -360,7 +360,7 @@ export async function editBoxesTool(args, env) {
       text("fit", (v) => p.setTextFit(hit.wrapper, v));
       text("capitals", (v) => p.setCapitals(hit.wrapper, v));
       text("line_spacing", (v) => p.setLineSpacing(hit.wrapper, v));
-      text("list", (v) => p.setList(hit.wrapper, v));
+      text("list", (v) => p.setList(hit.wrapper, listWithIndent(p, v, hit, d)));
       text("text_outline", (v) => p.setTextOutline(hit.wrapper, v));
       text("text_shadow", (v) => p.setTextShadow(hit.wrapper, v));
       text("margins", (v) => p.setMargins(hit.wrapper, v));
@@ -388,6 +388,24 @@ export async function editBoxesTool(args, env) {
   }
   await saveCopy(src, d, changeNote(done.map((x) => x.slide), done.flatMap((x) => Object.keys(x.changed))));
   return { copy_id: args.copy_id, file: src.where, changes: done };
+}
+
+/**
+ * A list's hanging indent when none is given and the box has none: the one the
+ * other lists in this file use (owner, 2026-11-04), so a new list matches what
+ * the team made; else the package's 80 points.
+ */
+function listWithIndent(p, spec, hit, d) {
+  if (spec === "none" || spec === null) return spec;
+  const s = typeof spec === "string" ? { style: spec } : { ...spec };
+  if (s.indent !== undefined || hit.element.text?.attributes?.paragraph_style?.head_indent) return s;
+  const seen = new Map();
+  for (const x of p.elementsOf(d.doc)) {
+    const ps = x.element.text?.attributes?.paragraph_style;
+    if (x.element !== hit.element && ps?.text_list?.is_enabled && ps.head_indent > 0) seen.set(ps.head_indent, (seen.get(ps.head_indent) ?? 0) + 1);
+  }
+  const common = [...seen].sort((a, b) => b[1] - a[1])[0];
+  return common ? { ...s, indent: common[0] } : s;
 }
 
 /**

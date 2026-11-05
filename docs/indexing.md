@@ -158,8 +158,8 @@ live readout stay honest.
 
 Go Live, Show, safe slides and messages all work as normal. What performance
 mode refuses is the heavy work: index runs, Quality Control scans, pre-service
-checks, the theme and unused media reports, Update pictures and Get slide
-pictures. Each says why.
+checks, the theme and unused media reports, and Get slide pictures. Each says
+why.
 
 ## Protect ProPresenter
 
@@ -174,8 +174,7 @@ in bulk:
   find on disk keeps its previous entry. If the files can't be read at all
   (ProPresenter on another computer, the `propresenter-bundle` package missing,
   or `indexFromFiles` off), no index runs.
-- Quality Control scans, the pre-service checks, Update pictures and Get slide
-  pictures refuse.
+- Quality Control scans, the pre-service checks and Get slide pictures refuse.
 
 Search, Go Live, Now and everything else keep working. Turn protection off on a
 machine where that is safe, away from a service, and restart ProPresenter

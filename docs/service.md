@@ -56,8 +56,9 @@ Two rows link to Flags ("N to fix") and Day ("Checks due", "N services today",
 Off by default (Settings › Features › Safe slides). Up to four of your own
 known-good slides, such as a logo or a blank, to cut to in a hurry. With one of
 them on the screens, **Keep current** keeps it. Each is then one press, and each
-key shows a picture of its slide that Refrain draws from the presentation's file
-(or the slide's words, with Safe slide pictures set to Names). Refrain
+key shows its slide, drawn by Refrain from the presentation's file on this Mac
+(or the slide's words, when it can't be drawn or Safe slide pictures is set to
+Names). Refrain
 remembers a safe slide by its group and position, so if the presentation has
 changed and the slide isn't where it was, it refuses rather than sending
 something else. **Edit** renames, reorders and removes them.
@@ -199,12 +200,9 @@ is still to come today. Day says ahead of time when it will.
 When it ends the day this way, the summary is sent straight away with nobody
 reading it first. A failed send is retried every 15 minutes, eight tries in all.
 
-### Slide pictures and Send log
+### Send log
 
-The **Slide pictures** card has **Update pictures**, which draws pictures for
-today's service playlists and keeps any slide whose words and place haven't
-changed. See [slide pictures](phones.md#slide-pictures). **Send log** appears
-when the service feed is set up.
+**Send log** appears when the service feed is set up.
 
 ## Flags
 
@@ -234,8 +232,10 @@ you can change, a note, **Show slide N in Editor**, and **Mark resolved**.
 Resolved flags drop off the list after 14 days (`slideFlagsModule.keepResolvedDays`)
 but are never deleted.
 
-**Get slide pictures** draws a picture for each open flag that has none, up to
-40 a press. It refuses during performance mode or with Protect ProPresenter on.
+Each flagged slide is drawn from its presentation's file, as the file is now.
+**Get slide pictures** asks ProPresenter for a picture of each open flag's slide
+that Refrain can't draw and that has none, up to 40 a press. It refuses during
+performance mode or with Protect ProPresenter on.
 
 ### Your own types, and sharing between machines
 

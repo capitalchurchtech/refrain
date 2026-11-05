@@ -59,6 +59,10 @@ test("a file read gives the API's answer: label boxes as 'Slide Label', list mar
     assert.equal(s3.text, "3:16 John\n10:00", "the right-to-left embedding marks are dropped");
     assert.deepEqual([s1.liveWords, s3.liveWords], [false, true], "a timer box makes a slide's words live");
     assert.equal(await files.readPresentationFile(lib, path.join(dir, "missing.pro")), null);
+    // The Go Live check reads the same file in a worker, off the main thread, and gets the same answer.
+    const { runWorker } = await import("../server/run-worker.js");
+    const viaWorker = await runWorker(new URL("../server/presentation-file-worker.js", import.meta.url), { workerData: { file }, ms: 30_000, tooLong: "too long" });
+    assert.deepEqual(viaWorker.doc, doc);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

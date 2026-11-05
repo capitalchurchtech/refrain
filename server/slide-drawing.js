@@ -12,7 +12,7 @@
  * selected. The drawing is the propresenter-bundle package's; without the
  * package nothing is drawn and the screens use thumbnails as before.
  */
-import { Worker } from "node:worker_threads";
+import { runWorker } from "./run-worker.js";
 import { pictureSource } from "./slide-pictures.js";
 
 const DRAW_MS = 30_000;
@@ -32,28 +32,8 @@ export function playedCueIds(doc) {
 }
 
 /** Draws one library file in a worker, with a time limit. */
-function drawInWorker({ file, pid, version }) {
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL("./slide-drawing-worker.js", import.meta.url), {
-      workerData: { file, pid, version },
-      resourceLimits: { maxOldGenerationSizeMb: 1024 },
-    });
-    const timer = setTimeout(() => {
-      worker.terminate();
-      reject(new Error("Drawing took too long."));
-    }, DRAW_MS);
-    worker.once("message", (m) => {
-      clearTimeout(timer);
-      worker.terminate();
-      if (m.ok) resolve(m);
-      else reject(new Error(m.error));
-    });
-    worker.once("error", (err) => {
-      clearTimeout(timer);
-      reject(err);
-    });
-  });
-}
+const drawInWorker = ({ file, pid, version }) =>
+  runWorker(new URL("./slide-drawing-worker.js", import.meta.url), { workerData: { file, pid, version }, ms: DRAW_MS, tooLong: "Drawing took too long." });
 
 /**
  * Drawn files, kept in memory. `slide()` answers one slide by its played

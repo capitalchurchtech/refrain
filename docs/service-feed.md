@@ -36,10 +36,8 @@ during performance mode or while the feed is switched off.
 
 **Words on the slide** (off by default, `includeSlideText`) adds the slide's text
 to the status. Leave it off unless the other side needs it: a prayer or care
-slide can carry a name. **Picture of the slide** (off by default,
-`includeSlideImage`) sends a picture of the slide. It needs Slide pictures set to
-Show pictures. During performance mode it sends only pictures already on disk;
-outside it, ProPresenter may be asked to draw one.
+slide can carry a name. No picture of the slide is sent: Refrain asks
+ProPresenter for a picture only for Quality Control and flags (2026-11-04).
 
 ## Contract, version 1
 
@@ -72,8 +70,7 @@ push is dropped, and the next carries newer truth.
     "slideIndex": 2,
     "slideNumber": 3,
     "slideCount": 6,
-    "text": "only when includeSlideText is on",
-    "imageKey": "only when includeSlideImage is on"
+    "text": "only when includeSlideText is on"
   },
   "tz": "America/Denver",
   "history": {
@@ -129,16 +126,6 @@ if it wouldn't, the oldest items are dropped. A name is at most 200 characters.
   times in it, not the viewer's.
 - Names only: no slide text and no presentation ids, whatever
   `includeSlideText` says, and nothing about who did what.
-
-### `PUT {url}/image`
-
-Only when **Picture of the slide** is on. Sent right after a status whose
-`slide.imageKey` is set, once per slide. The body is the JPEG (about 25 KB, never
-over 200 KB) as `Content-Type: image/jpeg`, with an `X-Slide-Key` header equal to
-that `imageKey`. Keep one image per console, replace it, and show it only while
-its key matches the console's current `imageKey`. A slide with no picture ready
-simply has none, and with Slide pictures on Words only, `imageKey` is set but no
-image is ever sent. A `4xx` here is ignored and never affects status.
 
 ### `PUT {url}/logs/{YYYY-MM-DD}.jsonl`
 

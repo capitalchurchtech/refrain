@@ -107,12 +107,8 @@ See [the search index](indexing.md).
 | `networkModule.pin` | `daily` | `daily`, a fixed 4 to 8 digit PIN, or empty for none |
 | `networkModule.pinHint` | none | The sign-in screen's line about where to find the PIN |
 | `networkModule.phoneGoLive` | `false` | Let phones go live |
-| `networkModule.phonePictures` | `false` | Let the phone page fetch stored slide pictures (the current page doesn't show them) |
-| `slidePictures.show` | `false` | Let screens ask ProPresenter for slide pictures (otherwise words only); doesn't affect the pictures Refrain draws from files |
-| `slidePictures.quickSlides` | on unless false | Draw each safe slide once when it is kept |
-| `slidePictures.flagged` | on unless false | Take a picture when a slide is flagged |
-| `slidePictures.prerender` | `false` | Draw ahead of time (paused) |
-| `slidePictures.playlists` | `[]` | Extra playlists for Update pictures |
+| `slidePictures.quickSlides` | on unless false | The safe slide keys show the slide drawn, or `false` for its name |
+| `slidePictures.flagged` | on unless false | Ask ProPresenter for a picture of a flagged slide Refrain can't draw |
 
 See [phones](phones.md).
 

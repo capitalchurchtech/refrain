@@ -84,7 +84,7 @@ presentations, playlists or slide pictures from ProPresenter has to respect both
   should read the heartbeat's cached state rather than add calls.
 - **Protect ProPresenter** (`protectProPresenter`, on unless `false`). While
   on, nothing reads presentations through the API in bulk: Quality Control,
-  the pre-service checks, Update pictures and Get slide pictures all refuse,
+  the pre-service checks and Get slide pictures all refuse,
   and the index runs from `.pro` files only. It is on in every fresh install,
   so a feature that needs bulk API reads will refuse out of the box. Say so in
   its docs and its refusal message rather than discovering it in a booth.

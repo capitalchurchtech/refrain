@@ -155,14 +155,13 @@ See [the search index](indexing.md) for the behaviour.
 ## Slide pictures
 
 A ProPresenter thumbnail writes about 30 KB into its workspace database, so the
-booth screens draw their own where they can. `server/slide-drawing.js` draws a
+booth screens draw their own. `server/slide-drawing.js` draws a
 whole presentation from its `.pro` file in a worker, in the arrangement
 ProPresenter has selected, keeps the last 30 files drawn in memory, and serves
-them to `public/slide-drawing.js`. Quality Control and the safe slide keys use
-it; a slide it can't draw falls back to ProPresenter's thumbnail, then to its
-words. Bundles shares the same drawing code. Everything else that needs a
-picture (phones, Update pictures, flag pictures) asks ProPresenter, under the
-rules in [phones](phones.md#slide-pictures).
+them to `public/slide-drawing.js`. The safe slide keys, Quality Control and
+Flags use it, and Bundles shares the same drawing code. ProPresenter is asked for
+a picture only when Quality Control or a flag needs a slide that can't be drawn;
+phones show words. See [phones](phones.md#slide-pictures).
 
 ## The heartbeat
 

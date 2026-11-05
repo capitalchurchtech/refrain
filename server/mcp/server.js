@@ -159,7 +159,7 @@ const GENERAL = [
               fit: { enum: ["none", "grow_box", "shrink_text", "grow_text", "fit_text"] }, capitals: { enum: ["none", "all", "small", "title", "start"] },
               line_spacing: { type: "number", description: "A multiple of single spacing, e.g. 1.2" },
               text_outline: { type: ["object", "string"], properties: { width: { type: "number" }, color: { type: "string" } }, description: "An outline round the letters, { width, color }, width as ProPresenter shows it (a percent of the type size), or none" },
-              list: { type: ["string", "object"], properties: { style: { type: "string" }, start: { type: "number" } }, description: "A list style like disc or 1., or { style, start }, or none" },
+              list: { type: ["string", "object"], properties: { style: { type: "string" }, start: { type: "number" }, indent: { type: "number" } }, description: "A list style like disc or 1., or { style, start, indent }, or none. The indent, in points, is the box's own, else the one other lists in this file use, else 80" },
               text_shadow: { type: "boolean" }, feather: { type: ["number", "string"], description: "A soft edge, 0 to 1, or none" },
               margins: { type: ["number", "object"], properties: { left: { type: "number" }, right: { type: "number" }, top: { type: "number" }, bottom: { type: "number" } } },
               x: { type: "number" }, y: { type: "number" }, width: { type: "number" }, height: { type: "number" }, rotation: { type: "number" },
@@ -180,7 +180,7 @@ const GENERAL = [
   {
     name: "refrain_edit_slides",
     title: "Change slides",
-    description: "Change whole slides on a working copy: a list of changes, each with the slide (its number when the copy was opened, or its id) and only what should change: label, label_color, enabled, background (#rrggbb or none), group (moves it, making the group if new), move (up, down, first, last, duplicate, delete, within its group), add_macro and remove_macro (by name, from ProPresenter's workspace or another slide in the file), add_media (a picture, video or sound file as a background or foreground media action, or a picture or video as a box; on a bundle, which carries the file) and remove_media (by file name), add_action (clear a layer, a Look, prop, message, timer, clear group or stage layout, by its name in ProPresenter's workspace) and remove_action (by kind, and name). Also groups ({ name, rename, color }), arrangements ({ name, groups in play order, rename, delete }), play_arrangement, and the presentation's name. notes sets a slide's notes; transition (an effect's name, copied from a slide that already uses it, in this file or ProPresenter's library) and transition_seconds its transition. All checked together: if one is wrong, none is saved. Changes only the copy.",
+    description: "Change whole slides on a working copy: a list of changes, each with the slide (its number when the copy was opened, or its id) and only what should change: label, label_color, enabled, background (#rrggbb or none), group (moves it, making the group if new), move (up, down, first, last, duplicate, delete, within its group), add_macro and remove_macro (by name, from ProPresenter's workspace or another slide in the file), add_media (a picture, video or sound file as a background or foreground media action, or a picture or video as a box; on a bundle, which carries the file) and remove_media (by file name), add_action (clear a layer, a Look, prop, message, timer or clear group, by its name in ProPresenter's workspace; a stage layout is switched by adding the macro that does it, and a message with a blank to fill is refused) and remove_action (by kind, and name). Also groups ({ name, rename, color }), arrangements ({ name, groups in play order, rename, delete }), play_arrangement, and the presentation's name. notes sets a slide's notes; transition (an effect's name, copied from a slide that already uses it, in this file or ProPresenter's library) and transition_seconds its transition. All checked together: if one is wrong, none is saved. Changes only the copy.",
     inputSchema: {
       type: "object", required: ["copy_id"],
       properties: {
@@ -203,10 +203,9 @@ const GENERAL = [
                 items: {
                   type: "object", required: ["kind"],
                   properties: {
-                    kind: { enum: ["clear", "look", "prop", "message", "timer", "clear group", "stage layout"] }, name: { type: "string" },
+                    kind: { enum: ["clear", "look", "prop", "message", "timer", "clear group"] }, name: { type: "string" },
                     what: { enum: ["all", "audio", "background", "live_video", "prop", "slide", "logo", "messages", "audio_effects"], description: "For clear" },
                     do: { enum: ["start", "stop", "reset", "reset_and_start", "stop_and_reset", "increment"], description: "For timer" },
-                    screens: { type: "array", items: { type: "string" }, description: "For stage layout; default every stage screen" },
                   },
                 },
               },
