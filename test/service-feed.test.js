@@ -5,7 +5,6 @@ import { renderLogSendHtml } from "../public/service.js";
 import {
   applyServiceFeedSettings,
   buildStatus,
-  imageKeyOf,
   cleanServiceFeedSettings,
   createServiceFeed,
   feedLamp,
@@ -258,7 +257,7 @@ test("settings from the tab are checked and tidied", () => {
   assert.equal(cleanServiceFeedSettings({ enabled: true, windows: [{ days: [], from: "09:00", until: "14:00" }] }).ok, false, "a window needs a day");
   assert.equal(cleanServiceFeedSettings({ enabled: true, windows: [{ days: ["sun"], from: "14:00", until: "09:00" }] }).ok, false, "start before end");
   const ok = cleanServiceFeedSettings({ enabled: true, name: "  FOH  ", url: " https://a.example ", windows: [{ days: ["sun", "fri"], from: "09:00", until: "14:00" }], extra: 1 });
-  assert.deepEqual(ok.value, { enabled: true, name: "FOH", url: "https://a.example", includeSlideText: false, includeSlideImage: false, nightlyLog: true, nightlyLogAt: "02:00", windows: [{ days: ["sun", "fri"], from: "09:00", until: "14:00" }] });
+  assert.deepEqual(ok.value, { enabled: true, name: "FOH", url: "https://a.example", includeSlideText: false, nightlyLog: true, nightlyLogAt: "02:00", windows: [{ days: ["sun", "fri"], from: "09:00", until: "14:00" }] });
   assert.deepEqual([cleanServiceFeedSettings({ enabled: true, nightlyLog: false, nightlyLogAt: "23:30" }).value.nightlyLog, cleanServiceFeedSettings({ enabled: true, nightlyLogAt: "23:30" }).value.nightlyLogAt], [false, "23:30"]);
   assert.match(cleanServiceFeedSettings({ enabled: true, nightlyLogAt: "25:00" }).error, /time of day/);
   assert.match(cleanServiceFeedSettings({ enabled: true, nightlyLog: "yes" }).error, /nightlyLog/);
@@ -367,57 +366,10 @@ test("Send log shows only when telemetry is set up", () => {
   assert.match(failed, /The last nightly send failed: The server said 503 &lt;b&gt;/);
 });
 
-const picRig = (extra = {}) => {
-  const calls = [];
-  const mod = { ...good, includeSlideImage: true };
-  let clock = new Date("2026-10-04T09:00:00").getTime();
-  const feed = createServiceFeed({
-    getModule: () => mod, getLive: () => live({ slide: { presentationId: "p1", presentationName: "A", slideIndex: 2, slideCount: 6 } }),
-    appVersion: "1", env, now: () => clock,
-    fetchImpl: async (url, init) => { calls.push({ url, init }); return { ok: true, status: 204 }; },
-    getPicture: extra.getPicture ?? (async () => ({ type: "image/jpeg", bytes: Buffer.from("jpg") })),
-    listLogs: async () => [], readLog: async () => "", loadSent: async () => ({}), saveSent: async () => {},
-  });
-  return { feed, calls, advance: (ms) => (clock += ms) };
-};
-
-test("with picture sending on, the status names the picture and it follows once per slide", async () => {
-  const r = picRig();
-  await r.feed.tickStatus();
-  const status = JSON.parse(r.calls[0].init.body);
-  assert.equal(status.slide.imageKey, "p1:2");
-  assert.equal(r.calls[1].url.endsWith("/image"), true);
-  assert.equal(r.calls[1].init.headers["x-slide-key"], "p1:2");
-  r.advance(31_000);
-  await r.feed.tickStatus();
-  assert.equal(r.calls.filter((c) => c.url.endsWith("/image")).length, 1, "same slide, not sent again");
-});
-
-test("with picture sending off there is no imageKey", () => {
-  const status = buildStatus({ live: live({ slide: { presentationId: "p1", slideIndex: 1 } }), mod: good, consoleId: "c1", appVersion: "1", seq: 1, now: 0 });
+test("the status never names a picture of the slide (owner, 2026-11-04)", () => {
+  const status = buildStatus({ live: live({ slide: { presentationId: "p1", slideIndex: 1 } }), mod: { ...good, includeSlideImage: true }, consoleId: "c1", appVersion: "1", seq: 1, now: 0 });
   assert.equal("imageKey" in status.slide, false);
-  assert.equal(imageKeyOf({ presentationId: "p1", slideIndex: 1 }), "p1:1");
-});
-
-test("a slide with no picture ready sends none, tries a few times, and never disturbs status", async () => {
-  let asked = 0;
-  const r = picRig({ getPicture: async () => (asked++, null) });
-  await r.feed.tickStatus();
-  for (let i = 0; i < 6; i++) { r.advance(31_000); await r.feed.tickStatus(); }
-  assert.equal(r.calls.some((c) => c.url.endsWith("/image")), false);
-  assert.equal(asked, 3, "three tries, then left alone");
-  assert.equal(r.feed.state().lastError, null);
-});
-
-test("a picture over the size cap is not sent", async () => {
-  const r = picRig({ getPicture: async () => ({ type: "image/jpeg", bytes: Buffer.alloc(300 * 1024) }) });
-  await r.feed.tickStatus();
-  assert.equal(r.calls.some((c) => c.url.endsWith("/image")), false);
-});
-
-test("settings carry the picture choice, off unless asked", () => {
-  assert.equal(cleanServiceFeedSettings({ enabled: true }).value.includeSlideImage, false);
-  assert.equal(cleanServiceFeedSettings({ enabled: true, includeSlideImage: true }).value.includeSlideImage, true);
+  assert.equal("includeSlideImage" in cleanServiceFeedSettings({ enabled: true, includeSlideImage: true }).value, false);
 });
 
 test("feedLamp: off, fault, idle and ok, and a failure is never reported as fine", () => {

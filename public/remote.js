@@ -441,7 +441,7 @@ async function addFlagNow() {
   try {
     const r = await post("/api/flag", item);
     closeSheet();
-    toast(r.picture ? "Flag added, with a picture of the slide." : "Flag added. No picture could be taken.");
+    toast(r.picture || r.drawn ? "Flag added." : "Flag added. No picture could be taken.");
     openFlagCount = (openFlagCount ?? 0) + 1;
     openFlagsList();
   } catch (err) {
@@ -479,7 +479,7 @@ function flagsBody() {
   return `${add}<div class="sect"><span>Open · ${s.list.length}</span></div>${s.list
     .map(
       (f) => `<div class="fcard">
-        ${f.picture ? `<div class="pic"><img data-flag-pic="${esc(f.id)}" alt="Picture of the flagged slide" /></div>` : `<div class="pic">No picture taken</div>`}
+        ${f.picture ? `<div class="pic"><img data-flag-pic="${esc(f.id)}" alt="Picture of the flagged slide" /></div>` : f.text ? `<div class="pic words">${esc(f.text)}</div>` : ""}
         <div style="margin-top:8px"><span class="tagc${f.type === "Note" ? " note" : ""}">${esc(f.type ?? "Flag")}</span><b>${esc(f.presentationName ?? "Untitled")}${f.slideNumber ? ` · slide ${f.slideNumber}` : ""}</b></div>
         ${f.note ? `<div style="margin-top:4px">${esc(f.note)}</div>` : ""}
         <div class="muted" style="margin-top:4px">${esc(f.by ?? "Someone")} · ${esc(ago(f.at))}</div></div>`

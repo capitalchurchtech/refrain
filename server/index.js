@@ -77,8 +77,9 @@ import {
   searchOtherArrangements,
   otherSlidesCoverage,
 } from "./search-index.js";
-import { loadFileReader, readPresentationFile, compareWithLive, workspaceOfFile } from "./presentation-files.js";
+import { loadFileReader, compareWithLive, workspaceOfFile } from "./presentation-files.js";
 import { createSlideDrawing } from "./slide-drawing.js";
+import { runWorker } from "./run-worker.js";
 import { shownCopy, pruneCache } from "./slide-pictures.js";
 import { startLibraryWatch, fullRebuildSuggestion,
   indexStaleness,
@@ -122,10 +123,10 @@ import { noteItem, splitsView, feedItems, itemLines, leftOpenLines } from "./ite
 import { playingFromDoc, playingStale, liveSlideDetails } from "./playing-slide.js";
 import { saveFlagPicture, readFlagPicture, listFlagPictureIds } from "./flag-pictures.js";
 import { previewTargets, createThumbCache } from "./slide-preview.js";
-import { createThumbStore, slideKey as pictureKey } from "./thumb-store.js";
+import { createThumbStore } from "./thumb-store.js";
 import { readFingerprint } from "./index-fingerprint.js";
 import { envEntries, applyEnvEdits, saveEnvFile, readText as readEnvText } from "./env-file.js";
-import { crossSiteRefused } from "./request-guard.js";
+import { crossSiteRefused, hostRefused } from "./request-guard.js";
 import { readEta } from "./rebuild-eta.js";
 import { markHidden, setHidden, isControlId, hiddenIds } from "./live-visibility.js";
 import { safeSlides, addSafeSlide, removeSafeSlide, renameSafeSlide, moveSafeSlide } from "./safe-slides.js";
@@ -264,6 +265,7 @@ registerDeliveryBackends(await discoverDeliveryBackends());
 let client = new ProPresenterClient(config.propresenter);
 
 app.use((req, res, next) => {
+  if (hostRefused(req.get("host"))) return res.status(421).type("text").send("Refused: Refrain answers only to this computer's own address (127.0.0.1 or localhost).");
   if (crossSiteRefused(req.method, req.get("origin"), req.get("host"))) {
     return res.status(403).json({ error: "Refused: that request came from another website's page." });
   }
@@ -1070,7 +1072,7 @@ let rebuildStopRequested = false;
  * of it (each presentation about 10 MB that ProPresenter keeps until it
  * restarts): no index run of any kind, automatic or pressed, and none of the
  * playlist-wide readers (Spell Check, the pre-service checks, the FS/T
- * report's unknowns, Update pictures and pre-render). Search keeps working
+ * report's unknowns, Get slide pictures). Search keeps working
  * from the saved index; Go Live, Now, Clear and the rest are unaffected.
  */
 const protectOn = () => config.protectProPresenter !== false;
@@ -1437,48 +1439,46 @@ async function pictureFingerprint(pid) {
   return fp;
 }
 /**
- * Slide pictures on or off, everywhere (owner, 2026-10-04: "disable all image
- * previews ... temporary"). **Off unless `slidePictures.show` is true**, set
- * on Settings › Phones › Slide pictures. While off, Refrain asks ProPresenter
- * for no picture at all: every route that serves one answers "no picture",
- * the Update and pre-render runs don't start, and the screens show the
- * slide's words instead. Turning it back on is the one switch.
- */
-const picturesOn = () => config.slidePictures?.show === true;
-
-/**
- * Quick slides keep their pictures while pictures are off (owner,
- * 2026-10-07: "allow Refrain to collect images of any saved quick slide").
- * At most eight safe slides, each drawn once and kept on disk, so a volunteer
- * can tell the logo from the blank at a glance. On unless
- * `slidePictures.quickSlides` is false (Settings › Phones › Slide pictures).
+ * Slide pictures are Refrain's own drawings of the file (server/slide-drawing.js)
+ * everywhere on the desktop, and words on phones (owner, 2026-11-04: "use only
+ * rendered slide images unless it's quality control or a flagged slide and a
+ * slide can't render, then request a single slide image from ProPresenter").
+ * Each ProPresenter picture writes into its workspace database (handoff section
+ * 33), so one is asked for only for those two, one slide at a time.
+ *
+ * `slidePictures.quickSlides` stays a display choice: Live's safe-slide keys
+ * show the slide drawn, or its name. On unless false.
  */
 const quickSlidePicturesOn = () => config.slidePictures?.quickSlides !== false;
 const isSafeSlide = (pid, idx) => safeSlides(config.liveModule?.safeSlides).some((x) => x.presentationId === pid && x.slideIndex === idx);
-/** Whether a picture of this slide may be shown or drawn at all. */
-// Slides Quality Control found are allowed whatever the pictures switch says: it
-// is a prep tool, run on purpose between services, and its pictures are how a
-// slide is found by eye in the editor (owner, 2026-10-11).
-const pictureAllowed = (pid, idx) => picturesOn() || (quickSlidePicturesOn() && isSafeSlide(pid, idx)) || flagCaptures.has(`${pid}:${idx}`) || spellcheckPictures.has(`${pid}:${idx}`);
-// The one slide a phone is flagging right now (owner, 2026-10-09: a flagged
-// slide always gets its picture). One at a time per flag, human-paced, and the
-// switch is `slidePictures.flagged`, on unless false; any other slide's picture
-// is still refused while pictures are off.
+/** Whether ProPresenter may be asked for a picture of this slide: one Quality Control found, or a flag's that can't be drawn. */
+const pictureAllowed = (pid, idx) => flagCaptures.has(`${pid}:${idx}`) || spellcheckPictures.has(`${pid}:${idx}`);
+// A flagged slide gets its picture (owner, 2026-10-09): drawn, else
+// ProPresenter's, taken once and kept with the flag. The switch for the
+// ProPresenter picture is `slidePictures.flagged`, on unless false.
 const flaggedPicturesOn = () => config.slidePictures?.flagged !== false;
 const flagCaptures = new Map(); // "pid:idx" -> how many flags are being captured for it, so one finishing never closes the gate for another
 const FLAG_PICTURES_DIR = "./data/flag-pictures";
 const FLAG_CAPTURE_MS = 6000;
-/** Takes (or finds) a picture of the flagged slide and keeps it with the flag. The file name, or null. */
+/**
+ * The picture a new flag keeps: none when the slide can be drawn (the Flags
+ * screen draws it), else ProPresenter's, taken once and saved with the flag.
+ * @returns {Promise<{ drawn: boolean, picture: string|null }>}
+ */
 async function captureFlagPicture(flagId, pid, idx, { force = false } = {}) {
+  if (await canDraw(pid, idx)) {
+    flaggedSlides.add(`${pid}:${idx}`);
+    return { drawn: true, picture: null };
+  }
   // `force`: someone pressed Get slide pictures on the Flags screen, asking for
   // exactly this, so the switch is not consulted.
-  if (!force && !flaggedPicturesOn()) return null;
+  if (!force && !flaggedPicturesOn()) return { drawn: false, picture: null };
   const key = `${pid}:${idx}`;
   flagCaptures.set(key, (flagCaptures.get(key) ?? 0) + 1);
   try {
     const fp = await pictureFingerprint(pid).catch(() => null);
     const img = (fp ? await thumbStore.get(pid, idx, fp).catch(() => null) : null) ?? (await Promise.race([thumbCache(pid, idx, fp), new Promise((r) => setTimeout(() => r(null), FLAG_CAPTURE_MS))]));
-    return img ? await saveFlagPicture(FLAG_PICTURES_DIR, flagId, img) : null;
+    return { drawn: false, picture: img ? await saveFlagPicture(FLAG_PICTURES_DIR, flagId, img) : null };
   } finally {
     const left = (flagCaptures.get(key) ?? 1) - 1;
     if (left > 0) flagCaptures.set(key, left);
@@ -1497,28 +1497,6 @@ const thumbCache = createThumbCache(
   // a stored one is a disk read, and shouldn't queue behind renders.
   { stored: (pid, idx, fp) => thumbStore.get(pid, idx, fp).catch(() => null) }
 );
-/**
- * Draws any saved quick slide that has no picture on disk yet, one at a time:
- * when one is saved, and when quick-slide pictures are switched on. Never
- * during a service (performance mode), when nothing new is drawn; the menu
- * shows the name until there's a picture.
- */
-let collectingQuickSlides = false;
-async function collectQuickSlidePictures() {
-  if (collectingQuickSlides || !quickSlidePicturesOn()) return;
-  collectingQuickSlides = true;
-  try {
-    for (const s of safeSlides(config.liveModule?.safeSlides)) {
-      if (performance.armed || !pictureAllowed(s.presentationId, s.slideIndex)) break;
-      const fp = await pictureFingerprint(s.presentationId).catch(() => null);
-      if (!fp || (await storedSlideThumb(s.presentationId, s.slideIndex))) continue;
-      await thumbCache(s.presentationId, s.slideIndex, fp).catch(() => null);
-    }
-  } finally {
-    collectingQuickSlides = false;
-  }
-}
-
 /** A picture already rendered and kept on disk, or null. Never asks ProPresenter. */
 async function storedSlideThumb(pid, idx) {
   const fp = await pictureFingerprint(pid);
@@ -1526,161 +1504,6 @@ async function storedSlideThumb(pid, idx) {
 }
 // The store's size cap is kept whether or not pre-rendering is on.
 setInterval(() => thumbStore.prune().catch(() => {}), 3_600_000).unref();
-
-// --- Slide pictures ahead of the service (owner request, 2026-09-27) ---------
-// Today's service playlists, plus any named in config `slidePictures.playlists`,
-// rendered one picture at a time while nothing is on the screens and no
-// service window is open. **Off unless `slidePictures.prerender` is true**:
-// ProPresenter keeps ~1-2 MB for every slide it draws until it restarts, so
-// rendering ahead only pays when ProPresenter is restarted before the service
-// (rendered the day before, say). The disk store works either way. It stops the moment either changes. Sunday morning
-// is usually live from the first slide, so in practice this runs the day
-// before or between services, which is when the work belongs.
-// Paused (owner, 2026-10-29): Refrain draws no pictures on its own for now,
-// whatever `slidePictures.prerender` says, while ProPresenter 22 beta is slow
-// on rich slides. Update pictures (Service › Day) still draws them when asked.
-// The setting is kept, so un-pausing is this one line.
-const PRERENDER_PAUSED = true;
-const PRERENDER_CHECK_MS = 5 * 60_000;
-const PRERENDER_PACING_MS = 100;
-let prerenderCheckedAt = 0;
-let slidePicturesStatus = { lastRunAt: null, presentations: 0, ready: 0, rendered: 0, stopped: false };
-async function prerenderTargets() {
-  const ids = new Map();
-  if (serviceModuleOn() && serviceDay.day) {
-    for (const s of serviceState().services) for (const it of s.playlist?.items ?? []) if (it.presentationId) ids.set(it.presentationId, it.name);
-  }
-  const pinned = Array.isArray(config.slidePictures?.playlists) ? config.slidePictures.playlists : [];
-  if (pinned.length) {
-    const all = flattenPlaylists(await client.getPlaylists());
-    for (const want of pinned) {
-      const pl = all.find((p) => p.id === want || String(p.name ?? "").toLowerCase() === String(want).toLowerCase());
-      if (!pl) continue;
-      const { items } = await client.getPlaylistItems(pl.id);
-      for (const it of items) if (it.id) ids.set(it.id, it.name);
-    }
-  }
-  return ids;
-}
-// Quiet means nothing on the screens right now, performance mode off for 10
-// minutes (it only arms after 2 minutes of content, so just after a restart
-// mid-service it is still off), no service window, and no index run.
-const PRERENDER_QUIET_MS = 10 * 60_000;
-const quietForPictures = (now = Date.now()) =>
-  !frozen() &&
-  !liveState.live &&
-  performanceOffSince != null &&
-  now - performanceOffSince >= PRERENDER_QUIET_MS &&
-  !holdHeartbeatPace(now) &&
-  !getRebuildProgress().inProgress;
-/**
- * Brings today's slide pictures up to date (owner, 2026-10-04: "we make
- * updates until about 15 minutes before service"). For each presentation in
- * today's playlists: read it from ProPresenter, keep every picture whose
- * slide is unchanged (same group, place and words, wherever an edit or an
- * arrangement change moved it; thumb-store.carryOver), and draw only the new
- * or changed ones, one at a time.
- *
- * `operator`: pressed on Service › Day or Settings. Reads every presentation
- * (an arrangement switch may not change the file), runs with content on the
- * screens, and stops only for performance mode. Otherwise it's pre-render:
- * only presentations whose file changed, and only while it's quiet.
- */
-let picturesRun = null; // progress while running
-async function refreshPictures({ operator = false } = {}) {
-  // Why a run stops, said as it is: the switch, performance mode, or (for
-  // pre-render) something going on the screens.
-  const stopReason = () =>
-    !picturesOn() ? "slide pictures were turned off" : operator ? (performance.armed ? "performance mode came on" : null) : !quietForPictures() ? "something went on the screens" : null;
-  const stop = () => {
-    const why = stopReason();
-    if (why) run.stopReason = why;
-    return Boolean(why);
-  };
-  const started = Date.now();
-  const run = { running: true, operator, startedAt: new Date(started).toISOString(), presentations: 0, done: 0, ready: 0, total: 0, drawn: 0, kept: 0, stopped: false };
-  picturesRun = run;
-  try {
-    const targets = await prerenderTargets();
-    run.presentations = targets.size;
-    for (const [pid] of targets) {
-      if (stop()) {
-        run.stopped = true;
-        break;
-      }
-      const fp = await pictureFingerprint(pid);
-      if (!fp) {
-        run.done += 1;
-        continue;
-      }
-      const known = await thumbStore.info(pid);
-      if (!operator && known?.fingerprint === fp && known.count && (await thumbStore.complete(pid, fp, known.count))) {
-        run.ready += known.count;
-        run.total += known.count;
-        run.done += 1;
-        continue;
-      }
-      let slides;
-      try {
-        const doc = await client.getPresentation(pid);
-        // The arrangement ProPresenter has selected: its pictures are
-        // numbered by it (as Go Live and the Now preview are).
-        slides = flattenGroups(resolveArrangement(doc, []).groups).slice(0, 300);
-      } catch {
-        run.done += 1;
-        continue;
-      }
-      const keys = slides.map((sl) => pictureKey(sl));
-      run.kept += await thumbStore.carryOver(pid, fp, keys);
-      // Anything Now or the menu kept in memory for this presentation may be
-      // from before the change.
-      thumbCache.forget(pid);
-      pictureFingerprints.delete(pid);
-      run.total += keys.length;
-      for (let i = 0; i < keys.length; i++) {
-        if (stop()) {
-          run.stopped = true;
-          break;
-        }
-        if (await thumbStore.get(pid, i, fp)) {
-          run.ready += 1;
-          continue;
-        }
-        const img = await client.getSlideThumbnail(pid, i).catch(() => null);
-        if (img) {
-          await thumbStore.put(pid, i, fp, img, Date.now(), keys[i]);
-          run.drawn += 1;
-          run.ready += 1;
-        }
-        await new Promise((r) => setTimeout(r, PRERENDER_PACING_MS));
-      }
-      run.done += 1;
-      if (run.stopped) break;
-    }
-    await thumbStore.prune();
-  } catch (err) {
-    console.log(`Slide pictures: couldn't finish (${err.message}).`);
-  } finally {
-    run.running = false;
-    run.finishedAt = new Date().toISOString();
-    slidePicturesStatus = { lastRunAt: run.finishedAt, presentations: run.presentations, ready: run.ready, total: run.total, rendered: run.drawn, kept: run.kept, stopped: run.stopped, stopReason: run.stopReason ?? null, operator };
-    if (run.drawn || run.stopped || operator) {
-      console.log(
-        `Slide pictures${operator ? " (pressed)" : ""}: drew ${run.drawn}, kept ${run.kept} unchanged, ${run.ready} of ${run.total} ready across ${run.presentations} presentation(s) in today's playlists, in ${((Date.now() - started) / 1000).toFixed(0)}s${run.stopped ? `. Stopped: ${run.stopReason ?? "interrupted"}` : ""}.`
-      );
-    }
-  }
-  return run;
-}
-
-async function maybePrerender(now = Date.now()) {
-  if (now - prerenderCheckedAt < PRERENDER_CHECK_MS) return;
-  prerenderCheckedAt = now;
-  if (PRERENDER_PAUSED || protectOn() || !picturesOn() || config.slidePictures?.prerender !== true || picturesRun?.running || !quietForPictures(now) || !client.isLocalHost) return;
-  const readyFor = await propresenterReadyForMs();
-  if (readyFor == null || readyFor < WATCH_SETTLE_MS) return;
-  await refreshPictures();
-}
 
 /**
  * Protect ProPresenter on or off (Settings › Search › Advanced). Off lets the
@@ -1699,20 +1522,6 @@ app.post("/api/protect", async (req, res) => {
   startWatching(); // stops the watcher when protected, starts it when not
   console.log(`Protect ProPresenter turned ${on ? "on" : "off"} from Settings.`);
   res.json({ ok: true, on: protectOn() });
-});
-
-/** "Update pictures for today", from Service › Day or Settings. Runs in the background; progress below. */
-app.post("/api/slide-pictures/update", (_req, res) => {
-  if (protectOn()) return res.status(409).json({ error: PROTECT_REFUSAL });
-  if (!picturesOn()) return res.status(409).json({ error: "Slide pictures are off (Settings › Phones › Slide pictures)." });
-  if (performance.armed) return res.status(409).json({ error: "Performance mode is on, so no pictures are drawn now. Update them before the service, or after." });
-  if (picturesRun?.running) return res.status(409).json({ error: "Already updating the pictures.", run: picturesRun });
-  refreshPictures({ operator: true }).catch((err) => console.error("Updating pictures failed:", err.message));
-  res.json({ ok: true, run: picturesRun });
-});
-
-app.get("/api/slide-pictures/status", (_req, res) => {
-  res.json({ show: picturesOn(), run: picturesRun, last: slidePicturesStatus });
 });
 
 /** Every slide of the presentation on the screens, words from the index. At most 300. */
@@ -1775,8 +1584,8 @@ async function checkAgainstFile(liveDoc) {
   if (!filePath || Date.now() - (fileCheckedAt.get(key) ?? 0) < 3_600_000) return;
   fileCheckedAt.set(key, Date.now());
   if (fileCheckedAt.size > 200) fileCheckedAt.delete(fileCheckedAt.keys().next().value);
-  const lib = await loadFileReader();
-  const fromFile = lib ? await readPresentationFile(lib, filePath) : null;
+  // Read in a worker: a big presentation decodes for a while, and this runs as it goes live.
+  const fromFile = (await runWorker(new URL("./presentation-file-worker.js", import.meta.url), { workerData: { file: filePath }, ms: 30_000, tooLong: "Reading the file took too long." }).catch(() => null))?.doc;
   if (fromFile?.presentation?.id?.uuid !== pid) return;
   fromFile.presentation.current_arrangement = live.current_arrangement ?? null; // the arrangement that is playing
   const slidesOf = (doc) => resolveArrangement(doc, []).groups.flatMap((g) => (g.slides ?? []).map((s) => ({ text: normalizeText(s.text), liveWords: Boolean(s.liveWords) })));
@@ -1807,7 +1616,7 @@ async function openFlagsCached() {
   const list = visibleFlags(all)
     .filter((f) => !f.resolved)
     .slice(0, 30)
-    .map((f) => ({ id: f.id, presentationName: f.presentationName ?? null, slideNumber: Number.isInteger(f.slideIndex) ? f.slideIndex + 1 : null, type: f.type ?? null, note: f.note ?? "", by: f.submittedBy ?? null, at: f.capturedAt, picture: f.picture ?? (pictured.has(f.id) ? "local" : null) }));
+    .map((f) => ({ id: f.id, presentationName: f.presentationName ?? null, slideNumber: Number.isInteger(f.slideIndex) ? f.slideIndex + 1 : null, text: f.text ?? "", type: f.type ?? null, note: f.note ?? "", by: f.submittedBy ?? null, at: f.capturedAt, picture: f.picture ?? (pictured.has(f.id) ? "local" : null) }));
   openFlagsCache = { at: Date.now(), list };
   return list;
 }
@@ -1845,9 +1654,6 @@ function startRemoteListener() {
     },
     currentSlides,
     noteActivity: noteClientActivity,
-    // Pictures already on disk only: a phone never makes ProPresenter draw.
-    thumb: storedSlideThumb,
-    pictures: () => picturesOn() && config.networkModule?.phonePictures === true,
     // What a phone may do, from Settings › Features: flag (Flags) and send
     // alerts (Messages: stage messages and the pager).
     features: () => ({ flags: featureOn(config, "slide-flags"), messages: featureOn(config, "messages") }),
@@ -2144,7 +1950,6 @@ async function heartbeat() {
     diag("performance", { armed: performance.armed, source: performance.source, reason: performanceTransitionReason(before, performance) });
   }
   maybeCatchUpIndex(now).catch(() => {});
-  maybePrerender(now).catch(() => {});
   return performance;
 }
 
@@ -2219,9 +2024,6 @@ const serviceFeed = createServiceFeed({
   getModule: () => config.serviceFeedModule,
   getLive: () => liveStatePayload(),
   isFrozen: () => frozen(),
-  // The same rule as the Now screen's pictures: during a service only one
-  // already on disk, so telemetry never makes ProPresenter draw anything.
-  getPicture: async (pid, idx) => (!picturesOn() ? null : performance.armed ? storedSlideThumb(pid, idx) : thumbCache(pid, idx, await pictureFingerprint(pid))),
   appVersion: version,
   listLogs: async () => {
     const names = await readdir(DIAGNOSTICS_DIR).catch(() => []);
@@ -3665,14 +3467,22 @@ app.get("/api/slide-flags", async (_req, res) => {
       ? config.slideFlagsModule.keepResolvedDays
       : DEFAULT_KEEP_RESOLVED_DAYS;
     const pictured = await listFlagPictureIds(FLAG_PICTURES_DIR);
-    const flags = visibleFlags(all, { keepResolvedDays: days }).map((f) => ({ ...f, hasPicture: pictured.has(f.id) }));
+    // A flag whose presentation file is on this Mac is drawn on the screen; only
+    // one that isn't needs ProPresenter's picture.
+    const flags = await Promise.all(
+      visibleFlags(all, { keepResolvedDays: days }).map(async (f) => {
+        const drawable = Boolean(f.presentationId && Number.isInteger(f.slideIndex) && (await drawableFile(f.presentationId)));
+        if (drawable) flaggedSlides.add(`${f.presentationId}:${f.slideIndex}`);
+        return { ...f, hasPicture: pictured.has(f.id), drawable };
+      })
+    );
     res.json({
       flags,
       types: configuredFlagTypes(),
       keepResolvedDays: days,
       hiddenResolved: all.length - flags.length,
-      // Open flags with no picture yet, for the Get slide pictures button.
-      needPictures: flags.filter((f) => !f.resolved && !f.hasPicture).length,
+      // Open flags that can't be drawn and have no picture yet, for the Get slide pictures button.
+      needPictures: flags.filter((f) => !f.resolved && !f.hasPicture && !f.drawable).length,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -3703,13 +3513,17 @@ app.post("/api/slide-flags/pictures", async (_req, res) => {
   pullingFlagPictures = true;
   try {
     const [all, pictured] = await Promise.all([listFlags({ folder: slideFlagsFolder() }), listFlagPictureIds(FLAG_PICTURES_DIR)]);
-    const todo = visibleFlags(all).filter((f) => !f.resolved && !pictured.has(f.id) && f.presentationId && Number.isInteger(f.slideIndex));
+    const open = visibleFlags(all).filter((f) => !f.resolved && !pictured.has(f.id) && f.presentationId && Number.isInteger(f.slideIndex));
+    // Only flags whose file isn't on this Mac, as the Flags list counts them: a
+    // drawable one never gets a picture, so left in it would fill every press.
+    const todo = [];
+    for (const f of open) if (!(await drawableFile(f.presentationId))) todo.push(f);
     let taken = 0;
     let failed = 0;
     for (const f of todo.slice(0, FLAG_PICTURES_PER_PRESS)) {
       if (performance.armed) break; // a service started while this ran
       const got = await captureFlagPicture(f.id, f.presentationId, f.slideIndex, { force: true }).catch(() => null);
-      if (got) taken++;
+      if (got?.picture) taken++;
       else failed++;
     }
     openFlagsCache.at = 0; // phones see them too
@@ -4331,31 +4145,21 @@ app.post("/api/live/step", async (req, res) => {
 app.get("/api/preview", (_req, res) => {
   noteClientActivity();
   const p = currentPreview();
-  const img = (t) => (t && picturesOn() ? `/api/preview/image/${encodeURIComponent(t.presentationId)}/${t.slideIndex}` : null);
   res.json({
     presentationName: p.presentationName ?? null,
     atEnd: p.atEnd,
-    current: p.current ? { slideNumber: p.current.slideIndex + 1, text: p.current.text, image: img(p.current) } : null,
-    next: p.next ? { slideNumber: p.next.slideIndex + 1, text: p.next.text, image: img(p.next) } : null,
+    current: p.current ? { slideNumber: p.current.slideIndex + 1, text: p.current.text } : null,
+    next: p.next ? { slideNumber: p.next.slideIndex + 1, text: p.next.text } : null,
     lastPhoneAction: phoneActivity[0] ?? null,
   });
 });
 
+// ProPresenter's own picture of one slide Quality Control found, when Refrain
+// can't draw it (owner, 2026-11-04). One slide, asked for once; nothing else is
+// served here.
 app.get("/api/preview/image/:pid/:idx", async (req, res) => {
   const idx = Number(req.params.idx);
-  if (!pictureAllowed(req.params.pid, idx)) return res.status(404).json({ error: "Slide pictures are off." });
-  const p = currentPreview();
-  const nowOrNext = [p.current, p.next].some((t) => t && t.presentationId === req.params.pid && t.slideIndex === idx);
-  // The church's own safe slides too (at most eight, same as the phone's
-  // route), for the safe slides on Now. Rendered once and kept on disk.
-  const aSafeSlide = isSafeSlide(req.params.pid, idx);
-  // And slides Spell Check flagged, so they can be found by eye in the editor.
-  // Each new picture costs ProPresenter memory until it restarts, so these are
-  // never drawn during a service.
-  const flagged = spellcheckPictures.has(`${req.params.pid}:${idx}`);
-  if (!nowOrNext && !aSafeSlide && !flagged) {
-    return res.status(404).json({ error: "Only the current and next slide, a safe slide, or a slide Quality Control found can be previewed." });
-  }
+  if (!spellcheckPictures.has(`${req.params.pid}:${idx}`)) return res.status(404).json({ error: "Only a slide Quality Control found that can't be drawn gets ProPresenter's picture." });
   // The address can show a different slide after one is removed in
   // ProPresenter, so the browser checks each time; the answer is tagged with
   // the file's version, and an unchanged picture is a 304 before any picture
@@ -4363,9 +4167,9 @@ app.get("/api/preview/image/:pid/:idx", async (req, res) => {
   const fp = await pictureFingerprint(req.params.pid);
   const tag = fp ? `"${fp}:${idx}"` : null;
   if (tag && req.headers["if-none-match"] === tag) return res.status(304).end();
-  // During a service (performance mode), nothing new is drawn: only pictures
-  // already on disk, rendered ahead (owner, 2026-10-04: "pre cached so that it
-  // does not hurt performance at all").
+  // During a service (performance mode), ProPresenter is asked for nothing:
+  // only a picture already on disk (owner, 2026-10-04: "does not hurt
+  // performance at all").
   const img = performance.armed ? await storedSlideThumb(req.params.pid, idx) : await thumbCache(req.params.pid, idx, fp);
   if (!img) return res.status(404).json({ error: "No picture for that slide." });
   res.set("Cache-Control", "private, no-cache");
@@ -4373,18 +4177,21 @@ app.get("/api/preview/image/:pid/:idx", async (req, res) => {
   res.type(img.type).send(img.bytes);
 });
 
-// --- Slides drawn from their files (handoff section 30, E6) -----------------
-// Quality Control's flagged slides and Live's safe-slide keys are drawn from
-// the presentation's .pro on this Mac, which asks nothing of ProPresenter (a
-// thumbnail writes into its database). So the pictures switch, which exists to
-// spare ProPresenter, does not decide these (owner, 2026-11-04). The same
-// slides the picture route serves, and nothing new drawn during a service.
+// --- Slides drawn from their files (handoff section 30, E6, E7) -------------
+// Every slide picture on the desktop is drawn from the presentation's .pro on
+// this Mac, which asks nothing of ProPresenter (a thumbnail writes into its
+// database): Live's safe-slide keys, Quality Control's flagged slides, and
+// flagged slides on Flags. Nothing new is drawn during a service, except a
+// flag's slide as it is raised (one file, in a worker, instead of asking
+// ProPresenter).
 const DRAWN_PICTURES_DIR = "./data/drawn-pictures";
 const slideDrawing = createSlideDrawing();
 setInterval(() => pruneCache(DRAWN_PICTURES_DIR).catch(() => {}), 3_600_000).unref();
 // Where Quality Control's last scans found each presentation, for one the index has not seen.
 const scannedFiles = new Map();
-const drawAllowed = (pid, idx) => isSafeSlide(pid, idx) || spellcheckPictures.has(`${pid}:${idx}`);
+// Slides with a flag, as the Flags list last showed them and as flags are raised.
+const flaggedSlides = new Set();
+const drawAllowed = (pid, idx) => isSafeSlide(pid, idx) || spellcheckPictures.has(`${pid}:${idx}`) || flaggedSlides.has(`${pid}:${idx}`);
 // In each drawing's tag, so a browser holding one from before Refrain (or the
 // drawing package) was updated asks again rather than keeping the old one.
 const DRAWN_SINCE = Date.now().toString(36);
@@ -4398,10 +4205,17 @@ async function drawableFile(pid) {
   return null;
 }
 
+/** Whether this slide can be drawn here, drawing its file now if it must. */
+async function canDraw(pid, idx) {
+  const lib = await loadFileReader();
+  const found = lib?.drawPresentation && Number.isInteger(idx) ? await drawableFile(pid) : null;
+  return Boolean(found && (await slideDrawing.slide(pid, found.file, found.version, idx)));
+}
+
 app.get("/api/preview/drawn/:pid/:idx", async (req, res) => {
   const { pid } = req.params;
   const idx = Number(req.params.idx);
-  if (!Number.isInteger(idx) || !drawAllowed(pid, idx)) return res.status(404).json({ error: "Only a safe slide or a slide Quality Control found is drawn." });
+  if (!Number.isInteger(idx) || !drawAllowed(pid, idx)) return res.status(404).json({ error: "Only a safe slide, a slide Quality Control found, or a flagged slide is drawn." });
   const lib = await loadFileReader();
   const found = lib?.drawPresentation ? await drawableFile(pid) : null;
   if (!found) return res.status(404).json({ error: "This slide can't be drawn here." });
@@ -4442,7 +4256,7 @@ app.post("/api/network/forget-phones", async (_req, res) => {
 });
 
 app.get("/api/live/safe-slides", (_req, res) => {
-  res.json({ safeSlides: safeSlides(config.liveModule?.safeSlides), pictures: picturesOn() || quickSlidePicturesOn() });
+  res.json({ safeSlides: safeSlides(config.liveModule?.safeSlides), pictures: quickSlidePicturesOn() });
 });
 
 /** Saves a slide from Search as a safe slide. Reads nothing from ProPresenter. */
@@ -4465,7 +4279,6 @@ app.post("/api/live/safe-slides", async (req, res) => {
     return { ...m, safeSlides: r.list };
   });
   if (!saved) return;
-  collectQuickSlidePictures().catch(() => {});
   res.json({ ok: true, added, safeSlides: saved.safeSlides });
 });
 
@@ -4507,7 +4320,6 @@ app.post("/api/live/safe-slides/current", async (_req, res) => {
     return { ...m, safeSlides: r.list };
   });
   if (!saved) return;
-  collectQuickSlidePictures().catch(() => {});
   res.json({ ok: true, added, safeSlides: saved.safeSlides });
 });
 
@@ -5434,26 +5246,19 @@ async function saveAllowlist(change, res) {
 }
 
 /**
- * Pictures ahead of time on or off, from Settings › Phones (owner,
- * 2026-10-04). Saved to config.json (atomic), and swapped into the running
- * config only once the write has landed. Takes effect at the next quiet
- * check; nothing is rendered by pressing it.
+ * Safe slide pictures, Pictures or Names, from Settings › Slide pictures.
+ * Saved to config.json (atomic), and swapped into the running config only once
+ * the write has landed. Nothing is drawn by pressing it.
  */
 app.post("/api/slide-pictures", async (req, res) => {
-  const { prerender, show, quickSlides } = req.body ?? {};
-  for (const [name, v] of Object.entries({ prerender, show, quickSlides })) {
-    if (v !== undefined && typeof v !== "boolean") return res.status(400).json({ error: `${name} must be true or false` });
-  }
-  if (prerender === undefined && show === undefined && quickSlides === undefined) return res.status(400).json({ error: "Send show, prerender and/or quickSlides." });
-  if (prerender === true && PRERENDER_PAUSED) return res.status(409).json({ error: "Drawing ahead is paused for now. To draw today's pictures, press Update pictures on Service › Day." });
-  const change = Object.fromEntries(Object.entries({ prerender, show, quickSlides }).filter(([, v]) => v !== undefined));
+  const { quickSlides } = req.body ?? {};
+  if (typeof quickSlides !== "boolean") return res.status(400).json({ error: "quickSlides must be true or false" });
   try {
-    await updateConfig((c) => ({ ...c, slidePictures: { playlists: [], ...c.slidePictures, ...change } }));
+    await updateConfig((c) => ({ ...c, slidePictures: { ...c.slidePictures, quickSlides } }));
   } catch (err) {
     return res.status(500).json({ error: `Couldn't save it: ${err.message}` });
   }
-  if (quickSlides === true) collectQuickSlidePictures();
-  res.json({ ok: true, prerender: config.slidePictures.prerender === true, show: picturesOn(), quickSlides: quickSlidePicturesOn() });
+  res.json({ ok: true, quickSlides: quickSlidePicturesOn() });
 });
 
 /**
@@ -6575,7 +6380,7 @@ app.get("/api/health", async (_req, res) => {
   // is the thing to watch on a long service day, and only this machine sees it.
   propresenter.process = propresenterSamples.at(-1) ?? null;
   propresenter.load = propresenterLoad;
-  propresenter.slidePictures = { ...slidePicturesStatus, show: picturesOn(), quickSlides: quickSlidePicturesOn(), prerender: config.slidePictures?.prerender === true, prerenderPaused: PRERENDER_PAUSED, onThisMac: client.isLocalHost };
+  propresenter.slidePictures = { quickSlides: quickSlidePicturesOn(), onThisMac: client.isLocalHost };
   res.json({
     version,
     role: config.role ?? null,
@@ -6653,7 +6458,6 @@ app.get("/api/health", async (_req, res) => {
         includeSlideText: config.serviceFeedModule?.includeSlideText === true,
         nightlyLog: config.serviceFeedModule?.nightlyLog !== false,
         nightlyLogAt: nightlyAt(config.serviceFeedModule),
-        includeSlideImage: config.serviceFeedModule?.includeSlideImage === true,
         windows: effectiveWindows(config.serviceFeedModule),
         keySet: Boolean(process.env.SERVICE_FEED_TOKEN),
       },

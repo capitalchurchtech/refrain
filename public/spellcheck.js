@@ -451,20 +451,14 @@ export function initSpellcheck() {
     }
   }
 
-  // ProPresenter's picture: tried twice more, a few seconds apart, since a busy
-  // render queue refuses rather than waits. Then the slide number stands alone
-  // rather than an empty frame (ProPresenter not answering, or performance
-  // mode with no picture rendered ahead).
+  // ProPresenter's picture of this one slide, asked for once (owner,
+  // 2026-11-04). None: the slide number stands alone rather than an empty
+  // frame (ProPresenter not answering, or performance mode with no picture
+  // kept from before).
   function thumbnailInto(frame, src) {
     const img = document.createElement("img");
     img.alt = "";
-    let tries = 0;
-    img.addEventListener("error", () => {
-      if (++tries > 2 || !img.isConnected) return frame.parentElement.classList.add("rf-sc-nopic");
-      setTimeout(() => {
-        if (img.isConnected) img.src = `${src.split("&retry=")[0]}&retry=${tries}`;
-      }, 3000 * tries);
-    });
+    img.addEventListener("error", () => frame.parentElement?.classList.add("rf-sc-nopic"));
     img.src = src;
     frame.appendChild(img);
   }

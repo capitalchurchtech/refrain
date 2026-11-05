@@ -18,7 +18,7 @@
  *    Refrain's own folder is accepted.
  */
 import express from "express";
-import { Worker } from "node:worker_threads";
+import { runWorker } from "./run-worker.js";
 import { readFile, readdir, stat, mkdir } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
@@ -49,27 +49,12 @@ async function packageReady() {
 
 /** Reads, checks and draws bytes in a worker, with a time limit. */
 function readInWorker(bytes, cacheDir, workspace) {
-  return new Promise((resolve, reject) => {
-    const copy = new Uint8Array(bytes); // its own buffer, so it can be handed over
-    const worker = new Worker(new URL("./probundle-worker.js", import.meta.url), {
-      workerData: { bytes: copy, maxEntryBytes: PROBUNDLE_LIMITS.entryBytes, cacheDir, workspace },
-      transferList: [copy.buffer],
-      resourceLimits: { maxOldGenerationSizeMb: 1024 },
-    });
-    const timer = setTimeout(() => {
-      worker.terminate();
-      reject(new Error(`Reading the file took longer than ${PROBUNDLE_LIMITS.readMs / 1000} seconds and was stopped.`));
-    }, PROBUNDLE_LIMITS.readMs);
-    worker.once("message", (m) => {
-      clearTimeout(timer);
-      worker.terminate();
-      if (m.ok) resolve(m);
-      else reject(new Error(m.error));
-    });
-    worker.once("error", (err) => {
-      clearTimeout(timer);
-      reject(err);
-    });
+  const copy = new Uint8Array(bytes); // its own buffer, so it can be handed over
+  return runWorker(new URL("./probundle-worker.js", import.meta.url), {
+    workerData: { bytes: copy, maxEntryBytes: PROBUNDLE_LIMITS.entryBytes, cacheDir, workspace },
+    transferList: [copy.buffer],
+    ms: PROBUNDLE_LIMITS.readMs,
+    tooLong: `Reading the file took longer than ${PROBUNDLE_LIMITS.readMs / 1000} seconds and was stopped.`,
   });
 }
 

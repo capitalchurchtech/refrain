@@ -393,6 +393,12 @@ test("lists, text outline, text shadow, feather and margins through the box tool
   await call("refrain_edit_boxes", { copy_id: copy.copy_id, changes: [{ box: box.id, words: "One\nTwo", list: { style: "(a)", start: 2 } }] });
   const listed = (await call("refrain_read_slide", { copy_id: copy.copy_id, slide: 1 })).slide.boxes.find((x) => x.id === box.id);
   assert.deepEqual([listed.list, listed.words], [{ style: "(a)", start: 2 }, "One\nTwo"], "a list reads back, and its markers are not words");
+  // A second list with no indent takes the one this file's other list uses (owner, 2026-11-04), not 80.
+  await call("refrain_edit_boxes", { copy_id: copy.copy_id, changes: [{ box: box.id, list: { style: "(a)", start: 2, indent: 60 } }] });
+  const other = (await call("refrain_read_slide", { copy_id: copy.copy_id, slide: 2 })).slide.boxes.find((b) => b.kind === "text");
+  await call("refrain_edit_boxes", { copy_id: copy.copy_id, changes: [{ box: other.id, list: "disc" }] });
+  const indent = (id) => lib.elementsOf(lib.decodePresentation(fs.readFileSync(copy.file)).doc).find((x) => x.element.uuid?.string === id).element.text.attributes.paragraph_style.head_indent;
+  assert.deepEqual([indent(box.id), indent(other.id)], [60, 60]);
   assert.deepEqual((await call("refrain_check", { copy_id: copy.copy_id })).findings.filter((f) => f.severity === "problem"), []);
 });
 

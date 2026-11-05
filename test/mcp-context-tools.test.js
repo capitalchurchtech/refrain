@@ -11,6 +11,7 @@ import { createRequire } from "node:module";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createMcpServer } from "../server/mcp/server.js";
+import { describeAction } from "../server/mcp/actions.js";
 
 const lib = await import("propresenter-bundle").catch(() => null);
 const skip = lib?.readWorkspacePart ? false : "propresenter-bundle with workspace support is not installed";
@@ -176,37 +177,46 @@ test("slide actions: read in plain words, added by name from the workspace (copy
   conf("Workspace", "rv.data.ProPresenterWorkspace", { pro_screens: [{ uuid: uid(40), name: "Front", screen_type: 1 }, { uuid: uid(41), name: "Confidence", screen_type: 2 }], audience_looks: [{ uuid: uid(42), name: "Lower Third" }] });
   conf("Stage", "rv.data.Stage.Document", { layouts: [{ uuid: uid(43), name: "Sermon Notes", slide: { uuid: uid(44) } }] });
   conf("Props", "rv.data.PropDocument", { cues: [{ uuid: uid(45), name: "Logo bug" }], prop_collections: [{ uuid: uid(46), name: "Bugs", items: [{ prop_cue_uuid: uid(45) }] }] });
-  conf("Messages", "rv.data.MessageDocument", { messages: [{ uuid: uid(47), title: "Nursery" }] });
+  conf("Messages", "rv.data.MessageDocument", { messages: [{ uuid: uid(47), title: "Nursery" }, { uuid: uid(52), title: "Kids pager", tokens: [{ uuid: uid(53), text: { name: "CODE" } }] }] });
   conf("Timers", "rv.data.TimersDocument", { timers: [{ uuid: uid(48), name: "Countdown", configuration: { countdown: { duration: 300 } } }] });
   conf("ClearGroups", "rv.data.ClearGroupsDocument", { groups: [{ uuid: uid(49), name: "Clear to logo" }] });
   // The church's macros: a prop action carrying ProPresenter's auto-clear setting, which a new prop action copies.
-  conf("Macros", "rv.data.MacrosDocument", { macros: [{ uuid: uid(50), name: "Bug on", actions: [{ uuid: uid(51), isEnabled: true, type: 6, prop: { identification: { parameter_uuid: uid(99), parameter_name: "Old" }, trigger: { auto_clear_enabled: true } } }] }] });
+  conf("Macros", "rv.data.MacrosDocument", { macros: [
+    { uuid: uid(50), name: "Bug on", actions: [{ uuid: uid(51), isEnabled: true, type: 6, prop: { identification: { parameter_uuid: uid(99), parameter_name: "Old" }, trigger: { auto_clear_enabled: true } } }] },
+    { uuid: uid(54), name: "Sermon", actions: [{ uuid: uid(55), isEnabled: true, type: 1, stage: { stage_screen_assignments: [{ screen: { parameter_uuid: uid(41), parameter_name: "Confidence" }, layout: { parameter_uuid: uid(43), parameter_name: "Sermon Notes" } }] } }] },
+  ] });
   const { call } = await connect({ userWorkspaces: path.dirname(ws) });
   const fix = path.join(path.dirname(require.resolve("propresenter-bundle/package.json")), "test", "fixtures");
   const copy = await call("refrain_make_copy", { path: path.join(fix, "sample-fixed.pro") });
 
   const r = await call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 1, add_action: [
     { kind: "clear", what: "messages" }, { kind: "look", name: "lower third" }, { kind: "prop", name: "Logo bug" }, { kind: "message", name: "Nursery" },
-    { kind: "timer", name: "Countdown", do: "reset_and_start" }, { kind: "clear group", name: "Clear to logo" }, { kind: "stage layout", name: "Sermon Notes" },
+    { kind: "timer", name: "Countdown", do: "reset_and_start" }, { kind: "clear group", name: "Clear to logo" },
   ] }] });
-  assert.deepEqual(r.slides[0].changed.actions_added.map((a) => a.kind), ["clear", "look", "prop", "message", "timer", "clear group", "stage layout"]);
+  assert.deepEqual(r.slides[0].changed.actions_added.map((a) => a.kind), ["clear", "look", "prop", "message", "timer", "clear group"]);
   const actions = (await call("refrain_read_slide", { copy_id: copy.copy_id, slide: 1 })).slide.actions;
   assert.deepEqual(actions.filter((a) => a.kind !== "media"), [
     { kind: "clear", what: "messages" }, { kind: "look", name: "Lower Third" }, { kind: "prop", name: "Logo bug" }, { kind: "message", name: "Nursery" },
     { kind: "timer", name: "Countdown", do: "reset_and_start" }, { kind: "clear group", name: "Clear to logo" },
-    { kind: "stage layout", screens: [{ screen: "Confidence", layout: "Sermon Notes" }] },
-  ], "the stage layout goes to every stage screen, not the audience one");
+  ]);
 
   const raw = lib.decodePresentation(fs.readFileSync(copy.file)).doc.cues[0].actions.find((a) => a.prop);
   assert.equal(raw.prop.trigger?.auto_clear_enabled, true, "the macros' example setting came along");
   assert.deepEqual(raw.prop.identification.parent_collection?.parameter_name, "Bugs");
 
   await assert.rejects(call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 1, add_action: [{ kind: "look", name: "Nope" }] }] }), /No Look called "Nope"/);
-  await assert.rejects(call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 1, add_action: [{ kind: "stage layout", name: "Sermon Notes", screens: ["Front"] }] }] }), /"Front" is an audience screen.*Confidence/);
+  // A stage layout goes through the team's macros (owner, 2026-11-04); a message with a blank isn't put on a slide.
+  await assert.rejects(call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 1, add_action: [{ kind: "stage layout", name: "Sermon Notes" }] }] }), /switched by a macro.*add_macro.*these switch stage layouts: Sermon/);
+  await assert.rejects(call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 1, add_action: [{ kind: "message", name: "Kids pager" }] }] }), /"Kids pager" has a blank to fill in when it's shown \(CODE\)/);
   await assert.rejects(call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 1, add_action: [{ kind: "macro", name: "x" }] }] }), /media and macros have their own fields/);
-  const gone = await call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 1, remove_action: [{ kind: "timer" }, { kind: "stage layout", name: "sermon notes" }] }] });
-  assert.deepEqual(gone.slides[0].changed.actions_removed.map((x) => x.count), [1, 1]);
+  const gone = await call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 1, remove_action: [{ kind: "timer" }] }] });
+  assert.deepEqual(gone.slides[0].changed.actions_removed.map((x) => x.count), [1]);
   await assert.rejects(call("refrain_edit_slides", { copy_id: copy.copy_id, changes: [{ slide: 1, remove_action: [{ kind: "timer" }] }] }), /no timer action on this slide/);
+});
+
+test("a stage layout already on a slide reads as an old reference", () => {
+  const a = { stage: { stage_screen_assignments: [{ screen: { parameter_name: "SDI Out- Stage" }, layout: { parameter_name: "Message 2" } }] } };
+  assert.deepEqual(describeAction(a), { kind: "stage layout", old: true, screens: [{ screen: "SDI Out- Stage", layout: "Message 2" }] });
 });
 
 test("without a workspace, a clear can still be added, and a named action says where it would look", { skip }, async () => {

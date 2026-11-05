@@ -3765,6 +3765,20 @@ html.blackroom .rf-tab[aria-checked="true"] {
   border-radius: 3px;
 }
 .rf-sc-draw { position: absolute; inset: 0; }
+/* A flagged slide on Flags: drawn from its file (a shadow root in
+   .slide-flag-draw), or the picture kept with the flag. */
+.slide-flag-frame {
+  position: relative;
+  display: block;
+  width: 100%;
+  max-width: 240px;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: #000;
+  border-radius: 0.5rem;
+}
+.slide-flag-draw { position: absolute; inset: 0; }
+.slide-flag-frame img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .rf-sc-frame img {
   display: block;
   width: 100%;

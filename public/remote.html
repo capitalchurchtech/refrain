@@ -100,6 +100,8 @@
   .fcard { background:var(--surface); border:1px solid var(--hair); margin-bottom:10px; padding:10px; }
   .pic { aspect-ratio:16/9; background:#000 linear-gradient(135deg,#1b1524,#07050a); border:1px solid var(--hair); display:flex; align-items:center; justify-content:center; text-align:center; color:var(--muted); font:600 10px/1.4 var(--mono); letter-spacing:.1em; text-transform:uppercase; overflow:hidden; }
   .pic img { width:100%; height:100%; object-fit:contain; display:block; }
+  /* A flag's slide in words: phones are never sent pictures of slides the booth can draw. */
+  .pic.words { padding:10px; color:var(--text); font:500 13px/1.35 system-ui, sans-serif; letter-spacing:0; text-transform:none; white-space:pre-line; }
   /* History */
   .hx { padding:12px 14px; background:var(--surface); border-top:1px solid var(--shadowline); box-shadow:0 -1px 0 #2a2233; }
   .hx:first-child { border-top:0; box-shadow:none; }

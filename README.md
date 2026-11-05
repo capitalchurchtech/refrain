@@ -87,13 +87,6 @@ Stubs (the interface exists, the methods refuse to run):
   They appear in the settings, but every read and write throws "Not
   implemented". A synced folder is the working way to share between machines.
 
-Paused:
-
-- **Drawing slide pictures ahead of time.** While ProPresenter 22 beta is slow
-  on rich slides, Refrain draws no pictures on its own. **Update pictures** on
-  Day still draws them when you ask, once slide pictures are on and Protect
-  ProPresenter is off.
-
 Not built:
 
 - Church management providers other than Manual and Planning Center. Rock RMS,

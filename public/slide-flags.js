@@ -1,6 +1,7 @@
 import { drawnIcon } from "./icons.js";
 import { songActionsHtml, wireOpenWith } from "./open-with.js";
 import { showFailure } from "./notice.js";
+import { drawInto } from "./slide-drawing.js";
 
 /**
  * Flagging slides during a service, and working through them after it
@@ -226,7 +227,15 @@ function renderReviewRow(f, types, showMachine) {
             // which reads like missing data.
             `<div class="text-xs opacity-60 italic">No text on this slide.</div>`
       }
-      ${f.hasPicture ? `<img src="/api/slide-flags/${encodeURIComponent(f.id)}/picture" alt="Picture of the flagged slide" loading="lazy" class="rounded slide-flag-pic" style="max-width:240px;width:100%;aspect-ratio:16/9;object-fit:contain;background:#000" />` : ""}
+      ${
+        // Drawn from the presentation's file when it's on this Mac; else the
+        // picture ProPresenter gave when the flag was raised, if any.
+        f.drawable
+          ? `<span class="slide-flag-frame" data-pid="${escapeHtml(f.presentationId)}" data-idx="${f.slideIndex}"${f.hasPicture ? ` data-pic="/api/slide-flags/${encodeURIComponent(f.id)}/picture"` : ""}></span>`
+          : f.hasPicture
+            ? `<img src="/api/slide-flags/${encodeURIComponent(f.id)}/picture" alt="Picture of the flagged slide" loading="lazy" class="rounded slide-flag-pic" style="max-width:240px;width:100%;aspect-ratio:16/9;object-fit:contain;background:#000" />`
+            : ""
+      }
       ${facts.length ? `<div class="text-xs opacity-60">${facts.join(" · ")}</div>` : ""}
       <div class="flex flex-wrap items-center gap-2">
         <label class="sr-only" for="flag-type-${escapeHtml(f.id)}">Type</label>
@@ -245,13 +254,14 @@ function renderReviewRow(f, types, showMachine) {
 }
 
 /**
- * Get slide pictures: pulls a picture of each open flag's slide that has none,
- * on request, so it can be done between services. It does not look at the
- * slide-pictures switches: pressing it is asking for them.
+ * Get slide pictures: asks ProPresenter for a picture of each open flag's slide
+ * that Refrain can't draw and that has none, on request, so it can be done
+ * between services. Pressing it is asking for them, so the switch isn't
+ * consulted.
  */
 function picturesButtonHtml(needPictures) {
   return needPictures
-    ? `<button type="button" id="slide-flags-get-pictures" class="btn btn-chip" title="Draws a picture of each open flag's slide that has none. Ignores the slide-pictures setting. Not during a service.">Get slide pictures (${needPictures})</button>`
+    ? `<button type="button" id="slide-flags-get-pictures" class="btn btn-chip" title="Asks ProPresenter for a picture of each open flag's slide that Refrain can't draw from its file. Not during a service.">Get slide pictures (${needPictures})</button>`
     : `<span class="text-xs opacity-60">Every open flag has a picture.</span>`;
 }
 
@@ -318,11 +328,25 @@ async function postChange(flagIdValue, change) {
 
 function wireReview(host, reload) {
   wireOpenWith(host);
+  // Each flagged slide drawn from its file; one that can't be falls back to
+  // the picture kept with the flag, else to its words above.
+  host.querySelectorAll(".slide-flag-frame").forEach(async (frame) => {
+    const draw = document.createElement("span");
+    draw.className = "slide-flag-draw";
+    frame.appendChild(draw);
+    if (await drawInto(draw, `/api/preview/drawn/${encodeURIComponent(frame.dataset.pid)}/${frame.dataset.idx}`)) return;
+    draw.remove();
+    if (!frame.dataset.pic) return frame.remove();
+    const img = document.createElement("img");
+    img.alt = "Picture of the flagged slide";
+    img.src = frame.dataset.pic;
+    frame.appendChild(img);
+  });
   const pull = host.querySelector("#slide-flags-get-pictures");
   pull?.addEventListener("click", async () => {
     const status = host.querySelector("#slide-flags-pictures-status");
     pull.disabled = true;
-    status.textContent = "Getting pictures. This asks ProPresenter to draw each slide, one at a time...";
+    status.textContent = "Getting pictures. Slides Refrain can't draw are asked of ProPresenter, one at a time...";
     try {
       const res = await fetch("/api/slide-flags/pictures", { method: "POST" });
       const data = await res.json().catch(() => ({}));
@@ -331,7 +355,7 @@ function wireReview(host, reload) {
       const again = document.getElementById("slide-flags-pictures-status");
       if (again) {
         again.textContent = [
-          data.taken ? `Got ${data.taken} picture${data.taken === 1 ? "" : "s"}.` : "No new pictures.",
+          data.taken ? `Got ${data.taken} picture${data.taken === 1 ? "" : "s"} from ProPresenter.` : "No new pictures.",
           data.failed ? `${data.failed} couldn't be drawn (ProPresenter didn't send one).` : "",
           data.remaining ? `${data.remaining} more: press again.` : "",
         ].filter(Boolean).join(" ");

@@ -150,8 +150,8 @@ on afterwards.
 
 Relies on `GET /v1/playlists`, `GET /v1/playlist/{uuid}`,
 `GET /v1/presentation/{uuid}`,
-`GET /v1/presentation/{uuid}/thumbnail/{index}` and
-`GET /v1/presentation/{uuid}/focus`.
+`GET /v1/presentation/{uuid}/thumbnail/{index}` (only for a slide Refrain can't
+draw from its file) and `GET /v1/presentation/{uuid}/focus`.
 
 ## 11. Phones (if you use them)
 

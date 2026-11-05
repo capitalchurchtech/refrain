@@ -69,9 +69,9 @@ Five keys along the bottom:
 
 Choose the slide on the screens or one a few slides back or ahead (or any slide
 from Search), what's wrong, an optional note (the **Note** type needs one), and
-send it. A flag that can't send waits on the phone and retries. A picture of the
-slide is taken when the flag is added, so it still shows the right slide after
-the presentation changes.
+send it. A flag that can't send waits on the phone and retries. The booth draws
+the flagged slide from its file; only a slide it can't draw gets ProPresenter's
+picture, taken when the flag is added (see [slide pictures](#slide-pictures)).
 
 The slides of the presentation on the screens are numbered as ProPresenter's
 screens show them, counting from 1, in the arrangement that is actually playing.
@@ -120,43 +120,31 @@ so treat the network as part of the setup:
 
 ## Slide pictures
 
-A slide picture can come from two places. On the booth computer, Refrain draws
-**Quality Control's** slides and the **safe slide** keys itself, from the
-presentation's file on this Mac, in the arrangement ProPresenter has selected.
-That asks nothing of ProPresenter. It uses this Mac's fonts, so a slide set in a
-font this Mac doesn't have won't match, and Quality Control says which fonts are
-missing. A slide Refrain can't draw falls back to ProPresenter's picture, then to
-its words. Nothing new is drawn during a service.
+On the booth computer, every slide picture is drawn by Refrain from the
+presentation's own file on this Mac, in the arrangement ProPresenter has
+selected: the **safe slide** keys on Now, **Quality Control's** slides and the
+slides on **Flags**. That asks nothing of ProPresenter. Refrain uses this Mac's
+fonts, so a slide set in a font this Mac doesn't have won't match, and Quality
+Control says which fonts are missing. Nothing new is drawn during a service,
+except a flagged slide as its flag is added.
 
-Every other picture is drawn by ProPresenter, which writes to its workspace
-database for each one and keeps memory for it until it restarts. So Refrain is
-careful about asking:
+ProPresenter is asked for a picture only when Quality Control or a flag needs a
+slide Refrain can't draw (ProPresenter on another Mac, or a presentation outside
+its libraries), one slide at a time. Each one writes to ProPresenter's workspace
+database and keeps memory until it restarts.
 
-- **Settings › More › Phones › Slide pictures** is **Words only** by default.
-  While it is, Refrain asks ProPresenter for no slide picture except the ones
-  listed below, and shows a slide's words where a picture would go. This switch
-  doesn't affect the pictures Refrain draws from files.
-- **Show pictures** lets Refrain draw a picture when a screen needs one. Each is
-  drawn once and kept on disk in `data/slide-pictures/`.
-- During performance mode, no screen asks ProPresenter for a new picture. Only
-  pictures already on disk are shown.
-- A phone never causes a picture to be drawn, except when it adds a flag (below).
+- A flag's picture, where its slide can't be drawn, is taken when the flag is
+  added and kept with it in `data/flag-pictures/` (`slidePictures.flagged`, on
+  unless `false`). It can be taken during performance mode, with a six-second
+  limit. **Get slide pictures** on Flags takes the rest, between services.
+- Quality Control's picture, where its slide can't be drawn, is asked for once
+  and kept in `data/slide-pictures/`. During performance mode only one already
+  kept is shown.
+- A safe slide Refrain can't draw shows its words. **Safe slide pictures**
+  (Settings › More › Phones › Slide pictures) set to **Names** shows the names
+  on the keys instead.
 
-Drawn whatever that setting says, because a person asked:
+Phones show a slide's words, never a picture of it. The phone's list of open
+flags shows the flagged slide's words, or the picture kept with the flag if
+there is one.
 
-- The picture taken when a phone adds a flag (`slidePictures.flagged`, on unless
-  `false`). This one can be drawn even during performance mode, with a
-  six-second limit. **Get slide pictures** on Flags draws the rest.
-- Quality Control's pictures of the slides it flags, where Refrain can't draw
-  them itself.
-- **Safe slide pictures** (on by default; **Names** shows words instead): where
-  Refrain can't draw a safe slide itself, ProPresenter's picture is taken once
-  when it is kept.
-
-**Update pictures** on Day draws pictures for today's service playlists and keeps
-any slide whose words, group and place haven't changed. It needs Show pictures
-on and Protect ProPresenter off, and refuses during performance mode.
-
-**Draw ahead of time** would draw today's playlists while nothing is happening.
-It is **paused** for now while ProPresenter 22 beta is slow on rich slides:
-Refrain draws nothing on its own, and Settings says so.

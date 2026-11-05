@@ -19,7 +19,7 @@ function start({ approved = true, permitted = true, captured = "pic.png", contro
     search: (q) => (searchLog.push(q), Array.from({ length: 25 }, (_, i) => ({ presentationId: "P1", slideIndex: i, presentationName: "Amazing Grace", snippet: `line ${i} ${q}` }))),
     history: () => [{ name: "Amazing Grace", startedAt: "2026-10-09T10:00:00.000Z", endedAt: null, elapsedMs: 5000, current: true }],
     stage: async () => ({ presets: [{ id: "a", text: "Keep going" }], current: "" }),
-    captureFlagPicture: async (id) => (captured ? `${id}.png` : null),
+    captureFlagPicture: async (id) => (captured === "drawn" ? { drawn: true, picture: null } : { drawn: false, picture: captured ? `${id}.png` : null }),
     openFlags: async () => [{ id: FLAG_ID, presentationName: "Amazing Grace", slideNumber: 4, type: "Typo or spelling", note: "wretch", by: "Sam", at: "2026-10-09T10:52:01.123Z", picture: `${FLAG_ID}.png` }, { id: "2026-10-09T10-53-01-123Z-0a1b2c3e", picture: null }],
     flagPicture: async (id) => (id === FLAG_ID ? { type: "image/png", bytes: Buffer.from([137, 80, 78, 71]) } : null),
     currentSlides: () => ({ presentationId: "P1", presentationName: "Amazing Grace", currentIndex: 3, slides: [{ slideIndex: 3, text: "Words as the playing arrangement has them" }] }),
@@ -60,7 +60,7 @@ test("history is what the server counted, read-only", async () => {
   } finally { server.close(); }
 });
 
-test("a flag from a search result keeps its picture, and says when no picture could be taken", async () => {
+test("a flag from a search result: drawn at the booth, else ProPresenter's picture kept, else words", async () => {
   const { server, base, saved } = await start();
   try {
     const t = tok();
@@ -75,8 +75,16 @@ test("a flag from a search result keeps its picture, and says when no picture co
     const r = await (await post(none.base, tok(), "/api/flag", { slide: { presentationId: "P1", slideIndex: 3 }, type: "Typo or spelling" })).json();
     assert.equal(r.ok, true, "the flag is still kept");
     assert.equal(r.picture, false);
+    assert.equal(r.drawn, false);
     assert.equal("picture" in none.saved[0], false);
   } finally { none.server.close(); }
+  const drawn = await start({ captured: "drawn" });
+  try {
+    const r = await (await post(drawn.base, tok(), "/api/flag", { slide: { presentationId: "P1", slideIndex: 3 }, type: "Typo or spelling" })).json();
+    assert.equal(r.drawn, true, "a slide the booth can draw needs no picture from ProPresenter");
+    assert.equal(r.picture, false);
+    assert.equal("picture" in drawn.saved[0], false);
+  } finally { drawn.server.close(); }
 });
 
 test("a Note needs its words; other types do not", async () => {

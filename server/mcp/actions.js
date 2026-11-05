@@ -1,7 +1,8 @@
 /**
  * A slide's actions, beyond the slide itself: read in plain words, and added or removed by name. Media and
- * macros have their own fields (file-tools.js); this is the rest a slide can fire: clear a layer, a Look, a
- * stage layout, a timer, a message, a prop, a clear group.
+ * macros have their own fields (file-tools.js); this is the rest a slide can fire: clear a layer, a Look,
+ * a timer, a message, a prop, a clear group. A stage layout is shown, but never added: the team switches
+ * stage layouts through its macros (owner, 2026-11-04), so one on a slide is an old reference.
  *
  * A new action copies one of its kind from the church's own macros when the workspace has one, so it keeps
  * the settings ProPresenter writes for that kind (a prop's auto-clear, which stage screens a layout goes to),
@@ -43,7 +44,7 @@ export function describeAction(a) {
   if (a.prop) return { kind: "prop", name: ce(a.prop.identification), ...on };
   if (a.audience_look) return { kind: "look", name: ce(a.audience_look.identification), ...on };
   if (a.clear_group) return { kind: "clear group", name: ce(a.clear_group.identification), ...on };
-  if (a.stage) return { kind: "stage layout", screens: (a.stage.stage_screen_assignments ?? []).map((s) => ({ screen: ce(s.screen), layout: ce(s.layout) })), ...on };
+  if (a.stage) return { kind: "stage layout", old: true, screens: (a.stage.stage_screen_assignments ?? []).map((s) => ({ screen: ce(s.screen), layout: ce(s.layout) })), ...on };
   if (a.communication) return { kind: "communication", device: ce(a.communication.device_identification), description: a.communication.description ?? null, ...on };
   const k = Object.keys(a).find((x) => !["uuid", "name", "isEnabled", "type", "label", "delay_time", "duration"].includes(x));
   return { kind: KIND_NAMES[k] ?? (k ?? "other").replace(/_/g, " "), ...on };
@@ -72,6 +73,8 @@ export function workspaceIndex(p, folder) {
     props: byName(props.cues),
     propCollection: (id) => (props.prop_collections ?? []).find((c) => (c.items ?? []).some((i) => i.prop_cue_uuid?.string === id)) ?? null,
     messages: byName(read("Configuration/Messages", "rv.data.MessageDocument").messages, (m) => m.title),
+    // The macros that switch a stage layout, for the answer to someone asking to add one.
+    stageMacros: (macros.macros ?? []).filter((m) => (m.actions ?? []).some((a) => a.stage)).map((m) => m.name).filter(Boolean),
     timers: byName(read("Configuration/Timers", "rv.data.TimersDocument").timers),
     clearGroups: byName(read("Configuration/ClearGroups", "rv.data.ClearGroupsDocument").groups),
     examples,
@@ -122,6 +125,10 @@ export function buildAction(kind, spec, index, { uuid, freshCopy }) {
     }
     case "message": {
       const m = need(index?.messages ?? new Map(), "message");
+      // A message with a blank to fill (a pager code) is shown from Now or a phone, where the value is
+      // typed; fired from a slide it would show empty, or the last value typed (owner, 2026-11-04).
+      const blanks = (m.tokens ?? []).filter((t) => t.text).map((t) => t.text.name).filter(Boolean);
+      if (blanks.length) throw new Error(`"${m.title}" has ${blanks.length === 1 ? "a blank" : `${blanks.length} blanks`} to fill in when it's shown (${blanks.join(", ")}), so it isn't put on a slide: the slide would show it empty or with the last value typed. Show it from Now or a phone, where the value is typed.`);
       const a = start("message");
       a.message = { message_identificaton: ref(m, m.title) };
       return a;
@@ -141,24 +148,12 @@ export function buildAction(kind, spec, index, { uuid, freshCopy }) {
       a.clear_group = { identification: ref(g) };
       return a;
     }
-    case "stage layout": {
-      const layout = need(index?.layouts ?? new Map(), "stage layout");
-      // The screens named, else every stage screen ProPresenter has.
-      const screens = spec.screens?.length
-        ? spec.screens.map((n) => {
-          const s = index.screens.get(String(n).toLowerCase());
-          if (!s) throw new Error(`No screen called "${n}" in ProPresenter's workspace.`);
-          if (s.screen_type !== 2) throw new Error(`"${n}" is an audience screen; a stage layout goes on a stage screen (${index.stageScreens.map((x) => x.name).join(", ") || "there are none"}).`);
-          return s;
-        })
-        : index.stageScreens;
-      if (!screens.length) throw new Error("ProPresenter's workspace has no stage screens to put the layout on.");
-      const a = start("stage");
-      a.stage = { ...a.stage, stage_screen_assignments: screens.map((s) => ({ screen: ref(s), layout: ref(layout) })) };
-      return a;
-    }
+    case "stage layout":
+      // Stage layouts go through the team's macros, which name the screens for each event; templates
+      // carry those macros and are copied as they are (owner, 2026-11-04).
+      throw new Error(`A stage layout is switched by a macro, not added to a slide on its own. Add the macro that switches it (add_macro)${index?.stageMacros?.length ? `; these switch stage layouts: ${index.stageMacros.join(", ")}` : ""}, or copy the slide from a template that already fires it.`);
     default:
-      throw new Error(`An action to add is clear, look, prop, message, timer, clear group or stage layout (media and macros have their own fields), not ${kind}.`);
+      throw new Error(`An action to add is clear, look, prop, message, timer or clear group (media and macros have their own fields; a stage layout goes through a macro), not ${kind}.`);
   }
 }
 
