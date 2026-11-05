@@ -108,7 +108,9 @@ noticing that ProPresenter has quit.
 1. Install Node.js 20 or newer from [nodejs.org](https://nodejs.org) (the LTS
    build). No administrator password? [Install Node into your home
    folder](docs/install.md#no-administrator-password) instead.
-2. Get Refrain into a folder of its own, such as `~/Refrain`:
+2. Get Refrain into a folder of its own, such as `~/Refrain`. On a Mac with
+   several accounts, each account that runs ProPresenter gets its own copy
+   ([why](docs/install.md#several-accounts-on-one-mac)):
 
    ```bash
    git clone https://github.com/capitalchurchtech/refrain.git ~/Refrain
