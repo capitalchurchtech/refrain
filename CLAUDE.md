@@ -69,6 +69,16 @@ few strings still say "Health screen" and mean Settings. Write "Settings ›
 <tab>" in anything a person reads, and use the More path (Settings › More ›
 Phones) in docs.
 
+## The main app answers only to this computer's own name
+
+The main app listens on 127.0.0.1 and refuses, with 421, any request whose Host
+isn't 127.0.0.1, localhost, [::1] or a `*.localhost` name (`hostRefused` in
+`server/request-guard.js`, the first middleware). It closes DNS rebinding: a
+web page pointing its own name at 127.0.0.1 could otherwise read the index,
+slides and flags. Anything that calls the main app, a script or Refrain.app,
+uses `http://127.0.0.1:9999` or `localhost`, never the Mac's network name. The
+phone listener is a separate app on the network and isn't affected.
+
 ## Don't make ProPresenter work during a service
 
 Two safeguards exist because heavy reads through ProPresenter's API make it
@@ -91,10 +101,12 @@ presentations, playlists or slide pictures from ProPresenter has to respect both
 
 Prefer reading `.pro` files with `propresenter-bundle` (see
 `server/presentation-files.js`) to asking the API. The same goes for pictures:
-a ProPresenter thumbnail writes about 30 KB into its workspace database, so a
-booth screen that needs a slide picture should draw it with
-`server/slide-drawing.js` (as Quality Control and safe slides do) and fall back
-to the thumbnail only when it can't. Never write to
+a ProPresenter thumbnail writes about 30 KB into its workspace database, so
+every slide picture on the desktop is Refrain's own drawing from
+`server/slide-drawing.js` (safe slides, Quality Control, Flags). ProPresenter is
+asked for one slide's thumbnail only when Quality Control or a flag needs a
+slide that can't be drawn. Phones get the slide's words, never a picture, and
+the service feed sends no picture. Don't add a thumbnail path back. Never write to
 ProPresenter's library or workspace. The old Library Sync feature did, and is
 switched off with `SHARE_LIBRARY_REMOVED` in `server/index.js` (every route
 answers 410); don't revive it and don't document it as a feature.
@@ -103,6 +115,24 @@ The ProPresenter API paths are verified against 21.3 (see the top of
 `server/propresenter-client.js`). `/help` answers 404 on that version, so don't
 send people there to check an endpoint; `docs/propresenter-verification.md` has
 `curl` captures instead.
+
+Two API behaviours that read wrong until measured:
+
+- **The live slide index counts within the arrangement that is playing**, not
+  the whole file. But for an item played from a playlist that chose an
+  arrangement, `GET /v1/presentation/active` leaves `current_arrangement`
+  empty; the arrangement is `playlist_item.presentation_info.arrangement_uuid`
+  from `GET /v1/playlist/active` (its name can be empty; look it up in the
+  presentation), and it only appears about half a second after the trigger.
+  `server/playing-slide.js` still resolves such a deck across all its slides
+  for the live words and count; the service log's per-slide timing already
+  uses the playlist's arrangement.
+- **Testing by triggering slides fires their actions**: macros switch stage
+  layouts and Looks, start timers and messages. Read the slide's actions from
+  its file first (`describeAction` in `server/mcp/actions.js`), note the Look,
+  stage layouts and timers, and put them back afterwards, not just the layers.
+  `GET /v1/trigger/next` is global and can move to other content; step a
+  presentation with `/v1/presentation/active/next/trigger`.
 
 ## Tailwind is a runtime JIT here, not a compiled stylesheet
 
