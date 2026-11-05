@@ -273,6 +273,15 @@ const CONTEXT = [
     run: async (args, env) => (await contextTools()).workspaceToPresentationTool(args, env),
   },
   {
+    name: "refrain_list_themes",
+    title: "The themes to use",
+    description: "The church's themes that have been ticked for use, each with the full path to open with refrain_open or to build from with refrain_build_from. Themes are chosen in Refrain (Prep › Bundles › Themes), because a ProPresenter export holds every theme, most not on brand: a theme that isn't ticked, or anywhere else on the computer, is refused.",
+    inputSchema: { type: "object", properties: {} },
+    outputSchema: { type: "object", required: ["themes"], properties: { themes: { type: "array", items: { type: "object", properties: { name: { type: "string" }, path: { type: "string" } } } }, not_ticked: { type: "integer" }, note: { type: "string" } } },
+    annotations: READ,
+    run: async (args, env) => (await fileTools()).listThemesTool(args, env),
+  },
+  {
     name: "refrain_list_skills",
     title: "The church's skills",
     description: "The church's skills: written instructions for a specific job (sermon slides, tidying a theme, a skit, anything) with the reference files that go with it, kept in the church folder. Check here before a job, and read the skill that fits.",

@@ -5438,3 +5438,8 @@ html:is([data-theme="dark"], .blackroom) #settings-tabs#settings-tabs { gap: 8px
 .pb-draft-live { font-size: 12px; color: var(--rf-muted); }
 .pb-older > summary { cursor: pointer; padding: 4px 0; font: 600 9px/1.4 var(--rf-mono); letter-spacing: 0.15em; text-transform: uppercase; color: var(--rf-muted); }
 .pb-older[open] > summary { margin-bottom: 6px; }
+/* The theme library: a tick per theme (unticked is the default), and a look at it. */
+.pb-themes { display: flex; flex-direction: column; max-width: 28rem; margin-top: 6px; }
+.pb-theme { display: flex; align-items: center; gap: 4px; min-height: 36px; border-bottom: 1px solid var(--rf-line, rgba(255, 255, 255, 0.08)); }
+.pb-theme-pick { display: flex; align-items: center; gap: 10px; flex: 1 1 auto; min-width: 0; cursor: pointer; }
+.pb-theme-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

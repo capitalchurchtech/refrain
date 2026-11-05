@@ -183,7 +183,7 @@ Everything stays in the Refrain folder unless you point a setting elsewhere.
 | `data/image-crop/` | Image Crop's default folders |
 | `data/qr-history.json` | Recent QR codes |
 | `data/remote-secret.json`, `data/remote-devices.json`, `data/phone-golive-log.json` | Phones; readable only by the account running Refrain |
-| `data/probundle-packs/`, `data/probundle-staging/` | Bundles and the MCP server |
+| `data/probundle-packs/`, `data/probundle-staging/` | Bundles and the MCP server (the packs folder holds `themes/`, the theme library and which themes are ticked) |
 | `data/diagnostics/` | A line a minute of timings and counts, the ProPresenter calls that were slow, and the name and times of each item that went live (no slide words), kept 14 days |
 | `data/service-feed/`, `data/staff-requests/` | What the service feed has sent, and which staff requests were handled |
 | `data/*-pending/`, `staging/` | Writes waiting to reach a shared folder or storage backend |

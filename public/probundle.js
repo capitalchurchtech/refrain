@@ -23,6 +23,7 @@ export function initProbundle() {
     busy: false,
     library: { q: "", items: [], total: 0 },
     drafts: [], // Claude's working copies and built bundles (server/probundle.js)
+    themes: [], // the theme library: { id, name, allowed } (server/theme-library.js)
     view: null, // the slide open large, kept across a redraw
   };
 
@@ -32,6 +33,7 @@ export function initProbundle() {
     try {
       state.status = await fetch("/api/probundle/status").then((r) => r.json());
       state.drafts = (await fetch("/api/probundle/drafts").then((r) => r.json()).catch(() => ({ drafts: [] }))).drafts ?? [];
+      state.themes = (await fetch("/api/probundle/themes").then((r) => r.json()).catch(() => ({ themes: [] }))).themes ?? [];
     } catch {
       container.innerHTML = `<p class="text-sm">Couldn't reach Refrain. Is it still running?</p>`;
       return;
@@ -102,6 +104,30 @@ export function initProbundle() {
         </div>
         ${state.busy ? `<p class="text-sm opacity-70">Reading…</p>` : ""}
         ${state.opened.length ? openedRow() : ""}
+        ${themesSection(s)}
+      </div>`;
+  }
+
+  // Themes: ProPresenter exports every theme into one file with no preview, and most are not the
+  // church's. Upload the export, look at each theme, and tick the ones Claude may use. Unticked is the
+  // default, and an unticked theme is refused over the MCP server (server/theme-library.js).
+  const themeCount = () => `${state.themes.filter((t) => t.allowed).length} of ${state.themes.length} ticked.`;
+  function themesSection(s) {
+    const rows = state.themes
+      .map(
+        (t) => `<div class="pb-theme">
+          <label class="pb-theme-pick"><input type="checkbox" class="checkbox checkbox-sm pb-theme-allow" data-id="${escapeHtml(t.id)}" ${t.allowed ? "checked" : ""} /><span class="pb-theme-name" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span></label>
+          <button type="button" class="btn btn-ghost btn-xs pb-theme-look" data-id="${escapeHtml(t.id)}" ${s.busy ? "disabled" : ""}>Look</button>
+          <button type="button" class="btn btn-ghost btn-xs pb-theme-remove" data-id="${escapeHtml(t.id)}" aria-label="Remove ${escapeHtml(t.name)} from the library">Remove</button>
+        </div>`
+      )
+      .join("");
+    return `
+      <div class="rf-field">
+        <label for="pb-theme-file">Themes Claude may use</label>
+        <input id="pb-theme-file" type="file" accept=".protheme" class="file-input file-input-bordered file-input-sm w-full max-w-md" ${s.busy ? "disabled" : ""} />
+        <p class="text-xs opacity-70 mt-1">Upload ProPresenter's theme export. Each theme is kept on its own; Look draws it, and a ticked theme is the only kind Claude can open.</p>
+        ${state.themes.length ? `<div class="pb-themes" role="group" aria-label="Themes">${rows}</div><p class="text-xs opacity-70" id="pb-theme-count">${themeCount()}</p>` : ""}
       </div>`;
   }
 
@@ -157,7 +183,7 @@ export function initProbundle() {
         <div class="card-body p-3 gap-4">
           <div class="flex flex-col gap-1">
             <div class="text-base font-medium">${escapeHtml(o.model.name || o.name)}</div>
-            <div class="text-xs opacity-70">${escapeHtml(o.from)} · ${o.kind === "probundle" ? `bundle, ${o.media.length} media file${o.media.length === 1 ? "" : "s"}` : "presentation"}</div>
+            <div class="text-xs opacity-70">${escapeHtml(o.from)} · ${o.kind === "probundle" ? `bundle, ${o.media.length} media file${o.media.length === 1 ? "" : "s"}` : o.kind === "protheme" ? "theme" : "presentation"}</div>
             ${o.draft ? `<div class="pb-draft-live">${o.draft.changed ? `${escapeHtml(when(o.draft.changed))} · ` : ""}${escapeHtml(o.draft.note ?? "Redrawn as Claude changes it")}</div>` : ""}
           </div>
           <div role="tablist" class="tabs tabs-bordered">
@@ -252,7 +278,8 @@ export function initProbundle() {
     return data;
   }
 
-  async function open(promise) {
+  // `reveal` brings the open file into view: a theme is opened from the middle of a long list.
+  async function open(promise, { reveal = false } = {}) {
     state.busy = true;
     paint();
     try {
@@ -267,6 +294,7 @@ export function initProbundle() {
     } finally {
       state.busy = false;
       paint();
+      if (reveal) container.querySelector(".rf-hero")?.scrollIntoView({ block: "start" });
     }
   }
 
@@ -302,6 +330,7 @@ export function initProbundle() {
     });
     for (const b of container.querySelectorAll(".pb-show")) b.addEventListener("click", () => { state.current = b.dataset.id; state.diff = null; state.view = null; paint(); });
     wireDrafts();
+    wireThemes();
     for (const b of container.querySelectorAll(".pb-tab")) b.addEventListener("click", () => { state.tab = b.dataset.tab; paint(); });
     container.querySelector("#pb-before")?.addEventListener("change", (e) => (state.compare.before = e.target.value));
     container.querySelector("#pb-after")?.addEventListener("change", (e) => (state.compare.after = e.target.value));
@@ -315,6 +344,51 @@ export function initProbundle() {
       }
       paint();
     });
+  }
+
+  function wireThemes() {
+    container.querySelector("#pb-theme-file")?.addEventListener("change", async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      state.busy = true;
+      paint();
+      try {
+        const r = await post("/api/probundle/themes/upload", await file.arrayBuffer(), { "Content-Type": "application/octet-stream", "X-File-Name": encodeURIComponent(file.name) });
+        state.themes = r.themes ?? [];
+      } catch (err) {
+        showFailure(`Couldn't read that theme file: ${err.message}`);
+      } finally {
+        state.busy = false;
+        paint();
+      }
+    });
+    for (const b of container.querySelectorAll(".pb-theme-allow")) {
+      b.addEventListener("change", async () => {
+        try {
+          await post("/api/probundle/themes/allow", { id: b.dataset.id, allowed: b.checked });
+          const t = state.themes.find((x) => x.id === b.dataset.id);
+          if (t) t.allowed = b.checked;
+          const count = container.querySelector("#pb-theme-count");
+          if (count) count.textContent = themeCount();
+        } catch (err) {
+          b.checked = !b.checked;
+          showFailure(`Couldn't save that: ${err.message}`);
+        }
+      });
+    }
+    for (const b of container.querySelectorAll(".pb-theme-look")) b.addEventListener("click", () => open(post(`/api/probundle/themes/${encodeURIComponent(b.dataset.id)}/preview`, {}), { reveal: true }));
+    for (const b of container.querySelectorAll(".pb-theme-remove")) {
+      b.addEventListener("click", async () => {
+        try {
+          const res = await fetch(`/api/probundle/themes/${encodeURIComponent(b.dataset.id)}`, { method: "DELETE" });
+          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? res.statusText);
+          state.themes = state.themes.filter((x) => x.id !== b.dataset.id);
+          paint();
+        } catch (err) {
+          showFailure(`Couldn't remove that theme: ${err.message}`);
+        }
+      });
+    }
   }
 
   function wireDrafts() {
