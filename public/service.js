@@ -248,22 +248,18 @@ const timeOfDay = (hhmm) => {
 };
 
 /**
- * Send log: only when Telemetry is set up. It goes each night on its own (unless
- * switched off in Settings), and a person can press it to send now. A nightly
- * send that failed says so here, where the person who would fix it looks.
+ * The log's nightly send, only when Telemetry is set up: when it goes, when it
+ * last went, and a failed night, said here where the person who would fix it
+ * looks. There is no button: it always goes each night (owner, 2026-11-04).
  */
 export function renderLogSendHtml(telemetry) {
   if (!telemetry || telemetry.status === "off") return "";
   if (telemetry.status !== "active") return `<div class="text-xs opacity-70">Sending the log isn't set up. See Settings &gt; Telemetry.</div>`;
   const last = telemetry.lastLogOkAt ? `Last sent at ${escapeHtml(formatClock(telemetry.lastLogOkAt, { seconds: false }))}.` : "Not sent yet.";
   const n = telemetry.nightly;
-  const when = n ? `each night at ${escapeHtml(timeOfDay(n.at))}` : "when you press Send log";
+  const when = n ? `each night at ${escapeHtml(timeOfDay(n.at))}` : "each night";
   const failed = n?.last?.error ? ` <span class="text-warning">The last nightly send failed: ${escapeHtml(n.last.error)}</span>` : "";
-  return `
-    <div class="flex items-center justify-between gap-3 flex-wrap">
-      <div class="text-xs opacity-70">Sends this station's log to your announcement server ${when}, so the service can be reviewed. ${last}${failed}</div>
-      <button type="button" id="service-send-log-btn" class="btn btn-outline btn-sm">Send log</button>
-    </div>`;
+  return `<div class="text-xs opacity-70">Sends this station's log to your announcement server ${when}, so the service can be reviewed. ${last}${failed}</div>`;
 }
 
 /**
@@ -554,19 +550,6 @@ export function initService() {
         paint(await post("/api/service/send-summary"));
       } catch (err) {
         showFailure(`The summary didn't send: ${err.message}`);
-        load();
-      }
-    });
-    document.getElementById("service-send-log-btn")?.addEventListener("click", async (e) => {
-      const btn = e.currentTarget;
-      btn.disabled = true;
-      btn.textContent = "Sending...";
-      try {
-        const data = await post("/api/service-feed/send-log");
-        paint(data);
-        if (!data.sent) showFailure("Nothing new to send. The server already has every log.");
-      } catch (err) {
-        showFailure(`The log didn't send: ${err.message}`);
         load();
       }
     });

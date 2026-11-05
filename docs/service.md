@@ -200,9 +200,11 @@ is still to come today. Day says ahead of time when it will.
 When it ends the day this way, the summary is sent straight away with nobody
 reading it first. A failed send is retried every 15 minutes, eight tries in all.
 
-### Send log
+### The service log
 
-**Send log** appears when the service feed is set up.
+When the service feed is set up, Day says when this station's log goes to your
+announcement server each night, when it last went, and the reason if the last
+night's send failed. It always goes on its own; there is no button to send it.
 
 ## Flags
 
