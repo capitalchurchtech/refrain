@@ -120,7 +120,7 @@ import { heartbeatInterval } from "./heartbeat-pacing.js";
 import QRCode from "qrcode";
 import { emptyRegistry, seeDevice, setApproved, removeDevice, isApproved, isRemoved, deviceList, loadRegistry, saveRegistry, setLiveMonth, isLiveAllowed } from "./remote-devices.js";
 import { monthKey, deviceCode, appendTakeover } from "./remote-live.js";
-import { noteItem, splitsView, feedItems, itemLines, leftOpenLines } from "./item-splits.js";
+import { noteItem, withPlaylist, libraryOf, splitsView, feedItems, itemLines, leftOpenLines } from "./item-splits.js";
 import { playingFromDoc, playingStale, liveSlideDetails } from "./playing-slide.js";
 import { saveFlagPicture, readFlagPicture, listFlagPictureIds } from "./flag-pictures.js";
 import { previewTargets, createThumbCache } from "./slide-preview.js";
@@ -1907,7 +1907,16 @@ async function heartbeat() {
   if (connected) {
     const before = itemSplits;
     const itemName = enriched ? (enriched.presentationName ?? enriched.name ?? null) : null;
-    itemSplits = noteItem(itemSplits, liveState.live && enriched ? { presentationId: enriched.presentationId, name: itemName } : null, now);
+    const library = enriched ? libraryOf(getIndex()?.presentations?.[enriched.presentationId]?.presentationPath) : null;
+    itemSplits = noteItem(itemSplits, liveState.live && enriched ? { presentationId: enriched.presentationId, name: itemName, library } : null, now);
+    // The playlist a new item was played from, asked of ProPresenter once as it
+    // opens and only while the service feed is on (the request writes nothing
+    // to its database). Waited for briefly, so the open line carries it.
+    const opened = itemSplits[0]?.endMs == null && !before.some((e) => e.id === itemSplits[0].id) ? itemSplits[0] : null;
+    if (opened && config.serviceFeedModule?.enabled === true) {
+      const playlist = await Promise.race([client.getActivePlaylistName(opened.presentationId).catch(() => null), new Promise((r) => setTimeout(() => r(null), 900))]);
+      if (playlist) itemSplits = withPlaylist(itemSplits, opened.id, playlist);
+    }
     // When an item opens and when it closes, into the day's log (docs/service-feed.md).
     for (const line of itemLines(before, itemSplits, STATION_TZ)) diag("item", line);
   }

@@ -144,9 +144,20 @@ One line when an item **opens** and another, with the same `id`, when it
 open line. The later `t` wins per `id`.
 
 ```json
-{"t":"2026-10-11T16:41:00.000Z","event":"item","id":"mgx0ab-1","name":"Welcome Loop","startedAt":"2026-10-11T16:41:00.000Z","endedAt":null,"reason":null,"tz":"America/Denver"}
-{"t":"2026-10-11T16:47:00.000Z","event":"item","id":"mgx0ab-1","name":"Welcome Loop","startedAt":"2026-10-11T16:41:00.000Z","endedAt":"2026-10-11T16:47:00.000Z","reason":"moved","tz":"America/Denver"}
+{"t":"2026-10-11T16:41:00.000Z","event":"item","id":"mgx0ab-1","name":"Welcome Loop","startedAt":"2026-10-11T16:41:00.000Z","endedAt":null,"reason":null,"tz":"America/Denver","library":"Misc","playlist":"Sunday 9am"}
+{"t":"2026-10-11T16:47:00.000Z","event":"item","id":"mgx0ab-1","name":"Welcome Loop","startedAt":"2026-10-11T16:41:00.000Z","endedAt":"2026-10-11T16:47:00.000Z","reason":"moved","tz":"America/Denver","library":"Misc","playlist":"Sunday 9am"}
 ```
+
+- `library` is the ProPresenter library the presentation lives in, its folder's
+  own name as ProPresenter shows it (`Songs`, `Messages`), at most 64
+  characters. It comes from the file's path in Refrain's search index.
+- `playlist` is the playlist ProPresenter says the item was played from, at most
+  120 characters. Refrain asks ProPresenter once when an item opens, and only
+  while the feed is on (the answer writes nothing to ProPresenter's database;
+  measured on 21.3). An item played straight from the library has none.
+- Each is left out when it isn't known, never sent as a placeholder. Both are
+  read when the item opens, so its open and close lines carry the same values.
+  Lines written before 2026-11-04 have neither.
 
 - `reason` is `null` while open, then `moved` (a different item came up),
   `blank-timeout` (the screens stayed blank past `graceMs`; `endedAt` is when

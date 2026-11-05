@@ -31,9 +31,9 @@ const forgiven = (entry) => {
 };
 
 /**
- * @param {Array} log  entries, newest first: { id, presentationId, name, startMs, endMs|null, blankSince? }
+ * @param {Array} log  entries, newest first: { id, presentationId, name, library, playlist?, startMs, endMs|null, blankSince? }
  *   (`blankSince` is when the open entry's screens last went empty, while that is still being forgiven)
- * @param {{presentationId: string, name?: string|null}|null} item  what is on the screens now, or null when nothing is
+ * @param {{presentationId: string, name?: string|null, library?: string|null}|null} item  what is on the screens now, or null when nothing is
  * @returns the same array when nothing changed, otherwise a new one
  */
 export function noteItem(log, item, now = Date.now(), max = MAX_SPLITS, graceMs = BLANK_GRACE_MS) {
@@ -65,8 +65,13 @@ export function noteItem(log, item, now = Date.now(), max = MAX_SPLITS, graceMs 
     // stayed blank past the grace (then it ended when they went blank).
     next = [{ ...forgiven(open), endMs: endedAt, reason: gone ? "blank-timeout" : "moved" }, ...list.slice(1)];
   }
-  if (pid) next = [{ id: `${now.toString(36)}-${next.length}`, presentationId: pid, name: item.name ?? null, startMs: now, endMs: null }, ...next];
+  if (pid) next = [{ id: `${now.toString(36)}-${next.length}`, presentationId: pid, name: item.name ?? null, library: item.library ?? null, startMs: now, endMs: null }, ...next];
   return next.slice(0, max);
+}
+
+/** The log with entry `id` given the playlist it was played from, learned just after it opened. */
+export function withPlaylist(log, id, playlist) {
+  return (log ?? []).map((e) => (e.id === id ? { ...e, playlist } : e));
 }
 
 /** What the phone shows: a name, when it came up, when it left, and how long it was up (still counting for the open one). */
@@ -90,7 +95,21 @@ export function splitsView(log, now = Date.now()) {
 
 export const FEED_ITEMS_MAX = 30;
 export const FEED_NAME_MAX = 200;
+export const FEED_LIBRARY_MAX = 64;
+export const FEED_PLAYLIST_MAX = 120;
 const nameOf = (e) => String(e.name ?? "Untitled").slice(0, FEED_NAME_MAX);
+
+/** The library a presentation lives in, from its path (…/Libraries/<Library>/…), or null. */
+export function libraryOf(presentationPath) {
+  const m = /[\\/]Libraries[\\/]([^\\/]+)[\\/]/.exec(String(presentationPath ?? ""));
+  return m ? m[1].slice(0, FEED_LIBRARY_MAX) : null;
+}
+
+// Where an item came from, on its log lines only when known (docs/service-feed.md).
+const whereFrom = (e) => ({
+  ...(typeof e.library === "string" && e.library ? { library: e.library.slice(0, FEED_LIBRARY_MAX) } : {}),
+  ...(typeof e.playlist === "string" && e.playlist ? { playlist: e.playlist.slice(0, FEED_PLAYLIST_MAX) } : {}),
+});
 
 /** The `history` snapshot for POST /status: newest first, capped. Times are UTC. */
 export function feedItems(log, max = FEED_ITEMS_MAX) {
@@ -123,6 +142,7 @@ export function itemLines(prev, next, tz) {
       endedAt: e.endMs == null ? null : new Date(e.endMs).toISOString(),
       reason: e.endMs == null ? null : (e.reason ?? "moved"),
       tz,
+      ...whereFrom(e),
     });
   }
   return lines;
@@ -151,5 +171,5 @@ export function leftOpenLines(text, before, tz) {
   }
   return [...latest.values()]
     .filter((l) => l.endedAt == null)
-    .map((l) => ({ id: l.id, name: l.name, startedAt: l.startedAt, endedAt: lastT, reason: "restart", tz: l.tz ?? tz }));
+    .map((l) => ({ id: l.id, name: l.name, startedAt: l.startedAt, endedAt: lastT, reason: "restart", tz: l.tz ?? tz, ...whereFrom(l) }));
 }

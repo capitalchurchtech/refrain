@@ -82,7 +82,7 @@ test("the view says which presentation, and marks an open stay whose screens are
 });
 
 // --- What leaves this Mac (docs/service-feed.md) ---------------------------------
-import { feedItems, itemLines, leftOpenLines, FEED_ITEMS_MAX, FEED_NAME_MAX } from "../server/item-splits.js";
+import { feedItems, itemLines, leftOpenLines, withPlaylist, libraryOf, FEED_ITEMS_MAX, FEED_NAME_MAX, FEED_LIBRARY_MAX, FEED_PLAYLIST_MAX } from "../server/item-splits.js";
 
 const TZ = "America/Denver";
 const SECRET = "Was blind but now I see";
@@ -144,6 +144,34 @@ test("an item open when Refrain restarts is closed at the last moment the old ru
   // The run that comes back opens its items with new ids.
   const reopened = noteItem([], a, Date.parse(BOOT) + 40_000);
   assert.notEqual(feedItems(reopened)[0].id, "old-1");
+});
+
+test("item lines say which library and playlist an item came from, the same on its open and close lines, and leave out what isn't known", () => {
+  assert.equal(libraryOf("/Users/x/Library/Application Support/RenewedVision/ProPresenter/Libraries/Songs/Amazing Grace.pro"), "Songs");
+  assert.equal(libraryOf("C:\\ProPresenter\\Libraries\\Messages\\Week 6.pro"), "Messages");
+  assert.equal(libraryOf("/Users/x/Desktop/Loose.pro"), null, "a file outside a library has none");
+  assert.equal(libraryOf(null), null);
+  assert.equal(libraryOf(`/w/Libraries/${"L".repeat(100)}/a.pro`).length, FEED_LIBRARY_MAX);
+
+  let log = noteItem([], { ...a, library: "Misc" }, 0);
+  const opened = log[0].id;
+  log = withPlaylist(log, opened, "Sunday 9am");
+  const open = itemLines([], log, TZ)[0];
+  assert.deepEqual([open.library, open.playlist], ["Misc", "Sunday 9am"]);
+  const next = noteItem(log, { ...b, library: "Songs" }, 60_000);
+  const [closed, second] = itemLines(log, next, TZ);
+  assert.deepEqual([closed.id, closed.library, closed.playlist], [opened, "Misc", "Sunday 9am"], "the close line matches its open line");
+  assert.equal(second.library, "Songs");
+  assert.ok(!("playlist" in second), "played from the library: no playlist, not a placeholder");
+  const unknown = itemLines([], noteItem([], a, 0), TZ)[0];
+  assert.ok(!("library" in unknown) && !("playlist" in unknown), "nothing known, nothing sent");
+  assert.equal(itemLines([], withPlaylist(noteItem([], a, 0), noteItem([], a, 0)[0].id, "P".repeat(300)), TZ)[0].playlist.length, FEED_PLAYLIST_MAX);
+
+  // A restart's close line carries what the open line had.
+  const text = JSON.stringify({ t: "2026-10-11T15:40:00.000Z", event: "item", ...open });
+  assert.deepEqual(Object.fromEntries(Object.entries(leftOpenLines(text, "2026-10-11T16:00:00.000Z", TZ)[0]).filter(([k]) => ["library", "playlist"].includes(k))), { library: "Misc", playlist: "Sunday 9am" });
+  // The status snapshot is unchanged.
+  assert.deepEqual(Object.keys(feedItems(next)[0]).sort(), ["blank", "current", "endedAt", "id", "name", "startedAt"]);
 });
 
 test("no slide words appear in the snapshot or the item lines, whatever the item carried", () => {
