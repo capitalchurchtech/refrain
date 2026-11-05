@@ -52,5 +52,9 @@ Knowing the design helps tell a bug from a known limit.
   is still welcome.
 - Someone with access to the booth computer's account. They can already read the
   Refrain folder.
+- A copy shared between macOS accounts, or a Refrain folder opened up to other
+  accounts. Each account runs its own copy
+  ([install guide](docs/install.md#several-accounts-on-one-mac)); a folder other
+  accounts can write lets them change the code its owner runs.
 - Vulnerabilities in ProPresenter, Planning Center or any other service Refrain
   talks to. Report those to the vendor.

@@ -69,6 +69,19 @@ few strings still say "Health screen" and mean Settings. Write "Settings ›
 <tab>" in anything a person reads, and use the More path (Settings › More ›
 Phones) in docs.
 
+## One copy per macOS account
+
+Each account that runs ProPresenter runs its own copy in `~/Refrain`
+(docs/install.md, "Several accounts on one Mac"); each has its own ProPresenter
+and library anyway. A copy another account installed can't save settings or
+data or read `.env` from this one, and Settings › Status says so
+(`server/folder-access.js`). Don't "fix" that by sharing the folder: an ACL for
+every account, or `git -c safe.directory`, was built and dropped in security
+review (2026-11-05), because any account could then change the code another
+account, often an administrator, runs at login and on Update now. Two copies
+must not share `serviceFeedModule.consoleId`: the server keeps one log per
+console per day, so they would overwrite each other.
+
 ## The main app answers only to this computer's own name
 
 The main app listens on 127.0.0.1 and refuses, with 421, any request whose Host
